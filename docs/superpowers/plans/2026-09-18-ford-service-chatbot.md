@@ -330,30 +330,30 @@ public interface HandoffService {
 }
 ```
 
-- [ ] **Step 1: Write failing tests for state, consent, score, and handoff**
+- [x] **Step 1: Write failing tests for state, consent, score, and handoff**
 
 Cover valid/invalid state transitions, duplicate messages, missing consent,
 hot/warm/cold reasons, explicit human requests, operator claim concurrency,
 and the rule that human-active conversations do not invoke AI.
 
-- [ ] **Step 2: Run focused tests and confirm failure**
+- [x] **Step 2: Run focused tests and confirm failure**
 
 Run: `cd ford-ai-service && ./gradlew test --tests '*LeadScoringPolicyTest' --tests '*ConversationStateTransitionTest' --tests '*HandoffServiceTest'`
 
 Expected: FAIL because domain/application types do not exist.
 
-- [ ] **Step 3: Implement pure policy and JDBC-backed use cases**
+- [x] **Step 3: Implement pure policy and JDBC-backed use cases**
 
 Use optimistic locking on handoff tickets. Store score reasons and consent
 events. Create an outbox event for every handoff and operator reply.
 
-- [ ] **Step 4: Run focused and API integration tests**
+- [x] **Step 4: Run focused and API integration tests**
 
 Run: `cd ford-ai-service && ./gradlew test --tests '*LeadScoringPolicyTest' --tests '*ConversationStateTransitionTest' --tests '*HandoffServiceTest' && ./gradlew integrationTest --tests '*HandoffApiIntegrationTest'`
 
 Expected: PASS with zero failures.
 
-- [ ] **Step 5: Commit conversation and handoff behavior**
+- [x] **Step 5: Commit conversation and handoff behavior**
 
 ```bash
 git add ford-ai-service/src/main/java/com/ford/service/conversations ford-ai-service/src/main/java/com/ford/service/leads ford-ai-service/src/main/java/com/ford/service/handoff ford-ai-service/src/test ford-ai-service/src/integrationTest
