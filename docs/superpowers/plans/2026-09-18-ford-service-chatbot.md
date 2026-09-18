@@ -423,7 +423,7 @@ public interface AssistantOrchestrator {
 }
 ```
 
-- [ ] **Step 1: Write failing tests for deterministic routing and tool policy**
+- [x] **Step 1: Write failing tests for deterministic routing and tool policy**
 
 Cover obvious catalog/finance routes without model calls, model fallback for
 ambiguous language, blocked mutation tools, missing tenant context, stale
@@ -431,13 +431,13 @@ data disclosure, human-active bypass, provider selection by capability/privacy
 policy, unsupported structured-output/tool-calling capabilities, and embedding
 model-version changes that require reindexing.
 
-- [ ] **Step 2: Run focused tests and confirm failure**
+- [x] **Step 2: Run focused tests and confirm failure**
 
 Run: `cd ford-ai-service && ./gradlew test --tests '*IntentRouterTest' --tests '*ToolAuthorizationPolicyTest' --tests '*AssistantOrchestratorTest'`
 
 Expected: FAIL because the AI boundary does not exist.
 
-- [ ] **Step 3: Implement provider policy, Spring AI adapters, RAG, and tools**
+- [x] **Step 3: Implement provider policy, Spring AI adapters, RAG, and tools**
 
 Configure named Spring AI `ChatModel`/`ChatClient` instances for Ollama and the
 selected cloud provider, plus an independently configured embedding model.
@@ -467,7 +467,7 @@ Tool implementations call catalog/offer/finance/knowledge application ports.
 They never create provider clients, access raw SQL, or mutate lead/handoff
 state.
 
-- [ ] **Step 4: Run focused and Spring AI integration tests**
+- [x] **Step 4: Run focused and Spring AI integration tests**
 
 Run: `cd ford-ai-service && ./gradlew test --tests '*IntentRouterTest' --tests '*ToolAuthorizationPolicyTest' --tests '*AssistantOrchestratorTest' && ./gradlew integrationTest --tests '*SpringAiToolIntegrationTest'`
 
@@ -475,7 +475,7 @@ Expected: PASS; model calls are replaced by deterministic fake providers in
 unit tests, while the integration suite verifies Spring AI tool wiring and
 PGvector retrieval with Testcontainers.
 
-- [ ] **Step 5: Commit the AI boundary**
+- [x] **Step 5: Commit the AI boundary**
 
 ```bash
 git add ford-ai-service/src/main/java/com/ford/service/ai ford-ai-service/src/test ford-ai-service/src/integrationTest
