@@ -583,32 +583,32 @@ public interface SyncCoordinator {
 }
 ```
 
-- [ ] **Step 1: Write failing tests for source normalization and sync behavior**
+- [x] **Step 1: Write failing tests for source normalization and sync behavior**
 
 Cover idempotent upserts, source metadata, explicit manual override expiry,
 invalid-record quarantine, rate-limit backoff, sync failure status, and stale
 data marking.
 
-- [ ] **Step 2: Run focused tests and confirm failure**
+- [x] **Step 2: Run focused tests and confirm failure**
 
 Run: `cd ford-ai-service && ./gradlew test --tests '*SourceNormalizationTest' --tests '*SyncCoordinatorTest'`
 
 Expected: FAIL because source adapters and sync coordinator do not exist.
 
-- [ ] **Step 3: Implement adapters and scheduled orchestration**
+- [x] **Step 3: Implement adapters and scheduled orchestration**
 
 Official Ford connectors and authorized scrapers run only in scheduled jobs or
 explicit operator commands. Use injected `RestClient`, bounded concurrency,
 timeouts, retries for safe reads, and a dead-letter/quarantine record for
 invalid payloads. Never call these adapters from `AssistantOrchestrator`.
 
-- [ ] **Step 4: Run unit and WireMock integration tests**
+- [x] **Step 4: Run unit and local HTTP integration tests**
 
 Run: `cd ford-ai-service && ./gradlew test --tests '*SourceNormalizationTest' --tests '*SyncCoordinatorTest' && ./gradlew integrationTest --tests '*FordConnectorIntegrationTest'`
 
 Expected: PASS with deterministic fake Ford/API/scraper fixtures.
 
-- [ ] **Step 5: Commit ingestion**
+- [x] **Step 5: Commit ingestion**
 
 ```bash
 git add ford-ai-service/src/main/java/com/ford/service/ingestion ford-ai-service/src/test ford-ai-service/src/integrationTest
