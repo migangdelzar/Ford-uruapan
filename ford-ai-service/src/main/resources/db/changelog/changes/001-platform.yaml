@@ -1,0 +1,262 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-platform
+      author: ford-service
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              create extension if not exists vector;
+
+              create table if not exists sync_run (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  source_system varchar(80) not null,
+                  status varchar(30) not null,
+                  started_at timestamptz not null,
+                  completed_at timestamptz,
+                  records_seen integer not null default 0,
+                  records_applied integer not null default 0,
+                  records_quarantined integer not null default 0,
+                  error_message text
+              );
+
+              create table if not exists vehicle_model (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  model_code varchar(80) not null,
+                  name varchar(160) not null,
+                  model_year integer not null,
+                  description text,
+                  source_system varchar(80) not null,
+                  source_record_id varchar(160) not null,
+                  observed_at timestamptz not null,
+                  freshness_status varchar(30) not null,
+                  raw_payload jsonb not null default '{}'::jsonb,
+                  sync_run_id uuid not null references sync_run(id),
+                  unique (tenant_id, model_code, model_year)
+              );
+
+              create table if not exists vehicle_variant (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  model_id uuid not null references vehicle_model(id),
+                  variant_code varchar(80) not null,
+                  name varchar(160) not null,
+                  specifications jsonb not null default '{}'::jsonb,
+                  unique (tenant_id, variant_code)
+              );
+
+              create table if not exists vehicle_color (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  variant_id uuid not null references vehicle_variant(id),
+                  color_code varchar(80) not null,
+                  name varchar(120) not null,
+                  hex_code varchar(20),
+                  available boolean not null default true,
+                  unique (tenant_id, variant_id, color_code)
+              );
+
+              create table if not exists vehicle_unit (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  variant_id uuid not null references vehicle_variant(id),
+                  external_stock_id varchar(160) not null,
+                  dealership_code varchar(80) not null,
+                  status varchar(30) not null,
+                  observed_at timestamptz not null,
+                  freshness_status varchar(30) not null,
+                  raw_payload jsonb not null default '{}'::jsonb,
+                  sync_run_id uuid not null references sync_run(id),
+                  unique (tenant_id, external_stock_id)
+              );
+
+              create table if not exists vehicle_price (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  variant_id uuid not null references vehicle_variant(id),
+                  currency char(3) not null default 'MXN',
+                  amount numeric(14,2) not null,
+                  effective_from timestamptz not null,
+                  effective_to timestamptz,
+                  source_system varchar(80) not null,
+                  source_record_id varchar(160) not null,
+                  observed_at timestamptz not null,
+                  freshness_status varchar(30) not null,
+                  raw_payload jsonb not null default '{}'::jsonb,
+                  sync_run_id uuid not null references sync_run(id)
+              );
+
+              create table if not exists offer (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  offer_code varchar(100) not null,
+                  title varchar(200) not null,
+                  terms text not null,
+                  effective_from timestamptz not null,
+                  effective_to timestamptz not null,
+                  source_system varchar(80) not null,
+                  raw_payload jsonb not null default '{}'::jsonb,
+                  unique (tenant_id, offer_code)
+              );
+
+              create table if not exists finance_product (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  lender_code varchar(80) not null,
+                  product_code varchar(100) not null,
+                  name varchar(160) not null,
+                  annual_rate numeric(8,5) not null,
+                  opening_fee numeric(14,2) not null default 0,
+                  insurance_fee numeric(14,2) not null default 0,
+                  effective_from timestamptz not null,
+                  effective_to timestamptz,
+                  requirements jsonb not null default '[]'::jsonb,
+                  source_system varchar(80) not null,
+                  raw_payload jsonb not null default '{}'::jsonb,
+                  unique (tenant_id, lender_code, product_code)
+              );
+
+              create table if not exists finance_term (
+                  id uuid primary key,
+                  finance_product_id uuid not null references finance_product(id),
+                  months integer not null,
+                  annual_rate numeric(8,5) not null,
+                  unique (finance_product_id, months)
+              );
+
+              create table if not exists knowledge_document (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  document_type varchar(60) not null,
+                  title varchar(240) not null,
+                  source_uri text not null,
+                  locale varchar(20) not null default 'es-MX',
+                  vehicle_model_version varchar(120),
+                  effective_from timestamptz,
+                  effective_to timestamptz,
+                  embedding_provider varchar(80) not null,
+                  embedding_model varchar(160) not null,
+                  content_hash varchar(128) not null,
+                  approved boolean not null default false,
+                  raw_metadata jsonb not null default '{}'::jsonb,
+                  unique (tenant_id, content_hash)
+              );
+
+              create table if not exists knowledge_chunk (
+                  id uuid primary key,
+                  document_id uuid not null references knowledge_document(id) on delete cascade,
+                  chunk_index integer not null,
+                  content text not null,
+                  metadata jsonb not null default '{}'::jsonb,
+                  embedding vector(1536),
+                  unique (document_id, chunk_index)
+              );
+
+              create table if not exists conversation (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  channel varchar(30) not null,
+                  provider_conversation_id varchar(200) not null,
+                  state varchar(30) not null,
+                  version bigint not null default 0,
+                  created_at timestamptz not null,
+                  updated_at timestamptz not null,
+                  unique (tenant_id, channel, provider_conversation_id)
+              );
+
+              create table if not exists conversation_message (
+                  id uuid primary key,
+                  conversation_id uuid not null references conversation(id),
+                  direction varchar(20) not null,
+                  provider_message_id varchar(200) not null,
+                  content text,
+                  raw_payload jsonb not null default '{}'::jsonb,
+                  received_at timestamptz not null,
+                  unique (conversation_id, provider_message_id)
+              );
+
+              create table if not exists lead (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  conversation_id uuid not null references conversation(id),
+                  name varchar(160),
+                  phone varchar(40),
+                  email varchar(240),
+                  preferred_vehicle varchar(160),
+                  budget_range varchar(80),
+                  down_payment_range varchar(80),
+                  income_range varchar(80),
+                  employment_range varchar(80),
+                  trade_in_interest boolean,
+                  consent_at timestamptz,
+                  created_at timestamptz not null,
+                  updated_at timestamptz not null
+              );
+
+              create table if not exists lead_score (
+                  id uuid primary key,
+                  lead_id uuid not null references lead(id),
+                  band varchar(20) not null,
+                  score integer not null,
+                  reasons jsonb not null default '[]'::jsonb,
+                  created_at timestamptz not null
+              );
+
+              create table if not exists handoff_ticket (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  conversation_id uuid not null references conversation(id),
+                  lead_id uuid references lead(id),
+                  status varchar(30) not null,
+                  assigned_operator_id uuid,
+                  reason varchar(80) not null,
+                  version bigint not null default 0,
+                  created_at timestamptz not null,
+                  claimed_at timestamptz,
+                  closed_at timestamptz
+              );
+
+              create table if not exists outbox_event (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  aggregate_type varchar(80) not null,
+                  aggregate_id uuid not null,
+                  event_type varchar(120) not null,
+                  payload jsonb not null,
+                  status varchar(30) not null default 'PENDING',
+                  attempts integer not null default 0,
+                  available_at timestamptz not null,
+                  claimed_at timestamptz,
+                  completed_at timestamptz,
+                  last_error text
+              );
+
+              create table if not exists audit_event (
+                  id uuid primary key,
+                  tenant_id uuid,
+                  actor_type varchar(40) not null,
+                  actor_id varchar(160),
+                  event_type varchar(120) not null,
+                  aggregate_type varchar(80),
+                  aggregate_id uuid,
+                  metadata jsonb not null default '{}'::jsonb,
+                  occurred_at timestamptz not null
+              );
+
+              create index if not exists idx_vehicle_unit_lookup on vehicle_unit(tenant_id, variant_id, status);
+              create index if not exists idx_vehicle_price_effective on vehicle_price(tenant_id, variant_id, effective_from, effective_to);
+              create index if not exists idx_offer_effective on offer(tenant_id, effective_from, effective_to);
+              create index if not exists idx_conversation_messages on conversation_message(conversation_id, received_at);
+              create index if not exists idx_handoff_queue on handoff_ticket(tenant_id, status, created_at);
+              create index if not exists idx_outbox_pending on outbox_event(status, available_at);
+              create index if not exists idx_knowledge_metadata on knowledge_document(tenant_id, locale, document_type, approved);
+      rollback:
+        - sql:
+            sql: |
+              drop table if exists audit_event, outbox_event, handoff_ticket, lead_score, lead,
+                conversation_message, conversation, knowledge_chunk, knowledge_document,
+                finance_term, finance_product, offer, vehicle_price, vehicle_unit,
+                vehicle_color, vehicle_variant, vehicle_model, sync_run cascade;
