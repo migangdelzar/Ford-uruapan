@@ -187,18 +187,18 @@ public interface SourcePrecedencePolicy {
 }
 ```
 
-- [ ] **Step 1: Write failing unit tests for money and source precedence**
+- [x] **Step 1: Write failing unit tests for money and source precedence**
 
 Test exact MXN scale/rounding rejection, official feed preference, authorized
 scraper fallback, explicit manual override with expiry, and seed fallback.
 
-- [ ] **Step 2: Run focused unit tests**
+- [x] **Step 2: Run focused unit tests**
 
 Run: `cd ford-ai-service && ./gradlew test --tests '*MoneyTest' --tests '*SourcePrecedencePolicyTest'`
 
 Expected: FAIL because the shared types do not exist.
 
-- [ ] **Step 3: Add shared value objects and Liquibase tables**
+- [x] **Step 3: Add shared value objects and Liquibase tables**
 
 Create tables for `sync_run`, `vehicle_model`, `vehicle_variant`,
 `vehicle_unit`, `vehicle_color`, `vehicle_price`, `offer`, `finance_product`,
@@ -207,13 +207,13 @@ Create tables for `sync_run`, `vehicle_model`, `vehicle_variant`,
 keys, `TIMESTAMPTZ`, JSONB raw payloads, unique provider/source keys, and
 indexes for tenant/channel/conversation/message lookups.
 
-- [ ] **Step 4: Run focused tests and Testcontainers schema verification**
+- [x] **Step 4: Run focused tests and Testcontainers schema verification**
 
 Run: `cd ford-ai-service && ./gradlew test --tests '*MoneyTest' --tests '*SourcePrecedencePolicyTest' && ./gradlew integrationTest --tests '*SchemaIntegrationTest'`
 
 Expected: PASS; Liquibase applies cleanly to an empty PostgreSQL container.
 
-- [ ] **Step 5: Commit the persistence foundation**
+- [x] **Step 5: Commit the persistence foundation**
 
 ```bash
 git add ford-ai-service/src/main/java/com/ford/service/shared ford-ai-service/src/main/resources/db/changelog ford-ai-service/src/test ford-ai-service/src/integrationTest
