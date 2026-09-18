@@ -22,6 +22,7 @@ dependencies {
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.jdbc)
     implementation(libs.spring.boot.starter.data.redis)
+    implementation(libs.spring.boot.starter.security)
     implementation(libs.liquibase.core)
     runtimeOnly(libs.postgresql)
 
@@ -33,6 +34,7 @@ dependencies {
     implementation(libs.spring.ai.starter.vector.store.pgvector)
 
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.security.test)
     testImplementation(libs.spring.boot.webmvc.test)
     testImplementation(libs.archunit.junit5)
     testRuntimeOnly(libs.h2)

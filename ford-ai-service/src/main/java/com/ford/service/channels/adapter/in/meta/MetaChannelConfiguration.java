@@ -11,6 +11,11 @@ import org.springframework.context.annotation.Configuration;
 public class MetaChannelConfiguration {
 
     @Bean
+    ObjectMapper objectMapper() {
+        return new ObjectMapper().findAndRegisterModules();
+    }
+
+    @Bean
     ChannelAdapter whatsAppChannelAdapter(ObjectMapper objectMapper, MetaWebhookProperties properties) {
         return new WhatsAppChannelAdapter(objectMapper, properties.getAppSecret());
     }

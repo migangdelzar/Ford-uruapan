@@ -651,31 +651,31 @@ public interface AiMetrics {
 }
 ```
 
-- [ ] **Step 1: Write failing tests for outbox, redaction, and security**
+- [x] **Step 1: Write failing tests for outbox, redaction, and security**
 
 Cover exactly-once claim semantics, retry/dead-letter transitions, redaction
 of phone/email/income/IDs, bounded metric tags, webhook signature rejection,
 operator role enforcement, and tool allow-list rejection.
 
-- [ ] **Step 2: Run focused tests and confirm failure**
+- [x] **Step 2: Run focused tests and confirm failure**
 
 Run: `cd ford-ai-service && ./gradlew test --tests '*OutboxPublisherTest' --tests '*PiiRedactorTest' --tests '*ToolAndWebhookSecurityTest'`
 
 Expected: FAIL because infrastructure classes do not exist.
 
-- [ ] **Step 3: Implement outbox and operational boundaries**
+- [x] **Step 3: Implement outbox and operational boundaries**
 
 Persist outbox rows in the same transaction as handoff/message changes. Add
 Micrometer counters/timers and OTel spans with bounded labels. Do not attach
 raw prompts, completions, or customer text to telemetry by default.
 
-- [ ] **Step 4: Run focused and container integration tests**
+- [x] **Step 4: Run focused and container integration tests**
 
 Run: `cd ford-ai-service && ./gradlew test --tests '*OutboxPublisherTest' --tests '*PiiRedactorTest' --tests '*ToolAndWebhookSecurityTest' && ./gradlew integrationTest --tests '*OutboxIntegrationTest'`
 
 Expected: PASS with zero failures.
 
-- [ ] **Step 5: Commit operational safety**
+- [x] **Step 5: Commit operational safety**
 
 ```bash
 git add ford-ai-service/src/main/java/com/ford/service/outbox ford-ai-service/src/main/java/com/ford/service/observability ford-ai-service/src/main/java/com/ford/service/config ford-ai-service/src/test ford-ai-service/src/integrationTest
