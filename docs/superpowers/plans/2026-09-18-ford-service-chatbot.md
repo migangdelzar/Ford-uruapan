@@ -517,31 +517,31 @@ public interface ChannelDeliveryPort {
 }
 ```
 
-- [ ] **Step 1: Write failing contract tests for all three payload families**
+- [x] **Step 1: Write failing contract tests for all three payload families**
 
 Cover text messages, provider IDs, sender IDs, channel binding resolution,
 signature rejection, duplicate delivery, unsupported attachments, and the
 normalized message contract.
 
-- [ ] **Step 2: Run adapter tests and confirm failure**
+- [x] **Step 2: Run adapter tests and confirm failure**
 
 Run: `cd ford-ai-service && ./gradlew test --tests '*AdapterContractTest'`
 
 Expected: FAIL because adapters and normalized records do not exist.
 
-- [ ] **Step 3: Implement controllers, adapters, deduplication, and delivery**
+- [x] **Step 3: Implement controllers, adapters, deduplication, and delivery**
 
 Use `RestClient` for outbound calls. A valid duplicate webhook returns an
 acknowledgement without invoking the assistant. Provider credentials and raw
 payloads are never logged.
 
-- [ ] **Step 4: Run contract and integration tests**
+- [x] **Step 4: Run contract and integration tests**
 
 Run: `cd ford-ai-service && ./gradlew test --tests '*AdapterContractTest' && ./gradlew integrationTest --tests '*MetaWebhookIntegrationTest'`
 
 Expected: PASS for WhatsApp, Messenger, and Instagram fixtures.
 
-- [ ] **Step 5: Commit Meta channel support**
+- [x] **Step 5: Commit Meta channel support**
 
 ```bash
 git add ford-ai-service/src/main/java/com/ford/service/channels ford-ai-service/src/test ford-ai-service/src/integrationTest
