@@ -33,6 +33,7 @@ dependencies {
     implementation(libs.spring.ai.starter.vector.store.pgvector)
 
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.boot.webmvc.test)
     testImplementation(libs.archunit.junit5)
     testRuntimeOnly(libs.h2)
     testImplementation(libs.testcontainers.junit.jupiter)
