@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Date | 2026-09-18 |
-| Status | Design approved in conversation; written-spec review pending |
+| Status | Design approved in conversation; provider/RAG amendment included |
 | Service | `ford-service` |
 | Initial market | Ford Uruapan, Mexico |
 | Locale/currency | Spanish / MXN |
@@ -33,7 +33,8 @@ WhatsApp / Messenger / Instagram
         -> normalized message + idempotency
         -> conversation state
         -> intent/routing policy
-        -> Spring AI ChatClient + read-only tools
+        -> provider policy + Spring AI ChatClient + read-only tools
+        -> grounded RAG only for document knowledge
         -> deterministic catalog/finance result
         -> lead capture and score
         -> persisted handoff + operator inbox APIs
@@ -53,8 +54,28 @@ Initial runtime choices:
   durable graph behavior becomes necessary.
 
 Spring AI's `ChatClient` and `ToolCallingAdvisor` provide the MVP tool loop.
+The application owns a provider policy that selects one chat model per request
+from configured Spring AI providers. Ollama is the local-development provider;
+a cloud provider is configured for production. Additional providers can be
+added behind the same port without changing domain services. Provider choice
+considers privacy, tool-calling/structured-output capability, latency, cost,
+and tenant policy. The system does not silently switch providers during a
+state-changing operation or hide a provider failure; it falls back to a
+deterministic response or human handoff.
+
+Chat models and embedding models are configured independently. Every indexed
+document records the embedding provider and model version; changing that
+version creates a reindex requirement instead of mixing incompatible vectors.
 LangGraph4j is deferred because the first workflow is a small, explicit state
 machine rather than a complex, long-running graph.
+
+RAG is limited to documents such as vehicle brochures, financing requirements
+and fees, offer terms, warranties, maintenance information, and approved FAQs.
+Live inventory, current prices, colors, finance calculations, freshness, and
+lead scoring are answered by SQL-backed application services or deterministic
+tools. The assistant must expose source document identifiers and effective
+dates for grounded document answers and abstain or hand off when retrieval is
+empty or stale.
 
 ## 3. Modules
 
@@ -167,7 +188,11 @@ Use Spring Data repositories only when an aggregate becomes complex enough to
 benefit from repository mapping. Do not add JPA by default.
 
 Use pgvector for financing documents, vehicle brochures, offer terms, and
-policy documents. Use Redis for locks, rate limits, short-lived cache, and
+policy documents. Spring AI's `SimpleVectorStore` is permitted only for unit
+tests and an explicit local demo profile: it is in-memory, non-durable, and
+not suitable for a shared production service. Retrieval applies tenant,
+locale, document type, model/version, and effective-date filters before the
+model sees context. Use Redis for locks, rate limits, short-lived cache, and
 coordination only; Redis is never authoritative.
 
 Initial durable entities:
@@ -313,6 +338,17 @@ Patterns selected for concrete problems:
 - Observer/domain events: outbox and future CRM integration;
 - small Factory Method: configured adapter/provider selection.
 
+AI-specific boundaries:
+
+- `ChatCompletionPort` is provider-neutral; `ModelProviderPolicy` selects one
+  configured Spring AI `ChatModel`/`ChatClient` for each request.
+- `KnowledgeRetriever` and `EmbeddingPort` isolate document ingestion and
+  retrieval from the assistant orchestration.
+- RAG advisors may supply document context, but tools remain authoritative for
+  transactional data and calculations. No model receives raw SQL access.
+- Provider contract tests cover structured output, tool calling, timeout,
+  rate-limit, privacy-policy, and unsupported-capability behavior.
+
 Avoid Abstract Factory, Service Locator, giant registries, and generic AI
 wrappers. Do not use Prolog for the MVP.
 
@@ -409,6 +445,10 @@ PostgreSQL JSONB and relational constraints.
 - Spring AI structured output: <https://docs.spring.io/spring-ai/reference/api/structured-output.html>
 - Spring AI effective agent workflows: <https://docs.spring.io/spring-ai/reference/api/effective-agents.html>
 - Spring AI chat memory: <https://docs.spring.io/spring-ai/reference/api/chat-memory.html>
+- Spring AI retrieval-augmented generation: <https://docs.spring.io/spring-ai/reference/api/retrieval-augmented-generation.html>
+- Spring AI vector stores: <https://docs.spring.io/spring-ai/reference/api/vectordbs.html>
+- Spring AI PGvector store: <https://docs.spring.io/spring-ai/reference/api/vectordbs/pgvector.html>
+- Spring AI chat model comparison: <https://docs.spring.io/spring-ai/reference/api/chat/comparison.html>
 - LangGraph4j Spring AI integration: <https://github.com/langgraph4j/langgraph4j/tree/main/spring-ai>
 - Spring Boot virtual threads: <https://docs.spring.io/spring-boot/reference/features/spring-application.html>
 - Spring WebFlux: <https://docs.spring.io/spring/reference/web/webflux.html>
