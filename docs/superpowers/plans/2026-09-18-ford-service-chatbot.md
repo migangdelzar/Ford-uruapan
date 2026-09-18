@@ -83,7 +83,7 @@ provider SDK.
 - Later tasks consume package roots under `com.ford.service.*` and the shared
   configuration properties.
 
-- [ ] **Step 1: Write the failing startup and package tests**
+- [x] **Step 1: Write the failing startup and package tests**
 
 ```java
 @SpringBootTest
@@ -101,13 +101,13 @@ class PackageBoundaryTest {
 }
 ```
 
-- [ ] **Step 2: Run focused tests and confirm the expected missing-project failure**
+- [x] **Step 2: Run focused tests and confirm the expected missing-project failure**
 
 Run: `cd ford-ai-service && ./gradlew test --tests '*FordServiceApplicationTest' --tests '*PackageBoundaryTest'`
 
 Expected: FAIL because the Gradle project and application do not exist.
 
-- [ ] **Step 3: Add the minimal Gradle/application baseline**
+- [x] **Step 3: Add the minimal Gradle/application baseline**
 
 Use the pinned `emme-service` baseline: Spring Boot `4.1.0`, Spring AI `2.0.1`,
 Java toolchain 25, Spring MVC, validation, actuator, JDBC, PostgreSQL,
@@ -133,13 +133,13 @@ management:
         include: health,info,metrics,prometheus
 ```
 
-- [ ] **Step 4: Run focused tests and verify they pass**
+- [x] **Step 4: Run focused tests and verify they pass**
 
 Run: `cd ford-ai-service && ./gradlew test --tests '*FordServiceApplicationTest' --tests '*PackageBoundaryTest'`
 
 Expected: PASS with zero failures.
 
-- [ ] **Step 5: Commit the bootstrap**
+- [x] **Step 5: Commit the bootstrap**
 
 ```bash
 git add ford-ai-service
