@@ -19,6 +19,8 @@
 - `JdbcClient`/SQL is the default persistence mechanism; add Spring Data repositories only for a demonstrated aggregate-mapping need; do not add JPA by default.
 - All three Meta channels are in the MVP boundary, but each is independently feature-flagged and contract-tested.
 - Initial locale is Spanish, Mexico; monetary values use MXN.
+- Spring configuration is YAML-only: use `application.yml` and profile-specific
+  `application-*.yml`; do not add `.properties` configuration files.
 - Catalog, inventory, promotions, finance terms, freshness, consent, authorization, and lead scoring remain application-owned.
 - Lead score is `HOT`, `WARM`, or `COLD` sales priority only; it cannot approve, deny, or decide credit eligibility.
 - MVP lead capture may collect contact data, vehicle preference, ranges, trade-in interest, employment range, and consent; it must not collect exact income, government IDs, bank data, or documents.
@@ -261,31 +263,31 @@ public record FinanceEstimate(
     boolean binding) {}
 ```
 
-- [ ] **Step 1: Write failing catalog and finance tests**
+- [x] **Step 1: Write failing catalog and finance tests**
 
 Cover vehicle filters, color availability, stale inventory flags, offer date
 windows, zero/negative down payment rejection, valid amortization, fees, and
 the non-binding marker.
 
-- [ ] **Step 2: Run focused tests and confirm failure**
+- [x] **Step 2: Run focused tests and confirm failure**
 
 Run: `cd ford-ai-service && ./gradlew test --tests '*VehicleCatalogTest' --tests '*DeterministicFinanceCalculatorTest'`
 
 Expected: FAIL because application services and repositories do not exist.
 
-- [ ] **Step 3: Implement SQL repositories and pure finance calculation**
+- [x] **Step 3: Implement SQL repositories and pure finance calculation**
 
 Use `JdbcClient` with explicit SQL and tenant/source/freshness predicates. Do
 not permit free-form SQL or model-provided table/column names. Keep finance
 math independent of Spring.
 
-- [ ] **Step 4: Run unit and integration tests**
+- [x] **Step 4: Run unit and integration tests**
 
 Run: `cd ford-ai-service && ./gradlew test --tests '*VehicleCatalogTest' --tests '*DeterministicFinanceCalculatorTest' && ./gradlew integrationTest --tests '*CatalogJdbcIntegrationTest'`
 
 Expected: PASS with zero failures.
 
-- [ ] **Step 5: Commit the deterministic business tools**
+- [x] **Step 5: Commit the deterministic business tools**
 
 ```bash
 git add ford-ai-service/src/main/java/com/ford/service/catalog ford-ai-service/src/main/java/com/ford/service/offers ford-ai-service/src/main/java/com/ford/service/finance ford-ai-service/src/test ford-ai-service/src/integrationTest
