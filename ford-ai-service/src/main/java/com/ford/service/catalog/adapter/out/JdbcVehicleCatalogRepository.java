@@ -19,7 +19,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public final class JdbcVehicleCatalogRepository implements VehicleCatalogRepository {
+public class JdbcVehicleCatalogRepository implements VehicleCatalogRepository {
 
     private static final Currency MXN = Currency.getInstance("MXN");
     private final JdbcClient jdbc;

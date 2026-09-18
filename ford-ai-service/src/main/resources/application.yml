@@ -17,6 +17,17 @@ spring:
       chat: ${FORD_AI_CHAT_PROVIDER:none}
       embedding: ${FORD_AI_EMBEDDING_PROVIDER:none}
 
+ford:
+  ai:
+    cloud-chat-provider: ${FORD_AI_CLOUD_PROVIDER:openai}
+    local-chat-provider: ${FORD_AI_LOCAL_PROVIDER:ollama}
+    cloud-chat-model-version: ${FORD_AI_CLOUD_MODEL_VERSION:configured-cloud-model}
+    local-chat-model-version: ${FORD_AI_LOCAL_MODEL_VERSION:configured-local-model}
+    embedding-provider: ${FORD_AI_EMBEDDING_PROVIDER:ollama}
+    embedding-model-version: ${FORD_AI_EMBEDDING_MODEL_VERSION:configured-embedding-model}
+    cloud-enabled: ${FORD_AI_CLOUD_ENABLED:true}
+    local-enabled: ${FORD_AI_LOCAL_ENABLED:true}
+
 management:
   endpoints:
     web:

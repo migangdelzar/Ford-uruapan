@@ -14,3 +14,8 @@ spring:
     model:
       chat: none
       embedding: none
+
+ford:
+  ai:
+    cloud-enabled: false
+    local-enabled: false
