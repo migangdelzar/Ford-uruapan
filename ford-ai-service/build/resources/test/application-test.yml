@@ -1,0 +1,16 @@
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+  datasource:
+    url: jdbc:h2:mem:ford_service_test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  liquibase:
+    enabled: false
+  ai:
+    openai:
+      api-key: test-only-placeholder
+    model:
+      chat: none
+      embedding: none

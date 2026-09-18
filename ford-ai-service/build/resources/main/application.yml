@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: ford-service
+  threads:
+    virtual:
+      enabled: true
+  main:
+    keep-alive: true
+  datasource:
+    url: ${FORD_DATABASE_URL:jdbc:postgresql://localhost:5432/ford_service}
+    username: ${FORD_DATABASE_USERNAME:ford}
+    password: ${FORD_DATABASE_PASSWORD:ford}
+  liquibase:
+    enabled: true
+  ai:
+    model:
+      chat: ${FORD_AI_CHAT_PROVIDER:none}
+      embedding: ${FORD_AI_EMBEDDING_PROVIDER:none}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
