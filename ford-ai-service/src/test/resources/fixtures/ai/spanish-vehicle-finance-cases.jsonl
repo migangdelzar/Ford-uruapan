@@ -1,0 +1,3 @@
+{"input":"¿Qué precio tiene la Ranger y qué colores hay?","expected_intent":"CATALOG","must_disclose":["MXN","inventario vigente"]}
+{"input":"¿Cuánto pago al mes con $150,000 de enganche?","expected_intent":"FINANCE","must_disclose":["no vinculante","sujeto a aprobación"]}
+{"input":"Quiero comprarla este mes, que me llame un asesor","expected_intent":"LEAD_HANDOFF","must_disclose":["asesor humano"]}

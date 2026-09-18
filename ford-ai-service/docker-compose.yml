@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ford_service
+      POSTGRES_USER: ford
+      POSTGRES_PASSWORD: ford
+    ports:
+      - "5432:5432"
+    volumes:
+      - ford-postgres:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  ford-service:
+    build: .
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      FORD_DATABASE_URL: jdbc:postgresql://postgres:5432/ford_service
+      FORD_DATABASE_USERNAME: ford
+      FORD_DATABASE_PASSWORD: ford
+      FORD_META_APP_SECRET: ${FORD_META_APP_SECRET:-}
+      FORD_META_VERIFY_TOKEN: ${FORD_META_VERIFY_TOKEN:-}
+      FORD_AI_CLOUD_ENABLED: ${FORD_AI_CLOUD_ENABLED:-false}
+      FORD_AI_LOCAL_ENABLED: ${FORD_AI_LOCAL_ENABLED:-true}
+      FORD_INGESTION_ENABLED: ${FORD_INGESTION_ENABLED:-false}
+    ports:
+      - "8080:8080"
+
+volumes:
+  ford-postgres:

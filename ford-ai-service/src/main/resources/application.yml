@@ -13,9 +13,24 @@ spring:
   liquibase:
     enabled: true
   ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:}
     model:
-      chat: ${FORD_AI_CHAT_PROVIDER:none}
-      embedding: ${FORD_AI_EMBEDDING_PROVIDER:none}
+      chat: ${FORD_AI_CHAT_PROVIDER:ollama}
+      embedding: ${FORD_AI_EMBEDDING_PROVIDER:ollama}
+    ollama:
+      chat:
+        options:
+          model: ${FORD_AI_LOCAL_MODEL_VERSION:llama3.2}
+      embedding:
+        options:
+          model: ${FORD_AI_EMBEDDING_MODEL_VERSION:nomic-embed-text}
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
 
 ford:
   ingestion:

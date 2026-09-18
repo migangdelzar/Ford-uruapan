@@ -704,7 +704,7 @@ git commit -m "feat(ford-service): add outbox security and observability"
 - Produces verified end-to-end flows, local PostgreSQL/Redis services, API
   contracts, health/metrics instructions, and a Spanish AI evaluation set.
 
-- [ ] **Step 1: Write failing end-to-end tests**
+- [x] **Step 1: Write failing end-to-end tests**
 
 Cover:
 
@@ -717,20 +717,20 @@ Cover:
 7. stale inventory disclosure;
 8. duplicate webhook without duplicate response.
 
-- [ ] **Step 2: Run E2E tests and confirm failure**
+- [x] **Step 2: Run E2E tests and confirm failure**
 
 Run: `cd ford-ai-service && ./gradlew integrationTest --tests '*e2e*'`
 
 Expected: FAIL until the full application wiring and fixtures are complete.
 
-- [ ] **Step 3: Add complete application wiring and local infrastructure**
+- [x] **Step 3: Add complete application wiring and local infrastructure**
 
 Configure PostgreSQL/pgvector, Redis, fake model mode, fake Ford source mode,
 and deterministic notification mode for local tests. Keep production secrets
 external. Document operator API endpoints, webhook setup, sync commands,
 health checks, and rollback/disable flags.
 
-- [ ] **Step 4: Run the full verification suite**
+- [x] **Step 4: Run the full verification suite**
 
 Run:
 
@@ -743,7 +743,7 @@ cd ford-ai-service
 Expected: compilation, unit tests, architecture tests, migrations, contract
 tests, and integration tests pass with zero skipped tests.
 
-- [ ] **Step 5: Run the initial load gate**
+- [x] **Step 5: Run the initial load gate**
 
 Measure MVC + virtual-thread behavior for cached FAQ, live inventory, finance
 estimate, AI tool call, duplicate webhook, and operator API traffic. Record
@@ -751,7 +751,7 @@ p50/p95/p99 latency, throughput, DB wait, model queue wait, CPU, memory, and
 error rate. Do not introduce WebFlux unless the measured SLO is missed and a
 fully non-blocking path is designed.
 
-- [ ] **Step 6: Commit verification and operations docs**
+- [x] **Step 6: Commit verification and operations docs**
 
 ```bash
 git add ford-ai-service
@@ -783,14 +783,14 @@ git commit -m "docs(ford-service): document mvp operations and verification"
 
 ## Definition of Done
 
-- [ ] All tasks completed and committed atomically.
-- [ ] `./gradlew clean check --no-configuration-cache` passes.
-- [ ] `./gradlew integrationTest` passes with zero skipped tests.
-- [ ] All three Meta adapter contract suites pass.
-- [ ] Complete Spanish vehicle and finance/handoff flows pass.
-- [ ] No raw prompt/customer PII is exported by default.
-- [ ] No model can mutate business state or make credit decisions.
-- [ ] Source sync is scheduled/idempotent and never runs during chat.
-- [ ] Operator inbox APIs are authenticated and audited.
-- [ ] Load evidence supports MVC + virtual threads.
-- [ ] README, API, operations, migrations, and flags are documented.
+- [x] All tasks completed and committed atomically.
+- [x] `./gradlew clean check --no-configuration-cache` passes.
+- [x] `./gradlew integrationTest` passes with zero skipped tests.
+- [x] All three Meta adapter contract suites pass.
+- [x] Complete Spanish vehicle and finance/handoff flows pass.
+- [x] No raw prompt/customer PII is exported by default.
+- [x] No model can mutate business state or make credit decisions.
+- [x] Source sync is scheduled/idempotent and never runs during chat.
+- [x] Operator inbox APIs are authenticated and audited.
+- [x] Load evidence supports MVC + virtual threads.
+- [x] README, API, operations, migrations, and flags are documented.
