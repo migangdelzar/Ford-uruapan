@@ -44,6 +44,9 @@
 - Create: `ford-ai-service/src/test/java/com/ford/service/ai/evaluation/AiEvaluationResult.java` — deterministic evaluation result record.
 - Create: `ford-ai-service/src/test/java/com/ford/service/ai/evaluation/JsonlAiEvaluationReportWriter.java` — test report writer.
 - Create: `ford-ai-service/src/test/java/com/ford/service/ai/evaluation/AiRegressionEvaluationTest.java` — fixture execution and blocking deterministic gates.
+- Modify: `ford-ai-service/src/main/java/com/ford/service/ai/application/Intent.java` — add the explicit lead-handoff intent used by the fixture gate.
+- Modify: `ford-ai-service/src/main/java/com/ford/service/ai/application/IntentRouter.java` — route explicit advisor/purchase requests.
+- Modify: `ford-ai-service/src/test/java/com/ford/service/ai/IntentRouterTest.java` — regression coverage for lead-handoff routing.
 - Modify: `ford-ai-service/src/test/resources/fixtures/ai/spanish-vehicle-finance-cases.jsonl` — add stable case identifiers and expected safety/tool assertions.
 
 ### Application observability
@@ -297,13 +300,26 @@ interface AiEvaluationReportWriter {
 }
 ```
 
-- [ ] **Step 1: Write the failing writer and fixture tests**
+- [ ] **Step 1: Write the failing lead-handoff routing test**
+
+Add a test for `IntentRouter.route("Quiero comprarla este mes, que me llame un asesor")`
+expecting `Intent.LEAD_HANDOFF`. Run `./gradlew test --tests '*IntentRouterTest'`
+and confirm compilation/test failure because the enum value and route do not
+exist.
+
+- [ ] **Step 2: Implement the minimal lead-handoff route**
+
+Add `LEAD_HANDOFF` to `Intent` and recognize `asesor`, `asesora`, `humano`,
+`que me llame`, and `quiero comprar` before catalog/inventory matching. Run
+the focused test and confirm it passes.
+
+- [ ] **Step 3: Write the failing writer and fixture tests**
 
 Test that the writer creates one JSON object per result, preserves UTF-8
 Spanish text, writes a Markdown summary, and marks the aggregate run failed
 when any deterministic safety or finance assertion fails.
 
-- [ ] **Step 2: Run the focused test and verify red**
+- [ ] **Step 4: Run the focused test and verify red**
 
 Run:
 
@@ -314,7 +330,7 @@ cd ford-ai-service
 
 Expected: FAIL because the report record and writer do not exist.
 
-- [ ] **Step 3: Implement the test-only report writer and deterministic evaluation**
+- [ ] **Step 5: Implement the test-only report writer and deterministic evaluation**
 
 Add stable `case_id` values to the three JSONL fixtures. Execute the fixture
 cases using the existing intent router, deterministic finance calculator, and
@@ -322,19 +338,19 @@ fake read-only tool ports. Write reports under
 `build/reports/ai-evaluation/results.jsonl` and
 `build/reports/ai-evaluation/summary.md`. Do not call a live provider.
 
-- [ ] **Step 4: Run the focused test and verify green**
+- [ ] **Step 6: Run the focused test and verify green**
 
 Run the focused test again, then inspect both report files. Expected: all
 fixture cases pass and the files contain no phone number, email, or raw
 provider payload.
 
-- [ ] **Step 5: Wire reports into CI**
+- [ ] **Step 7: Wire reports into CI**
 
 Add an `evaluation` job to `reusable-java-ci.yml` and upload the two report
 files with `actions/upload-artifact@v7`, retention 30 days. Keep live-provider
 evaluation behind a protected manual workflow input and environment secret.
 
-- [ ] **Step 6: Commit the evaluation artifact feature**
+- [ ] **Step 8: Commit the evaluation artifact feature**
 
 ```bash
 git add ford-ai-service/src/test .github/workflows/reusable-java-ci.yml

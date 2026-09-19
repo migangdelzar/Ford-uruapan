@@ -20,7 +20,7 @@ jobs:
     uses: ./.github/workflows/reusable-java-ci.yml
     with:
       run_integration: true
-      run_ai_evaluation: false
+      run_ai_evaluation: true
     secrets: inherit
 
   security:

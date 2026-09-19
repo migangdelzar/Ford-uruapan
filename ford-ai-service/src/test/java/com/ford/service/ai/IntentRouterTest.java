@@ -27,4 +27,10 @@ class IntentRouterTest {
         assertThat(router.route("Hola, tengo una duda"))
                 .isEqualTo(Intent.GENERAL);
     }
+
+    @Test
+    void routesExplicitHumanPurchaseRequestToLeadHandoff() {
+        assertThat(router.route("Quiero comprarla este mes, que me llame un asesor"))
+                .isEqualTo(Intent.LEAD_HANDOFF);
+    }
 }

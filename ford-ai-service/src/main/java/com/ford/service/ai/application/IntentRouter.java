@@ -9,6 +9,9 @@ public final class IntentRouter {
             return Intent.GENERAL;
         }
         var normalized = text.toLowerCase(Locale.ROOT);
+        if (containsAny(normalized, "asesor", "asesora", "humano", "que me llame", "quiero comprar")) {
+            return Intent.LEAD_HANDOFF;
+        }
         if (containsAny(normalized, "disponible", "inventario", "stock", "unidades", "color")) {
             return Intent.INVENTORY;
         }

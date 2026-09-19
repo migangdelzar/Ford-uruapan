@@ -71,26 +71,54 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  evaluation:
+    name: Deterministic AI evaluation
+    if: inputs.run_ai_evaluation
+    needs: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+      - name: Set up Java and Gradle
+        uses: ./.github/actions/setup-java-gradle
+      - name: Run deterministic AI evaluation
+        working-directory: ford-ai-service
+        run: ./gradlew test --tests '*AiRegressionEvaluationTest' --no-daemon --no-configuration-cache --stacktrace
+      - name: Upload AI evaluation reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ford-ai-evaluation-${{ github.run_id }}
+          path: ford-ai-service/build/reports/ai-evaluation/**
+          if-no-files-found: warn
+          retention-days: 30
+
   summary:
     name: Java CI summary
     if: always()
-    needs: [quality, integration]
+    needs: [quality, integration, evaluation]
     runs-on: ubuntu-24.04
     steps:
       - name: Publish result summary
         env:
           QUALITY_RESULT: ${{ needs.quality.result }}
           INTEGRATION_RESULT: ${{ needs.integration.result }}
+          EVALUATION_RESULT: ${{ needs.evaluation.result }}
         run: |
           set -euo pipefail
           {
             echo "## Ford Service Java CI"
             echo "- Quality: ${QUALITY_RESULT}"
             echo "- Integration: ${INTEGRATION_RESULT}"
+            echo "- AI evaluation: ${EVALUATION_RESULT}"
           } >> "$GITHUB_STEP_SUMMARY"
           if [[ "${QUALITY_RESULT}" != "success" ]]; then
             exit 1
           fi
           if [[ "${INTEGRATION_RESULT}" != "success" && "${INTEGRATION_RESULT}" != "skipped" ]]; then
+            exit 1
+          fi
+          if [[ "${EVALUATION_RESULT}" != "success" && "${EVALUATION_RESULT}" != "skipped" ]]; then
             exit 1
           fi
