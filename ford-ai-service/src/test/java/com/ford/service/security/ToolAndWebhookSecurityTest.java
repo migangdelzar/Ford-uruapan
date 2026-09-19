@@ -6,6 +6,7 @@ import com.ford.service.channels.security.MetaSignatureVerifier;
 import com.ford.service.config.SecurityConfiguration;
 import com.ford.service.handoff.adapter.in.web.HandoffController;
 import com.ford.service.handoff.application.HandoffService;
+import com.ford.service.handoff.api.OperatorPrincipal;
 import com.ford.service.handoff.domain.HandoffStatus;
 import com.ford.service.handoff.domain.HandoffTicket;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
 import java.time.Instant;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -80,11 +82,15 @@ class ToolAndWebhookSecurityTest {
     void permitsOperatorRole() throws Exception {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
-        when(handoffService.request(any())).thenReturn(new HandoffTicket(UUID.randomUUID(), tenantId, conversationId,
+        when(handoffService.request(any(), any())).thenReturn(new HandoffTicket(UUID.randomUUID(), tenantId, conversationId,
                 null, HandoffStatus.HUMAN_PENDING, null, "HOT_LEAD", 0, Instant.now(), null, null));
+        var principal = new OperatorPrincipal(UUID.randomUUID(), Set.of(tenantId), Set.of("ROLE_OPERATOR"));
 
         mockMvc.perform(post("/api/operator/handoffs")
-                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("operator").roles("OPERATOR"))
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(
+                                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                                        principal, "n", java.util.List.of(
+                                                new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_OPERATOR")))))
                         .contentType(APPLICATION_JSON)
                         .content("{\"tenantId\":\"%s\",\"conversationId\":\"%s\",\"reason\":\"HOT_LEAD\"}"
                                 .formatted(tenantId, conversationId)))
