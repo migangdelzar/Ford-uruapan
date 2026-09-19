@@ -55,3 +55,10 @@ test("container workflow contains image, SBOM, and provenance gates", async () =
   assert.match(source, /packages: write/);
   assert.match(source, /id-token: write/);
 });
+
+test("observability workflow validates Compose and collector configuration", async () => {
+  const source = await read(".github/workflows/reusable-observability.yml");
+  assert.match(source, /docker compose/);
+  assert.match(source, /otel\/opentelemetry-collector-contrib:0\.161\.0/);
+  assert.match(source, /validate --config/);
+});
