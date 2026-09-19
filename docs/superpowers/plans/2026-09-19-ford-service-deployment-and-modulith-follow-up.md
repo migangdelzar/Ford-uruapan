@@ -32,7 +32,7 @@
 - Consumes the existing Langfuse Compose stack and OpenTelemetry collector configuration.
 - Produces the same local observability stack at its new service-owned path.
 
-- [ ] **Step 1: Confirm the source set and stale references**
+- [x] **Step 1: Confirm the source set and stale references**
 
 Run:
 
@@ -43,7 +43,7 @@ git grep -n -E 'deployment/observability|deployment/|observability/langfuse|otel
 
 Expected: only the tracked observability tree is moved; GitHub workflow files remain at the repository root.
 
-- [ ] **Step 2: Move the tracked deployment tree**
+- [x] **Step 2: Move the tracked deployment tree**
 
 Run:
 
@@ -54,7 +54,7 @@ mv deployment/observability ford-ai-service/deployment/observability
 
 Remove the now-empty root `deployment` directory if it contains no files.
 
-- [ ] **Step 3: Add the service deployment index**
+- [x] **Step 3: Add the service deployment index**
 
 Create `ford-ai-service/deployment/README.md` describing:
 
@@ -66,7 +66,7 @@ docker compose up -d
 
 State that secrets remain in `.env`, are not committed, and the stack is local/self-hosted observability support for `ford-service`.
 
-- [ ] **Step 4: Update path references**
+- [x] **Step 4: Update path references**
 
 Change only references that point to the moved tree. Preserve root-relative GitHub workflow locations and service Docker build context:
 
@@ -75,7 +75,7 @@ context: ford-ai-service
 file: ford-ai-service/Dockerfile
 ```
 
-- [ ] **Step 5: Verify the relocation**
+- [x] **Step 5: Verify the relocation**
 
 Run:
 
@@ -88,7 +88,7 @@ git diff --check
 
 Expected: no root deployment directory and no stale path references outside the new service-owned tree.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A deployment ford-ai-service/deployment .github docs
@@ -111,7 +111,7 @@ git commit -m "chore: co-locate deployment configuration with service"
 
 - Existing Modulith foundation remains the single source of module verification, JDBC publication support, module documentation, runtime topology, and module tests.
 
-- [ ] **Step 1: Resolve dependency and run focused architecture tests**
+- [x] **Step 1: Resolve dependency and run focused architecture tests**
 
 Run:
 
@@ -122,7 +122,7 @@ cd ford-ai-service
 
 Expected: PASS with zero failures.
 
-- [ ] **Step 2: Run the complete unit suite**
+- [x] **Step 2: Run the complete unit suite**
 
 Run:
 
@@ -132,7 +132,7 @@ Run:
 
 Expected: PASS with zero failures and the existing Modulith tests included.
 
-- [ ] **Step 3: Inspect the final graph and working tree**
+- [x] **Step 3: Inspect the final graph and working tree**
 
 Run:
 
@@ -144,11 +144,11 @@ git diff --stat HEAD~1..HEAD
 
 Expected: generated module documentation exists under the ignored build directory, and the latest commit contains only the deployment relocation, deployment index, and required path updates.
 
-- [ ] **Step 4: Update progress**
+- [x] **Step 4: Update progress**
 
 Record that the deployment-layout follow-up is complete and that Phase A Tasks 3–7 remain pending in `.superpowers/sdd/progress.md`; do not mark the entire Modulith Phase A plan complete.
 
-- [ ] **Step 5: Commit progress**
+- [x] **Step 5: Commit progress**
 
 ```bash
 git add .superpowers/sdd/progress.md docs/superpowers/plans/2026-09-19-ford-service-deployment-and-modulith-follow-up.md
