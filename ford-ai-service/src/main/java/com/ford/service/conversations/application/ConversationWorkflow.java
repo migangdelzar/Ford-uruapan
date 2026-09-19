@@ -2,6 +2,7 @@ package com.ford.service.conversations.application;
 
 import com.ford.service.channels.api.InboundMessageAccepted;
 import com.ford.service.conversations.api.ConversationTurnRequest;
+import com.ford.service.conversations.api.HandoffRequested;
 import com.ford.service.conversations.api.OutboundDeliveryRequested;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
@@ -14,6 +15,8 @@ import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Component;
 
 import java.util.Objects;
+import java.time.Instant;
+import java.util.UUID;
 
 @Component
 @ConditionalOnBean({ConversationRepository.class, ConversationAssistant.class})
@@ -42,8 +45,13 @@ public class ConversationWorkflow {
                 snapshot.tenantId(), snapshot.conversationId(), snapshot.inboundText(), snapshot.state()));
 
         if (reply.handoffRequired()) {
-            repository.requestHumanHandoff(snapshot.conversationId(), snapshot.version(),
+            var accepted = repository.requestHumanHandoff(snapshot.conversationId(), snapshot.version(),
                     new HandoffDecision("assistant_requested_handoff"));
+            if (accepted) {
+                eventPublisher.publishEvent(new HandoffRequested(
+                        UUID.randomUUID(), snapshot.tenantId(), snapshot.conversationId(),
+                        "assistant_requested_handoff", Instant.now()));
+            }
             return;
         }
 

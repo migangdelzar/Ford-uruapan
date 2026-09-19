@@ -29,4 +29,8 @@ public interface HandoffRepository {
                                    long expectedVersion, Instant closedAt);
 
     void recordAudit(String action, HandoffTicket ticket, OperatorPrincipal principal);
+
+    default void recordSystemAudit(String action, HandoffTicket ticket, UUID eventId, Instant occurredAt) {
+        // In-memory adapters may observe the event without persistence.
+    }
 }

@@ -145,6 +145,24 @@ public class JdbcHandoffRepository implements HandoffRepository {
                 .param("occurredAt", java.sql.Timestamp.from(Instant.now())).update();
     }
 
+    @Override
+    public void recordSystemAudit(String action, HandoffTicket ticket, UUID eventId, Instant occurredAt) {
+        jdbc.sql("""
+                insert into audit_event
+                    (id, tenant_id, actor_type, actor_id, event_type,
+                     aggregate_type, aggregate_id, metadata, occurred_at)
+                values (:id, :tenantId, 'SYSTEM', null, :eventType,
+                        'handoff_ticket', :aggregateId, cast(:metadata as jsonb), :occurredAt)
+                """)
+                .param("id", UUID.randomUUID())
+                .param("tenantId", ticket.tenantId())
+                .param("eventType", action)
+                .param("aggregateId", ticket.id())
+                .param("metadata", "{\"eventId\":\"" + eventId + "\"}")
+                .param("occurredAt", java.sql.Timestamp.from(occurredAt))
+                .update();
+    }
+
     private HandoffTicket map(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
         return new HandoffTicket(
                 rs.getObject("id", UUID.class),

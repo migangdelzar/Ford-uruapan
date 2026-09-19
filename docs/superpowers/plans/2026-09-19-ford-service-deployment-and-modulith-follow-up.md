@@ -146,7 +146,9 @@ Expected: generated module documentation exists under the ignored build director
 
 - [x] **Step 4: Update progress**
 
-Record that the deployment-layout follow-up is complete and that Phase A Tasks 3–7 remain pending in `.superpowers/sdd/progress.md`; do not mark the entire Modulith Phase A plan complete.
+Record that the deployment-layout follow-up is complete. Phase A Tasks 3–7
+were subsequently completed in the service worktree and are tracked in the
+main Phase A plan.
 
 - [x] **Step 5: Commit progress**
 
@@ -157,12 +159,9 @@ git commit -m "docs: record deployment and Modulith follow-up status"
 
 ## Existing Modulith roadmap
 
-The broader plan remains `docs/superpowers/plans/2026-09-18-ford-service-phase-a-modulith.md`. Its pending work is:
-
-- Task 3: durable conversation workflow and CAS-protected handoff.
-- Task 4: Spring AI providers and read-only tools.
-- Task 5: external provider outbox recovery.
-- Task 6: claim-based operator actions and handoff events.
-- Task 7: complete signed Meta-to-outbox vertical verification.
-
-Those tasks are intentionally not marked complete by this deployment-layout change.
+The broader plan is `docs/superpowers/plans/2026-09-18-ford-service-phase-a-modulith.md`.
+Its Tasks 3–7 are complete: the service now has the CAS workflow, provider
+policy and read-only tools, external outbox recovery, secure operator actions,
+automatic handoff notification events, and signed Meta-to-outbox vertical
+verification. Remaining deployment work is environment-specific provider,
+Meta, and Ford endpoint configuration.

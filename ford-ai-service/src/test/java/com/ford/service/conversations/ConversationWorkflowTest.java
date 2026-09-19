@@ -7,6 +7,7 @@ import com.ford.service.conversations.application.port.out.ConversationAssistant
 import com.ford.service.conversations.application.port.out.ConversationRepository;
 import com.ford.service.conversations.api.AssistantReply;
 import com.ford.service.conversations.api.ConversationTurnRequest;
+import com.ford.service.conversations.api.HandoffRequested;
 import com.ford.service.conversations.domain.ConversationSnapshot;
 import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.conversations.domain.ConversationTurn;
@@ -66,7 +67,7 @@ class ConversationWorkflowTest {
     }
 
     @Test
-    void handoffResponsePersistsDecisionWithoutPublishingAssistantReply() {
+    void handoffResponsePersistsDecisionAndPublishesOperatorNotification() {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
         var repository = new RecordingConversationRepository(snapshot(
@@ -81,7 +82,12 @@ class ConversationWorkflowTest {
 
         assertThat(repository.handoffDecision).isEqualTo(new HandoffDecision("assistant_requested_handoff"));
         assertThat(repository.handoffExpectedVersion).isEqualTo(2);
-        assertThat(publisher.events).isEmpty();
+        assertThat(publisher.events).singleElement().isInstanceOfSatisfying(HandoffRequested.class, event -> {
+            assertThat(event.tenantId()).isEqualTo(tenantId);
+            assertThat(event.conversationId()).isEqualTo(conversationId);
+            assertThat(event.reason()).isEqualTo("assistant_requested_handoff");
+            assertThat(event.eventId()).isNotNull();
+        });
     }
 
     @Test
