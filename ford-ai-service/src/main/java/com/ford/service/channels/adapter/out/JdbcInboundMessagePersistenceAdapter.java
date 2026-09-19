@@ -6,6 +6,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.UUID;
 
 @Repository
 public class JdbcInboundMessagePersistenceAdapter implements InboundMessagePersistencePort {
@@ -17,13 +19,41 @@ public class JdbcInboundMessagePersistenceAdapter implements InboundMessagePersi
 
     @Override
     public void persist(InboundMessage message) {
+        persist(message, UUID.randomUUID());
+    }
+
+    @Override
+    public void persist(InboundMessage message, UUID receiptId) {
+        var now = Timestamp.from(Instant.now());
         jdbc.sql("""
-                insert into channel_message (id, tenant_id, channel, provider_message_id,
-                    participant_id, content, received_at, raw_payload_reference)
-                values (gen_random_uuid(), :tenantId, :channel, :providerMessageId,
-                    :participantId, :content, :receivedAt, :rawPayloadReference)
+                insert into conversation
+                    (id, tenant_id, channel, provider_conversation_id, state,
+                     version, created_at, updated_at)
+                values (:conversationId, :tenantId, :channel, :providerConversationId,
+                        'BOT_ACTIVE', 0, :now, :now)
+                on conflict (tenant_id, channel, provider_conversation_id)
+                do update set updated_at = excluded.updated_at
+                """)
+                .param("conversationId", message.conversationId())
+                .param("tenantId", message.tenantId())
+                .param("channel", message.channel().name())
+                .param("providerConversationId", message.participantId())
+                .param("now", now)
+                .update();
+
+        jdbc.sql("""
+                insert into channel_message
+                    (id, binding_id, conversation_id, tenant_id, channel,
+                     provider_message_id, participant_id, content, received_at,
+                     raw_payload_reference)
+                values (:receiptId, :bindingId, :conversationId, :tenantId, :channel,
+                        :providerMessageId, :participantId, :content, :receivedAt,
+                        :rawPayloadReference)
                 on conflict (tenant_id, channel, provider_message_id) do nothing
                 """)
+                .param("receiptId", receiptId)
+                .param("bindingId", message.bindingId())
+                .param("conversationId", message.conversationId())
                 .param("tenantId", message.tenantId())
                 .param("channel", message.channel().name())
                 .param("providerMessageId", message.providerMessageId())

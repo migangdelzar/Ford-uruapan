@@ -1,10 +1,8 @@
 package com.ford.service.channels.adapter.in.meta;
 
-import com.ford.service.channels.application.ChannelMessageService;
+import com.ford.service.channels.application.InboundWebhookService;
 import com.ford.service.channels.application.port.in.ChannelAdapter;
 import com.ford.service.channels.domain.Channel;
-import com.ford.service.channels.domain.RawWebhook;
-import com.ford.service.channels.domain.WebhookRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,23 +16,20 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/webhooks/meta")
 public class MetaWebhookController {
 
     private final List<ChannelAdapter> adapters;
-    private final ChannelMessageService messageService;
+    private final InboundWebhookService inboundWebhookService;
     private final MetaWebhookProperties properties;
 
     public MetaWebhookController(List<ChannelAdapter> adapters,
-                                 ChannelMessageService messageService,
+                                 InboundWebhookService inboundWebhookService,
                                  MetaWebhookProperties properties) {
         this.adapters = List.copyOf(adapters);
-        this.messageService = messageService;
+        this.inboundWebhookService = inboundWebhookService;
         this.properties = properties;
     }
 
@@ -53,24 +48,23 @@ public class MetaWebhookController {
         return ResponseEntity.badRequest().build();
     }
 
-    @PostMapping("/{channel}")
+    @PostMapping("/{channel}/{webhookKey}")
     public ResponseEntity<Void> receive(
             @PathVariable String channel,
+            @PathVariable String webhookKey,
             @RequestHeader(name = "X-Hub-Signature-256", required = false) String signature,
-            @RequestHeader(name = "X-Tenant-Id") UUID tenantId,
+            @RequestHeader(name = "X-Tenant-Id", required = false) String tenantHeader,
             @RequestBody String body) {
         try {
+            if (tenantHeader != null) {
+                return ResponseEntity.badRequest().build();
+            }
             var adapter = adapterFor(channel);
             if (adapter == null) {
                 return ResponseEntity.notFound().build();
             }
-            var headers = new HashMap<String, String>();
-            if (signature != null) {
-                headers.put("X-Hub-Signature-256", signature);
-            }
-            adapter.validateWebhook(new WebhookRequest(body, headers));
-            messageService.accept(new RawWebhook(tenantId, body,
-                    "meta:" + channel.toLowerCase(Locale.ROOT) + ":" + UUID.randomUUID()), adapter);
+            inboundWebhookService.accept(Channel.valueOf(channel.toUpperCase(Locale.ROOT)), webhookKey,
+                    signature, body, adapter);
             return ResponseEntity.accepted().build();
         } catch (SecurityException exception) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();

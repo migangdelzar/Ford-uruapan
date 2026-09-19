@@ -17,16 +17,16 @@ public class MetaChannelConfiguration {
 
     @Bean
     ChannelAdapter whatsAppChannelAdapter(ObjectMapper objectMapper, MetaWebhookProperties properties) {
-        return new WhatsAppChannelAdapter(objectMapper, properties.getAppSecret());
+        return new WhatsAppChannelAdapter(objectMapper);
     }
 
     @Bean
     ChannelAdapter messengerChannelAdapter(ObjectMapper objectMapper, MetaWebhookProperties properties) {
-        return new MessengerChannelAdapter(objectMapper, properties.getAppSecret());
+        return new MessengerChannelAdapter(objectMapper);
     }
 
     @Bean
     ChannelAdapter instagramChannelAdapter(ObjectMapper objectMapper, MetaWebhookProperties properties) {
-        return new InstagramChannelAdapter(objectMapper, properties.getAppSecret());
+        return new InstagramChannelAdapter(objectMapper);
     }
 }

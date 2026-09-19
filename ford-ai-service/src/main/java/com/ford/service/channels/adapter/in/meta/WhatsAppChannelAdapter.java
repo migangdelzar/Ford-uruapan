@@ -6,7 +6,6 @@ import com.ford.service.channels.domain.Channel;
 
 public class WhatsAppChannelAdapter extends AbstractMetaChannelAdapter {
     public WhatsAppChannelAdapter(ObjectMapper objectMapper) { super(objectMapper); }
-    public WhatsAppChannelAdapter(ObjectMapper objectMapper, String appSecret) { super(objectMapper, appSecret); }
     @Override public Channel channel() { return Channel.WHATSAPP; }
     @Override protected JsonNode messageNode(JsonNode root) { return root.at("/entry/0/changes/0/value/messages/0"); }
     @Override protected String messageIdPath() { return "/id"; }
