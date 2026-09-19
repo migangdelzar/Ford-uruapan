@@ -37,3 +37,21 @@ test("java workflow publishes reports with the pinned checkout action", async ()
   assert.match(source, /actions\/checkout@v7/);
   assert.match(source, /actions\/upload-artifact@v7/);
 });
+
+test("security workflow contains secret, filesystem, and SARIF gates", async () => {
+  const source = await read(".github/workflows/reusable-security.yml");
+  assert.match(source, /gitleaks\/gitleaks-action@v3/);
+  assert.match(source, /aquasecurity\/trivy-action@v0\.36\.0/);
+  assert.match(source, /github\/codeql-action\/upload-sarif@v4/);
+  assert.match(source, /actions\/upload-artifact@v7/);
+});
+
+test("container workflow contains image, SBOM, and provenance gates", async () => {
+  const source = await read(".github/workflows/reusable-container.yml");
+  assert.match(source, /docker\/build-push-action@v6/);
+  assert.match(source, /aquasecurity\/trivy-action@v0\.36\.0/);
+  assert.match(source, /anchore\/sbom-action@v0\.20\.0/);
+  assert.match(source, /actions\/attest-build-provenance@v2/);
+  assert.match(source, /packages: write/);
+  assert.match(source, /id-token: write/);
+});

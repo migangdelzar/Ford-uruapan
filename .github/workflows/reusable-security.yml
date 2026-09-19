@@ -12,14 +12,64 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 concurrency:
   group: ford-security-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  contract:
-    name: Security workflow contract
+  secrets:
+    name: Secret scan
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - run: echo "Security gates will be enabled in the security task."
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Scan repository secrets
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  filesystem:
+    name: Filesystem vulnerability scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+      - name: Scan dependencies and configuration
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          scanners: vuln,secret,misconfig
+          exit-code: '1'
+      - name: Upload filesystem scan report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ford-filesystem-scan-${{ github.run_id }}
+          path: trivy-fs.sarif
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload filesystem SARIF
+        if: always() && github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-fs.sarif
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4

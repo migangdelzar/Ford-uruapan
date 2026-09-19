@@ -22,3 +22,27 @@ jobs:
       run_integration: true
       run_ai_evaluation: false
     secrets: inherit
+
+  security:
+    name: Security gates
+    needs: java
+    uses: ./.github/workflows/reusable-security.yml
+    with:
+      require_nvd: false
+    secrets: inherit
+    permissions:
+      contents: read
+      security-events: write
+
+  container:
+    name: Container gates
+    needs: [java, security]
+    uses: ./.github/workflows/reusable-container.yml
+    with:
+      publish: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+      id-token: write
