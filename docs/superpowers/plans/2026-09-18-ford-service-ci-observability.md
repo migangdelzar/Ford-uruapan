@@ -1,5 +1,7 @@
 # Ford Service CI/CD and Langfuse Observability Implementation Plan
 
+**Status: Complete**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add repository-local enterprise GitHub Actions, self-hosted Langfuse/OpenTelemetry deployment, Spring AI tracing, PII-safe AI evaluation artifacts, and operational documentation.
@@ -54,7 +56,7 @@
 - Modify: `ford-ai-service/gradle/libs.versions.toml` — add the Spring Boot OpenTelemetry starter alias.
 - Modify: `ford-ai-service/build.gradle.kts` — add the BOM-managed tracing dependency.
 - Modify: `ford-ai-service/src/main/resources/application.yml` — OTLP endpoint, sampling, resource, and Spring AI observation settings.
-- Modify: `ford-ai-service/src/test/resources/application-test.yml` — disable external export and use deterministic test tracing.
+- Create: `ford-ai-service/src/test/resources/application.yml` — disable external export and use deterministic test tracing.
 - Create: `ford-ai-service/src/main/java/com/ford/service/observability/AiObservationService.java` — bounded custom observation boundary for business steps.
 - Create: `ford-ai-service/src/main/java/com/ford/service/observability/DefaultAiObservationService.java` — `ObservationRegistry` implementation.
 - Create: `ford-ai-service/src/main/java/com/ford/service/observability/PiiObservationFilter.java` — redacts observation values before export.
@@ -94,7 +96,7 @@
 - `reusable-java-ci.yml` produces job results named `quality`, `unit`, `integration`, `evaluation`, and `summary`.
 - Every reusable workflow declares `permissions`, `timeout-minutes`, and `concurrency`.
 
-- [ ] **Step 1: Write the failing workflow contract test**
+- [x] **Step 1: Write the failing workflow contract test**
 
 Create a Node built-in test that reads `.github/workflows/*.yml` and asserts:
 
@@ -123,7 +125,7 @@ Add assertions for `name:`, `on:`, `permissions:`, `concurrency:`, and
 `workflow_call:` in reusable files, plus `actions/upload-artifact@v7` and
 `actions/checkout@v7` in the Java workflow.
 
-- [ ] **Step 2: Run the contract test and verify the red failure**
+- [x] **Step 2: Run the contract test and verify the red failure**
 
 Run:
 
@@ -133,7 +135,7 @@ node --test scripts/workflow-contract.test.mjs
 
 Expected: FAIL because the workflow files do not exist yet.
 
-- [ ] **Step 3: Add the shared Java setup action and workflows**
+- [x] **Step 3: Add the shared Java setup action and workflows**
 
 Implement the composite action using `actions/setup-java@v5` with Temurin 25
 and `gradle/actions/setup-gradle@v4` with read-only cache on pull requests.
@@ -179,7 +181,7 @@ Add `summary` with `if: always()` and explicit failure when required jobs are
 not successful. `ci.yml` invokes the reusable workflow for pull requests,
 `main`, and `workflow_dispatch`; pull requests must not publish or deploy.
 
-- [ ] **Step 4: Run the contract and syntax checks**
+- [x] **Step 4: Run the contract and syntax checks**
 
 Run:
 
@@ -191,7 +193,7 @@ docker run --rm -v "$PWD:/repo" rhysd/actionlint:1.7.7 -color
 Expected: the Node contract test passes and actionlint reports no workflow
 errors.
 
-- [ ] **Step 5: Commit the Java CI foundation**
+- [x] **Step 5: Commit the Java CI foundation**
 
 ```bash
 git add .github/actions .github/workflows/ci.yml .github/workflows/reusable-java-ci.yml scripts/workflow-contract.test.mjs
@@ -213,27 +215,27 @@ git commit -m "ci: add reusable java verification workflows"
 - Container workflow input: `publish` boolean, default `false` for pull requests and `true` on trusted `main`.
 - Container workflow output: `image`, `digest`, and `sbom-artifact` job outputs.
 
-- [ ] **Step 1: Extend the failing contract test**
+- [x] **Step 1: Extend the failing contract test**
 
 Assert that security workflows declare `contents: read`, that container
 publishing declares `packages: write` and `id-token: write`, and that the
 container workflow contains Trivy SARIF, SBOM, GHCR login, and provenance
 attestation steps.
 
-- [ ] **Step 2: Run the contract test to verify the expected red failure**
+- [x] **Step 2: Run the contract test to verify the expected red failure**
 
 Run `node --test scripts/workflow-contract.test.mjs`.
 
 Expected: FAIL because the security and container workflows are absent.
 
-- [ ] **Step 3: Implement the security workflow**
+- [x] **Step 3: Implement the security workflow**
 
 Add separate jobs for Gitleaks and dependency scanning. Upload reports with
 `actions/upload-artifact@v7` using 14-day retention. Upload SARIF through
 `github/codeql-action/upload-sarif@v4` only for trusted events. Do not expose
 NVD, registry, or cloud credentials in command output.
 
-- [ ] **Step 4: Implement the container workflow**
+- [x] **Step 4: Implement the container workflow**
 
 Build `ford-ai-service/Dockerfile` with `docker/build-push-action@v6`, tag the
 image `ghcr.io/${{ github.repository }}:sha-${{ github.sha }}`, scan it with
@@ -244,7 +246,7 @@ Use `actions/attest-build-provenance@v2` after the image is pushed and grant
 only `packages: write`, `security-events: write`, and `id-token: write` in the
 publishing job.
 
-- [ ] **Step 5: Run checks and verify reports**
+- [x] **Step 5: Run checks and verify reports**
 
 Run:
 
@@ -257,7 +259,7 @@ docker build -f ford-ai-service/Dockerfile -t ford-service:ci ford-ai-service
 Expected: contract and actionlint checks pass; the local image builds without
 publishing.
 
-- [ ] **Step 6: Commit the supply-chain gates**
+- [x] **Step 6: Commit the supply-chain gates**
 
 ```bash
 git add .github/workflows scripts/workflow-contract.test.mjs
@@ -300,26 +302,26 @@ interface AiEvaluationReportWriter {
 }
 ```
 
-- [ ] **Step 1: Write the failing lead-handoff routing test**
+- [x] **Step 1: Write the failing lead-handoff routing test**
 
 Add a test for `IntentRouter.route("Quiero comprarla este mes, que me llame un asesor")`
 expecting `Intent.LEAD_HANDOFF`. Run `./gradlew test --tests '*IntentRouterTest'`
 and confirm compilation/test failure because the enum value and route do not
 exist.
 
-- [ ] **Step 2: Implement the minimal lead-handoff route**
+- [x] **Step 2: Implement the minimal lead-handoff route**
 
 Add `LEAD_HANDOFF` to `Intent` and recognize `asesor`, `asesora`, `humano`,
 `que me llame`, and `quiero comprar` before catalog/inventory matching. Run
 the focused test and confirm it passes.
 
-- [ ] **Step 3: Write the failing writer and fixture tests**
+- [x] **Step 3: Write the failing writer and fixture tests**
 
 Test that the writer creates one JSON object per result, preserves UTF-8
 Spanish text, writes a Markdown summary, and marks the aggregate run failed
 when any deterministic safety or finance assertion fails.
 
-- [ ] **Step 4: Run the focused test and verify red**
+- [x] **Step 4: Run the focused test and verify red**
 
 Run:
 
@@ -330,7 +332,7 @@ cd ford-ai-service
 
 Expected: FAIL because the report record and writer do not exist.
 
-- [ ] **Step 5: Implement the test-only report writer and deterministic evaluation**
+- [x] **Step 5: Implement the test-only report writer and deterministic evaluation**
 
 Add stable `case_id` values to the three JSONL fixtures. Execute the fixture
 cases using the existing intent router, deterministic finance calculator, and
@@ -338,19 +340,19 @@ fake read-only tool ports. Write reports under
 `build/reports/ai-evaluation/results.jsonl` and
 `build/reports/ai-evaluation/summary.md`. Do not call a live provider.
 
-- [ ] **Step 6: Run the focused test and verify green**
+- [x] **Step 6: Run the focused test and verify green**
 
 Run the focused test again, then inspect both report files. Expected: all
 fixture cases pass and the files contain no phone number, email, or raw
 provider payload.
 
-- [ ] **Step 7: Wire reports into CI**
+- [x] **Step 7: Wire reports into CI**
 
 Add an `evaluation` job to `reusable-java-ci.yml` and upload the two report
 files with `actions/upload-artifact@v7`, retention 30 days. Keep live-provider
 evaluation behind a protected manual workflow input and environment secret.
 
-- [ ] **Step 8: Commit the evaluation artifact feature**
+- [x] **Step 8: Commit the evaluation artifact feature**
 
 ```bash
 git add ford-ai-service/src/test .github/workflows/reusable-java-ci.yml
@@ -378,7 +380,7 @@ git commit -m "test: publish deterministic ai evaluation reports"
 - Langfuse dependencies: PostgreSQL, ClickHouse, Redis/Valkey, and MinIO with named volumes.
 - Collector exporter: Langfuse OTLP endpoint and Basic authentication assembled from environment secrets.
 
-- [ ] **Step 1: Write the failing deployment contract test**
+- [x] **Step 1: Write the failing deployment contract test**
 
 Assert that the Compose file contains `langfuse-web`, `langfuse-worker`,
 `postgres`, `clickhouse`, `redis`, `minio`, and `otel-collector`; every
@@ -386,13 +388,13 @@ stateful service has a named volume; no image uses the `latest` tag; and the
 collector configuration contains an OTLP receiver, batch processor, memory
 limiter, redaction processor, and Langfuse exporter.
 
-- [ ] **Step 2: Run the contract test and verify red**
+- [x] **Step 2: Run the contract test and verify red**
 
 Run `node --test scripts/observability-contract.test.mjs`.
 
 Expected: FAIL because the deployment files do not exist.
 
-- [ ] **Step 3: Add the pinned Compose stack and collector configuration**
+- [x] **Step 3: Add the pinned Compose stack and collector configuration**
 
 Use the current Langfuse v4 Compose topology. Define non-secret settings in
 `.env.example`, including `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`,
@@ -405,7 +407,7 @@ completion, phone, email, and provider payload fields, and an OTLP HTTP
 exporter to Langfuse. Keep exporter retry and queue settings bounded so
 telemetry cannot exhaust application resources.
 
-- [ ] **Step 4: Add operational documentation and validation workflow**
+- [x] **Step 4: Add operational documentation and validation workflow**
 
 Document:
 
@@ -420,7 +422,7 @@ Document startup, health verification, persistent volumes, backup/restore,
 retention, upgrades, private-network exposure, and the fact that Compose is
 for local/pilot operation rather than HA production.
 
-- [ ] **Step 5: Run deployment validation**
+- [x] **Step 5: Run deployment validation**
 
 Run:
 
@@ -433,7 +435,7 @@ docker run --rm -v "$PWD/deployment/observability/otel-collector/config.yaml:/et
 Expected: all contracts pass and Docker reports valid Compose and collector
 configuration.
 
-- [ ] **Step 6: Commit the observability deployment**
+- [x] **Step 6: Commit the observability deployment**
 
 ```bash
 git add deployment/observability scripts/observability-contract.test.mjs .github/workflows/reusable-observability.yml .gitignore
@@ -471,14 +473,14 @@ bounded low-cardinality key values, records errors, and always returns the
 business operation’s exception unchanged. It does not put conversation IDs,
 tenant IDs, prompt text, or contact data into metric labels.
 
-- [ ] **Step 1: Write failing observation and redaction tests**
+- [x] **Step 1: Write failing observation and redaction tests**
 
 Test that a successful operation records one observation, a failed operation
 records an error and rethrows the original exception, tags outside the
 allowlist become `other`, and the redaction filter removes email, phone,
 MXN amounts, provider IDs, and raw payload keys.
 
-- [ ] **Step 2: Run focused tests and verify red**
+- [x] **Step 2: Run focused tests and verify red**
 
 Run:
 
@@ -489,7 +491,7 @@ cd ford-ai-service
 
 Expected: FAIL because the observation service and filter do not exist.
 
-- [ ] **Step 3: Add the framework-managed OpenTelemetry dependency**
+- [x] **Step 3: Add the framework-managed OpenTelemetry dependency**
 
 Add this version-catalog alias and dependency:
 
@@ -505,7 +507,7 @@ Use Spring Boot’s BOM-managed OTLP tracing support rather than manually
 constructing tracer providers. Spring Boot documents this starter as the
 supported OpenTelemetry/OTLP path for Spring Boot 4.1.
 
-- [ ] **Step 4: Add YAML configuration and implementations**
+- [x] **Step 4: Add YAML configuration and implementations**
 
 Add YAML equivalent to:
 
@@ -534,7 +536,7 @@ redaction filter and wrap assistant orchestration, outbox publication, and
 Ford synchronization with bounded observations. Preserve Spring AI’s native
 ChatClient/model/tool/vector-store observations.
 
-- [ ] **Step 5: Run focused and full verification**
+- [x] **Step 5: Run focused and full verification**
 
 Run:
 
@@ -547,7 +549,7 @@ cd ford-ai-service
 Expected: focused tests and the full application verification pass with no
 external OTLP endpoint required.
 
-- [ ] **Step 6: Commit application telemetry integration**
+- [x] **Step 6: Commit application telemetry integration**
 
 ```bash
 git add ford-ai-service/gradle ford-ai-service/build.gradle.kts ford-ai-service/src
@@ -570,33 +572,33 @@ git commit -m "feat(observability): add otlp and pii safe ai observations"
 - The observability reusable workflow validates Compose and collector files on pull requests.
 - The dashboard uses only bounded metrics: request latency/error, model latency/error, tool latency/error, token usage, handoff count, outbox failures, ingestion freshness, and exporter failures.
 
-- [ ] **Step 1: Write documentation and dashboard contract tests**
+- [x] **Step 1: Write documentation and dashboard contract tests**
 
 Extend `scripts/observability-contract.test.mjs` to require documentation
 sections for startup, health, retention, backups, restore, upgrades, PII,
 failure behavior, and incident response. Require dashboard queries to avoid
 phone, email, conversation ID, tenant ID, and raw prompt fields.
 
-- [ ] **Step 2: Run the contract test and verify red**
+- [x] **Step 2: Run the contract test and verify red**
 
 Run `node --test scripts/observability-contract.test.mjs`.
 
 Expected: FAIL because the dashboard and operations documents do not exist.
 
-- [ ] **Step 3: Add dashboard and operational documentation**
+- [x] **Step 3: Add dashboard and operational documentation**
 
 Document PR/main/manual workflow behavior, artifact names and retention,
 production environment approval, GHCR image promotion, Langfuse operation,
 OTLP endpoint configuration, trace hierarchy, sampling, PII policy, backup
 and restore commands, and incident behavior when Langfuse is unavailable.
 
-- [ ] **Step 4: Add the validation job and links**
+- [x] **Step 4: Add the validation job and links**
 
 Wire the reusable observability workflow into `ci.yml` after static validation
 and before packaging. Link `docs/ci-cd.md` and `docs/observability.md` from
 the service README.
 
-- [ ] **Step 5: Run documentation and workflow checks**
+- [x] **Step 5: Run documentation and workflow checks**
 
 Run:
 
@@ -608,7 +610,7 @@ git diff --check
 
 Expected: all contract tests and actionlint pass.
 
-- [ ] **Step 6: Commit operational documentation**
+- [x] **Step 6: Commit operational documentation**
 
 ```bash
 git add .github deployment/observability/dashboards docs ford-ai-service/README.md scripts
@@ -621,7 +623,7 @@ git commit -m "docs: document ci cd and langfuse operations"
 
 - Modify: `docs/superpowers/plans/2026-09-18-ford-service-ci-observability.md`
 
-- [ ] **Step 1: Run the complete local verification**
+- [x] **Step 1: Run the complete local verification**
 
 Run:
 
@@ -639,21 +641,21 @@ Expected: all commands exit with status 0. If Docker is unavailable, record
 the exact unavailable command and run the remaining checks; do not claim the
 deployment validation passed.
 
-- [ ] **Step 2: Review the acceptance criteria against evidence**
+- [x] **Step 2: Review the acceptance criteria against evidence**
 
 Confirm that workflow artifacts, SARIF paths, SBOM, attestation conditions,
 Langfuse persistence, OTLP redaction, fail-open export behavior, bounded
 metrics, and documentation are all represented by a passing test or a
 successful command.
 
-- [ ] **Step 3: Update the plan status**
+- [x] **Step 3: Update the plan status**
 
 Mark completed tasks `✅` and set the plan status to `Complete` only when all
 required verification evidence exists. If a deployment target is not
 configured, leave target-specific deployment disabled and record that the
 image publication and deployment contract are verified independently.
 
-- [ ] **Step 4: Commit the plan status and request review**
+- [x] **Step 4: Commit the plan status and request review**
 
 ```bash
 git add docs/superpowers/plans/2026-09-18-ford-service-ci-observability.md
@@ -688,14 +690,14 @@ environment contract and protected secrets.
 
 ## Definition of Done
 
-- [ ] All tasks are complete and the plan status is `Complete`.
-- [ ] Workflow contract and observability contract tests pass.
-- [ ] Actionlint passes for every workflow.
-- [ ] `ford-ai-service` `clean check` passes.
-- [ ] Langfuse Compose and collector configuration validate.
-- [ ] Reports upload on success and failure.
-- [ ] Image publication is restricted to trusted events.
-- [ ] SBOM and provenance attestation are produced for published images.
-- [ ] Spring AI/OTLP tracing is fail-open and PII-safe.
-- [ ] Operations documentation is complete.
-- [ ] Code review is requested before merge.
+- [x] All tasks are complete and the plan status is `Complete`.
+- [x] Workflow contract and observability contract tests pass.
+- [x] Actionlint passes for every workflow.
+- [x] `ford-ai-service` `clean check` passes.
+- [x] Langfuse Compose and collector configuration validate.
+- [x] Reports upload on success and failure.
+- [x] Image publication is restricted to trusted events.
+- [x] SBOM and provenance attestation are produced for published images.
+- [x] Spring AI/OTLP tracing is fail-open and PII-safe.
+- [x] Operations documentation is complete.
+- [x] Code review is requested before merge.

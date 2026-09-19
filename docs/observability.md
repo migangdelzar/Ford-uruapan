@@ -28,10 +28,11 @@ catalog synchronization, and outbox publication. Prompt and completion
 logging are disabled by default. Sampling defaults to 10% and can be changed
 with `FORD_OTEL_SAMPLING_PROBABILITY`.
 
-The Micrometer filter removes PII such as prompt/completion text, email, phone, MXN or
-amount values, raw request/response payloads, tool arguments/results, and
-provider/message identifiers. Conversation, tenant, lead, and provider IDs
-must not be added as metric labels. Trace export is fail-open: a Langfuse or
+The Micrometer filter removes PII such as prompt/completion text, names, email,
+phone, government identifiers, bank data, exact income, MXN or amount values,
+raw request/response payloads, tool arguments/results, and provider/message
+identifiers. Conversation, tenant, lead, and provider IDs must not be added as
+metric labels. Trace export is fail-open: a Langfuse or
 collector outage must not fail the business request.
 
 ## Dashboard and incident signals

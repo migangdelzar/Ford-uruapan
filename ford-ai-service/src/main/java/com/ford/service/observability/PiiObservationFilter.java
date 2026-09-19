@@ -11,9 +11,10 @@ import java.util.Locale;
 public final class PiiObservationFilter implements ObservationFilter {
 
     private static final String[] SENSITIVE_FRAGMENTS = {
-            "prompt", "completion", "email", "phone", "mxn", "amount", "raw_payload", "request.body",
-            "response.body", "tool.call.arguments", "tool.call.result", "provider.id", "provider.message.id",
-            "message.id", "wamid"
+            "prompt", "completion", "email", "phone", "customer.name", "lead.name", "full_name",
+            "government.id", "curp", "rfc", "bank", "account.number", "income", "mxn", "amount",
+            "raw_payload", "request.body", "response.body", "tool.call.arguments", "tool.call.result",
+            "provider.id", "provider.message.id", "message.id", "wamid"
     };
 
     @Override
