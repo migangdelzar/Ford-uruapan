@@ -209,7 +209,7 @@ git commit -m "ci: add reusable java verification workflows"
 
 **Interfaces:**
 
-- Security workflow input: `require-nvd` boolean, default `false` for pull requests and `true` for protected/manual production runs.
+- Security workflow uses Trivy vulnerability/secret/misconfiguration scanning and pull-request dependency review without requiring an external NVD credential.
 - Container workflow input: `publish` boolean, default `false` for pull requests and `true` on trusted `main`.
 - Container workflow output: `image`, `digest`, and `sbom-artifact` job outputs.
 

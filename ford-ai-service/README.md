@@ -36,3 +36,6 @@ when the local Docker socket cannot mount the Ryuk helper.
 
 Important environment variables are listed in [operations.md](docs/operations.md).
 API examples and webhook contracts are in [api.md](docs/api.md).
+CI controls and evidence are documented in [ci-cd.md](../docs/ci-cd.md).
+Telemetry, Langfuse and dashboard operations are documented in
+[observability.md](../docs/observability.md).

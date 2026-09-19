@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+      - name: Run observability contract tests
+        run: node --test scripts/observability-contract.test.mjs scripts/operations-contract.test.mjs
       - name: Validate Compose configuration
         env:
           SALT: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

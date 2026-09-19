@@ -3,12 +3,6 @@ name: Reusable Security Gates
 
 on:
   workflow_call:
-    inputs:
-      require_nvd:
-        description: Require the NVD API key for dependency scanning.
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
