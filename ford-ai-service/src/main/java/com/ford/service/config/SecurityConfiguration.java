@@ -18,6 +18,7 @@ public class SecurityConfiguration {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/webhooks/meta/**", "/actuator/health", "/actuator/info").permitAll()
+                        .requestMatchers("/actuator/**").hasRole("OPERATOR")
                         .requestMatchers("/api/operator/**").hasRole("OPERATOR")
                         .anyRequest().permitAll())
                 .httpBasic(httpBasic -> {});

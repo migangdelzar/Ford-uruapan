@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -57,6 +58,22 @@ class ToolAndWebhookSecurityTest {
                         .contentType(APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void protectsTheModulithTopologyFromAnonymousRequests() throws Exception {
+        mockMvc.perform(get("/actuator/modulith"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void keepsHealthInfoAndMetaWebhooksPublic() throws Exception {
+        mockMvc.perform(get("/actuator/health"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/actuator/info"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/webhooks/meta/events"))
+                .andExpect(status().isNotFound());
     }
 
     @Test

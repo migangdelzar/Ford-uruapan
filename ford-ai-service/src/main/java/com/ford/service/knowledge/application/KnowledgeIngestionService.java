@@ -7,7 +7,7 @@ import org.springframework.ai.vectorstore.VectorStore;
 import java.util.List;
 import java.util.Objects;
 
-public final class KnowledgeIngestionService {
+public final class KnowledgeIngestionService implements KnowledgeIngestion {
 
     private final VectorStore vectorStore;
     private final EmbeddingPort embeddingPort;
@@ -17,6 +17,7 @@ public final class KnowledgeIngestionService {
         this.embeddingPort = Objects.requireNonNull(embeddingPort);
     }
 
+    @Override
     public void ingest(List<Document> documents) {
         Objects.requireNonNull(documents);
         if (!embeddingPort.modelVersion().isBlank()) {

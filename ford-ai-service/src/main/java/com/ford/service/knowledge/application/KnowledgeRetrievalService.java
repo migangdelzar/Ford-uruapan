@@ -8,7 +8,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 
-public final class KnowledgeRetrievalService {
+public final class KnowledgeRetrievalService implements KnowledgeRetrieval {
 
     private final KnowledgeRetriever retriever;
 
@@ -16,6 +16,7 @@ public final class KnowledgeRetrievalService {
         this.retriever = Objects.requireNonNull(retriever);
     }
 
+    @Override
     public List<KnowledgeChunk> retrieve(KnowledgeQuery query) {
         Objects.requireNonNull(query);
         if (query.tenantId() == null || query.text() == null || query.text().isBlank()) {

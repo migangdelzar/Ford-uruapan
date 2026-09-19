@@ -1,18 +1,18 @@
 package com.ford.service.ai.adapter.in.tool;
 
-import com.ford.service.knowledge.application.KnowledgeRetrievalService;
+import com.ford.service.knowledge.application.KnowledgeRetrieval;
 
 import java.util.Objects;
 
 public final class KnowledgeTools {
 
-    private final KnowledgeRetrievalService retrievalService;
+    private final KnowledgeRetrieval retrievalService;
 
-    public KnowledgeTools(KnowledgeRetrievalService retrievalService) {
+    public KnowledgeTools(KnowledgeRetrieval retrievalService) {
         this.retrievalService = Objects.requireNonNull(retrievalService);
     }
 
-    public KnowledgeRetrievalService retrievalService() {
+    public KnowledgeRetrieval retrievalService() {
         return retrievalService;
     }
 }

@@ -6,7 +6,7 @@ import com.ford.service.finance.domain.FinanceTerms;
 
 import java.util.Objects;
 
-public final class FinanceService {
+public final class FinanceService implements FinanceOperations {
 
     private final DeterministicFinanceCalculator calculator;
 
@@ -14,6 +14,7 @@ public final class FinanceService {
         this.calculator = Objects.requireNonNull(calculator);
     }
 
+    @Override
     public FinanceEstimate estimate(FinanceEstimateRequest request, FinanceTerms terms) {
         return calculator.calculate(request, terms);
     }

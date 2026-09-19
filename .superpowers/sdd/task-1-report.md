@@ -88,3 +88,35 @@ No JPA, MongoDB, broker, LangGraph4j, or second migration dependency was introdu
 - The existing security policy for HTTP actuator access was not redesigned in Task 1. The `modulith` resource is now exposed through the existing management configuration; authorization semantics remain governed by the existing `SecurityConfiguration` and should be reviewed with the later operator/security work.
 - The full integration-test task was not run because Task 1's required verification is the unit/application-context suite and the integration suite requires external PostgreSQL/Testcontainers setup.
 - Gradle reports its existing deprecation warning, and the current JDK/Netty combination reports a restricted native-access warning; neither caused test failures.
+
+## Review-fix addendum
+
+### Findings addressed
+
+- **High — actuator topology exposure:** `SecurityConfiguration` now keeps `/actuator/health`, `/actuator/info`, and `/webhooks/meta/**` public, requires `ROLE_OPERATOR` for every other `/actuator/**` request, and retains the existing operator rule and public fallback for non-management application routes. `ToolAndWebhookSecurityTest` proves anonymous `/actuator/modulith` access is rejected and that health, info, and webhook routes remain public.
+- **Medium — broad application package exports:** The package-level `@NamedInterface` annotations were removed from catalog, finance, and knowledge application packages. `VehicleCatalog`, `FinanceOperations`, `KnowledgeIngestion`, and `KnowledgeRetrieval` are the dedicated type-level named interfaces. `FinanceService`, `KnowledgeIngestionService`, and `KnowledgeRetrievalService` implement those contracts but are not exported as named interfaces; AI tools now depend on the contracts.
+
+### Review-fix TDD evidence
+
+1. **Red — security regression:**
+   `./gradlew test --tests 'com.ford.service.security.ToolAndWebhookSecurityTest.protectsTheModulithTopologyFromAnonymousRequests' --tests 'com.ford.service.architecture.ModuleApiBoundaryTest' --no-daemon`
+   failed because anonymous `/actuator/modulith` was permitted and the existing package annotations were still present.
+2. **Green — first minimal changes:**
+   The actuator matcher and catalog/package metadata changes made the security behavior and catalog/package assertions pass. The boundary test helper then exposed a `Package.getPackage` lookup defect; the test was corrected to inspect packages through loaded application classes.
+3. **Red — remaining public contracts:**
+   `./gradlew test --tests 'com.ford.service.architecture.ModuleApiBoundaryTest' --no-daemon`
+   failed at test compilation because the dedicated finance and knowledge contract types did not yet exist.
+4. **Green — contract implementation:**
+   Added the three dedicated contract interfaces, annotated them at type level, adapted their implementations, and changed AI tool dependencies to the interfaces.
+
+### Review-fix verification
+
+- `./gradlew test --tests 'com.ford.service.architecture.ApplicationModulesTest' --tests 'com.ford.service.architecture.ModuleApiBoundaryTest' --tests 'com.ford.service.security.ToolAndWebhookSecurityTest' --no-daemon` — passed.
+- `./gradlew test --no-daemon` — passed: 61 tests, 0 skipped, 0 failures, 0 errors. This includes `ApplicationModulesTest`, `ModuleDocumentationTest`, and the application context test.
+- `git diff --check` — passed. Git emitted the repository's existing LF/CRLF normalization warnings only.
+
+### Review-fix self-review and concerns
+
+- Actuator authorization is explicit and ordered after the public health/info exceptions, so the exposed `modulith` endpoint is not anonymous while health, info, and Meta webhook behavior remains unchanged.
+- Modulith verification still passes without exclusions, and the API-boundary test checks both the absence of whole-package exports and the presence of type-level public contracts.
+- No integration tests were run; they require the existing external PostgreSQL/Testcontainers setup. Gradle's existing deprecation and JDK/Netty native-access warnings remain non-failing.
