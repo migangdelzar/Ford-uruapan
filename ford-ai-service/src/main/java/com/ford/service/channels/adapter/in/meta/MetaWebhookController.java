@@ -33,9 +33,10 @@ public class MetaWebhookController {
         this.properties = properties;
     }
 
-    @GetMapping("/{channel}")
+    @GetMapping({"/{channel}", "/{channel}/{webhookKey}"})
     public ResponseEntity<String> verify(
             @PathVariable String channel,
+            @PathVariable(required = false) String webhookKey,
             @RequestParam(name = "hub.mode", required = false) String mode,
             @RequestParam(name = "hub.verify_token", required = false) String verifyToken,
             @RequestParam(name = "hub.challenge", required = false) String challenge) {

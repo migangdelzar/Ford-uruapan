@@ -19,6 +19,7 @@ dependencies {
     implementation(platform(libs.spring.modulith.bom))
 
     implementation(libs.spring.boot.starter.web)
+    developmentOnly(libs.spring.boot.devtools)
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.opentelemetry)
