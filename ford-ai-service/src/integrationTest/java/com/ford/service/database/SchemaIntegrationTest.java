@@ -32,6 +32,7 @@ class SchemaIntegrationTest {
             assertThat(tableExists(connection, "knowledge_chunk")).isTrue();
             assertThat(tableExists(connection, "outbox_event")).isTrue();
             assertThat(tableExists(connection, "channel_delivery")).isTrue();
+            assertThat(tableExists(connection, "channel_message")).isTrue();
         }
     }
 

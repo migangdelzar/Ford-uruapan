@@ -1,0 +1,22 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-channel-message
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              create table if not exists channel_message (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  channel varchar(30) not null,
+                  provider_message_id varchar(200) not null,
+                  participant_id varchar(200) not null,
+                  content text,
+                  received_at timestamptz not null,
+                  raw_payload_reference varchar(240) not null,
+                  unique (tenant_id, channel, provider_message_id)
+              );
+              create index if not exists idx_channel_message_received on channel_message(tenant_id, received_at);
+      rollback:
+        - sql:
+            sql: drop table if exists channel_message;
