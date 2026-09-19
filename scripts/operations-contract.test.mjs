@@ -7,7 +7,7 @@ async function read(path) {
 }
 
 test("operations dashboard is a valid Prometheus dashboard", async () => {
-  const dashboard = JSON.parse(await read("deployment/observability/dashboards/ford-service-overview.json"));
+  const dashboard = JSON.parse(await read("ford-ai-service/deployment/observability/dashboards/ford-service-overview.json"));
   assert.equal(dashboard.schemaVersion, 39);
   assert.ok(Array.isArray(dashboard.panels));
   assert.ok(dashboard.panels.length >= 3);

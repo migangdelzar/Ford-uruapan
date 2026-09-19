@@ -7,7 +7,7 @@ async function read(path) {
 }
 
 test("Langfuse Compose contains durable services and volumes", async () => {
-  const source = await read("deployment/observability/langfuse/docker-compose.yml");
+  const source = await read("ford-ai-service/deployment/observability/langfuse/docker-compose.yml");
   for (const service of ["langfuse-web", "langfuse-worker", "postgres", "clickhouse", "redis", "minio", "otel-collector"]) {
     assert.match(source, new RegExp(`^  ${service}:`, "m"), `${service} must exist`);
   }
@@ -18,7 +18,7 @@ test("Langfuse Compose contains durable services and volumes", async () => {
 });
 
 test("collector contract includes OTLP, protection, redaction, and Langfuse export", async () => {
-  const source = await read("deployment/observability/otel-collector/config.yaml");
+  const source = await read("ford-ai-service/deployment/observability/otel-collector/config.yaml");
   assert.match(source, /otlp:/);
   assert.match(source, /memory_limiter/);
   assert.match(source, /batch/);

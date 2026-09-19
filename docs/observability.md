@@ -2,16 +2,15 @@
 
 Ford Service exposes Actuator health/metrics endpoints and exports traces
 through Spring Boot's supported OpenTelemetry starter. The self-hosted
-Langfuse and OpenTelemetry Collector deployment lives under
-`deployment/observability/` and is intentionally separate from the customer
-application Compose file. The application-to-collector protocol is OTLP over
-HTTP.
+Langfuse and OpenTelemetry Collector deployment support lives under
+`ford-ai-service/deployment/observability/`, alongside the service-owned
+runtime configuration. The application-to-collector protocol is OTLP over HTTP.
 
 ## Local Langfuse
 
 ```bash
-cp deployment/observability/langfuse/.env.example deployment/observability/langfuse/.env
-docker compose -f deployment/observability/langfuse/docker-compose.yml up -d
+cp ford-ai-service/deployment/observability/langfuse/.env.example ford-ai-service/deployment/observability/langfuse/.env
+docker compose -f ford-ai-service/deployment/observability/langfuse/docker-compose.yml up -d
 ```
 
 Langfuse is available at `http://localhost:3300`. Configure the application
@@ -37,7 +36,7 @@ collector outage must not fail the business request.
 
 ## Dashboard and incident signals
 
-Import [ford-service-overview.json](../deployment/observability/dashboards/ford-service-overview.json)
+Import [ford-service-overview.json](../ford-ai-service/deployment/observability/dashboards/ford-service-overview.json)
 into Grafana backed by Prometheus. It provides request rate, AI conversation
 rate and errors, catalog sync rate, and outbox publication rate. Use Langfuse
 for sampled trace inspection and prompt/tool latency analysis; use Prometheus
