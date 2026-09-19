@@ -36,7 +36,10 @@ Colima-compatible `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock`
 setting; use the `emme` profile and run `ford-colima-recover` if Docker is not
 available.
 
-Important environment variables are listed in [operations.md](docs/operations.md).
+Important environment variables are listed in [operations.md](docs/operations.md),
+and the complete external integration checklist is in
+[integration-setup.md](docs/integration-setup.md). Start from
+[.env.example](.env.example) for local configuration.
 API examples and webhook contracts are in [api.md](docs/api.md).
 CI controls and evidence are documented in [ci-cd.md](../docs/ci-cd.md).
 Telemetry, Langfuse and dashboard operations are documented in

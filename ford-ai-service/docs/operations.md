@@ -11,11 +11,16 @@ Use environment variables or a deployment profile; keep secrets outside Git.
 
 - `FORD_DATABASE_URL`, `FORD_DATABASE_USERNAME`, `FORD_DATABASE_PASSWORD`
 - `FORD_META_APP_SECRET`, `FORD_META_VERIFY_TOKEN`
+- `FORD_META_DELIVERY_ENABLED`, channel delivery endpoints and access tokens
 - `FORD_AI_CHAT_PROVIDER`, `FORD_AI_EMBEDDING_PROVIDER`
-- `FORD_AI_CLOUD_ENABLED`, `FORD_AI_LOCAL_ENABLED`
+- `FORD_AI_CLOUD_ENABLED`, `FORD_AI_LOCAL_ENABLED`, provider base URLs and model names
 - `FORD_INGESTION_ENABLED`, `FORD_TENANT_ID`, `FORD_INGESTION_CRON`
 - `FORD_CATALOG_ENDPOINT`, `FORD_INVENTORY_ENDPOINT`, `FORD_SCRAPER_ENDPOINT`
 - `FORD_MANUAL_CSV_PATH`, `FORD_INGESTION_MAX_ATTEMPTS`
+
+See [integration-setup.md](integration-setup.md) and [.env.example](.env.example)
+for the complete local contract. Never commit `.env` or paste provider keys into
+source control, tickets, or chat.
 
 The default ingestion flag is disabled. Enable it only after official Ford
 endpoints or authorized scraper endpoints and credentials are configured.

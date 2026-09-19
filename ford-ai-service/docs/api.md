@@ -15,15 +15,16 @@ GET /webhooks/meta/{whatsapp|messenger|instagram}?hub.mode=subscribe&hub.verify_
 Inbound delivery is:
 
 ```text
-POST /webhooks/meta/{channel}
-X-Tenant-Id: <tenant UUID>
+POST /webhooks/meta/{channel}/{webhookKey}
 X-Hub-Signature-256: sha256=<HMAC-SHA256(body, app secret)>
 Content-Type: application/json
 ```
 
-The endpoint returns `202` for a valid new or duplicate delivery, `403` for an
-invalid signature, and `400` for malformed/non-text payloads. Provider message
-IDs are deduplicated before application processing.
+The opaque `webhookKey` resolves the enabled tenant/channel binding. Tenant
+identity is never accepted from a request header. The endpoint returns `202`
+for a valid new or duplicate delivery, `403` for an invalid signature, and
+`400` for malformed/non-text payloads. Provider message IDs are deduplicated
+before application processing.
 
 ## Operator inbox
 
