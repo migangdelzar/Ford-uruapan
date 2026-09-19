@@ -24,7 +24,7 @@ fi
 
 "${compose[@]}" --env-file .env -f docker-compose.yml up -d postgres redis
 
-while IFS='=' read -r key value; do
+while IFS='=' read -r key value || [[ -n "${key:-}${value:-}" ]]; do
   [[ "$key" =~ ^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*[[:space:]]*$ ]] || continue
   key="${key#export }"
   key="${key##+([[:space:]])}"

@@ -1,0 +1,9 @@
+databaseChangeLog:
+  - changeSet:
+      id: liquibase-startup-probe
+      author: ford-service
+      changes:
+        - sql:
+            sql: create table liquibase_startup_probe (id integer not null);
+        - sql:
+            sql: insert into liquibase_startup_probe (id) values (1);

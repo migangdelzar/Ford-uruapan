@@ -17,7 +17,7 @@ else
   exit 1
 fi
 
-while IFS='=' read -r key value; do
+while IFS='=' read -r key value || [[ -n "${key:-}${value:-}" ]]; do
   [[ "$key" =~ ^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*[[:space:]]*$ ]] || continue
   key="${key#export }"
   key="${key##+([[:space:]])}"
@@ -29,7 +29,7 @@ while IFS='=' read -r key value; do
   export "$key=$value"
 done < .env
 
-provider_account_id="${1:-${FORD_META_PROVIDER_ACCOUNT_ID:-}}"
+provider_account_id="${1:-${FORD_META_PROVIDER_ACCOUNT_ID:-${FORD_META_WABA_ID:-}}}"
 : "${provider_account_id:?Usage: $0 <whatsapp-business-account-id>}"
 : "${FORD_TENANT_ID:?FORD_TENANT_ID is required in .env}"
 : "${FORD_META_WEBHOOK_KEY:?FORD_META_WEBHOOK_KEY is required in .env}"

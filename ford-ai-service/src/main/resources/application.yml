@@ -24,6 +24,7 @@ spring:
     password: ${FORD_DATABASE_PASSWORD:ford}
   liquibase:
     enabled: true
+    change-log: classpath:/db/changelog/db.changelog-master.yaml
   ai:
     chat:
       client:
