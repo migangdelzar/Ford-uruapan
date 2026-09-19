@@ -8,11 +8,9 @@
 .gradle
 build
 bin
-out
 **/.gradle
 **/build
 **/bin
-**/out
 
 # IDE/editor and OS metadata
 .idea
