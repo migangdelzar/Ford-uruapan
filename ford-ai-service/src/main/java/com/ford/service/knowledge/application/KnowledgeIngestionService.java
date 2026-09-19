@@ -1,6 +1,6 @@
 package com.ford.service.knowledge.application;
 
-import com.ford.service.ai.application.port.out.EmbeddingPort;
+import com.ford.service.knowledge.application.port.out.EmbeddingPort;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.VectorStore;
 

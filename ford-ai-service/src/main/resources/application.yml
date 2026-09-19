@@ -6,6 +6,18 @@ spring:
       enabled: true
   main:
     keep-alive: true
+  modulith:
+    runtime:
+      verification-enabled: true
+    events:
+      completion-mode: update
+      staleness:
+        published: 10m
+        processing: 10m
+        resubmitted: 10m
+        check-interval: 1m
+      externalization:
+        enabled: false
   datasource:
     url: ${FORD_DATABASE_URL:jdbc:postgresql://localhost:5432/ford_service}
     username: ${FORD_DATABASE_USERNAME:ford}
@@ -77,4 +89,4 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
+        include: health,info,metrics,prometheus,modulith

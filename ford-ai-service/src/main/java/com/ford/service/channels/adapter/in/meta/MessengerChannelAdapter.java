@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ford.service.channels.domain.Channel;
 
-public final class MessengerChannelAdapter extends AbstractMetaChannelAdapter {
+public class MessengerChannelAdapter extends AbstractMetaChannelAdapter {
     public MessengerChannelAdapter(ObjectMapper objectMapper) { super(objectMapper); }
     public MessengerChannelAdapter(ObjectMapper objectMapper, String appSecret) { super(objectMapper, appSecret); }
     @Override public Channel channel() { return Channel.MESSENGER; }

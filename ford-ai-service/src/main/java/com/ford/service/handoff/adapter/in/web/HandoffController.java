@@ -18,7 +18,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/operator/handoffs")
-public final class HandoffController {
+public class HandoffController {
 
     private final HandoffService service;
 

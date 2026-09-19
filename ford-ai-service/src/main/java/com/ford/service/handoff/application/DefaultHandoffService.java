@@ -12,7 +12,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 @Service
-public final class DefaultHandoffService implements HandoffService {
+public class DefaultHandoffService implements HandoffService {
 
     private final HandoffRepository repository;
 

@@ -24,7 +24,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/webhooks/meta")
-public final class MetaWebhookController {
+public class MetaWebhookController {
 
     private final List<ChannelAdapter> adapters;
     private final ChannelMessageService messageService;

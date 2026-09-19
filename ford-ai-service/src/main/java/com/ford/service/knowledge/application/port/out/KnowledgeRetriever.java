@@ -1,4 +1,4 @@
-package com.ford.service.ai.application.port.out;
+package com.ford.service.knowledge.application.port.out;
 
 import com.ford.service.knowledge.domain.KnowledgeChunk;
 import com.ford.service.knowledge.domain.KnowledgeQuery;

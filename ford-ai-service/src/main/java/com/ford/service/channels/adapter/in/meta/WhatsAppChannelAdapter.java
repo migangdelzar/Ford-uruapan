@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ford.service.channels.domain.Channel;
 
-public final class WhatsAppChannelAdapter extends AbstractMetaChannelAdapter {
+public class WhatsAppChannelAdapter extends AbstractMetaChannelAdapter {
     public WhatsAppChannelAdapter(ObjectMapper objectMapper) { super(objectMapper); }
     public WhatsAppChannelAdapter(ObjectMapper objectMapper, String appSecret) { super(objectMapper, appSecret); }
     @Override public Channel channel() { return Channel.WHATSAPP; }
