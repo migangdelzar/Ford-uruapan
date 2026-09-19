@@ -783,14 +783,27 @@ git commit -m "docs(ford-service): document mvp operations and verification"
 
 ## Definition of Done
 
-- [x] All tasks completed and committed atomically.
+## Verified MVP boundary
+
+The committed MVP foundation now persists and deduplicates inbound Meta
+messages, exposes deterministic domain services, and provides the provider/RAG,
+ingestion, outbox, security, and observability boundaries. The following
+production gates remain intentionally explicit: Meta tenant binding must come
+from a verified account mapping rather than a caller-supplied tenant header;
+the inbound controller still needs the final assistant-to-outbox response
+workflow; Spring AI tool callbacks need registration against the catalog,
+finance, and approved-document retrieval services; ingestion needs canonical
+vehicle/price/inventory upserts; and operator actions need tenant claims and
+audit events. These are pilot-integration gates, not silently assumed behavior.
+
+- [ ] All tasks completed and committed atomically.
 - [x] `./gradlew clean check --no-configuration-cache` passes.
 - [x] `./gradlew integrationTest` passes with zero skipped tests.
 - [x] All three Meta adapter contract suites pass.
-- [x] Complete Spanish vehicle and finance/handoff flows pass.
-- [x] No raw prompt/customer PII is exported by default.
+- [ ] Complete Spanish vehicle and finance/handoff flows pass end-to-end.
+- [ ] No raw prompt/customer PII is exported by default at every telemetry boundary.
 - [x] No model can mutate business state or make credit decisions.
-- [x] Source sync is scheduled/idempotent and never runs during chat.
-- [x] Operator inbox APIs are authenticated and audited.
-- [x] Load evidence supports MVC + virtual threads.
+- [ ] Source sync is scheduled/idempotent with canonical upserts and never runs during chat.
+- [ ] Operator inbox APIs are authenticated, tenant-scoped, and audited.
+- [ ] Workload-specific load evidence supports MVC + virtual threads.
 - [x] README, API, operations, migrations, and flags are documented.
