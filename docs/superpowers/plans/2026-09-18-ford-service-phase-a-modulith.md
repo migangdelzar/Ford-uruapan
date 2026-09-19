@@ -156,7 +156,7 @@ public record InboundMessageAccepted(
     Channel channel, String providerMessageId, Instant acceptedAt) {}
 ```
 
-- [ ] **Step 1: Write Red tests**
+- [x] **Step 1: Write Red tests**
 
 Cover unknown/disabled keys, valid tenant resolution, forged `X-Tenant-Id` rejection, invalid signature/account rejection before persistence, and duplicate provider delivery publishing no second event.
 
@@ -342,15 +342,20 @@ Test stable business-key deduplication, lease reclamation, bounded exponential b
 
 Run: `./gradlew :ford-ai-service:test --tests '*OutboxPublisherTest'`; expect failure on missing recovery/wiring. The Testcontainers recovery test runs in Step 5 after it has been created.
 
-- [ ] **Step 3: Add durable retry state**
+- [x] **Step 3: Add durable retry state**
 
 Add attempt count, next attempt, lease expiry, idempotency key, provider ID, last error category, and dead-letter state. Claim due work with `FOR UPDATE SKIP LOCKED`; reclaim expired leases explicitly.
 
-- [ ] **Step 4: Wire the router and worker**
+- [x] **Step 4: Wire the router and worker**
 
 Register channel delivery adapters, make the scheduled worker a bean, keep provider HTTP outside DB transactions, and update delivery state in a short transaction.
 
 - [ ] **Step 5: Verify and commit**
+
+Unit tests, architecture tests, and integration-test compilation pass. The PostgreSQL
+execution is still pending because the configured Colima/Testcontainers runtime is
+stopped. The schema changes are delivered as `004-outbox-recovery.yaml` so existing
+deployments receive them through Liquibase without rewriting the baseline migration.
 
 Run `./gradlew :ford-ai-service:integrationTest --tests '*OutboxRecoveryIntegrationTest' --tests '*OutboxIntegrationTest'`; expect PASS, then:
 

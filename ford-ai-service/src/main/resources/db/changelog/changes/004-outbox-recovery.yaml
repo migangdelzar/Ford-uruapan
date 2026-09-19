@@ -1,0 +1,51 @@
+databaseChangeLog:
+  - changeSet:
+      id: 004-outbox-recovery
+      author: ford-service
+      changes:
+        - addColumn:
+            tableName: outbox_event
+            columns:
+              - column:
+                  name: lease_until
+                  type: TIMESTAMP WITH TIME ZONE
+              - column:
+                  name: idempotency_key
+                  type: VARCHAR(240)
+              - column:
+                  name: provider_delivery_id
+                  type: VARCHAR(240)
+              - column:
+                  name: last_error_category
+                  type: VARCHAR(80)
+        - createIndex:
+            tableName: outbox_event
+            indexName: idx_outbox_processing_lease
+            columns:
+              - column:
+                  name: status
+              - column:
+                  name: lease_until
+        - sql:
+            sql: |
+              create unique index if not exists uq_outbox_idempotency
+                on outbox_event(tenant_id, event_type, idempotency_key)
+                where idempotency_key is not null;
+      rollback:
+        - sql:
+            sql: drop index if exists uq_outbox_idempotency;
+        - dropIndex:
+            tableName: outbox_event
+            indexName: idx_outbox_processing_lease
+        - dropColumn:
+            tableName: outbox_event
+            columnName: last_error_category
+        - dropColumn:
+            tableName: outbox_event
+            columnName: provider_delivery_id
+        - dropColumn:
+            tableName: outbox_event
+            columnName: idempotency_key
+        - dropColumn:
+            tableName: outbox_event
+            columnName: lease_until

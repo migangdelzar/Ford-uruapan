@@ -63,6 +63,19 @@ ford:
     meta:
       app-secret: ${FORD_META_APP_SECRET:}
       verify-token: ${FORD_META_VERIFY_TOKEN:}
+      delivery:
+        enabled: ${FORD_META_DELIVERY_ENABLED:false}
+        whatsapp-endpoint: ${FORD_META_WHATSAPP_DELIVERY_ENDPOINT:}
+        messenger-endpoint: ${FORD_META_MESSENGER_DELIVERY_ENDPOINT:}
+        instagram-endpoint: ${FORD_META_INSTAGRAM_DELIVERY_ENDPOINT:}
+  outbox:
+    enabled: ${FORD_OUTBOX_ENABLED:false}
+    fixed-delay-ms: ${FORD_OUTBOX_FIXED_DELAY_MS:1000}
+    recovery-delay-ms: ${FORD_OUTBOX_RECOVERY_DELAY_MS:5000}
+    max-attempts: ${FORD_OUTBOX_MAX_ATTEMPTS:5}
+    lease-seconds: ${FORD_OUTBOX_LEASE_SECONDS:30}
+    backoff-base-seconds: ${FORD_OUTBOX_BACKOFF_BASE_SECONDS:2}
+    backoff-max-seconds: ${FORD_OUTBOX_BACKOFF_MAX_SECONDS:300}
   ai:
     cloud-chat-provider: ${FORD_AI_CLOUD_PROVIDER:openai}
     local-chat-provider: ${FORD_AI_LOCAL_PROVIDER:ollama}
