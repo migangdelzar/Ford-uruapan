@@ -52,8 +52,10 @@ the tenant, source identity, freshness status, raw source JSON, and sync-run
 identity. Apply schema changes through Liquibase only.
 
 For local Testcontainers failures on Colima, use the persisted `emme` profile
-and run `ford-colima-recover`; it restores the Docker socket configuration,
-disables the incompatible inotify mount, and starts the profile before tests.
+and run `ford-colima-recover`; it restores the Docker context and starts the
+profile before tests. The Gradle test tasks also set
+`TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock`, preventing Ryuk
+from attempting to mount the macOS socket path inside the Colima VM.
 
 ## Rollback
 

@@ -3,7 +3,7 @@ package com.ford.service.ai.adapter.out.springai;
 import com.ford.service.ai.application.ToolContext;
 import com.ford.service.ai.application.AiExecutionContext;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
-import com.ford.service.ai.application.port.out.ChatCompletionPort;
+import com.ford.service.ai.application.port.out.ProviderChatCompletionPort;
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantResponse;
 import org.springframework.ai.chat.client.ChatClient;
@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-public final class SpringAiChatCompletionAdapter implements ChatCompletionPort {
+public final class SpringAiChatCompletionAdapter implements ProviderChatCompletionPort {
 
     private final ChatClient client;
     private final String provider;
@@ -27,6 +27,11 @@ public final class SpringAiChatCompletionAdapter implements ChatCompletionPort {
         this.client = Objects.requireNonNull(client);
         this.provider = Objects.requireNonNull(provider);
         this.toolPolicy = Objects.requireNonNull(toolPolicy);
+    }
+
+    @Override
+    public String providerId() {
+        return provider;
     }
 
     @Override

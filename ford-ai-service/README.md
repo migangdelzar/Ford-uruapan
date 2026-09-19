@@ -31,8 +31,10 @@ For tests, use Java 25 and run:
 ./gradlew integrationTest
 ```
 
-The integration suite uses Testcontainers. Set `TESTCONTAINERS_RYUK_DISABLED=true`
-when the local Docker socket cannot mount the Ryuk helper.
+The integration suite uses Testcontainers. The Gradle test tasks persist the
+Colima-compatible `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock`
+setting; use the `emme` profile and run `ford-colima-recover` if Docker is not
+available.
 
 Important environment variables are listed in [operations.md](docs/operations.md).
 API examples and webhook contracts are in [api.md](docs/api.md).

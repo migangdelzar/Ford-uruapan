@@ -29,9 +29,12 @@ cd ford-ai-service
 ./gradlew clean check --no-configuration-cache
 ```
 
-If Testcontainers is running against a Colima socket that cannot be mounted by
-Ryuk, set `TESTCONTAINERS_RYUK_DISABLED=true` for the local command. CI uses a
-standard GitHub-hosted Docker service and does not need that override.
+For the persisted Colima `emme` profile, the Gradle test tasks set
+`TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock` so Testcontainers
+Ryuk binds the Docker socket inside the VM. CI uses a standard GitHub-hosted
+Docker service and does not need that override. If a shell predates the global
+profile configuration, reload it with `source ~/.zshrc` or run
+`ford-colima-recover` before the integration suite.
 
 The verification suite includes Spring Modulith architecture/documentation
 checks, PostgreSQL event-publication and outbox recovery tests, signed

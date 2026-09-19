@@ -16,6 +16,8 @@ import com.ford.service.ingestion.application.port.out.SyncRunRepository;
 import com.ford.service.ingestion.domain.SourceNormalization;
 import com.ford.service.ingestion.domain.SourceSnapshot;
 import com.ford.service.observability.AiObservationService;
+import com.ford.service.shared.DefaultSourcePrecedencePolicy;
+import com.ford.service.shared.SourcePrecedencePolicy;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,6 +30,11 @@ import java.util.UUID;
 @Configuration
 @ConditionalOnProperty(name = "ford.ingestion.enabled", havingValue = "true")
 public class FordIngestionConfiguration {
+
+    @Bean
+    SourcePrecedencePolicy sourcePrecedencePolicy() {
+        return new DefaultSourcePrecedencePolicy();
+    }
 
     @Bean
     RestClient fordIngestionRestClient() { return RestClient.builder().build(); }
@@ -64,9 +71,10 @@ public class FordIngestionConfiguration {
                                     AuthorizedScraperSource scraper, ManualImportSource manual,
                                     SyncRunRepository repository, SourceNormalization normalization,
                                     FordSyncProperties properties, AiObservationService observations,
-                                    CanonicalDataWriter canonicalDataWriter) {
+                                    CanonicalDataWriter canonicalDataWriter,
+                                    SourcePrecedencePolicy sourcePrecedencePolicy) {
         return new DefaultSyncCoordinator(catalog, inventory, scraper, manual, repository,
-                normalization, properties.maxAttempts(), observations, canonicalDataWriter);
+                normalization, properties.maxAttempts(), observations, canonicalDataWriter, sourcePrecedencePolicy);
     }
 
     private static SourceSnapshot emptySnapshot() {

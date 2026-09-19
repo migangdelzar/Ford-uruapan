@@ -42,11 +42,19 @@ public record OperatorPrincipal(UUID operatorId, Set<UUID> tenantIds, Set<String
         var authorities = authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.toUnmodifiableSet());
-        var tenantIds = authorities.stream()
-                .filter(authority -> authority.startsWith("TENANT_"))
-                .map(authority -> authority.substring("TENANT_".length()))
-                .map(UUID::fromString)
-                .collect(Collectors.toUnmodifiableSet());
+        final Set<UUID> tenantIds;
+        try {
+            tenantIds = authorities.stream()
+                    .filter(authority -> authority.startsWith("TENANT_"))
+                    .map(authority -> authority.substring("TENANT_".length()))
+                    .map(UUID::fromString)
+                    .collect(Collectors.toUnmodifiableSet());
+        } catch (IllegalArgumentException exception) {
+            throw new SecurityException("Invalid tenant claim", exception);
+        }
+        if (tenantIds.isEmpty()) {
+            throw new SecurityException("Tenant claim is required");
+        }
         return new OperatorPrincipal(operatorId, tenantIds, authorities);
     }
 }

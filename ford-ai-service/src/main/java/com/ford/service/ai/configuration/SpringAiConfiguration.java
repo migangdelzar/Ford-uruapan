@@ -11,6 +11,9 @@ import com.ford.service.ai.application.IntentRouter;
 import com.ford.service.ai.application.SpringAiAssistantService;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
 import com.ford.service.ai.application.port.out.ChatCompletionPort;
+import com.ford.service.ai.application.port.out.ProviderChatCompletionPort;
+import com.ford.service.ai.application.port.out.ProviderRoutingChatCompletionPort;
+import com.ford.service.ai.application.ModelProviderPolicy;
 import com.ford.service.catalog.application.VehicleCatalog;
 import com.ford.service.finance.application.FinanceOperations;
 import com.ford.service.finance.application.port.out.FinanceTermsRepository;
@@ -69,10 +72,17 @@ public class SpringAiConfiguration {
 
     @Bean
     @ConditionalOnBean(ChatClient.Builder.class)
-    ChatCompletionPort chatCompletionPort(ChatClient.Builder builder,
-                                           ToolAuthorizationPolicy toolPolicy,
-                                           @Value("${spring.ai.model.chat:ollama}") String provider) {
+    ProviderChatCompletionPort springAiChatCompletionPort(ChatClient.Builder builder,
+                                                          ToolAuthorizationPolicy toolPolicy,
+                                                          @Value("${spring.ai.model.chat:ollama}") String provider) {
         return new SpringAiChatCompletionAdapter(builder.build(), provider, toolPolicy);
+    }
+
+    @Bean
+    @ConditionalOnBean({ChatClient.Builder.class, ModelProviderPolicy.class})
+    ChatCompletionPort chatCompletionPort(List<ProviderChatCompletionPort> providers,
+                                           ModelProviderPolicy providerPolicy) {
+        return new ProviderRoutingChatCompletionPort(providers, providerPolicy);
     }
 
     @Bean

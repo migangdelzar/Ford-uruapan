@@ -61,6 +61,13 @@ tasks.test {
     useJUnitPlatform()
 }
 
+// Colima's Docker socket is a macOS Unix socket path. Testcontainers asks the
+// daemon to bind that path into Ryuk, but the daemon runs inside the Colima VM
+// and can only bind its in-VM socket path.
+tasks.withType<Test>().configureEach {
+    environment("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE", "/var/run/docker.sock")
+}
+
 val integrationTest = tasks.register<Test>("integrationTest") {
     description = "Runs integration tests."
     group = "verification"
