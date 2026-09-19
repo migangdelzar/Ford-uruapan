@@ -31,6 +31,16 @@ Create channel bindings in PostgreSQL after Liquibase has run. The
 MVP stores the binding HMAC value in `secret_reference`; use a secret manager
 or a dedicated secret-resolution adapter before production.
 
+For a local WhatsApp binding, add `FORD_META_WEBHOOK_KEY` and the Meta App
+Secret to `.env`, then run:
+
+```bash
+./bin/create-meta-binding.sh <WHATSAPP_BUSINESS_ACCOUNT_ID>
+```
+
+The provider account ID must match `entry[0].id` in incoming WhatsApp webhook
+payloads.
+
 Ford ingestion requires a tenant UUID and at least one official Ford endpoint,
 authorized scraper endpoint, or manual CSV path. Leave ingestion disabled until
 the source contract and credentials are approved.
