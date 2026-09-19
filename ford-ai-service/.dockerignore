@@ -1,0 +1,50 @@
+# Repository metadata and CI configuration
+.git
+.github
+.worktrees
+.superpowers
+
+# Gradle caches and generated output
+.gradle
+build
+bin
+out
+**/.gradle
+**/build
+**/bin
+**/out
+
+# IDE/editor and OS metadata
+.idea
+.vscode
+*.iml
+.DS_Store
+Thumbs.db
+
+# Tests, reports, and local documentation are not needed to build the runtime jar
+src/test
+src/integrationTest
+docs
+**/reports
+**/coverage
+*.log
+
+# Local environment files and credentials
+.env
+.env.*
+!.env.example
+!.env.template
+docker-compose*.yml
+docker-compose*.yaml
+**/secrets
+**/*.pem
+**/*.key
+**/*.p12
+**/*.jks
+
+# Local database/cache artifacts
+*.db
+*.sqlite
+*.sqlite3
+**/.data
+**/tmp
