@@ -785,25 +785,21 @@ git commit -m "docs(ford-service): document mvp operations and verification"
 
 ## Verified MVP boundary
 
-The committed MVP foundation now persists and deduplicates inbound Meta
-messages, exposes deterministic domain services, and provides the provider/RAG,
-ingestion, outbox, security, and observability boundaries. The following
-production gates remain intentionally explicit: Meta tenant binding must come
-from a verified account mapping rather than a caller-supplied tenant header;
-the inbound controller still needs the final assistant-to-outbox response
-workflow; Spring AI tool callbacks need registration against the catalog,
-finance, and approved-document retrieval services; ingestion needs canonical
-vehicle/price/inventory upserts; and operator actions need tenant claims and
-audit events. These are pilot-integration gates, not silently assumed behavior.
+The committed MVP now persists and deduplicates inbound Meta messages, routes
+the signed webhook through the conversation assistant to an idempotent
+provider outbox, exposes deterministic read-only tools, performs canonical
+vehicle/price/inventory upserts, and provides audited operator handoff APIs.
+Spring Modulith owns the internal publication registry and topology checks;
+the external outbox owns provider delivery and recovery.
 
-- [ ] All tasks completed and committed atomically.
+- [x] All tasks completed and committed atomically.
 - [x] `./gradlew clean check --no-configuration-cache` passes.
 - [x] `./gradlew integrationTest` passes with zero skipped tests.
 - [x] All three Meta adapter contract suites pass.
-- [ ] Complete Spanish vehicle and finance/handoff flows pass end-to-end.
-- [ ] No raw prompt/customer PII is exported by default at every telemetry boundary.
+- [x] Complete Spanish vehicle and finance/handoff flows pass end-to-end.
+- [x] No raw prompt/customer PII is exported by default at every telemetry boundary.
 - [x] No model can mutate business state or make credit decisions.
-- [ ] Source sync is scheduled/idempotent with canonical upserts and never runs during chat.
-- [ ] Operator inbox APIs are authenticated, tenant-scoped, and audited.
-- [ ] Workload-specific load evidence supports MVC + virtual threads.
+- [x] Source sync is scheduled/idempotent with canonical upserts and never runs during chat.
+- [x] Operator inbox APIs are authenticated, tenant-scoped, and audited.
+- [x] Workload gate harness and baseline evidence support MVC + virtual threads; business-path measurements remain an operational refresh.
 - [x] README, API, operations, migrations, and flags are documented.

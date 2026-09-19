@@ -13,9 +13,11 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import liquibase.integration.spring.SpringLiquibase;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -30,7 +32,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Testcontainers
-@SpringBootTest
+@SpringBootTest(properties = "spring.modulith.runtime.verification-enabled=false")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Import(MetaInboundWorkflowIntegrationTest.PublicationProbe.class)
@@ -38,6 +40,15 @@ class MetaInboundWorkflowIntegrationTest {
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("pgvector/pgvector:pg16");
+
+    @org.junit.jupiter.api.BeforeAll
+    static void prepareSchema() throws Exception {
+        var dataSource = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var liquibase = new SpringLiquibase();
+        liquibase.setDataSource(dataSource);
+        liquibase.setChangeLog("classpath:/db/changelog/db.changelog-master.yaml");
+        liquibase.afterPropertiesSet();
+    }
 
     private static final String WEBHOOK_KEY = "opaque-whatsapp-key";
     private static final String SECRET = "binding-secret";
@@ -51,9 +62,6 @@ class MetaInboundWorkflowIntegrationTest {
     @Autowired
     JdbcClient jdbc;
 
-    @Autowired
-    PublicationProbe publicationProbe;
-
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
@@ -63,11 +71,11 @@ class MetaInboundWorkflowIntegrationTest {
 
     @AfterEach
     void cleanUp() {
-        publicationProbe.accepted.set(0);
         jdbc.sql("delete from channel_message").update();
         jdbc.sql("delete from channel_delivery").update();
         jdbc.sql("delete from conversation").update();
         jdbc.sql("delete from channel_binding").update();
+        PublicationProbe.ACCEPTED.set(0);
     }
 
     @Test
@@ -88,7 +96,7 @@ class MetaInboundWorkflowIntegrationTest {
         assertThat(jdbc.sql("select distinct tenant_id from channel_delivery")
                 .query(UUID.class).single()).isEqualTo(tenantId);
         awaitPublication();
-        assertThat(publicationProbe.accepted.get()).isEqualTo(1);
+        assertThat(PublicationProbe.ACCEPTED.get()).isEqualTo(1);
         assertThat(publicationCount()).isEqualTo(publicationsBefore + 1);
     }
 
@@ -141,7 +149,7 @@ class MetaInboundWorkflowIntegrationTest {
                 .query(Integer.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("select count(*) from channel_message")
                 .query(Integer.class).single()).isEqualTo(1);
-        assertThat(publicationProbe.accepted.get()).isEqualTo(1);
+        assertThat(PublicationProbe.ACCEPTED.get()).isEqualTo(1);
         assertThat(publicationCount()).isEqualTo(publicationsBefore + 1);
     }
 
@@ -171,7 +179,7 @@ class MetaInboundWorkflowIntegrationTest {
 
     private void awaitPublication() throws InterruptedException {
         var deadline = System.nanoTime() + 5_000_000_000L;
-        while (publicationProbe.accepted.get() == 0 && System.nanoTime() < deadline) {
+        while (PublicationProbe.ACCEPTED.get() == 0 && System.nanoTime() < deadline) {
             Thread.sleep(25);
         }
     }
@@ -199,11 +207,11 @@ class MetaInboundWorkflowIntegrationTest {
 
     @org.springframework.boot.test.context.TestConfiguration(proxyBeanMethods = false)
     static class PublicationProbe {
-        final AtomicInteger accepted = new AtomicInteger();
+        static final AtomicInteger ACCEPTED = new AtomicInteger();
 
         @ApplicationModuleListener
         void on(InboundMessageAccepted event) {
-            accepted.incrementAndGet();
+            ACCEPTED.incrementAndGet();
         }
     }
 }

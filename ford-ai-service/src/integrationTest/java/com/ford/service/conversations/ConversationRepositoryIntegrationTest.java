@@ -4,7 +4,9 @@ import com.ford.service.channels.domain.Channel;
 import com.ford.service.conversations.adapter.out.JdbcConversationRepository;
 import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.conversations.domain.ConversationTurn;
+import liquibase.integration.spring.SpringLiquibase;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -12,22 +14,33 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Instant;
+import java.sql.Timestamp;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
-@SpringBootTest
+@SpringBootTest(properties = "spring.modulith.runtime.verification-enabled=false")
 @ActiveProfiles("test")
 class ConversationRepositoryIntegrationTest {
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("pgvector/pgvector:pg16");
+
+    @BeforeAll
+    static void prepareSchema() throws Exception {
+        var dataSource = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var liquibase = new SpringLiquibase();
+        liquibase.setDataSource(dataSource);
+        liquibase.setChangeLog("classpath:/db/changelog/db.changelog-master.yaml");
+        liquibase.afterPropertiesSet();
+    }
 
     @Autowired
     JdbcClient jdbc;
@@ -82,7 +95,7 @@ class ConversationRepositoryIntegrationTest {
                 """)
                 .param("id", conversationId)
                 .param("tenantId", tenantId)
-                .param("now", now)
+                .param("now", Timestamp.from(now))
                 .update();
         jdbc.sql("""
                 insert into channel_message
@@ -94,7 +107,7 @@ class ConversationRepositoryIntegrationTest {
                 .param("id", UUID.randomUUID())
                 .param("conversationId", conversationId)
                 .param("tenantId", tenantId)
-                .param("receivedAt", now)
+                .param("receivedAt", Timestamp.from(now))
                 .update();
     }
 }

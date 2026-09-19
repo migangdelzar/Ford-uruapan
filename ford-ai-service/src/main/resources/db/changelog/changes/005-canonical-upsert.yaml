@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - changeSet:
+      id: 005-canonical-upsert
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              create unique index if not exists uq_vehicle_price_source
+                on vehicle_price(tenant_id, variant_id, source_system, source_record_id);
+      rollback:
+        - sql:
+            sql: drop index if exists uq_vehicle_price_source;

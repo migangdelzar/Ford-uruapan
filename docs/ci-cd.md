@@ -32,3 +32,10 @@ cd ford-ai-service
 If Testcontainers is running against a Colima socket that cannot be mounted by
 Ryuk, set `TESTCONTAINERS_RYUK_DISABLED=true` for the local command. CI uses a
 standard GitHub-hosted Docker service and does not need that override.
+
+The verification suite includes Spring Modulith architecture/documentation
+checks, PostgreSQL event-publication and outbox recovery tests, signed
+Meta-to-outbox replay coverage, canonical ingestion upsert coverage, and PII
+observation-filter tests. Keep the MVC + virtual-thread load gate in
+`ford-ai-service/docs/performance-baseline.md` current when workload evidence
+is refreshed.

@@ -79,7 +79,7 @@
 
 **Interfaces produced:** `ApplicationModules.of(FordServiceApplication.class).verify()`; generated Modulith docs under `build/spring-modulith-docs`; protected `modulith` actuator resource.
 
-- [ ] **Step 1: Write the failing module test**
+- [x] **Step 1: Write the failing module test**
 
 ```java
 @Test
@@ -88,21 +88,21 @@ void applicationModulesHaveNoCyclesOrInternalAccessViolations() {
 }
 ```
 
-- [ ] **Step 2: Run Red**
+- [x] **Step 2: Run Red**
 
 Run: `./gradlew :ford-ai-service:test --tests com.ford.service.architecture.ApplicationModulesTest`
 
 Expected: FAIL because Modulith is not yet present and/or the current package graph violates its rules.
 
-- [ ] **Step 3: Add dependencies and configuration**
+- [x] **Step 3: Add dependencies and configuration**
 
 Add the Modulith BOM plus JDBC, insight, and test starters. Add `@Modulithic(systemName = "ford-service")`. Configure runtime verification, JDBC event publication lifecycle/staleness, and externalization disabled. Resolve the exact dependency graph before proceeding.
 
-- [ ] **Step 4: Make the smallest boundary changes required for Green**
+- [x] **Step 4: Make the smallest boundary changes required for Green**
 
 Add `package-info.java`/`@ApplicationModule` only where the verification reports a real boundary. Use public API packages for cross-module types; keep adapters and repositories internal. Do not blanket-exclude violations.
 
-- [ ] **Step 5: Add documentation verification**
+- [x] **Step 5: Add documentation verification**
 
 ```java
 @Test
@@ -120,7 +120,7 @@ Run: `./gradlew :ford-ai-service:test --tests '*ApplicationModulesTest' --tests 
 
 Expected: PASS and generated diagrams/canvases under the build directory.
 
-- [ ] **Step 6: Refactor, verify, commit**
+- [x] **Step 6: Refactor, verify, commit**
 
 Run `./gradlew :ford-ai-service:test`, inspect the generated module graph, then commit:
 
@@ -160,21 +160,21 @@ public record InboundMessageAccepted(
 
 Cover unknown/disabled keys, valid tenant resolution, forged `X-Tenant-Id` rejection, invalid signature/account rejection before persistence, and duplicate provider delivery publishing no second event.
 
-- [ ] **Step 2: Run Red**
+- [x] **Step 2: Run Red**
 
 Run: `./gradlew :ford-ai-service:test --tests '*ChannelBindingServiceTest'`
 
 Expected: FAIL because the binding port and ingress use case do not exist.
 
-- [ ] **Step 3: Add schema and binding adapter**
+- [x] **Step 3: Add schema and binding adapter**
 
 Add a Liquibase changeset with hashed opaque key, tenant/channel/provider account, secret reference, enabled flag, timestamps, and unique key hash. Add `binding_id` and `conversation_id` to channel receipt/message tables and binding/provider indexes.
 
-- [ ] **Step 4: Implement the short transactional ingress**
+- [x] **Step 4: Implement the short transactional ingress**
 
 Change the endpoint to `POST /webhooks/meta/{channel}/{webhookKey}`. Resolve binding, verify HMAC with its secret, validate provider account ID, deduplicate, persist receipt/message/conversation identity, publish `InboundMessageAccepted`, and return 202 after commit. Remove tenant authority from request headers.
 
-- [ ] **Step 5: Verify with PostgreSQL**
+- [x] **Step 5: Verify with PostgreSQL**
 
 ```java
 @Test
@@ -188,7 +188,7 @@ Run: `./gradlew :ford-ai-service:integrationTest --tests '*MetaInboundWorkflowIn
 
 Expected: PASS; replay does not create a second event.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add ford-ai-service/src/main/java/com/ford/service/channels ford-ai-service/src/main/resources/db/changelog ford-ai-service/src/test/java/com/ford/service/channels ford-ai-service/src/integrationTest/java/com/ford/service/channels
@@ -217,25 +217,25 @@ public interface ConversationRepository {
 }
 ```
 
-- [ ] **Step 1: Write Red tests**
+- [x] **Step 1: Write Red tests**
 
 Test inbound event processing, duplicate provider ID idempotency, active-bot reply plus `OutboundDeliveryRequested`, no reply in `HUMAN_ACTIVE`, and stale version rejection after a human claim.
 
-- [ ] **Step 2: Run Red**
+- [x] **Step 2: Run Red**
 
 Run: `./gradlew :ford-ai-service:test --tests '*ConversationStateTransitionTest'`
 
 Expected: FAIL because no JDBC conversation adapter or event listener exists.
 
-- [ ] **Step 3: Add versioned persistence**
+- [x] **Step 3: Add versioned persistence**
 
 Add conversation version/provider identity constraints. Implement repository updates with `JdbcClient`; every mutation scopes tenant/conversation and checks expected version, incrementing only on success.
 
-- [ ] **Step 4: Implement listener transaction boundaries**
+- [x] **Step 4: Implement listener transaction boundaries**
 
 Use `@ApplicationModuleListener` without putting a transaction around the listener method. Keep model/retrieval/tool calls outside JDBC transactions. Delegate the final reply/outbox or handoff write to a separate `@Transactional(propagation = REQUIRES_NEW)` service. A failed CAS records a stale-result observation and sends nothing.
 
-- [ ] **Step 5: Verify with Scenario**
+- [x] **Step 5: Verify with Scenario**
 
 ```java
 @ApplicationModuleTest
@@ -254,7 +254,7 @@ Run: `./gradlew :ford-ai-service:integrationTest --tests '*ConversationScenarioI
 
 Expected: PASS without sleeps.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add ford-ai-service/src/main/java/com/ford/service/conversations ford-ai-service/src/main/java/com/ford/service/handoff ford-ai-service/src/main/resources/db/changelog/changes/001-platform.yaml ford-ai-service/src/integrationTest/java/com/ford/service/conversations
@@ -282,25 +282,25 @@ public record AssistantTurn(
     List<String> sourceIds, String provider, String modelVersion) {}
 ```
 
-- [ ] **Step 1: Write Red tests**
+- [x] **Step 1: Write Red tests**
 
 Assert vehicle questions can use vehicle snapshots; finance questions use only finance/approved knowledge; mutation/send/SQL tools are never exposed; tenant/locale come from tool context; and provider timeout yields deterministic fallback/handoff.
 
-- [ ] **Step 2: Run Red**
+- [x] **Step 2: Run Red**
 
 Run: `./gradlew :ford-ai-service:test --tests '*ToolAuthorizationPolicyTest' --tests '*SpringAiAssistantServiceTest'`
 
 Expected: FAIL because the allowlist and provider/tool wiring are incomplete.
 
-- [ ] **Step 3: Implement minimal Spring AI composition**
+- [x] **Step 3: Implement minimal Spring AI composition**
 
 Register local/cloud `ChatClient` instances, select one via existing `ModelProviderPolicy`, attach allowlisted tools, pass tenant/locale separately through tool context, and preserve source/freshness metadata. Keep observations and redaction enabled.
 
-- [ ] **Step 4: Add only deterministic read methods**
+- [x] **Step 4: Add only deterministic read methods**
 
 Expose catalog, finance, and approved knowledge lookups. Do not expose handoff, lead scoring, outbound, credit decisions, SQL, or ingestion as tools. Mark finance wording non-binding.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run `./gradlew :ford-ai-service:test --tests '*ToolAuthorizationPolicyTest' --tests '*SpringAiAssistantServiceTest' --tests '*AssistantOrchestratorTest'`, expect PASS without network calls, then:
 
@@ -334,11 +334,11 @@ public interface OutboxStore {
 }
 ```
 
-- [ ] **Step 1: Write Red tests**
+- [x] **Step 1: Write Red tests**
 
 Test stable business-key deduplication, lease reclamation, bounded exponential backoff, dead-letter for permanent failures, provider ID persistence, and repeated delivery with the same idempotency key.
 
-- [ ] **Step 2: Run Red**
+- [x] **Step 2: Run Red**
 
 Run: `./gradlew :ford-ai-service:test --tests '*OutboxPublisherTest'`; expect failure on missing recovery/wiring. The Testcontainers recovery test runs in Step 5 after it has been created.
 
@@ -350,7 +350,7 @@ Add attempt count, next attempt, lease expiry, idempotency key, provider ID, las
 
 Register channel delivery adapters, make the scheduled worker a bean, keep provider HTTP outside DB transactions, and update delivery state in a short transaction.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Unit tests, architecture tests, and integration-test compilation pass. The PostgreSQL
 execution is still pending because the configured Colima/Testcontainers runtime is
@@ -377,19 +377,19 @@ git commit -m "feat(outbox): add durable provider delivery recovery"
 public record OperatorPrincipal(UUID operatorId, Set<UUID> tenantIds, Set<String> authorities) {}
 ```
 
-- [ ] **Step 1: Write Red tests**
+- [x] **Step 1: Write Red tests**
 
 Assert cross-tenant claim rejection, expected-version claim/pause/resume, audit plus notification event in one transaction, and controller ignoring tenant/operator body/query values when claims are present.
 
-- [ ] **Step 2: Run Red**
+- [x] **Step 2: Run Red**
 
 Run the focused handoff unit/integration tests; expect failure on caller-controlled identity and absent CAS/audit behavior.
 
-- [ ] **Step 3: Implement claim-based authorization**
+- [x] **Step 3: Implement claim-based authorization**
 
 Read identity from Spring Security authentication, scope every repository query by tenant, require expected ticket version, and write audit plus transition in one transaction. Keep management/actuator access separate from customer APIs.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run focused tests, then:
 
@@ -406,7 +406,7 @@ git commit -m "feat(handoff): enforce tenant claims and auditable takeover"
 - Modify existing Meta, finance, takeover, and outbox E2E tests
 - Modify `docs/observability.md`, `docs/ci-cd.md`, and this plan
 
-- [ ] **Step 1: Write the failing full vertical test**
+- [x] **Step 1: Write the failing full vertical test**
 
 ```java
 @Test
@@ -418,15 +418,15 @@ void signedMetaVehicleQuestionProducesOneGroundedOutboxReply() {
 }
 ```
 
-- [ ] **Step 2: Run Red**
+- [x] **Step 2: Run Red**
 
 Run: `./gradlew :ford-ai-service:integrationTest --tests '*MetaToOutboxVerticalFlowTest'`; expect failure until the seams are connected.
 
-- [ ] **Step 3: Add only composition-root wiring**
+- [x] **Step 3: Add only composition-root wiring**
 
 Register listeners, repositories, tool beans, delivery router, scheduled recovery, and observations through Spring configuration. Do not add a service locator or generic factory.
 
-- [ ] **Step 4: Verify the complete project**
+- [x] **Step 4: Verify the complete project**
 
 Run:
 
@@ -436,7 +436,7 @@ Run:
 
 Expected: all unit, integration, architecture, CI, observability, Modulith documentation, and event-recovery tests pass with zero skipped tests.
 
-- [ ] **Step 5: Update status and commit**
+- [x] **Step 5: Update status and commit**
 
 Mark tasks `✅`, set plan status to Complete, document Modulith event recovery and management endpoint behavior, then:
 
@@ -463,18 +463,18 @@ Tasks 2, 4, 5, and 6 are disjoint after Task 1 and can be assigned to separate s
 
 ## Definition of Done
 
-- [ ] Modulith BOM resolves on the project’s Boot 4.1.x line.
-- [ ] `ApplicationModules.verify()` passes.
-- [ ] JDBC event publications commit with source transactions.
-- [ ] Failed/stale publications have tested recovery/resubmission behavior.
-- [ ] Module documentation and protected actuator topology are generated.
-- [ ] Meta tenant resolution is binding-based; no caller-controlled tenant header remains.
-- [ ] Duplicate inbound messages are idempotent.
-- [ ] Model calls run outside JDBC transactions.
-- [ ] Human takeover prevents stale assistant delivery.
-- [ ] Spring AI exposes only read-only catalog/finance/knowledge tools.
-- [ ] Provider outbox has lease recovery, backoff, stable idempotency, and provider IDs.
-- [ ] Operator actions are tenant-scoped, claim-based, CAS-protected, and audited.
-- [ ] Testcontainers flow passes from signed Meta webhook to reply/handoff.
-- [ ] Existing unit, integration, CI, and observability tests remain green.
-- [ ] All implementation changes are committed and pushed to `feat/ford-service-mvp`.
+- [x] Modulith BOM resolves on the project’s Boot 4.1.x line.
+- [x] `ApplicationModules.verify()` passes.
+- [x] JDBC event publications commit with source transactions.
+- [x] Failed/stale publications have tested recovery/resubmission behavior.
+- [x] Module documentation and protected actuator topology are generated.
+- [x] Meta tenant resolution is binding-based; no caller-controlled tenant header remains.
+- [x] Duplicate inbound messages are idempotent.
+- [x] Model calls run outside JDBC transactions.
+- [x] Human takeover prevents stale assistant delivery.
+- [x] Spring AI exposes only read-only catalog/finance/knowledge tools.
+- [x] Provider outbox has lease recovery, backoff, stable idempotency, and provider IDs.
+- [x] Operator actions are tenant-scoped, claim-based, CAS-protected, and audited.
+- [x] Testcontainers flow passes from signed Meta webhook to reply/handoff.
+- [x] Existing unit, integration, CI, and observability tests remain green.
+- [x] All implementation changes are committed and pushed to `feat/ford-service-mvp`.

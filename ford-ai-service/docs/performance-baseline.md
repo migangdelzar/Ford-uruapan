@@ -20,3 +20,17 @@ AI tool call, duplicate webhook, and authenticated operator API traffic with
 realistic PostgreSQL and model-provider dependencies. WebFlux is not justified
 by this result; keep MVC + virtual threads until those workload-specific SLOs
 are measured.
+
+The reproducible Node harness is `scripts/mvc-load-gate.mjs`:
+
+```bash
+FORD_LOAD_BASE_URL=http://127.0.0.1:8080 \
+FORD_LOAD_PATHS=/actuator/health \
+FORD_LOAD_REQUESTS=1000 FORD_LOAD_CONCURRENCY=20 \
+node scripts/mvc-load-gate.mjs
+```
+
+Use a comma-separated `FORD_LOAD_PATHS` value for the authenticated/operator
+and business-path gate once fixtures and credentials are provisioned. The
+harness exits non-zero on HTTP or transport failures and emits p50/p95/p99,
+maximum latency, throughput, and failure counts as JSON.

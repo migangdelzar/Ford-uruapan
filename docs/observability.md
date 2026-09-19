@@ -34,6 +34,16 @@ identifiers. Conversation, tenant, lead, and provider IDs must not be added as
 metric labels. Trace export is fail-open: a Langfuse or
 collector outage must not fail the business request.
 
+Spring Modulith persists transactional internal-listener publications in
+PostgreSQL. The protected `GET /actuator/modulith` resource exposes the module
+topology for operators; event-publication staleness and recovery signals are
+kept separate from the external `outbox_event` delivery queue. Monitor both
+publication lag and outbox pending/dead-letter counts during incidents.
+
+The PII redaction and observation-filter tests are part of the Java verification
+suite. They assert that prompt, completion, raw payload, provider identifiers,
+contact, financial, and identity attributes cannot become observation tags.
+
 ## Dashboard and incident signals
 
 Import [ford-service-overview.json](../ford-ai-service/deployment/observability/dashboards/ford-service-overview.json)

@@ -26,6 +26,7 @@ endpoints or authorized scraper endpoints and credentials are configured.
 - `GET /actuator/info`
 - `GET /actuator/metrics`
 - `GET /actuator/prometheus`
+- `GET /actuator/modulith` (operator role required)
 
 Metrics use bounded provider, tool and lead-band labels. Prompts, completions,
 raw webhook bodies, phone numbers, email addresses and financial details must
@@ -43,6 +44,16 @@ To disable AI while keeping webhook acknowledgement and operator access,
 disable both AI provider flags and route the conversation to the human queue.
 To disable ingestion, set `FORD_INGESTION_ENABLED=false` and leave canonical
 data available with its freshness status.
+
+Ingestion runs only from the scheduled coordinator. Accepted catalog records
+are idempotently upserted into `vehicle_model`, `vehicle_variant`, and
+`vehicle_price`; inventory records upsert `vehicle_unit`. Every write carries
+the tenant, source identity, freshness status, raw source JSON, and sync-run
+identity. Apply schema changes through Liquibase only.
+
+For local Testcontainers failures on Colima, use the persisted `emme` profile
+and run `ford-colima-recover`; it restores the Docker socket configuration,
+disables the incompatible inotify mount, and starts the profile before tests.
 
 ## Rollback
 

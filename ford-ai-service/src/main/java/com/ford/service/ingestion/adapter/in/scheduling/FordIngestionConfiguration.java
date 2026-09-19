@@ -11,6 +11,7 @@ import com.ford.service.ingestion.application.port.out.AuthorizedScraperSource;
 import com.ford.service.ingestion.application.port.out.FordCatalogSource;
 import com.ford.service.ingestion.application.port.out.FordInventorySource;
 import com.ford.service.ingestion.application.port.out.ManualImportSource;
+import com.ford.service.ingestion.application.port.out.CanonicalDataWriter;
 import com.ford.service.ingestion.application.port.out.SyncRunRepository;
 import com.ford.service.ingestion.domain.SourceNormalization;
 import com.ford.service.ingestion.domain.SourceSnapshot;
@@ -62,9 +63,10 @@ public class FordIngestionConfiguration {
     SyncCoordinator syncCoordinator(FordCatalogSource catalog, FordInventorySource inventory,
                                     AuthorizedScraperSource scraper, ManualImportSource manual,
                                     SyncRunRepository repository, SourceNormalization normalization,
-                                    FordSyncProperties properties, AiObservationService observations) {
+                                    FordSyncProperties properties, AiObservationService observations,
+                                    CanonicalDataWriter canonicalDataWriter) {
         return new DefaultSyncCoordinator(catalog, inventory, scraper, manual, repository,
-                normalization, properties.maxAttempts(), observations);
+                normalization, properties.maxAttempts(), observations, canonicalDataWriter);
     }
 
     private static SourceSnapshot emptySnapshot() {
