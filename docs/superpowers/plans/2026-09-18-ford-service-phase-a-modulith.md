@@ -233,7 +233,7 @@ Add conversation version/provider identity constraints. Implement repository upd
 
 - [ ] **Step 4: Implement listener transaction boundaries**
 
-Use `@ApplicationModuleListener`. Keep model/retrieval/tool calls outside JDBC transactions. Use a new short transaction for CAS-protected reply/outbox or handoff persistence. A failed CAS records a stale-result observation and sends nothing.
+Use `@ApplicationModuleListener` without putting a transaction around the listener method. Keep model/retrieval/tool calls outside JDBC transactions. Delegate the final reply/outbox or handoff write to a separate `@Transactional(propagation = REQUIRES_NEW)` service. A failed CAS records a stale-result observation and sends nothing.
 
 - [ ] **Step 5: Verify with Scenario**
 
