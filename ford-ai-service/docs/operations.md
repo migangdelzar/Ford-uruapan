@@ -14,6 +14,8 @@ Use environment variables or a deployment profile; keep secrets outside Git.
 - `FORD_AI_CHAT_PROVIDER`, `FORD_AI_EMBEDDING_PROVIDER`
 - `FORD_AI_CLOUD_ENABLED`, `FORD_AI_LOCAL_ENABLED`
 - `FORD_INGESTION_ENABLED`, `FORD_TENANT_ID`, `FORD_INGESTION_CRON`
+- `FORD_CATALOG_ENDPOINT`, `FORD_INVENTORY_ENDPOINT`, `FORD_SCRAPER_ENDPOINT`
+- `FORD_MANUAL_CSV_PATH`, `FORD_INGESTION_MAX_ATTEMPTS`
 
 The default ingestion flag is disabled. Enable it only after official Ford
 endpoints or authorized scraper endpoints and credentials are configured.

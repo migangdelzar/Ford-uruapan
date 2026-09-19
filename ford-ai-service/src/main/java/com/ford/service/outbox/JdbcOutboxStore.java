@@ -1,6 +1,7 @@
 package com.ford.service.outbox;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
@@ -33,6 +34,7 @@ public class JdbcOutboxStore implements OutboxStore {
     }
 
     @Override
+    @Transactional
     public Optional<OutboxEvent> claimNext(Instant now) {
         return jdbc.sql("""
                 select * from outbox_event
