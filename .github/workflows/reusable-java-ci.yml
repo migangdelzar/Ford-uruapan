@@ -1,0 +1,96 @@
+---
+name: Reusable Java CI
+
+on:
+  workflow_call:
+    inputs:
+      run_integration:
+        description: Run Testcontainers integration tests.
+        required: false
+        default: true
+        type: boolean
+      run_ai_evaluation:
+        description: Run deterministic AI fixture evaluation.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ford-java-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Java quality and unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+      - name: Set up Java and Gradle
+        uses: ./.github/actions/setup-java-gradle
+      - name: Run quality and unit tests
+        working-directory: ford-ai-service
+        run: ./gradlew clean check -x integrationTest --no-daemon --no-configuration-cache --stacktrace
+      - name: Upload quality reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ford-quality-reports-${{ github.run_id }}
+          path: |
+            ford-ai-service/build/reports/**
+            ford-ai-service/build/test-results/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+  integration:
+    name: PostgreSQL integration tests
+    if: inputs.run_integration
+    needs: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+      - name: Set up Java and Gradle
+        uses: ./.github/actions/setup-java-gradle
+      - name: Run integration tests
+        working-directory: ford-ai-service
+        run: ./gradlew integrationTest --no-daemon --no-configuration-cache --stacktrace
+      - name: Upload integration reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ford-integration-reports-${{ github.run_id }}
+          path: |
+            ford-ai-service/build/reports/**
+            ford-ai-service/build/test-results/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+  summary:
+    name: Java CI summary
+    if: always()
+    needs: [quality, integration]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Publish result summary
+        env:
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          INTEGRATION_RESULT: ${{ needs.integration.result }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Ford Service Java CI"
+            echo "- Quality: ${QUALITY_RESULT}"
+            echo "- Integration: ${INTEGRATION_RESULT}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "${QUALITY_RESULT}" != "success" ]]; then
+            exit 1
+          fi
+          if [[ "${INTEGRATION_RESULT}" != "success" && "${INTEGRATION_RESULT}" != "skipped" ]]; then
+            exit 1
+          fi

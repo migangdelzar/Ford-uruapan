@@ -1,0 +1,19 @@
+---
+name: Reusable Observability Gates
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ford-observability-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Observability workflow contract
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "Observability gates will be enabled in the observability task."

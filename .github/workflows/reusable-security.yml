@@ -1,0 +1,25 @@
+---
+name: Reusable Security Gates
+
+on:
+  workflow_call:
+    inputs:
+      require_nvd:
+        description: Require the NVD API key for dependency scanning.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ford-security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Security workflow contract
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "Security gates will be enabled in the security task."

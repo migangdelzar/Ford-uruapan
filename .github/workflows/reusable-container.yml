@@ -1,0 +1,25 @@
+---
+name: Reusable Container Gates
+
+on:
+  workflow_call:
+    inputs:
+      publish:
+        description: Publish the immutable image.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ford-container-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Container workflow contract
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "Container gates will be enabled in the container task."

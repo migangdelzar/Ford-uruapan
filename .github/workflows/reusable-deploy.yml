@@ -1,0 +1,29 @@
+---
+name: Reusable Deployment Contract
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Protected deployment environment name.
+        required: true
+        type: string
+      image:
+        description: Immutable image reference to deploy.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ford-deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    name: Deployment workflow contract
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "Deployment target contract will be enabled after a staging target is selected."

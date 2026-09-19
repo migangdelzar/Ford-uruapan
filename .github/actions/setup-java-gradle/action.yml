@@ -1,0 +1,21 @@
+---
+name: Set up Java and Gradle
+description: Install the pinned Java runtime and configure Gradle caching.
+inputs:
+  java-version:
+    description: Java version used by the repository build.
+    required: false
+    default: '25'
+runs:
+  using: composite
+  steps:
+    - name: Set up Java
+      uses: actions/setup-java@v5
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: temurin
+        cache: gradle
+    - name: Set up Gradle
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        cache-read-only: ${{ github.event_name == 'pull_request' }}

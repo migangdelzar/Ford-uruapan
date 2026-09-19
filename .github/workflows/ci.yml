@@ -1,0 +1,24 @@
+---
+name: Ford Service CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ford-service-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  java:
+    name: Java verification
+    uses: ./.github/workflows/reusable-java-ci.yml
+    with:
+      run_integration: true
+      run_ai_evaluation: false
+    secrets: inherit
