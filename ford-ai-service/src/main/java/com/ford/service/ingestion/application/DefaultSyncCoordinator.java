@@ -9,13 +9,17 @@ import com.ford.service.ingestion.domain.SourceNormalization;
 import com.ford.service.ingestion.domain.SourceSnapshot;
 import com.ford.service.ingestion.domain.SyncRequest;
 import com.ford.service.ingestion.domain.SyncResult;
+import com.ford.service.observability.AiObservationService;
+import com.ford.service.observability.DefaultAiObservationService;
 import com.ford.service.shared.SourceCandidate;
+import io.micrometer.observation.ObservationRegistry;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
 import java.util.function.Supplier;
 
 public final class DefaultSyncCoordinator implements SyncCoordinator {
@@ -27,6 +31,7 @@ public final class DefaultSyncCoordinator implements SyncCoordinator {
     private final SyncRunRepository syncRunRepository;
     private final SourceNormalization normalization;
     private final int maxAttempts;
+    private final AiObservationService observations;
 
     public DefaultSyncCoordinator(FordCatalogSource catalogSource,
                                   FordInventorySource inventorySource,
@@ -35,20 +40,38 @@ public final class DefaultSyncCoordinator implements SyncCoordinator {
                                   SyncRunRepository syncRunRepository,
                                   SourceNormalization normalization,
                                   int maxAttempts) {
+        this(catalogSource, inventorySource, scraperSource, manualSource, syncRunRepository,
+                normalization, maxAttempts, new DefaultAiObservationService(ObservationRegistry.NOOP));
+    }
+
+    public DefaultSyncCoordinator(FordCatalogSource catalogSource,
+                                  FordInventorySource inventorySource,
+                                  AuthorizedScraperSource scraperSource,
+                                  ManualImportSource manualSource,
+                                  SyncRunRepository syncRunRepository,
+                                  SourceNormalization normalization,
+                                  int maxAttempts,
+                                  AiObservationService observations) {
         if (maxAttempts < 1) {
             throw new IllegalArgumentException("maxAttempts must be positive");
         }
-        this.catalogSource = catalogSource;
-        this.inventorySource = inventorySource;
-        this.scraperSource = scraperSource;
-        this.manualSource = manualSource;
-        this.syncRunRepository = syncRunRepository;
-        this.normalization = normalization;
+        this.catalogSource = java.util.Objects.requireNonNull(catalogSource);
+        this.inventorySource = java.util.Objects.requireNonNull(inventorySource);
+        this.scraperSource = java.util.Objects.requireNonNull(scraperSource);
+        this.manualSource = java.util.Objects.requireNonNull(manualSource);
+        this.syncRunRepository = java.util.Objects.requireNonNull(syncRunRepository);
+        this.normalization = java.util.Objects.requireNonNull(normalization);
         this.maxAttempts = maxAttempts;
+        this.observations = java.util.Objects.requireNonNull(observations);
     }
 
     @Override
     public SyncResult run(SyncRequest request) {
+        return observations.observe("ford.catalog.sync", Map.of("outcome", "success"),
+                () -> runInternal(request));
+    }
+
+    private SyncResult runInternal(SyncRequest request) {
         var syncRunId = UUID.randomUUID();
         syncRunRepository.start(syncRunId, request);
         var snapshots = new ArrayList<SourceSnapshot>();

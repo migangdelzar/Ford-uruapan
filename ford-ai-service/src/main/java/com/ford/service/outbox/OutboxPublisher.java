@@ -1,23 +1,40 @@
 package com.ford.service.outbox;
 
+import com.ford.service.observability.AiObservationService;
+import com.ford.service.observability.DefaultAiObservationService;
+import io.micrometer.observation.ObservationRegistry;
+
 import java.time.Instant;
+import java.util.Map;
+import java.util.Objects;
 
 public final class OutboxPublisher {
     private final OutboxStore store;
     private final NotificationPort notificationPort;
     private final int maxAttempts;
+    private final AiObservationService observations;
 
     public OutboxPublisher(OutboxStore store, NotificationPort notificationPort, int maxAttempts) {
+        this(store, notificationPort, maxAttempts,
+                new DefaultAiObservationService(ObservationRegistry.NOOP));
+    }
+
+    public OutboxPublisher(OutboxStore store, NotificationPort notificationPort, int maxAttempts,
+                           AiObservationService observations) {
         if (maxAttempts < 1) {
             throw new IllegalArgumentException("maxAttempts must be positive");
         }
-        this.store = store;
-        this.notificationPort = notificationPort;
+        this.store = Objects.requireNonNull(store);
+        this.notificationPort = Objects.requireNonNull(notificationPort);
         this.maxAttempts = maxAttempts;
+        this.observations = Objects.requireNonNull(observations);
     }
 
     public void publish(OutboxEvent event) {
-        store.append(event);
+        observations.observe("ford.outbox.publish", Map.of("outcome", "success"), () -> {
+            store.append(event);
+            return null;
+        });
     }
 
     public boolean deliverOne(Instant now) {

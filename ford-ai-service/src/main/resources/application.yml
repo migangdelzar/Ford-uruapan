@@ -13,6 +13,11 @@ spring:
   liquibase:
     enabled: true
   ai:
+    chat:
+      client:
+        observations:
+          log-prompt: ${FORD_AI_LOG_PROMPT:false}
+          log-completion: ${FORD_AI_LOG_COMPLETION:false}
     openai:
       api-key: ${OPENAI_API_KEY:}
     model:
@@ -57,6 +62,18 @@ ford:
     local-enabled: ${FORD_AI_LOCAL_ENABLED:true}
 
 management:
+  otlp:
+    metrics:
+      export:
+        enabled: ${FORD_OTEL_METRICS_EXPORT_ENABLED:false}
+  tracing:
+    sampling:
+      probability: ${FORD_OTEL_SAMPLING_PROBABILITY:0.1}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${FORD_OTEL_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
   endpoints:
     web:
       exposure:

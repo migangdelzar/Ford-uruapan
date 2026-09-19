@@ -14,6 +14,7 @@ import com.ford.service.ingestion.application.port.out.ManualImportSource;
 import com.ford.service.ingestion.application.port.out.SyncRunRepository;
 import com.ford.service.ingestion.domain.SourceNormalization;
 import com.ford.service.ingestion.domain.SourceSnapshot;
+import com.ford.service.observability.AiObservationService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -61,9 +62,9 @@ public class FordIngestionConfiguration {
     SyncCoordinator syncCoordinator(FordCatalogSource catalog, FordInventorySource inventory,
                                     AuthorizedScraperSource scraper, ManualImportSource manual,
                                     SyncRunRepository repository, SourceNormalization normalization,
-                                    FordSyncProperties properties) {
+                                    FordSyncProperties properties, AiObservationService observations) {
         return new DefaultSyncCoordinator(catalog, inventory, scraper, manual, repository,
-                normalization, properties.maxAttempts());
+                normalization, properties.maxAttempts(), observations);
     }
 
     private static SourceSnapshot emptySnapshot() {
