@@ -8,7 +8,7 @@ import java.time.Instant;
 
 @Component
 @ConditionalOnBean(OutboxPublisher.class)
-public final class OutboxDeliveryJob {
+public class OutboxDeliveryJob {
     private final OutboxPublisher publisher;
 
     public OutboxDeliveryJob(OutboxPublisher publisher) {

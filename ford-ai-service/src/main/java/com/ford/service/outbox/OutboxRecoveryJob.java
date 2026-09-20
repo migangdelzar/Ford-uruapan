@@ -8,7 +8,7 @@ import java.time.Instant;
 
 @Component
 @ConditionalOnProperty(name = "ford.outbox.enabled", havingValue = "true")
-public final class OutboxRecoveryJob {
+public class OutboxRecoveryJob {
     private final OutboxStore store;
 
     public OutboxRecoveryJob(OutboxStore store) {

@@ -9,7 +9,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 
-public final class OutboxPublisher {
+public class OutboxPublisher {
     private final OutboxStore store;
     private final OutboxDeliveryRouter deliveryRouter;
     private final int maxAttempts;
