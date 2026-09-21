@@ -99,6 +99,18 @@ mise -E prod run env:check
 mise -E prod run docker:config
 ```
 
+The bot-only test mode is explicit and reversible:
+
+```bash
+FORD_HUMAN_HANDOFF_ENABLED=false mise run app:run
+```
+
+With this setting, provider failures and assistant escalation requests are
+returned as bot fallback messages. They do not create `handoff_ticket` rows or
+publish `HandoffRequested`; successful fallback turns use the normal outbound
+delivery path. Production keeps handoff enabled unless the deployment
+explicitly overrides it.
+
 Do not commit `.env`, `.env.prod`, or any provider credentials. Use
 `.env.prod.example` only as a variable-name template.
 

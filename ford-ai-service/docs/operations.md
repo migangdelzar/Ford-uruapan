@@ -12,6 +12,7 @@ Use environment variables or a deployment profile; keep secrets outside Git.
 - `FORD_DATABASE_URL`, `FORD_DATABASE_USERNAME`, `FORD_DATABASE_PASSWORD`
 - `FORD_META_APP_SECRET`, `FORD_META_VERIFY_TOKEN`
 - `FORD_META_DELIVERY_ENABLED`, channel delivery endpoints and access tokens
+- `FORD_HUMAN_HANDOFF_ENABLED` (`false` enables bot-only mode)
 - `FORD_AI_CHAT_PROVIDER`, `FORD_AI_EMBEDDING_PROVIDER`
 - `FORD_AI_CLOUD_ENABLED`, `FORD_AI_LOCAL_ENABLED`, provider base URLs and model names
 - `FORD_INGESTION_ENABLED`, `FORD_TENANT_ID`, `FORD_INGESTION_CRON`
@@ -21,6 +22,21 @@ Use environment variables or a deployment profile; keep secrets outside Git.
 See [integration-setup.md](integration-setup.md) and [.env.example](.env.example)
 for the complete local contract. Never commit `.env` or paste provider keys into
 source control, tickets, or chat.
+
+The Spring profile is selected with `SPRING_PROFILES_ACTIVE=dev` or
+`SPRING_PROFILES_ACTIVE=prod`; environment variables override both profile and
+common YAML values. The default profile is `dev`.
+
+Bot-only mode is controlled by:
+
+```dotenv
+FORD_HUMAN_HANDOFF_ENABLED=false
+```
+
+This prevents assistant-created `handoff_ticket` rows and `HandoffRequested`
+events. The workflow persists the deterministic bot fallback and publishes the
+normal outbound delivery request instead. Set it back to `true` to restore
+human escalation behavior.
 
 The default ingestion flag is disabled. Enable it only after official Ford
 endpoints or authorized scraper endpoints and credentials are configured.
@@ -43,6 +59,10 @@ mise run docker:ps
 mise run observability:up
 mise run observability:logs
 ```
+
+`mise run test:unit` is the non-integration verification command for the
+application configuration. The separate `mise run test:integration` task uses
+Testcontainers and is not part of this verification.
 
 Use the host-JVM mode when only PostgreSQL and Redis should run in containers:
 
