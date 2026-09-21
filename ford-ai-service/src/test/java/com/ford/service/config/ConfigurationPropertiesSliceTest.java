@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "ford.ai.cloud-enabled=true",
         "ford.ai.local-enabled=false",
         "ford.ai.cloud-chat-provider=openai",
+        "ford.ai.log-provider-errors=true",
         "ford.conversations.human-handoff.enabled=false",
         "ford.outbox.enabled=false"
 })
@@ -43,6 +44,7 @@ class ConfigurationPropertiesSliceTest {
         assertThat(aiProperties.cloudEnabled()).isTrue();
         assertThat(aiProperties.localEnabled()).isFalse();
         assertThat(aiProperties.cloudChatProvider()).isEqualTo("openai");
+        assertThat(aiProperties.logProviderErrors()).isTrue();
         assertThat(conversationProperties.humanHandoffEnabled()).isFalse();
         assertThat(outboxProperties.enabled()).isFalse();
     }

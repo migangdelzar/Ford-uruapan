@@ -14,6 +14,7 @@ public class AiProperties {
     private String embeddingModelVersion = "configured-embedding-model";
     private boolean cloudEnabled = true;
     private boolean localEnabled = true;
+    private boolean logProviderErrors;
 
     public String chatProvider() {
         return chatProvider;
@@ -85,5 +86,13 @@ public class AiProperties {
 
     public void setLocalEnabled(boolean value) {
         localEnabled = value;
+    }
+
+    public boolean logProviderErrors() {
+        return logProviderErrors;
+    }
+
+    public void setLogProviderErrors(boolean value) {
+        logProviderErrors = value;
     }
 }

@@ -99,6 +99,7 @@ ford:
     embedding-model-version: ${FORD_AI_EMBEDDING_MODEL_VERSION:configured-embedding-model}
     cloud-enabled: ${FORD_AI_CLOUD_ENABLED:false}
     local-enabled: ${FORD_AI_LOCAL_ENABLED:true}
+    log-provider-errors: ${FORD_AI_LOG_PROVIDER_ERRORS:false}
 
 management:
   otlp:

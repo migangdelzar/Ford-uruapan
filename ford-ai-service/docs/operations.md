@@ -15,6 +15,7 @@ Use environment variables or a deployment profile; keep secrets outside Git.
 - `FORD_HUMAN_HANDOFF_ENABLED` (`false` enables bot-only mode)
 - `FORD_AI_CHAT_PROVIDER`, `FORD_AI_EMBEDDING_PROVIDER`
 - `FORD_AI_CLOUD_ENABLED`, `FORD_AI_LOCAL_ENABLED`, provider base URLs and model names
+- `FORD_AI_LOG_PROVIDER_ERRORS` (opt-in bounded provider error details)
 - `FORD_INGESTION_ENABLED`, `FORD_TENANT_ID`, `FORD_INGESTION_CRON`
 - `FORD_CATALOG_ENDPOINT`, `FORD_INVENTORY_ENDPOINT`, `FORD_SCRAPER_ENDPOINT`
 - `FORD_MANUAL_CSV_PATH`, `FORD_INGESTION_MAX_ATTEMPTS`

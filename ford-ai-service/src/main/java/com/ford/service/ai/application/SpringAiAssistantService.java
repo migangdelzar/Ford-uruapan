@@ -19,19 +19,28 @@ public final class SpringAiAssistantService implements AssistantService {
     private final IntentRouter intentRouter;
     private final HumanHandoffPolicy handoffPolicy;
     private final ModelProviderPolicy providerPolicy;
+    private final boolean logProviderErrors;
 
     public SpringAiAssistantService(AssistantOrchestrator orchestrator,
                                     ModelProviderPolicy providerPolicy) {
-        this(orchestrator, new HumanHandoffPolicy(true), providerPolicy);
+        this(orchestrator, new HumanHandoffPolicy(true), providerPolicy, false);
     }
 
     public SpringAiAssistantService(AssistantOrchestrator orchestrator,
                                     HumanHandoffPolicy handoffPolicy,
                                     ModelProviderPolicy providerPolicy) {
+        this(orchestrator, handoffPolicy, providerPolicy, false);
+    }
+
+    public SpringAiAssistantService(AssistantOrchestrator orchestrator,
+                                    HumanHandoffPolicy handoffPolicy,
+                                    ModelProviderPolicy providerPolicy,
+                                    boolean logProviderErrors) {
         this.orchestrator = Objects.requireNonNull(orchestrator);
         this.intentRouter = new IntentRouter();
         this.handoffPolicy = Objects.requireNonNull(handoffPolicy);
         this.providerPolicy = Objects.requireNonNull(providerPolicy);
+        this.logProviderErrors = logProviderErrors;
     }
 
     @Override
@@ -50,8 +59,9 @@ public final class SpringAiAssistantService implements AssistantService {
             return new AssistantTurn(response.content(), intent, response.handoffRequired(),
                     response.sourceDocumentIds(), response.provider(), modelVersion(response.provider()));
         } catch (RuntimeException exception) {
-            log.warn("AI completion failed: providers={} exceptionType={}",
-                    providerSummary(), exception.getClass().getSimpleName());
+            log.warn("AI completion failed: providers={} exceptionType={} {}",
+                    providerSummary(), exception.getClass().getSimpleName(),
+                    AiProviderFailureDiagnostics.describe(exception, logProviderErrors));
             return new AssistantTurn(handoffPolicy.fallbackText(), intent,
                     handoffPolicy.enabled(), List.of(), "fallback", "none");
         }

@@ -15,6 +15,7 @@ import com.ford.service.ai.application.port.out.ChatCompletionPort;
 import com.ford.service.ai.application.port.out.ProviderChatCompletionPort;
 import com.ford.service.ai.application.port.out.ProviderRoutingChatCompletionPort;
 import com.ford.service.ai.application.ModelProviderPolicy;
+import com.ford.service.shared.HumanHandoffPolicy;
 import com.ford.service.catalog.application.VehicleCatalog;
 import com.ford.service.finance.application.FinanceOperations;
 import com.ford.service.finance.application.port.out.FinanceTermsRepository;
@@ -95,7 +96,11 @@ public class SpringAiConfiguration {
 
     @Bean
     AssistantService assistantService(AssistantOrchestrator orchestrator,
-                                      ModelProviderPolicy providerPolicy) {
-        return new SpringAiAssistantService(orchestrator, providerPolicy);
+                                      ModelProviderPolicy providerPolicy,
+                                      ObjectProvider<HumanHandoffPolicy> handoffPolicy,
+                                      AiProperties properties) {
+        return new SpringAiAssistantService(orchestrator,
+                handoffPolicy.getIfAvailable(() -> new HumanHandoffPolicy(true)), providerPolicy,
+                properties.logProviderErrors());
     }
 }

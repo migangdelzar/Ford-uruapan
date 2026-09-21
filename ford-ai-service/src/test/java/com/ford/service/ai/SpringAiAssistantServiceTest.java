@@ -9,6 +9,12 @@ import com.ford.service.shared.HumanHandoffPolicy;
 import com.ford.service.ai.application.ProviderCapabilities;
 import com.ford.service.ai.application.ProviderDescriptor;
 import com.ford.service.ai.application.SpringAiAssistantService;
+import com.openai.core.http.Headers;
+import com.openai.errors.OpenAIServiceException;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.slf4j.LoggerFactory;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -74,5 +80,37 @@ class SpringAiAssistantServiceTest {
         assertThat(turn.requestsHuman()).isFalse();
         assertThat(turn.provider()).isEqualTo("fallback");
         assertThat(turn.modelVersion()).isEqualTo("none");
+    }
+
+    @Test
+    void logsProviderStatusAndRetryMetadataWithoutProviderResponseByDefault() {
+        var orchestrator = mock(AssistantOrchestrator.class);
+        var failure = mock(OpenAIServiceException.class);
+        when(failure.statusCode()).thenReturn(429);
+        when(failure.headers()).thenReturn(Headers.builder()
+                .put("retry-after", "12")
+                .put("x-request-id", "req-123")
+                .build());
+        when(orchestrator.respond(org.mockito.ArgumentMatchers.any())).thenThrow(failure);
+        var logger = (Logger) LoggerFactory.getLogger(SpringAiAssistantService.class);
+        var appender = new ListAppender<ILoggingEvent>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            var service = new SpringAiAssistantService(orchestrator,
+                    new HumanHandoffPolicy(false), new DefaultModelProviderPolicy(List.of()));
+
+            service.respond(new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID()), "Hola");
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .anySatisfy(message -> assertThat(message)
+                            .contains("status=429", "category=rate_limited", "retryAfter=12", "requestId=req-123")
+                            .doesNotContain("responseBody="));
+        }
+        finally {
+            logger.detachAppender(appender);
+        }
     }
 }
