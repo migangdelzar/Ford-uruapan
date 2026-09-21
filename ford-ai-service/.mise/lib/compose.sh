@@ -17,6 +17,15 @@ ford_compose() {
   fi
 }
 
+ford_observability_env() {
+  local task="$MISE_PROJECT_ROOT/.mise/tasks/observability/env"
+  [[ -x "$task" ]] || {
+    echo "Missing observability environment task: $task" >&2
+    return 1
+  }
+  "$task"
+}
+
 ford_compose_config_check() {
   if docker compose version >/dev/null 2>&1; then
     docker compose config --quiet

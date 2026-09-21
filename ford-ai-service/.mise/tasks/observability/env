@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+#MISE description="Create private local Langfuse and OTel secrets"
+set -euo pipefail
+
+if (($# > 0)); then
+  printf 'observability:env does not accept arguments: %s\n' "$*" >&2
+  exit 2
+fi
+
+observability_root="$MISE_PROJECT_ROOT/deployment/observability/langfuse"
+target="$observability_root/.env"
+example="$observability_root/.env.example"
+
+[[ -e "$target" ]] && {
+  printf 'Observability environment already exists: %s\n' "$target"
+  exit 0
+}
+[[ -f "$example" ]] || {
+  printf 'Missing observability environment template: %s\n' "$example" >&2
+  exit 1
+}
+command -v openssl >/dev/null 2>&1 || {
+  printf 'Missing required command: openssl\n' >&2
+  exit 1
+}
+command -v base64 >/dev/null 2>&1 || {
+  printf 'Missing required command: base64\n' >&2
+  exit 1
+}
+
+random_hex() {
+  openssl rand -hex "$1"
+}
+
+postgres_password="$(random_hex 24)"
+clickhouse_password="$(random_hex 24)"
+redis_auth="$(random_hex 24)"
+minio_root_password="$(random_hex 24)"
+salt="$(random_hex 32)"
+encryption_key="$(random_hex 32)"
+nextauth_secret="$(random_hex 32)"
+project_public_key="pk-lf-$(random_hex 16)"
+project_secret_key="sk-lf-$(random_hex 32)"
+langfuse_auth_header="Basic $(printf '%s' "$project_public_key:$project_secret_key" | base64 | tr -d '\r\n')"
+init_user_password="$(random_hex 24)"
+
+umask 077
+temporary_file="$(mktemp "$observability_root/.env.setup.XXXXXX")"
+cleanup() {
+  rm -f "$temporary_file"
+}
+trap cleanup EXIT
+
+awk \
+  -v postgres_password="$postgres_password" \
+  -v clickhouse_password="$clickhouse_password" \
+  -v redis_auth="$redis_auth" \
+  -v minio_root_password="$minio_root_password" \
+  -v salt="$salt" \
+  -v encryption_key="$encryption_key" \
+  -v nextauth_secret="$nextauth_secret" \
+  -v langfuse_auth_header="$langfuse_auth_header" \
+  -v project_public_key="$project_public_key" \
+  -v project_secret_key="$project_secret_key" \
+  -v init_user_password="$init_user_password" '
+  /^POSTGRES_PASSWORD=/ { print "POSTGRES_PASSWORD=" postgres_password; next }
+  /^CLICKHOUSE_PASSWORD=/ { print "CLICKHOUSE_PASSWORD=" clickhouse_password; next }
+  /^REDIS_AUTH=/ { print "REDIS_AUTH=" redis_auth; next }
+  /^MINIO_ROOT_PASSWORD=/ { print "MINIO_ROOT_PASSWORD=" minio_root_password; next }
+  /^SALT=/ { print "SALT=" salt; next }
+  /^ENCRYPTION_KEY=/ { print "ENCRYPTION_KEY=" encryption_key; next }
+  /^NEXTAUTH_SECRET=/ { print "NEXTAUTH_SECRET=" nextauth_secret; next }
+  /^LANGFUSE_AUTH_HEADER=/ { print "LANGFUSE_AUTH_HEADER=" langfuse_auth_header; next }
+  /^LANGFUSE_INIT_PROJECT_PUBLIC_KEY=/ { print "LANGFUSE_INIT_PROJECT_PUBLIC_KEY=" project_public_key; next }
+  /^LANGFUSE_INIT_PROJECT_SECRET_KEY=/ { print "LANGFUSE_INIT_PROJECT_SECRET_KEY=" project_secret_key; next }
+  /^LANGFUSE_INIT_USER_PASSWORD=/ { print "LANGFUSE_INIT_USER_PASSWORD=" init_user_password; next }
+  { print }
+' "$example" > "$temporary_file"
+chmod 600 "$temporary_file"
+if ! ln "$temporary_file" "$target" 2>/dev/null; then
+  printf '%s appeared while setup was running; refusing to overwrite it.\n' "$target" >&2
+  exit 1
+fi
+rm -f "$temporary_file"
+trap - EXIT
+printf 'Created private observability environment file: %s\n' "$target"

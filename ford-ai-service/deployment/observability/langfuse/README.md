@@ -9,19 +9,24 @@ customer-facing service.
 
 ```bash
 cd ford-ai-service
-cp deployment/observability/langfuse/.env.example deployment/observability/langfuse/.env
-openssl rand -hex 32
+mise run observability:env
 mise run observability:up
 mise run observability:ps
 mise run observability:logs
 ```
 
+`observability:up` also runs the environment bootstrap automatically. It creates
+`deployment/observability/langfuse/.env` once, with private random local
+credentials, and never overwrites an existing file. The generated Langfuse
+project credentials are used to build the collector's `LANGFUSE_AUTH_HEADER`.
+Keep this file private; it is ignored by Git.
+
 Open `http://localhost:3300` after the Web container is ready. The application
 can send traces to `http://localhost:4318/v1/traces`.
 
 The `LANGFUSE_AUTH_HEADER` value is the HTTP Basic credential containing the
-Langfuse public key and secret key. Generate it outside the repository and
-keep it only in `.env` or a deployment secret manager.
+generated Langfuse public key and secret key. For production, inject all
+credentials through a secret manager instead of using this local bootstrap.
 
 For direct debugging, run `docker compose` from this directory. The mise tasks
 use the same Compose file and local `.env` automatically.

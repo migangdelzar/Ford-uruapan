@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="Validate the local Langfuse and OTel Compose configuration"
 set -euo pipefail
-cd "$MISE_PROJECT_ROOT/deployment/observability/langfuse"
 source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ford_observability_env
+cd "$MISE_PROJECT_ROOT/deployment/observability/langfuse"
 ford_compose_config_check
