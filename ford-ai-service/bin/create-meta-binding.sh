@@ -29,38 +29,33 @@ while IFS='=' read -r key value || [[ -n "${key:-}${value:-}" ]]; do
   export "$key=$value"
 done < .env
 
-provider_account_id="${1:-${FORD_META_PROVIDER_ACCOUNT_ID:-${FORD_META_WABA_ID:-}}}"
-: "${provider_account_id:?Usage: $0 <whatsapp-business-account-id>}"
+provider_account_id="${1:-${FORD_META_PROVIDER_ACCOUNT_ID:-${FORD_META_PHONE_ID:-}}}"
+: "${provider_account_id:?Usage: $0 <meta-provider-account-id>}"
 : "${FORD_TENANT_ID:?FORD_TENANT_ID is required in .env}"
-: "${FORD_META_WEBHOOK_KEY:?FORD_META_WEBHOOK_KEY is required in .env}"
 : "${FORD_META_APP_SECRET:?FORD_META_APP_SECRET is required in .env}"
 
-webhook_key_hash="$(printf '%s' "$FORD_META_WEBHOOK_KEY" | shasum -a 256 | awk '{print $1}')"
 binding_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
 
 "${compose[@]}" --env-file .env -f docker-compose.yml up -d postgres >/dev/null
 "${compose[@]}" --env-file .env -f docker-compose.yml exec -T postgres \
   psql -U ford -d ford_service -v ON_ERROR_STOP=1 \
   --set=binding_id="$binding_id" \
-  --set=webhook_key_hash="$webhook_key_hash" \
   --set=tenant_id="$FORD_TENANT_ID" \
-  --set=provider_account_id="$provider_account_id" \
-  --set=secret_reference="$FORD_META_APP_SECRET" <<'SQL'
+  --set=provider_account_id="$provider_account_id" <<'SQL'
 insert into channel_binding (
     id, webhook_key_hash, tenant_id, channel, provider_account_id,
     secret_reference, enabled, created_at, updated_at
 )
 values (
-    :'binding_id'::uuid, :'webhook_key_hash', :'tenant_id'::uuid, 'WHATSAPP',
-    :'provider_account_id', :'secret_reference', true, now(), now()
+    :'binding_id'::uuid, null, :'tenant_id'::uuid, 'WHATSAPP',
+    :'provider_account_id', null, true, now(), now()
 )
-on conflict (webhook_key_hash) do update
+on conflict (channel, provider_account_id) do update
 set tenant_id = excluded.tenant_id,
     channel = excluded.channel,
     provider_account_id = excluded.provider_account_id,
-    secret_reference = excluded.secret_reference,
     enabled = true,
     updated_at = now();
 SQL
 
-echo "WhatsApp Meta binding is ready for provider account: $provider_account_id"
+echo "Meta WhatsApp phone-number binding is ready for provider account: $provider_account_id"

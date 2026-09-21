@@ -9,3 +9,5 @@ databaseChangeLog:
       file: db/changelog/changes/004-outbox-recovery.yaml
   - include:
       file: db/changelog/changes/005-canonical-upsert.yaml
+  - include:
+      file: db/changelog/changes/006-meta-webhook-routing.yaml

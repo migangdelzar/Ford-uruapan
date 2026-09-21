@@ -16,17 +16,17 @@ public class ChannelBindingService {
         this.repository = Objects.requireNonNull(repository);
     }
 
-    public ChannelBinding resolve(String webhookKey, Channel requestedChannel) {
-        if (webhookKey == null || webhookKey.isBlank() || requestedChannel == null) {
+    public ChannelBinding resolve(Channel requestedChannel, String providerAccountId) {
+        if (providerAccountId == null || providerAccountId.isBlank() || requestedChannel == null) {
             throw new SecurityException("Invalid channel binding");
         }
-        var binding = repository.findEnabledByWebhookKey(webhookKey)
+        var binding = repository.findEnabledByProviderAccount(requestedChannel, providerAccountId)
                 .filter(ChannelBinding::enabled)
                 .filter(candidate -> candidate.channel() == requestedChannel)
                 .orElseThrow(() -> new SecurityException("Invalid channel binding"));
         if (binding.tenantId() == null || binding.providerAccountId() == null
                 || binding.providerAccountId().isBlank()
-                || binding.secretReference() == null || binding.secretReference().isBlank()) {
+                || !binding.providerAccountId().equals(providerAccountId)) {
             throw new SecurityException("Invalid channel binding");
         }
         return binding;

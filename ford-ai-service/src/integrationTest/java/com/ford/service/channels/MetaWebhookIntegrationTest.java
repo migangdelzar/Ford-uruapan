@@ -52,7 +52,7 @@ class MetaWebhookIntegrationTest {
                         .queryParam("hub.challenge", "challenge-123"))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/webhooks/meta/whatsapp/opaque-key")
+        mockMvc.perform(post("/webhooks/meta/whatsapp")
                         .header("X-Hub-Signature-256", "sha256=valid")
                         .contentType(APPLICATION_JSON)
                         .content("{\"entry\":[]}"))
@@ -64,7 +64,7 @@ class MetaWebhookIntegrationTest {
         doThrow(new SecurityException("invalid")).when(inboundWebhookService)
                 .accept(any(), any(), any(), any(), any());
 
-        mockMvc.perform(post("/webhooks/meta/whatsapp/opaque-key")
+        mockMvc.perform(post("/webhooks/meta/whatsapp")
                         .header("X-Hub-Signature-256", "sha256=invalid")
                         .contentType(APPLICATION_JSON)
                         .content("{\"entry\":[]}"))

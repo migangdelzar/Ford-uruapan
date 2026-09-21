@@ -22,19 +22,17 @@ public class InboundWebhookService {
         this.messageService = Objects.requireNonNull(messageService);
     }
 
-    public void accept(Channel channel, String webhookKey, String signature, String body,
-                       ChannelAdapter adapter) {
-        var binding = bindingService.resolve(webhookKey, channel);
+    public void accept(Channel channel, String signature, String body,
+                       ChannelAdapter adapter, String appSecret) {
         var request = new WebhookRequest(body, signature == null
                 ? Map.of()
                 : Map.of("X-Hub-Signature-256", signature));
-        adapter.validateWebhook(request, binding.secretReference());
+        adapter.validateWebhook(request, appSecret);
+        var providerAccountId = adapter.providerAccountId(body);
+        var binding = bindingService.resolve(channel, providerAccountId);
 
         var webhook = RawWebhook.fromBinding(binding, body,
                 "meta:" + channel.name().toLowerCase() + ":" + UUID.randomUUID());
-        if (!binding.providerAccountId().equals(adapter.providerAccountId(webhook))) {
-            throw new SecurityException("Provider account does not match binding");
-        }
         messageService.accept(webhook, adapter);
     }
 }

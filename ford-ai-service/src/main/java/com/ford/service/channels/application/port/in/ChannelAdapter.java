@@ -18,7 +18,7 @@ public interface ChannelAdapter {
         validateWebhook(request);
     }
 
-    default String providerAccountId(RawWebhook payload) {
+    default String providerAccountId(String body) {
         throw new UnsupportedOperationException("Provider account validation is not implemented");
     }
 

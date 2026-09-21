@@ -30,7 +30,6 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,10 +44,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(MetaToOutboxVerticalFlowTest.TestBeans.class)
 class MetaToOutboxVerticalFlowTest {
 
-    private static final String WEBHOOK_KEY = "vertical-whatsapp-key";
-    private static final String SECRET = "vertical-binding-secret";
+    private static final String APP_SECRET = "vertical-meta-app-secret";
+    private static final String PROVIDER_ACCOUNT_ID = "vertical-phone-number-1";
     private static final String BODY = """
-            {"entry":[{"id":"whatsapp-account-1","changes":[{"value":{"messages":[{"id":"wamid.vertical-1","from":"5214521234567","text":{"body":"¿Cuál es el precio de la Ranger 2026?"}}]}}]}]}
+            {"entry":[{"id":"whatsapp-account-1","changes":[{"value":{"metadata":{"phone_number_id":"vertical-phone-number-1"},"messages":[{"id":"wamid.vertical-1","from":"5214521234567","text":{"body":"¿Cuál es el precio de la Ranger 2026?"}}]}}]}]}
             """;
 
     @Container
@@ -74,6 +73,7 @@ class MetaToOutboxVerticalFlowTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+        registry.add("ford.channels.meta.app-secret", () -> APP_SECRET);
     }
 
     @AfterEach
@@ -126,8 +126,8 @@ class MetaToOutboxVerticalFlowTest {
     }
 
     private org.springframework.test.web.servlet.ResultActions postWebhook() throws Exception {
-        return mockMvc.perform(post("/webhooks/meta/whatsapp/" + WEBHOOK_KEY)
-                .header("X-Hub-Signature-256", signature(BODY, SECRET))
+        return mockMvc.perform(post("/webhooks/meta/whatsapp")
+                .header("X-Hub-Signature-256", signature(BODY, APP_SECRET))
                 .contentType(APPLICATION_JSON)
                 .content(BODY));
     }
@@ -137,13 +137,12 @@ class MetaToOutboxVerticalFlowTest {
                 insert into channel_binding
                     (id, webhook_key_hash, tenant_id, channel, provider_account_id,
                      secret_reference, enabled, created_at, updated_at)
-                values (:id, :keyHash, :tenantId, 'WHATSAPP', 'whatsapp-account-1',
-                        :secret, true, current_timestamp, current_timestamp)
+                values (:id, null, :tenantId, 'WHATSAPP', :providerAccountId,
+                        'meta-app-secret-reference', true, current_timestamp, current_timestamp)
                 """)
                 .param("id", UUID.randomUUID())
-                .param("keyHash", sha256(WEBHOOK_KEY))
                 .param("tenantId", tenantId)
-                .param("secret", SECRET)
+                .param("providerAccountId", PROVIDER_ACCOUNT_ID)
                 .update();
     }
 
@@ -172,15 +171,6 @@ class MetaToOutboxVerticalFlowTest {
         var mac = javax.crypto.Mac.getInstance("HmacSHA256");
         mac.init(new javax.crypto.spec.SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
         return "sha256=" + java.util.HexFormat.of().formatHex(mac.doFinal(body.getBytes(StandardCharsets.UTF_8)));
-    }
-
-    private static String sha256(String value) {
-        try {
-            return java.util.HexFormat.of().formatHex(
-                    MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception exception) {
-            throw new IllegalStateException(exception);
-        }
     }
 
     @TestConfiguration(proxyBeanMethods = false)

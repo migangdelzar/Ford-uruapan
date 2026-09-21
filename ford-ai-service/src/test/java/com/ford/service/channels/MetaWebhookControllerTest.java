@@ -44,12 +44,21 @@ class MetaWebhookControllerTest {
     }
 
     @Test
-    void verifiesUsingTheSameWebhookKeyPathUsedForInboundEvents() throws Exception {
-        mockMvc.perform(get("/webhooks/meta/whatsapp/opaque-webhook-key")
+    void verifiesUsingTheSameChannelPathUsedForInboundEvents() throws Exception {
+        mockMvc.perform(get("/webhooks/meta/whatsapp")
                         .param("hub.mode", "subscribe")
                         .param("hub.verify_token", "verification-token")
                         .param("hub.challenge", "challenge-123"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("challenge-123"));
+    }
+
+    @Test
+    void rejectsTheLegacyWebhookKeyPath() throws Exception {
+        mockMvc.perform(get("/webhooks/meta/whatsapp/opaque-webhook-key")
+                        .param("hub.mode", "subscribe")
+                        .param("hub.verify_token", "verification-token")
+                        .param("hub.challenge", "challenge-123"))
+                .andExpect(status().isNotFound());
     }
 }

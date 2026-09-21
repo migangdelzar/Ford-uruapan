@@ -33,10 +33,9 @@ public class MetaWebhookController {
         this.properties = properties;
     }
 
-    @GetMapping({"/{channel}", "/{channel}/{webhookKey}"})
+    @GetMapping("/{channel}")
     public ResponseEntity<String> verify(
             @PathVariable String channel,
-            @PathVariable(required = false) String webhookKey,
             @RequestParam(name = "hub.mode", required = false) String mode,
             @RequestParam(name = "hub.verify_token", required = false) String verifyToken,
             @RequestParam(name = "hub.challenge", required = false) String challenge) {
@@ -49,10 +48,9 @@ public class MetaWebhookController {
         return ResponseEntity.badRequest().build();
     }
 
-    @PostMapping("/{channel}/{webhookKey}")
+    @PostMapping("/{channel}")
     public ResponseEntity<Void> receive(
             @PathVariable String channel,
-            @PathVariable String webhookKey,
             @RequestHeader(name = "X-Hub-Signature-256", required = false) String signature,
             @RequestHeader(name = "X-Tenant-Id", required = false) String tenantHeader,
             @RequestBody String body) {
@@ -64,8 +62,8 @@ public class MetaWebhookController {
             if (adapter == null) {
                 return ResponseEntity.notFound().build();
             }
-            inboundWebhookService.accept(Channel.valueOf(channel.toUpperCase(Locale.ROOT)), webhookKey,
-                    signature, body, adapter);
+            inboundWebhookService.accept(Channel.valueOf(channel.toUpperCase(Locale.ROOT)),
+                    signature, body, adapter, properties.getAppSecret());
             return ResponseEntity.accepted().build();
         } catch (SecurityException exception) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();

@@ -75,8 +75,8 @@ abstract class AbstractMetaChannelAdapter implements ChannelAdapter {
     }
 
     @Override
-    public String providerAccountId(RawWebhook payload) {
-        var root = readTree(payload.body());
+    public String providerAccountId(String body) {
+        var root = readTree(body);
         var accountId = root.at("/entry/0/id").asText(null);
         if (accountId == null || accountId.isBlank()) {
             throw new IllegalArgumentException("Meta provider account is missing");

@@ -6,8 +6,6 @@ import com.ford.service.channels.domain.Channel;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -21,13 +19,14 @@ public class JdbcChannelBindingRepository implements ChannelBindingRepository {
     }
 
     @Override
-    public Optional<ChannelBinding> findEnabledByWebhookKey(String webhookKey) {
+    public Optional<ChannelBinding> findEnabledByProviderAccount(Channel channel, String providerAccountId) {
         return jdbc.sql("""
                 select id, tenant_id, channel, provider_account_id, secret_reference, enabled
                 from channel_binding
-                where webhook_key_hash = :webhookKeyHash and enabled = true
+                where channel = :channel and provider_account_id = :providerAccountId and enabled = true
                 """)
-                .param("webhookKeyHash", sha256(webhookKey))
+                .param("channel", channel.name())
+                .param("providerAccountId", providerAccountId)
                 .query((rs, rowNum) -> new ChannelBinding(
                         rs.getObject("id", UUID.class),
                         rs.getObject("tenant_id", UUID.class),
@@ -38,12 +37,4 @@ public class JdbcChannelBindingRepository implements ChannelBindingRepository {
                 .optional();
     }
 
-    private static String sha256(String value) {
-        try {
-            return java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception exception) {
-            throw new IllegalStateException("Unable to hash channel binding key", exception);
-        }
-    }
 }

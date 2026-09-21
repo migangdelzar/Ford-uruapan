@@ -22,39 +22,42 @@ class ChannelBindingServiceTest {
             Channel.WHATSAPP, "meta-phone-1", "meta-secret-1", true);
 
     @Test
-    void resolvesTenantOnlyFromAnEnabledBindingForTheRequestedChannel() {
+    void resolvesTenantOnlyFromAnEnabledProviderAccountForTheRequestedChannel() {
         var repository = mock(ChannelBindingRepository.class);
-        when(repository.findEnabledByWebhookKey("opaque-key")).thenReturn(Optional.of(ENABLED_BINDING));
+        when(repository.findEnabledByProviderAccount(Channel.WHATSAPP, "meta-phone-1"))
+                .thenReturn(Optional.of(ENABLED_BINDING));
 
-        var binding = new ChannelBindingService(repository).resolve("opaque-key", Channel.WHATSAPP);
+        var binding = new ChannelBindingService(repository).resolve(Channel.WHATSAPP, "meta-phone-1");
 
         assertThat(binding.tenantId()).isEqualTo(TENANT_ID);
         assertThat(binding).isEqualTo(ENABLED_BINDING);
     }
 
     @Test
-    void rejectsUnknownOrDisabledBindingKeys() {
+    void rejectsUnknownOrDisabledProviderAccounts() {
         var repository = mock(ChannelBindingRepository.class);
-        when(repository.findEnabledByWebhookKey("unknown-key")).thenReturn(Optional.empty());
-        when(repository.findEnabledByWebhookKey("disabled-key"))
+        when(repository.findEnabledByProviderAccount(Channel.WHATSAPP, "unknown-phone"))
+                .thenReturn(Optional.empty());
+        when(repository.findEnabledByProviderAccount(Channel.WHATSAPP, "disabled-phone"))
                 .thenReturn(Optional.of(new ChannelBinding(
                         ENABLED_BINDING.id(), TENANT_ID, Channel.WHATSAPP,
                         "meta-phone-1", "meta-secret-1", false)));
         var service = new ChannelBindingService(repository);
 
-        assertThatThrownBy(() -> service.resolve("unknown-key", Channel.WHATSAPP))
+        assertThatThrownBy(() -> service.resolve(Channel.WHATSAPP, "unknown-phone"))
                 .isInstanceOf(SecurityException.class);
-        assertThatThrownBy(() -> service.resolve("disabled-key", Channel.WHATSAPP))
+        assertThatThrownBy(() -> service.resolve(Channel.WHATSAPP, "disabled-phone"))
                 .isInstanceOf(SecurityException.class);
     }
 
     @Test
     void rejectsAValidBindingWhenTheRouteChannelDoesNotMatch() {
         var repository = mock(ChannelBindingRepository.class);
-        when(repository.findEnabledByWebhookKey("opaque-key")).thenReturn(Optional.of(ENABLED_BINDING));
+        when(repository.findEnabledByProviderAccount(Channel.WHATSAPP, "meta-phone-1"))
+                .thenReturn(Optional.of(ENABLED_BINDING));
 
         assertThatThrownBy(() -> new ChannelBindingService(repository)
-                .resolve("opaque-key", Channel.MESSENGER))
+                .resolve(Channel.MESSENGER, "meta-phone-1"))
                 .isInstanceOf(SecurityException.class);
     }
 }

@@ -22,25 +22,32 @@ Meta requires:
 
 - Meta app secret and webhook verification token;
 - a public HTTPS callback URL;
-- the channel provider account ID;
-- an opaque webhook key and its HMAC secret for each enabled binding;
-- an outbound Graph endpoint and access token for each enabled channel.
+- one callback URL per channel (`/webhooks/meta/whatsapp`,
+  `/webhooks/meta/messenger`, and `/webhooks/meta/instagram`);
+- a database binding for every tenant/provider account pair;
+- an outbound Graph endpoint and access token for each enabled channel. The
+  current outbound MVP uses one endpoint/token per channel; use a token with
+  access to all bound accounts until the per-binding credential resolver is
+  introduced.
 
-Create channel bindings in PostgreSQL after Liquibase has run. The
-`webhook_key_hash` is the SHA-256 hex digest of the opaque URL key. The current
-MVP stores the binding HMAC value in `secret_reference`; use a secret manager
-or a dedicated secret-resolution adapter before production.
+Create channel bindings in PostgreSQL after Liquibase has run. The inbound
+tenant route is `(channel, provider_account_id)`, and the pair is unique. For
+WhatsApp, `provider_account_id` is the phone number ID from
+`entry[0].changes[0].value.metadata.phone_number_id`; it is not the WABA ID.
+The Meta app secret is deployment-level configuration and is used to verify
+the raw request before the binding is queried.
 
-For a local WhatsApp binding, add `FORD_META_WABA_ID`,
-`FORD_META_WEBHOOK_KEY`, and the Meta App Secret to `.env`, then run:
+For a local WhatsApp binding, add `FORD_TENANT_ID`, `FORD_META_PHONE_ID`, and
+the Meta app secret to `.env`, then run:
 
 ```bash
 ./bin/create-meta-binding.sh
 ```
 
-The script also accepts `<WHATSAPP_BUSINESS_ACCOUNT_ID>` as an argument. The
-provider account ID must match `entry[0].id` in incoming WhatsApp webhook
-payloads.
+The script also accepts `<META_PROVIDER_ACCOUNT_ID>` as an argument. Multiple
+phone numbers and tenants use the same callback URL; create one binding per
+phone number ID. Messenger uses the Page ID and Instagram uses the Instagram
+account ID.
 
 Ford ingestion requires a tenant UUID and at least one official Ford endpoint,
 authorized scraper endpoint, or manual CSV path. Leave ingestion disabled until

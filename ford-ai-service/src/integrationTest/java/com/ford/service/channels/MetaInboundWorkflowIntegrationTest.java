@@ -22,7 +22,6 @@ import liquibase.integration.spring.SpringLiquibase;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -50,10 +49,10 @@ class MetaInboundWorkflowIntegrationTest {
         liquibase.afterPropertiesSet();
     }
 
-    private static final String WEBHOOK_KEY = "opaque-whatsapp-key";
-    private static final String SECRET = "binding-secret";
+    private static final String APP_SECRET = "meta-app-secret";
+    private static final String PROVIDER_ACCOUNT_ID = "phone-number-1";
     private static final String BODY = """
-            {"entry":[{"id":"whatsapp-account-1","changes":[{"value":{"messages":[{"id":"wamid.task-2","from":"5214521234567","text":{"body":"Hola"}}]}}]}]}
+            {"entry":[{"id":"whatsapp-account-1","changes":[{"value":{"metadata":{"phone_number_id":"phone-number-1"},"messages":[{"id":"wamid.task-2","from":"5214521234567","text":{"body":"Hola"}}]}}]}]}
             """;
 
     @Autowired
@@ -67,6 +66,7 @@ class MetaInboundWorkflowIntegrationTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+        registry.add("ford.channels.meta.app-secret", () -> APP_SECRET);
     }
 
     @AfterEach
@@ -84,7 +84,7 @@ class MetaInboundWorkflowIntegrationTest {
         insertBinding(tenantId);
         var publicationsBefore = publicationCount();
 
-        postWebhook(WEBHOOK_KEY, BODY, SECRET)
+        postWebhook(BODY, APP_SECRET)
                 .andExpect(status().isAccepted());
 
         assertThat(jdbc.sql("select count(*) from channel_delivery")
@@ -104,9 +104,9 @@ class MetaInboundWorkflowIntegrationTest {
     void rejectsForgedTenantHeaderAndDoesNotPersist() throws Exception {
         insertBinding(UUID.randomUUID());
 
-        mockMvc.perform(post("/webhooks/meta/whatsapp/" + WEBHOOK_KEY)
-                        .header("X-Tenant-Id", UUID.randomUUID())
-                        .header("X-Hub-Signature-256", signature(BODY, SECRET))
+        mockMvc.perform(post("/webhooks/meta/whatsapp")
+                .header("X-Tenant-Id", UUID.randomUUID())
+                .header("X-Hub-Signature-256", signature(BODY, APP_SECRET))
                         .contentType(APPLICATION_JSON)
                         .content(BODY))
                 .andExpect(status().isBadRequest());
@@ -119,15 +119,15 @@ class MetaInboundWorkflowIntegrationTest {
     void rejectsInvalidSignatureAndProviderAccountBeforePersistence() throws Exception {
         insertBinding(UUID.randomUUID());
 
-        mockMvc.perform(post("/webhooks/meta/whatsapp/" + WEBHOOK_KEY)
+        mockMvc.perform(post("/webhooks/meta/whatsapp")
                         .header("X-Hub-Signature-256", signature(BODY, "wrong-secret"))
                         .contentType(APPLICATION_JSON)
                         .content(BODY))
                 .andExpect(status().isForbidden());
 
-        var wrongAccountBody = BODY.replace("whatsapp-account-1", "another-account");
-        mockMvc.perform(post("/webhooks/meta/whatsapp/" + WEBHOOK_KEY)
-                        .header("X-Hub-Signature-256", signature(wrongAccountBody, SECRET))
+        var wrongAccountBody = BODY.replace(PROVIDER_ACCOUNT_ID, "another-account");
+        mockMvc.perform(post("/webhooks/meta/whatsapp")
+                        .header("X-Hub-Signature-256", signature(wrongAccountBody, APP_SECRET))
                         .contentType(APPLICATION_JSON)
                         .content(wrongAccountBody))
                 .andExpect(status().isForbidden());
@@ -141,9 +141,9 @@ class MetaInboundWorkflowIntegrationTest {
         insertBinding(UUID.randomUUID());
         var publicationsBefore = publicationCount();
 
-        postWebhook(WEBHOOK_KEY, BODY, SECRET).andExpect(status().isAccepted());
+        postWebhook(BODY, APP_SECRET).andExpect(status().isAccepted());
         awaitPublication();
-        postWebhook(WEBHOOK_KEY, BODY, SECRET).andExpect(status().isAccepted());
+        postWebhook(BODY, APP_SECRET).andExpect(status().isAccepted());
 
         assertThat(jdbc.sql("select count(*) from channel_delivery")
                 .query(Integer.class).single()).isEqualTo(1);
@@ -154,8 +154,8 @@ class MetaInboundWorkflowIntegrationTest {
     }
 
     private org.springframework.test.web.servlet.ResultActions postWebhook(
-            String webhookKey, String body, String secret) throws Exception {
-        return mockMvc.perform(post("/webhooks/meta/whatsapp/" + webhookKey)
+            String body, String secret) throws Exception {
+        return mockMvc.perform(post("/webhooks/meta/whatsapp")
                 .header("X-Hub-Signature-256", signature(body, secret))
                 .contentType(APPLICATION_JSON)
                 .content(body));
@@ -167,13 +167,12 @@ class MetaInboundWorkflowIntegrationTest {
                 insert into channel_binding
                     (id, webhook_key_hash, tenant_id, channel, provider_account_id,
                      secret_reference, enabled, created_at, updated_at)
-                values (:id, :keyHash, :tenantId, 'WHATSAPP', 'whatsapp-account-1',
-                        :secret, true, current_timestamp, current_timestamp)
+                values (:id, null, :tenantId, 'WHATSAPP', :providerAccountId,
+                        'meta-app-secret-reference', true, current_timestamp, current_timestamp)
                 """)
                 .param("id", bindingId)
-                .param("keyHash", sha256(WEBHOOK_KEY))
                 .param("tenantId", tenantId)
-                .param("secret", SECRET)
+                .param("providerAccountId", PROVIDER_ACCOUNT_ID)
                 .update();
     }
 
@@ -194,15 +193,6 @@ class MetaInboundWorkflowIntegrationTest {
         mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
         return "sha256=" + java.util.HexFormat.of().formatHex(
                 mac.doFinal(body.getBytes(StandardCharsets.UTF_8)));
-    }
-
-    private static String sha256(String value) {
-        try {
-            return java.util.HexFormat.of().formatHex(
-                    MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception exception) {
-            throw new IllegalStateException(exception);
-        }
     }
 
     @org.springframework.boot.test.context.TestConfiguration(proxyBeanMethods = false)

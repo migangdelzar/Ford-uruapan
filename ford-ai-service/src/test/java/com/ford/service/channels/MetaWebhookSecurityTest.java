@@ -34,6 +34,16 @@ class MetaWebhookSecurityTest {
     }
 
     @Test
+    void routesWhatsAppByPhoneNumberIdInsteadOfBusinessAccountId() {
+        var body = """
+                {"entry":[{"id":"waba-1","changes":[{"value":{"metadata":{"phone_number_id":"phone-42"}}}]}]}
+                """;
+
+        assertThat(new WhatsAppChannelAdapter(new ObjectMapper()).providerAccountId(body))
+                .isEqualTo("phone-42");
+    }
+
+    @Test
     void acknowledgesDuplicateProviderMessageOnlyOnce() {
         var body = """
                 {"entry":[{"changes":[{"value":{"messages":[{"id":"wamid.duplicate","from":"5214521234567","text":{"body":"Hola"}}]}}]}]}

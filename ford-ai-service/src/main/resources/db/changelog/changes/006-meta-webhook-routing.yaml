@@ -1,0 +1,15 @@
+databaseChangeLog:
+  - changeSet:
+      id: 006-meta-webhook-routing
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              alter table channel_binding alter column webhook_key_hash drop not null;
+              alter table channel_binding alter column secret_reference drop not null;
+              create unique index if not exists uq_channel_binding_provider_account
+                on channel_binding(channel, provider_account_id);
+      rollback:
+        - sql:
+            sql: |
+              drop index if exists uq_channel_binding_provider_account;
