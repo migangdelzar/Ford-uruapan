@@ -1,6 +1,6 @@
 package com.ford.service.conversations;
 
-import com.ford.service.conversations.application.HumanHandoffPolicy;
+import com.ford.service.shared.HumanHandoffPolicy;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;

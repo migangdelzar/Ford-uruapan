@@ -3,7 +3,7 @@ package com.ford.service.conversations;
 import com.ford.service.channels.api.InboundMessageAccepted;
 import com.ford.service.channels.domain.Channel;
 import com.ford.service.conversations.application.ConversationWorkflow;
-import com.ford.service.conversations.application.HumanHandoffPolicy;
+import com.ford.service.shared.HumanHandoffPolicy;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
 import com.ford.service.conversations.api.AssistantReply;

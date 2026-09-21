@@ -5,7 +5,7 @@ import com.ford.service.ai.application.AiExecutionContext;
 import com.ford.service.ai.application.AssistantOrchestrator;
 import com.ford.service.ai.application.DefaultModelProviderPolicy;
 import com.ford.service.ai.application.Intent;
-import com.ford.service.conversations.application.HumanHandoffPolicy;
+import com.ford.service.shared.HumanHandoffPolicy;
 import com.ford.service.ai.application.ProviderCapabilities;
 import com.ford.service.ai.application.ProviderDescriptor;
 import com.ford.service.ai.application.SpringAiAssistantService;

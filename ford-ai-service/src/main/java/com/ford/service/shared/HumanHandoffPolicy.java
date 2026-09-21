@@ -1,4 +1,4 @@
-package com.ford.service.conversations.application;
+package com.ford.service.shared;
 
 public final class HumanHandoffPolicy {
 

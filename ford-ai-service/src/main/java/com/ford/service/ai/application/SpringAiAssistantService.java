@@ -3,7 +3,7 @@ package com.ford.service.ai.application;
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantResponse;
 import com.ford.service.ai.api.AssistantTurn;
-import com.ford.service.conversations.application.HumanHandoffPolicy;
+import com.ford.service.shared.HumanHandoffPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

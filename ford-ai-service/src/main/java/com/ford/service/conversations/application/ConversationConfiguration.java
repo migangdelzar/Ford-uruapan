@@ -3,6 +3,7 @@ package com.ford.service.conversations.application;
 import com.ford.service.ai.application.AssistantService;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
+import com.ford.service.shared.HumanHandoffPolicy;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
