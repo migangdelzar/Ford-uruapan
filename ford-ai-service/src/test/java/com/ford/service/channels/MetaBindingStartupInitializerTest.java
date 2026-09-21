@@ -23,7 +23,7 @@ class MetaBindingStartupInitializerTest {
         var jdbc = mock(JdbcClient.class);
         var properties = new MetaWebhookProperties();
 
-        new MetaBindingStartupInitializer(jdbc, properties).initialize();
+        new MetaBindingStartupInitializer(jdbc, properties).run(null);
 
         verifyNoInteractions(jdbc);
     }
@@ -41,7 +41,7 @@ class MetaBindingStartupInitializerTest {
         properties.getAutoBinding().setTenantId(TENANT_ID);
         properties.getAutoBinding().setProviderAccountId("1254270961113240");
 
-        new MetaBindingStartupInitializer(jdbc, properties).initialize();
+        new MetaBindingStartupInitializer(jdbc, properties).run(null);
 
         var sql = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(jdbc).sql(sql.capture());
@@ -61,7 +61,7 @@ class MetaBindingStartupInitializerTest {
         properties.getAutoBinding().setEnabled(true);
         properties.getAutoBinding().setTenantId(TENANT_ID);
 
-        new MetaBindingStartupInitializer(jdbc, properties).initialize();
+        new MetaBindingStartupInitializer(jdbc, properties).run(null);
 
         verifyNoInteractions(jdbc);
     }

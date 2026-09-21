@@ -2,13 +2,13 @@ package com.ford.service.channels.adapter.in.meta;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 import java.util.UUID;
 
-public class MetaBindingStartupInitializer {
+public class MetaBindingStartupInitializer implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(MetaBindingStartupInitializer.class);
 
@@ -20,7 +20,11 @@ public class MetaBindingStartupInitializer {
         this.properties = properties;
     }
 
-    @EventListener(ApplicationReadyEvent.class)
+    @Override
+    public void run(ApplicationArguments args) {
+        initialize();
+    }
+
     public void initialize() {
         var binding = properties.getAutoBinding();
         if (!binding.isEnabled()) {
