@@ -1,13 +1,9 @@
 package com.ford.service.outbox;
 
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import java.time.Instant;
 
-@Component
-@ConditionalOnProperty(name = "ford.outbox.enabled", havingValue = "true")
 public class OutboxRecoveryJob {
     private final OutboxStore store;
 

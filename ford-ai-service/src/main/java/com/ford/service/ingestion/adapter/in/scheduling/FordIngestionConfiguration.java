@@ -77,6 +77,11 @@ public class FordIngestionConfiguration {
                 normalization, properties.maxAttempts(), observations, canonicalDataWriter, sourcePrecedencePolicy);
     }
 
+    @Bean
+    FordSyncJob fordSyncJob(SyncCoordinator coordinator, FordSyncProperties properties) {
+        return new FordSyncJob(coordinator, properties);
+    }
+
     private static SourceSnapshot emptySnapshot() {
         return new SourceSnapshot(UUID.randomUUID(), List.of());
     }
