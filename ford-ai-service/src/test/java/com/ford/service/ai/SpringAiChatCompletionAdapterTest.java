@@ -52,6 +52,36 @@ class SpringAiChatCompletionAdapterTest {
                 "locale", "es-MX"));
     }
 
+    @Test
+    void includesDurableMemoryBeforeTheCurrentUserMessage() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("Respuesta con memoria.");
+
+        var memory = "Resumen: Busca una Ranger\n"
+                + "Historial reciente:\n- usuario: Hola\n"
+                + "Hechos relevantes:\n- color: azul";
+
+        new SpringAiChatCompletionAdapter(client, "ollama")
+                .complete(new AssistantRequest(tenantId, conversationId, "¿Qué versión?", "BOT_ACTIVE", memory, false),
+                        null);
+
+        var system = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(requestSpec).system(system.capture());
+        assertThat(system.getValue().indexOf("Busca una Ranger"))
+                .isLessThan(system.getValue().indexOf("Hola"));
+        assertThat(system.getValue().indexOf("Hola"))
+                .isLessThan(system.getValue().indexOf("azul"));
+    }
+
     private static ToolCallback callback(String name) {
         return new ToolCallback() {
             @Override

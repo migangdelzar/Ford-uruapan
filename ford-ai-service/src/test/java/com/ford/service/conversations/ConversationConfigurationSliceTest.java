@@ -3,6 +3,7 @@ package com.ford.service.conversations;
 import com.ford.service.conversations.application.ConversationAssistantAdapter;
 import com.ford.service.conversations.application.ConversationConfiguration;
 import com.ford.service.conversations.application.ConversationWorkflow;
+import com.ford.service.conversations.application.ConversationMemoryPort;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,9 @@ class ConversationConfigurationSliceTest {
 
     @MockitoBean
     AssistantService assistantService;
+
+    @MockitoBean
+    ConversationMemoryPort conversationMemoryPort;
 
     @Test
     void registersTheAssistantAndWorkflowWithConfiguredDependencies() {

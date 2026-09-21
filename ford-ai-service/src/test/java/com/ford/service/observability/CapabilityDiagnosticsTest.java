@@ -18,6 +18,8 @@ class CapabilityDiagnosticsTest {
         assertThat(summary).contains("ai.local=disabled");
         assertThat(summary).contains("meta.outbound=disabled");
         assertThat(summary).contains("outbox=disabled");
+        assertThat(summary).contains("memory=enabled");
+        assertThat(summary).contains("memory.semantic=disabled");
         assertThat(summary).contains("observability.traces=disabled");
         assertThat(summary).doesNotContain("private-model", "token=secret");
     }

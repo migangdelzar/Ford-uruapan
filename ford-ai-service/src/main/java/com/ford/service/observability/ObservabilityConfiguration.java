@@ -16,9 +16,13 @@ public class ObservabilityConfiguration {
             @Value("${ford.channels.meta.delivery.enabled:false}") boolean metaOutboundEnabled,
             @Value("${ford.outbox.enabled:false}") boolean outboxEnabled,
             @Value("${management.tracing.export.enabled:false}") boolean tracesEnabled,
-            @Value("${management.otlp.metrics.export.enabled:false}") boolean metricsEnabled) {
+            @Value("${management.otlp.metrics.export.enabled:false}") boolean metricsEnabled,
+            @Value("${ford.memory.enabled:true}") boolean memoryEnabled,
+            @Value("${ford.memory.semantic-enabled:false}") boolean semanticMemoryEnabled,
+            @Value("${ford.memory.recent-message-limit:20}") int memoryRecentMessageLimit) {
         return new CapabilityDiagnostics(aiCloudEnabled, aiLocalEnabled, aiProvider,
                 humanHandoffEnabled, metaOutboundEnabled, outboxEnabled,
-                tracesEnabled, metricsEnabled);
+                tracesEnabled, metricsEnabled, memoryEnabled, semanticMemoryEnabled,
+                memoryRecentMessageLimit);
     }
 }

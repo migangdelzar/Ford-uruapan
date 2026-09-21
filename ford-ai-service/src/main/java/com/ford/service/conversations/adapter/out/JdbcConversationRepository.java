@@ -32,6 +32,7 @@ public class JdbcConversationRepository implements ConversationRepository {
     public Optional<ConversationSnapshot> find(UUID conversationId) {
         return jdbc.sql("""
                 select c.id, c.tenant_id, c.channel, c.provider_conversation_id,
+                       c.provider_account_id,
                        c.state, c.version, m.content as inbound_content,
                        m.provider_message_id as inbound_provider_message_id
                 from conversation c
@@ -49,6 +50,7 @@ public class JdbcConversationRepository implements ConversationRepository {
                         rs.getObject("tenant_id", UUID.class),
                         rs.getObject("id", UUID.class),
                         Channel.valueOf(rs.getString("channel")),
+                        rs.getString("provider_account_id"),
                         rs.getString("provider_conversation_id"),
                         ConversationState.valueOf(rs.getString("state")),
                         rs.getLong("version"),

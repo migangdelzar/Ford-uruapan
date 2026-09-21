@@ -51,7 +51,7 @@ databaseChangeLog:
                   channel varchar(30) not null,
                   kind varchar(60) not null,
                   content text not null,
-                  embedding vector(1536) not null,
+                  embedding vector not null,
                   source_message_id uuid,
                   active boolean not null default true,
                   created_at timestamptz not null,
@@ -62,6 +62,8 @@ databaseChangeLog:
                   on conversation_memory(tenant_id, conversation_id);
               create index if not exists idx_conversation_memory_item_scope
                   on conversation_memory_item(tenant_id, conversation_id, channel, active);
+              create unique index if not exists uq_conversation_memory_item_fact
+                  on conversation_memory_item(conversation_id, kind, content);
       rollback:
         - sql:
             splitStatements: false

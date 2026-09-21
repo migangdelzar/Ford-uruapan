@@ -55,6 +55,7 @@ public final class SpringAiAssistantService implements AssistantService {
         try {
             AssistantResponse response = orchestrator.respond(new AssistantRequest(
                     context.tenantId(), conversationId, userText, "BOT_ACTIVE",
+                    context.memoryContext(),
                     context.containsSensitiveData()));
             return new AssistantTurn(response.content(), intent, response.handoffRequired(),
                     response.sourceDocumentIds(), response.provider(), modelVersion(response.provider()));

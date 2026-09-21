@@ -39,6 +39,8 @@ ford-ai-service/src/main/java/com/ford/service/conversations/domain/
 
 ford-ai-service/src/main/java/com/ford/service/conversations/application/
   ConversationMemoryPort.java            application memory boundary
+  ConversationMemorySemanticPort.java    optional semantic-memory boundary
+  NoOpConversationMemorySemanticPort.java disabled semantic-memory adapter
   ConversationMemoryService.java         failure-tolerant context policy
   MemoryProperties.java                  ford.memory configuration
   ConversationConfiguration.java         memory bean wiring
@@ -228,8 +230,9 @@ The persistence adapter writes the same inbound event to `channel_message` and
   7. create `conversation_memory` with a one-to-one foreign key to
      `conversation`, tenant/account/participant columns, `summary`, `facts_json`,
      `memory_version`, `source_message_id`, and `updated_at`;
-  8. create `conversation_memory_item` with tenant/conversation filters and
-     `vector(1536)` embedding;
+  8. create `conversation_memory_item` with tenant/conversation filters and a
+     dimension-flexible `vector` embedding so local and cloud embedding models
+     can be selected independently;
   9. create tenant/conversation/time indexes.
 
   Add the migration include after `006-meta-webhook-routing.yaml`. Annotate
@@ -379,7 +382,7 @@ public record AssistantRequest(
         UUID conversationId,
         String message,
         String conversationState,
-        ConversationMemoryContext memory,
+        String memoryContext,
         boolean containsSensitiveData) {}
 ```
 
@@ -483,12 +486,13 @@ public interface ConversationMemorySemanticPort {
 
 - [ ] **Step 3: Implement the optional adapter**
 
-  Inject the existing Spring AI `VectorStore` and `EmbeddingModel`/configured
-  vector dependencies through the composition root. Use the current Spring AI
-  search API resolved from `libs.versions.toml`; do not add a second vector
-  client. Attach metadata keys `memory_type`, `tenant_id`, `conversation_id`,
-  `channel`, and `kind`. Apply the tenant and conversation filters before
-  returning results. Convert only bounded fact content into `MemoryFact`.
+  Inject the configured Spring AI `EmbeddingModel` and the project’s
+  `JdbcClient` through the composition root. Keep conversation memory in its
+  dedicated `conversation_memory_item` table rather than mixing it with the
+  knowledge collection. Store provider-neutral embeddings as pgvector values,
+  filter by tenant/conversation/channel, and convert only bounded fact content
+  into `MemoryFact`. A no-op adapter is selected when no embedding model is
+  available; the service also keeps semantic retrieval opt-in.
 
   Wire a no-op semantic port when semantic memory is disabled. Catch vector
   client errors in `ConversationMemoryService`, log operation and IDs only, and

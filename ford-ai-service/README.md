@@ -10,6 +10,9 @@ operator handoff.
 - Spring Boot MVC with Java virtual threads; WebFlux is not used in the MVP.
 - Spring AI only, with independent Ollama/OpenAI chat and embedding policies.
 - PostgreSQL + pgvector are canonical; Redis is ephemeral.
+- Conversation transcript memory is durable in PostgreSQL and scoped by tenant,
+  channel, provider account, and participant. Optional semantic fact retrieval
+  is controlled by `FORD_MEMORY_SEMANTIC_ENABLED`.
 - JDBC/`JdbcClient` is used for explicit SQL. JPA is intentionally not used.
 - RAG is reserved for approved documents. Live catalog, inventory, offers,
   finance math and lead scoring are deterministic services/tools.
@@ -110,6 +113,10 @@ returned as bot fallback messages. They do not create `handoff_ticket` rows or
 publish `HandoffRequested`; successful fallback turns use the normal outbound
 delivery path. Production keeps handoff enabled unless the deployment
 explicitly overrides it.
+
+Durable conversation memory is enabled by default. Tune its bounded context
+with the `FORD_MEMORY_*` variables in `.env.example`. Keep semantic retrieval
+disabled until the embedding model and pgvector dimensions have been verified.
 
 Do not commit `.env`, `.env.prod`, or any provider credentials. Use
 `.env.prod.example` only as a variable-name template.

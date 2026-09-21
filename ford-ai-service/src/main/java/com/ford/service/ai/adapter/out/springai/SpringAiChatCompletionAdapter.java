@@ -37,7 +37,7 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
     @Override
     public AssistantResponse complete(AssistantRequest request, ToolContext context) {
         var prompt = client.prompt()
-                .system("Responde en español, no inventes datos y usa solo herramientas autorizadas.")
+                .system(systemPrompt(request.memoryContext()))
                 .user(request.message());
         var tools = toolPolicy.readOnlyTools(new AiExecutionContext(
                 request.tenantId(), request.containsSensitiveData(), request.conversationId()));
@@ -55,5 +55,19 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
             throw new IllegalStateException("AI provider returned an empty response");
         }
         return new AssistantResponse(content.strip(), false, provider, List.of());
+    }
+
+    private static String systemPrompt(String memory) {
+        var prompt = new StringBuilder("Responde en español, no inventes datos y usa solo herramientas autorizadas.");
+        if (memory == null || memory.isBlank()) {
+            return prompt.toString();
+        }
+        return prompt.append("\n\n[MEMORIA DE SESIÓN]\n")
+                .append(safe(memory)).append("\n[/MEMORIA DE SESIÓN]").toString();
+    }
+
+    private static String safe(String value) {
+        return value == null ? "" : value.replace("[MEMORIA DE SESIÓN]", "[memoria]")
+                .replace("[/MEMORIA DE SESIÓN]", "[/memoria]");
     }
 }

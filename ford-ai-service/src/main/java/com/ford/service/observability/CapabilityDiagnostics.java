@@ -20,6 +20,9 @@ public class CapabilityDiagnostics {
     private final boolean metaOutboundEnabled;
     private final boolean tracesEnabled;
     private final boolean metricsEnabled;
+    private final boolean memoryEnabled;
+    private final boolean semanticMemoryEnabled;
+    private final int memoryRecentMessageLimit;
 
     public CapabilityDiagnostics(boolean aiCloudEnabled,
                                  boolean aiLocalEnabled,
@@ -29,6 +32,22 @@ public class CapabilityDiagnostics {
                                  boolean outboxEnabled,
                                  boolean tracesEnabled,
                                  boolean metricsEnabled) {
+        this(aiCloudEnabled, aiLocalEnabled, aiProvider, humanHandoffEnabled,
+                metaOutboundEnabled, outboxEnabled, tracesEnabled, metricsEnabled,
+                true, false, 20);
+    }
+
+    public CapabilityDiagnostics(boolean aiCloudEnabled,
+                                 boolean aiLocalEnabled,
+                                 String aiProvider,
+                                 boolean humanHandoffEnabled,
+                                 boolean metaOutboundEnabled,
+                                 boolean outboxEnabled,
+                                 boolean tracesEnabled,
+                                 boolean metricsEnabled,
+                                 boolean memoryEnabled,
+                                 boolean semanticMemoryEnabled,
+                                 int memoryRecentMessageLimit) {
         this.aiCloudEnabled = aiCloudEnabled;
         this.aiLocalEnabled = aiLocalEnabled;
         this.aiProvider = Objects.requireNonNull(aiProvider);
@@ -37,6 +56,9 @@ public class CapabilityDiagnostics {
         this.outboxEnabled = outboxEnabled;
         this.tracesEnabled = tracesEnabled;
         this.metricsEnabled = metricsEnabled;
+        this.memoryEnabled = memoryEnabled;
+        this.semanticMemoryEnabled = semanticMemoryEnabled;
+        this.memoryRecentMessageLimit = memoryRecentMessageLimit;
     }
 
     public String summary() {
@@ -46,6 +68,9 @@ public class CapabilityDiagnostics {
                 + ", humanHandoff=" + state(humanHandoffEnabled)
                 + ", meta.outbound=" + state(metaOutboundEnabled)
                 + ", outbox=" + state(outboxEnabled)
+                + ", memory=" + state(memoryEnabled)
+                + ", memory.semantic=" + state(semanticMemoryEnabled)
+                + ", memory.recentLimit=" + memoryRecentMessageLimit
                 + ", observability.traces=" + state(tracesEnabled)
                 + ", observability.metrics=" + state(metricsEnabled);
     }

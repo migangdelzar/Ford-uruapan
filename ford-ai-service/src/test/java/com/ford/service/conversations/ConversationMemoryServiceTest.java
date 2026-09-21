@@ -2,6 +2,7 @@ package com.ford.service.conversations;
 
 import com.ford.service.channels.domain.Channel;
 import com.ford.service.conversations.application.ConversationMemoryPort;
+import com.ford.service.conversations.application.ConversationMemorySemanticPort;
 import com.ford.service.conversations.application.ConversationMemoryService;
 import com.ford.service.conversations.application.MemoryProperties;
 import com.ford.service.conversations.domain.ConversationMemoryContext;
@@ -39,6 +40,22 @@ class ConversationMemoryServiceTest {
         assertThat(context.memoryVersion()).isZero();
     }
 
+    @Test
+    void addsSemanticFactsWhenSemanticMemoryIsEnabled() {
+        var key = new ConversationMemoryKey(
+                UUID.randomUUID(), Channel.WHATSAPP, "phone-1", "customer-1", UUID.randomUUID());
+        var properties = new MemoryProperties();
+        properties.setSemanticEnabled(true);
+        var semantic = new FakeSemanticPort();
+        semantic.facts = List.of(new MemoryFact("preference", "Ranger", null));
+
+        var service = new ConversationMemoryService(new FakeMemoryPort(), properties, semantic);
+
+        var context = service.load(new MemoryQuery(key, "Ranger"));
+
+        assertThat(context.durableFacts()).containsExactly(new MemoryFact("preference", "Ranger", null));
+    }
+
     private static final class FakeMemoryPort implements ConversationMemoryPort {
         private RuntimeException loadFailure;
 
@@ -63,6 +80,19 @@ class ConversationMemoryServiceTest {
                                                     MemoryProjectionUpdate update,
                                                     long expectedVersion) {
             return new MemoryUpdateResult(false, expectedVersion);
+        }
+    }
+
+    private static final class FakeSemanticPort implements ConversationMemorySemanticPort {
+        private List<MemoryFact> facts = List.of();
+
+        @Override
+        public List<MemoryFact> search(ConversationMemoryKey key, String query, int limit) {
+            return facts;
+        }
+
+        @Override
+        public void upsert(ConversationMemoryKey key, MemoryFact fact) {
         }
     }
 }

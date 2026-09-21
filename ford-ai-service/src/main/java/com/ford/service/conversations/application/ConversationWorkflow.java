@@ -8,6 +8,8 @@ import com.ford.service.conversations.application.port.out.ConversationAssistant
 import com.ford.service.conversations.application.port.out.ConversationRepository;
 import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.conversations.domain.ConversationTurn;
+import com.ford.service.conversations.domain.ConversationMemoryKey;
+import com.ford.service.conversations.domain.MemoryQuery;
 import com.ford.service.conversations.domain.HandoffDecision;
 import com.ford.service.shared.HumanHandoffPolicy;
 import org.springframework.context.ApplicationEventPublisher;
@@ -23,21 +25,18 @@ public class ConversationWorkflow {
     private final ConversationAssistant assistant;
     private final ApplicationEventPublisher eventPublisher;
     private final HumanHandoffPolicy handoffPolicy;
-
-    public ConversationWorkflow(ConversationRepository repository,
-                                ConversationAssistant assistant,
-                                ApplicationEventPublisher eventPublisher) {
-        this(repository, assistant, eventPublisher, new HumanHandoffPolicy(true));
-    }
+    private final ConversationMemoryService memoryService;
 
     public ConversationWorkflow(ConversationRepository repository,
                                 ConversationAssistant assistant,
                                 ApplicationEventPublisher eventPublisher,
-                                HumanHandoffPolicy handoffPolicy) {
+                                HumanHandoffPolicy handoffPolicy,
+                                ConversationMemoryService memoryService) {
         this.repository = Objects.requireNonNull(repository);
         this.assistant = Objects.requireNonNull(assistant);
         this.eventPublisher = Objects.requireNonNull(eventPublisher);
         this.handoffPolicy = Objects.requireNonNull(handoffPolicy);
+        this.memoryService = Objects.requireNonNull(memoryService);
     }
 
     @ApplicationModuleListener
@@ -47,8 +46,12 @@ public class ConversationWorkflow {
             return;
         }
 
+        var memoryKey = new ConversationMemoryKey(snapshot.tenantId(), snapshot.channel(),
+                snapshot.providerAccountId(), snapshot.recipientId(), snapshot.conversationId());
+        var memory = memoryService.load(new MemoryQuery(memoryKey, snapshot.inboundText(),
+                snapshot.providerMessageId()));
         var reply = assistant.respond(new ConversationTurnRequest(
-                snapshot.tenantId(), snapshot.conversationId(), snapshot.inboundText(), snapshot.state()));
+                snapshot.tenantId(), snapshot.conversationId(), snapshot.inboundText(), snapshot.state(), memory));
 
         if (reply.handoffRequired() && handoffPolicy.shouldCreateHandoff(true)) {
             var accepted = repository.requestHumanHandoff(snapshot.conversationId(), snapshot.version(),

@@ -3,6 +3,9 @@ package com.ford.service.conversations;
 import com.ford.service.channels.api.InboundMessageAccepted;
 import com.ford.service.channels.domain.Channel;
 import com.ford.service.conversations.application.ConversationWorkflow;
+import com.ford.service.conversations.application.ConversationMemoryPort;
+import com.ford.service.conversations.application.ConversationMemoryService;
+import com.ford.service.conversations.application.MemoryProperties;
 import com.ford.service.shared.HumanHandoffPolicy;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
@@ -12,7 +15,13 @@ import com.ford.service.conversations.api.HandoffRequested;
 import com.ford.service.conversations.domain.ConversationSnapshot;
 import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.conversations.domain.ConversationTurn;
+import com.ford.service.conversations.domain.ConversationMemoryContext;
+import com.ford.service.conversations.domain.ConversationMemoryKey;
+import com.ford.service.conversations.domain.ConversationMessage;
 import com.ford.service.conversations.domain.HandoffDecision;
+import com.ford.service.conversations.domain.MemoryProjectionUpdate;
+import com.ford.service.conversations.domain.MemoryQuery;
+import com.ford.service.conversations.domain.MemoryUpdateResult;
 import com.ford.service.conversations.api.OutboundDeliveryRequested;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
@@ -36,7 +45,8 @@ class ConversationWorkflowTest {
         var assistant = new RecordingAssistant(new AssistantReply(
                 "La Ranger está disponible.", false));
         var publisher = new RecordingPublisher();
-        var workflow = new ConversationWorkflow(repository, assistant, publisher);
+        var workflow = new ConversationWorkflow(repository, assistant, publisher,
+                new HumanHandoffPolicy(true), memoryService());
 
         workflow.on(new InboundMessageAccepted(
                 UUID.randomUUID(), tenantId, conversationId, Channel.WHATSAPP,
@@ -58,7 +68,8 @@ class ConversationWorkflowTest {
                 "No debe aparecer.", false));
         var publisher = new RecordingPublisher();
 
-        new ConversationWorkflow(repository, assistant, publisher).on(new InboundMessageAccepted(
+        new ConversationWorkflow(repository, assistant, publisher,
+                new HumanHandoffPolicy(true), memoryService()).on(new InboundMessageAccepted(
                 UUID.randomUUID(), tenantId, conversationId, Channel.WHATSAPP,
                 "wamid.2", Instant.now()));
 
@@ -77,7 +88,8 @@ class ConversationWorkflowTest {
                 "Te comunico con un asesor.", true));
         var publisher = new RecordingPublisher();
 
-        new ConversationWorkflow(repository, assistant, publisher).on(new InboundMessageAccepted(
+        new ConversationWorkflow(repository, assistant, publisher,
+                new HumanHandoffPolicy(true), memoryService()).on(new InboundMessageAccepted(
                 UUID.randomUUID(), tenantId, conversationId, Channel.MESSENGER,
                 "msg.3", Instant.now()));
 
@@ -102,7 +114,7 @@ class ConversationWorkflowTest {
         var publisher = new RecordingPublisher();
 
         new ConversationWorkflow(repository, assistant, publisher,
-                new HumanHandoffPolicy(false)).on(new InboundMessageAccepted(
+                new HumanHandoffPolicy(false), memoryService()).on(new InboundMessageAccepted(
                 UUID.randomUUID(), tenantId, conversationId, Channel.MESSENGER,
                 "msg.3-disabled", Instant.now()));
 
@@ -122,7 +134,8 @@ class ConversationWorkflowTest {
                 "Respuesta obsoleta.", false));
         var publisher = new RecordingPublisher();
 
-        new ConversationWorkflow(repository, assistant, publisher).on(new InboundMessageAccepted(
+        new ConversationWorkflow(repository, assistant, publisher,
+                new HumanHandoffPolicy(true), memoryService()).on(new InboundMessageAccepted(
                 UUID.randomUUID(), tenantId, conversationId, Channel.INSTAGRAM,
                 "msg.4", Instant.now()));
 
@@ -134,6 +147,30 @@ class ConversationWorkflowTest {
                                                  ConversationState state, long version) {
         return new ConversationSnapshot(tenantId, conversationId, Channel.WHATSAPP,
                 "5214521234567", state, version, "¿Hay Ranger?", "wamid.inbound");
+    }
+
+    private static ConversationMemoryService memoryService() {
+        return new ConversationMemoryService(new ConversationMemoryPort() {
+            @Override
+            public ConversationMemoryContext load(MemoryQuery query) {
+                return ConversationMemoryContext.empty(query.key());
+            }
+
+            @Override
+            public void recordInbound(ConversationMemoryKey key, ConversationMessage message) {
+            }
+
+            @Override
+            public void recordOutbound(ConversationMemoryKey key, ConversationMessage message) {
+            }
+
+            @Override
+            public MemoryUpdateResult updateProjection(ConversationMemoryKey key,
+                                                        MemoryProjectionUpdate update,
+                                                        long expectedVersion) {
+                return new MemoryUpdateResult(false, expectedVersion);
+            }
+        }, new MemoryProperties());
     }
 
     private static final class RecordingAssistant implements ConversationAssistant {

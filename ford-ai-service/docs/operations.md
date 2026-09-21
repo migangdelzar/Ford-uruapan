@@ -13,6 +13,9 @@ Use environment variables or a deployment profile; keep secrets outside Git.
 - `FORD_META_APP_SECRET`, `FORD_META_VERIFY_TOKEN`
 - `FORD_META_DELIVERY_ENABLED`, channel delivery endpoints and access tokens
 - `FORD_HUMAN_HANDOFF_ENABLED` (`false` enables bot-only mode)
+- `FORD_MEMORY_ENABLED`, `FORD_MEMORY_RECENT_MESSAGE_LIMIT`
+- `FORD_MEMORY_SUMMARY_MAX_CHARS`, `FORD_MEMORY_FACT_LIMIT`, `FORD_MEMORY_FACT_MAX_CHARS`
+- `FORD_MEMORY_SEMANTIC_ENABLED`, `FORD_MEMORY_SEMANTIC_LIMIT`, `FORD_MEMORY_CACHE_ENABLED`
 - `FORD_AI_CHAT_PROVIDER`, `FORD_AI_EMBEDDING_PROVIDER`
 - `FORD_AI_CLOUD_ENABLED`, `FORD_AI_LOCAL_ENABLED`, provider base URLs and model names
 - `FORD_AI_LOG_PROVIDER_ERRORS` (opt-in bounded provider error details)
@@ -50,6 +53,15 @@ This prevents assistant-created `handoff_ticket` rows and `HandoffRequested`
 events. The workflow persists the deterministic bot fallback and publishes the
 normal outbound delivery request instead. Set it back to `true` to restore
 human escalation behavior.
+
+Conversation memory is enabled by default and is persisted in PostgreSQL. The
+session scope is tenant, channel, provider account, and participant, so the
+same person on two provider numbers cannot share memory accidentally. The
+bounded recent transcript is injected into each assistant request; Redis is
+not the source of truth. Semantic fact retrieval is disabled by default and
+should only be enabled after the configured embedding model is compatible with
+the pgvector memory table. Memory read, embedding, and provider failures are
+fail-open for webhook processing.
 
 The default ingestion flag is disabled. Enable it only after official Ford
 endpoints or authorized scraper endpoints and credentials are configured.

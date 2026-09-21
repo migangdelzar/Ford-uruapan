@@ -68,11 +68,14 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
                            row_number() over (order by received_at desc, id desc) as row_number
                     from conversation_message
                     where conversation_id = :conversationId
+                      and (cast(:currentProviderMessageId as varchar) is null
+                           or provider_message_id <> :currentProviderMessageId)
                 ) recent
                 where row_number <= :recentMessageLimit
                 order by received_at asc, id asc
                 """)
                 .param("conversationId", query.key().conversationId())
+                .param("currentProviderMessageId", query.currentProviderMessageId())
                 .param("recentMessageLimit", query.recentMessageLimit())
                 .query((rs, rowNum) -> new ConversationMessage(
                         rs.getObject("id", UUID.class),
