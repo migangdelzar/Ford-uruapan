@@ -12,7 +12,7 @@ macos_profile_socket() {
   printf '%s/.colima/%s/docker.sock\n' "${HOME:?HOME is required}" "$(macos_profile)"
 }
 
-macos_formulae=(mise docker docker-compose colima)
+macos_formulae=(docker docker-compose colima)
 
 macos_check() {
   setup_require_command brew
@@ -23,6 +23,11 @@ macos_check() {
       missing=1
     fi
   done
+
+  if ! command -v mise >/dev/null 2>&1; then
+    printf 'mise is missing from PATH\n'
+    missing=1
+  fi
 
   if ! command -v docker >/dev/null 2>&1; then
     printf 'Docker CLI is missing from PATH\n'
@@ -46,7 +51,7 @@ macos_setup_host() {
   setup_require_command brew
 
   local formula
-  for formula in "${macos_formulae[@]}"; do
+  for formula in mise "${macos_formulae[@]}"; do
     if brew list --formula "$formula" >/dev/null 2>&1; then
       setup_report "Homebrew formula already installed: $formula"
     else
