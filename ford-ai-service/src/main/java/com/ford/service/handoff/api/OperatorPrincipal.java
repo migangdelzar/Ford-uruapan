@@ -2,8 +2,12 @@ package com.ford.service.handoff.api;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -24,6 +28,8 @@ public record OperatorPrincipal(UUID operatorId, Set<UUID> tenantIds, Set<String
 
     public boolean isOperator() {
         return authorities.contains("ROLE_OPERATOR")
+                || authorities.contains("ROLE_MANAGER")
+                || authorities.contains("ROLE_ADMIN")
                 || authorities.contains("OPERATOR")
                 || authorities.contains("SCOPE_operator:read")
                 || authorities.contains("SCOPE_operator:write")
@@ -37,6 +43,7 @@ public record OperatorPrincipal(UUID operatorId, Set<UUID> tenantIds, Set<String
         if (authentication.getPrincipal() instanceof OperatorPrincipal principal) {
             return principal;
         }
+        var jwt = authentication.getPrincipal() instanceof Jwt token ? token : null;
         UUID operatorId;
         try {
             operatorId = UUID.fromString(authentication.getName());
@@ -48,11 +55,7 @@ public record OperatorPrincipal(UUID operatorId, Set<UUID> tenantIds, Set<String
                 .collect(Collectors.toUnmodifiableSet());
         final Set<UUID> tenantIds;
         try {
-            tenantIds = authorities.stream()
-                    .filter(authority -> authority.startsWith("TENANT_"))
-                    .map(authority -> authority.substring("TENANT_".length()))
-                    .map(UUID::fromString)
-                    .collect(Collectors.toUnmodifiableSet());
+            tenantIds = jwt == null ? tenantIdsFromAuthorities(authorities) : tenantIdsFromJwt(jwt);
         } catch (IllegalArgumentException exception) {
             throw new SecurityException("Invalid tenant claim", exception);
         }
@@ -60,5 +63,31 @@ public record OperatorPrincipal(UUID operatorId, Set<UUID> tenantIds, Set<String
             throw new SecurityException("Tenant claim is required");
         }
         return new OperatorPrincipal(operatorId, tenantIds, authorities);
+    }
+
+    private static Set<UUID> tenantIdsFromAuthorities(Set<String> authorities) {
+        return authorities.stream()
+                .filter(authority -> authority.startsWith("TENANT_"))
+                .map(authority -> authority.substring("TENANT_".length()))
+                .map(UUID::fromString)
+                .collect(Collectors.toUnmodifiableSet());
+    }
+
+    private static Set<UUID> tenantIdsFromJwt(Jwt jwt) {
+        var values = new LinkedHashSet<String>();
+        addClaimValues(values, jwt.getClaims().get("tenant_ids"));
+        addClaimValues(values, jwt.getClaims().get("tenant_id"));
+        return values.stream().map(UUID::fromString).collect(Collectors.toUnmodifiableSet());
+    }
+
+    private static void addClaimValues(Collection<String> target, Object rawValue) {
+        if (rawValue instanceof Collection<?> collection) {
+            collection.stream().map(Object::toString).forEach(target::add);
+        } else if (rawValue instanceof String string && !string.isBlank()) {
+            Arrays.stream(string.split(","))
+                    .map(String::trim)
+                    .filter(value -> !value.isBlank())
+                    .forEach(target::add);
+        }
     }
 }

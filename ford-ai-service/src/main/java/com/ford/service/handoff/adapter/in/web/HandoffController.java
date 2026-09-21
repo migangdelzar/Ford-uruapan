@@ -30,35 +30,35 @@ public class HandoffController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('SCOPE_handoff:manage')")
+    @PreAuthorize("hasAuthority('SCOPE_handoff:manage') && @tenantAuthorization.canAccess(authentication, #request.tenantId())")
     @ResponseStatus(HttpStatus.CREATED)
     public HandoffTicket request(@RequestBody HandoffRequest request, Authentication authentication) {
         return service.request(request, principal(authentication));
     }
 
     @PostMapping("/{ticketId}/claim")
-    @PreAuthorize("hasAuthority('SCOPE_handoff:manage')")
+    @PreAuthorize("hasAuthority('SCOPE_handoff:manage') || hasRole('ADMIN')")
     public HandoffTicket claim(@PathVariable UUID ticketId, @RequestParam long expectedVersion,
                                Authentication authentication) {
         return service.claim(ticketId, expectedVersion, principal(authentication));
     }
 
     @PostMapping("/conversations/{conversationId}/pause")
-    @PreAuthorize("hasAuthority('SCOPE_handoff:manage')")
+    @PreAuthorize("hasAuthority('SCOPE_handoff:manage') || hasRole('ADMIN')")
     public HandoffTicket pause(@PathVariable UUID conversationId, @RequestParam long expectedVersion,
                                Authentication authentication) {
         return service.pauseBot(conversationId, expectedVersion, principal(authentication));
     }
 
     @PostMapping("/conversations/{conversationId}/resume")
-    @PreAuthorize("hasAuthority('SCOPE_handoff:manage')")
+    @PreAuthorize("hasAuthority('SCOPE_handoff:manage') || hasRole('ADMIN')")
     public HandoffTicket resume(@PathVariable UUID conversationId, @RequestParam long expectedVersion,
                                 Authentication authentication) {
         return service.resumeBot(conversationId, expectedVersion, principal(authentication));
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('SCOPE_operator:read')")
+    @PreAuthorize("hasAuthority('SCOPE_operator:read') || hasRole('ADMIN')")
     public List<HandoffTicket> list(Authentication authentication) {
         return service.list(principal(authentication));
     }

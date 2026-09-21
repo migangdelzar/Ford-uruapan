@@ -32,12 +32,16 @@ Operator endpoints require a bearer JWT issued by the configured OIDC issuer.
 The token audience must include `ford-ai-service`, and tenant access is read
 from its `tenant_id` or `tenant_ids` claim. Current scope requirements are:
 
+- `roles`: one or more of `OPERATOR`, `MANAGER`, or `ADMIN`; these become
+  Spring `ROLE_*` authorities and gate the operator API
 - `handoff:manage`: create, claim, pause, and resume handoffs
 - `operator:read`: list handoffs
 
 The service maps JWT scopes to Spring authorities with the `SCOPE_` prefix,
-for example `SCOPE_handoff:manage`. Tenant identity is never accepted from a
-request header or query parameter.
+for example `SCOPE_handoff:manage`. Roles are mapped to `ROLE_*` authorities.
+Tenant IDs remain JWT attributes and are checked against the request tenant at
+the method-security boundary; they are never accepted from a request header or
+query parameter and are not treated as global permissions.
 
 CRM, email, Slack and WhatsApp notifications are represented by ports/outbox
 events so their provider adapters can be added without changing lead scoring or

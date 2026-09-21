@@ -48,10 +48,12 @@ API authentication uses Spring Security's OAuth2 Resource Server JWT support.
 Set `FORD_SECURITY_JWT_ENABLED=true` only when the configured issuer is
 available and publishes OIDC discovery/JWKS metadata. The issuer validates
 `iss`, `exp`, and `nbf`; the configured audience validates `aud`. Tenant scope
-is carried by `tenant_id` or `tenant_ids` claims and is mapped to the existing
-tenant authorization boundary. Webhooks remain unauthenticated at the HTTP
-bearer layer because Meta requests are authenticated with HMAC, verify-token,
-and channel-binding checks.
+is carried by `tenant_id` or `tenant_ids` claims and is checked as a request
+attribute at the existing tenant authorization boundary. A `roles` claim with
+`OPERATOR`, `MANAGER`, or `ADMIN` values becomes `ROLE_*`; operation scopes
+remain explicit `SCOPE_*` authorities. Webhooks remain unauthenticated at the
+HTTP bearer layer because Meta requests are authenticated with HMAC,
+verify-token, and channel-binding checks.
 
 The current operator scopes are:
 

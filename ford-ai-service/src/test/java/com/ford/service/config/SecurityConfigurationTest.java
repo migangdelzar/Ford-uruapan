@@ -11,11 +11,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SecurityConfigurationTest {
 
     @Test
-    void mapsJwtTenantClaimsToTenantAuthorities() {
+    void mapsJwtRolesAndScopesToAuthorities() {
         var tenantId = UUID.randomUUID();
         var jwt = Jwt.withTokenValue("token")
                 .header("alg", "none")
                 .claim("scope", "operator:read")
+                .claim("roles", List.of("OPERATOR"))
                 .claim("tenant_ids", List.of(tenantId.toString()))
                 .build();
 
@@ -24,6 +25,7 @@ class SecurityConfigurationTest {
         assertThat(authentication).isNotNull();
         assertThat(authentication.getAuthorities())
                 .extracting("authority")
-                .contains("SCOPE_operator:read", "TENANT_" + tenantId);
+                .contains("SCOPE_operator:read", "ROLE_OPERATOR")
+                .doesNotContain("TENANT_" + tenantId);
     }
 }

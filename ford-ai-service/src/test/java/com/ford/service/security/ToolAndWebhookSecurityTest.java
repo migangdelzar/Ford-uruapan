@@ -9,6 +9,7 @@ import com.ford.service.handoff.application.HandoffService;
 import com.ford.service.handoff.api.OperatorPrincipal;
 import com.ford.service.handoff.domain.HandoffStatus;
 import com.ford.service.handoff.domain.HandoffTicket;
+import com.ford.service.handoff.security.TenantAuthorization;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -32,7 +33,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(HandoffController.class)
-@Import(SecurityConfiguration.class)
+@Import({SecurityConfiguration.class, TenantAuthorization.class})
 @AutoConfigureMockMvc
 @org.springframework.test.context.TestPropertySource(properties = {
         "ford.security.jwt.enabled=true",
@@ -102,6 +103,7 @@ class ToolAndWebhookSecurityTest {
                                         .claim("tenant_ids", Set.of(tenantId.toString()))
                                         .claim("scope", "operator:read handoff:manage"))
                                 .authorities(
+                                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_OPERATOR"),
                                         new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_operator:read"),
                                         new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_handoff:manage"),
                                         new org.springframework.security.core.authority.SimpleGrantedAuthority("TENANT_" + tenantId)))
@@ -109,6 +111,43 @@ class ToolAndWebhookSecurityTest {
                         .content("{\"tenantId\":\"%s\",\"conversationId\":\"%s\",\"reason\":\"HOT_LEAD\"}"
                                 .formatted(tenantId, conversationId)))
                 .andExpect(status().isCreated());
+    }
+
+    @Test
+    void rejectsOperatorApiRequestWithoutAnOperatorRole() throws Exception {
+        mockMvc.perform(post("/api/operator/handoffs")
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(token -> token
+                                        .subject(UUID.randomUUID().toString())
+                                        .claim("tenant_ids", Set.of(UUID.randomUUID().toString()))
+                                        .claim("scope", "handoff:manage"))
+                                .authorities(
+                                        new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_handoff:manage")))
+                        .contentType(APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void rejectsHandoffForATenantOutsideJwtAttributes() throws Exception {
+        var tokenTenantId = UUID.randomUUID();
+        var requestedTenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+
+        mockMvc.perform(post("/api/operator/handoffs")
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(token -> token
+                                        .subject(UUID.randomUUID().toString())
+                                        .claim("tenant_ids", Set.of(tokenTenantId.toString()))
+                                        .claim("scope", "handoff:manage")
+                                        .claim("roles", Set.of("OPERATOR")))
+                                .authorities(
+                                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_OPERATOR"),
+                                        new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_handoff:manage")))
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"tenantId\":\"%s\",\"conversationId\":\"%s\",\"reason\":\"HOT_LEAD\"}"
+                                .formatted(requestedTenantId, conversationId)))
+                .andExpect(status().isForbidden());
     }
 
     @Test

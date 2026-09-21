@@ -26,7 +26,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.UUID;
 
 @Configuration
 @EnableWebSecurity
@@ -44,6 +43,7 @@ public class SecurityConfiguration {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/webhooks/meta/**", "/actuator/health", "/actuator/info").permitAll()
+                        .requestMatchers("/api/operator/**").hasAnyRole("OPERATOR", "MANAGER", "ADMIN")
                         .requestMatchers("/api/**", "/actuator/**").authenticated()
                         .anyRequest().denyAll());
 
@@ -65,8 +65,7 @@ public class SecurityConfiguration {
             if (converted != null) {
                 authorities.addAll(converted);
             }
-            tenantIds(jwt).forEach(tenantId ->
-                    authorities.add(new SimpleGrantedAuthority("TENANT_" + tenantId)));
+            roles(jwt).forEach(role -> authorities.add(new SimpleGrantedAuthority("ROLE_" + role)));
             return authorities;
         });
         return converter;
@@ -94,11 +93,14 @@ public class SecurityConfiguration {
         return decoder;
     }
 
-    private static Collection<UUID> tenantIds(Jwt jwt) {
+    private static Collection<String> roles(Jwt jwt) {
         var values = new LinkedHashSet<String>();
-        addClaimValues(values, jwt.getClaims().get("tenant_ids"));
-        addClaimValues(values, jwt.getClaims().get("tenant_id"));
-        return values.stream().map(UUID::fromString).toList();
+        addClaimValues(values, jwt.getClaims().get("roles"));
+        return values.stream()
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .map(value -> value.startsWith("ROLE_") ? value.substring("ROLE_".length()) : value)
+                .toList();
     }
 
     private static void addClaimValues(Collection<String> target, Object rawValue) {
