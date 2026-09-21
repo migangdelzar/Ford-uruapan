@@ -10,6 +10,7 @@ import com.ford.service.ai.application.AssistantService;
 import com.ford.service.ai.application.IntentRouter;
 import com.ford.service.ai.application.SpringAiAssistantService;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
+import com.ford.service.ai.application.port.out.UnavailableChatCompletionPort;
 import com.ford.service.ai.application.port.out.ChatCompletionPort;
 import com.ford.service.ai.application.port.out.ProviderChatCompletionPort;
 import com.ford.service.ai.application.port.out.ProviderRoutingChatCompletionPort;
@@ -19,9 +20,9 @@ import com.ford.service.finance.application.FinanceOperations;
 import com.ford.service.finance.application.port.out.FinanceTermsRepository;
 import com.ford.service.knowledge.application.KnowledgeRetrieval;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.ollama.OllamaChatModel;
+import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.ai.support.ToolCallbacks;
@@ -39,31 +40,24 @@ public class SpringAiConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(VehicleCatalog.class)
-    VehicleTools vehicleTools(VehicleCatalog catalog) {
-        return new VehicleTools(catalog);
-    }
-
-    @Bean
-    @ConditionalOnBean({FinanceOperations.class, FinanceTermsRepository.class})
-    FinanceEstimateTool financeEstimateTool(FinanceOperations finance, FinanceTermsRepository termsRepository) {
-        return new FinanceEstimateTool(finance, termsRepository);
-    }
-
-    @Bean
-    @ConditionalOnBean(KnowledgeRetrieval.class)
-    KnowledgeTools knowledgeTools(KnowledgeRetrieval retrieval) {
-        return new KnowledgeTools(retrieval);
-    }
-
-    @Bean
-    ToolAuthorizationPolicy toolAuthorizationPolicy(ObjectProvider<VehicleTools> vehicleTools,
-                                                    ObjectProvider<FinanceEstimateTool> financeTools,
-                                                    ObjectProvider<KnowledgeTools> knowledgeTools) {
+    ToolAuthorizationPolicy toolAuthorizationPolicy(ObjectProvider<VehicleCatalog> catalog,
+                                                    ObjectProvider<FinanceOperations> finance,
+                                                    ObjectProvider<FinanceTermsRepository> terms,
+                                                    ObjectProvider<KnowledgeRetrieval> knowledge) {
         var toolObjects = new ArrayList<Object>();
-        vehicleTools.ifAvailable(toolObjects::add);
-        financeTools.ifAvailable(toolObjects::add);
-        knowledgeTools.ifAvailable(toolObjects::add);
+        var vehicleCatalog = catalog.getIfAvailable();
+        if (vehicleCatalog != null) {
+            toolObjects.add(new VehicleTools(vehicleCatalog));
+        }
+        var financeOperations = finance.getIfAvailable();
+        var financeTerms = terms.getIfAvailable();
+        if (financeOperations != null && financeTerms != null) {
+            toolObjects.add(new FinanceEstimateTool(financeOperations, financeTerms));
+        }
+        var knowledgeRetrieval = knowledge.getIfAvailable();
+        if (knowledgeRetrieval != null) {
+            toolObjects.add(new KnowledgeTools(knowledgeRetrieval));
+        }
         if (toolObjects.isEmpty()) {
             return new ToolAuthorizationPolicy();
         }
@@ -71,22 +65,28 @@ public class SpringAiConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(ChatClient.Builder.class)
-    ProviderChatCompletionPort springAiChatCompletionPort(ChatClient.Builder builder,
-                                                          ToolAuthorizationPolicy toolPolicy,
-                                                          @Value("${spring.ai.model.chat:ollama}") String provider) {
-        return new SpringAiChatCompletionAdapter(builder.build(), provider, toolPolicy);
-    }
-
-    @Bean
-    @ConditionalOnBean({ChatClient.Builder.class, ModelProviderPolicy.class})
-    ChatCompletionPort chatCompletionPort(List<ProviderChatCompletionPort> providers,
+    ChatCompletionPort chatCompletionPort(ObjectProvider<OpenAiChatModel> cloudModel,
+                                           ObjectProvider<OllamaChatModel> localModel,
+                                           AiProperties properties,
+                                           ToolAuthorizationPolicy toolPolicy,
                                            ModelProviderPolicy providerPolicy) {
-        return new ProviderRoutingChatCompletionPort(providers, providerPolicy);
+        var providers = new ArrayList<ProviderChatCompletionPort>();
+        var openAi = cloudModel.getIfAvailable();
+        if (properties.cloudEnabled() && openAi != null) {
+            providers.add(new SpringAiChatCompletionAdapter(
+                    ChatClient.builder(openAi).build(), properties.cloudChatProvider(), toolPolicy));
+        }
+        var ollama = localModel.getIfAvailable();
+        if (properties.localEnabled() && ollama != null) {
+            providers.add(new SpringAiChatCompletionAdapter(
+                    ChatClient.builder(ollama).build(), properties.localChatProvider(), toolPolicy));
+        }
+        return providers.isEmpty()
+                ? new UnavailableChatCompletionPort()
+                : new ProviderRoutingChatCompletionPort(providers, providerPolicy);
     }
 
     @Bean
-    @ConditionalOnBean(ChatCompletionPort.class)
     AssistantOrchestrator assistantOrchestrator(IntentRouter intentRouter,
                                                 ToolAuthorizationPolicy toolPolicy,
                                                 ChatCompletionPort completion) {
@@ -94,9 +94,8 @@ public class SpringAiConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(AssistantOrchestrator.class)
     AssistantService assistantService(AssistantOrchestrator orchestrator,
-                                      com.ford.service.ai.application.ModelProviderPolicy providerPolicy) {
+                                      ModelProviderPolicy providerPolicy) {
         return new SpringAiAssistantService(orchestrator, providerPolicy);
     }
 }
