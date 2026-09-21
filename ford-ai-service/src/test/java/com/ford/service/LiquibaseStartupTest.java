@@ -10,7 +10,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(properties = {
         "spring.liquibase.enabled=true",
-        "spring.liquibase.change-log=classpath:db/changelog/db.changelog-test.yaml"
+        "spring.liquibase.change-log=classpath:db/changelog/db.changelog-test.yaml",
+        "ford.channels.meta.delivery.enabled=false",
+        "ford.outbox.enabled=false"
 })
 @ActiveProfiles("test")
 class LiquibaseStartupTest {
