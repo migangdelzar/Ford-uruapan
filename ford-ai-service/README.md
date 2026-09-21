@@ -106,8 +106,11 @@ mise run db:reset-volume -- --confirm
 ```
 
 Both commands delete application data, including Meta channel bindings. Start
-the application afterward so Liquibase recreates the schema. The volume reset
-is more destructive; neither command touches unrelated Docker projects.
+the application afterward so Liquibase recreates the schema. In the default
+`dev` profile, a numeric `FORD_META_PHONE_ID` automatically recreates the
+default WhatsApp binding. Set `FORD_META_AUTO_BINDING_ENABLED=false` when
+managing bindings manually or when using multiple numbers; the volume reset is
+more destructive, and neither command touches unrelated Docker projects.
 
 Inspect available tasks with `mise tasks ls`.
 

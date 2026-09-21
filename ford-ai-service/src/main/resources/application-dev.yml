@@ -7,3 +7,7 @@ ford:
   conversations:
     human-handoff:
       enabled: ${FORD_HUMAN_HANDOFF_ENABLED:true}
+  channels:
+    meta:
+      auto-binding:
+        enabled: ${FORD_META_AUTO_BINDING_ENABLED:true}

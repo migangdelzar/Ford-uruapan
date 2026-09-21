@@ -150,7 +150,11 @@ mise run db:reset-volume -- --confirm
 mise run app:run
 ```
 
-Both resets delete channel bindings and require Meta binding setup again.
+Both resets delete channel bindings. The default `dev` profile recreates the
+single configured WhatsApp binding automatically when `FORD_META_PHONE_ID` is a
+numeric phone-number ID. Set `FORD_META_AUTO_BINDING_ENABLED=false` when
+managing bindings manually or when using multiple numbers; use
+`mise exec -- ./bin/create-meta-binding.sh <PHONE_NUMBER_ID>` for those rows.
 
 Production requires database variables from the caller, CI, or a secret
 manager:
