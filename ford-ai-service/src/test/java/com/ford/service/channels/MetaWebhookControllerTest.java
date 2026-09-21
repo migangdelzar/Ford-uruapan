@@ -11,18 +11,26 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
+import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(MetaWebhookController.class)
 @Import(SecurityConfiguration.class)
 @AutoConfigureMockMvc
+@ExtendWith(OutputCaptureExtension.class)
 class MetaWebhookControllerTest {
 
     @Autowired
@@ -60,5 +68,24 @@ class MetaWebhookControllerTest {
                         .param("hub.verify_token", "verification-token")
                         .param("hub.challenge", "challenge-123"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void logsTheSafeReasonWhenMetaRejectsAWebhook(CapturedOutput output) throws Exception {
+        doThrow(new SecurityException("Invalid Meta signature")).when(inboundWebhookService)
+                .accept(any(), any(), any(), any(), any());
+
+        mockMvc.perform(post("/webhooks/meta/whatsapp")
+                        .contentType(APPLICATION_JSON)
+                        .header("X-Hub-Signature-256", "sha256=redacted")
+                        .content("{\"sensitive\":\"do-not-log\"}"))
+                .andExpect(status().isForbidden());
+
+        org.assertj.core.api.Assertions.assertThat(output.getOut())
+                .contains("Meta webhook rejected")
+                .contains("channel=whatsapp")
+                .contains("reason=Invalid Meta signature")
+                .doesNotContain("sha256=redacted")
+                .doesNotContain("do-not-log");
     }
 }
