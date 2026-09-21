@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Build the local Ford Service Compose images"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+exec docker compose build

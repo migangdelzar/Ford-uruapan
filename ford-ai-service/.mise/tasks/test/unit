@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Run unit tests"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+exec ./gradlew test --no-daemon --no-configuration-cache

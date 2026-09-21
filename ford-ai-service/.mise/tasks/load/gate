@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+#MISE description="Run the MVC HTTP load gate"
+set -euo pipefail
+exec node "$MISE_PROJECT_ROOT/../scripts/mvc-load-gate.mjs" "$@"

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Run the complete Gradle verification gate"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+exec ./gradlew clean check --no-daemon --no-configuration-cache

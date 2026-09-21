@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+#MISE description="Check the local Ford Service toolchain"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+
+command -v java >/dev/null || { echo "java is missing from PATH" >&2; exit 1; }
+command -v docker >/dev/null || { echo "docker is missing from PATH" >&2; exit 1; }
+docker compose version >/dev/null || { echo "docker compose is unavailable" >&2; exit 1; }
+docker info >/dev/null || { echo "Docker daemon is unavailable" >&2; exit 1; }
+
+java --version | head -1
+docker compose version
+printf 'Docker daemon: ready\n'

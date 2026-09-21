@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Show local Ford Service Compose status"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+exec docker compose ps

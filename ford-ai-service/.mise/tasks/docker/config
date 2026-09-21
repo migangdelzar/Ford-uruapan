@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Validate the local Ford Service Compose configuration"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+exec docker compose config --quiet

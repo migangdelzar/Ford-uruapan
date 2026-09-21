@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Run ford-service with Spring Boot"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+exec ./gradlew bootRun --no-daemon

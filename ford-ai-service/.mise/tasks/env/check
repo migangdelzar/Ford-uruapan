@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#MISE description="Validate the selected environment contract without printing values"
+set -euo pipefail
+
+profile="${FORD_RUNTIME_ENV:-development}"
+if [[ "$profile" == "development" ]]; then
+  [[ -f "$MISE_PROJECT_ROOT/.env" ]] || {
+    echo "Missing $MISE_PROJECT_ROOT/.env; copy .env.example first." >&2
+    exit 1
+  }
+elif [[ "$profile" == "production" ]]; then
+  missing=()
+  for name in FORD_DATABASE_URL FORD_DATABASE_USERNAME FORD_DATABASE_PASSWORD; do
+    [[ -n "${!name:-}" ]] || missing+=("$name")
+  done
+  if ((${#missing[@]} > 0)); then
+    printf 'Missing required production variables: %s\n' "${missing[*]}" >&2
+    exit 1
+  fi
+else
+  printf 'Unsupported FORD_RUNTIME_ENV: %s\n' "$profile" >&2
+  exit 1
+fi
+
+printf 'Environment contract present: %s\n' "$profile"

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Follow local Langfuse and OTel Compose logs"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT/deployment/observability/langfuse"
+args=(logs --tail="${FORD_DOCKER_LOG_TAIL:-100}" -f)
+if (($# > 0)); then
+  args+=("$@")
+fi
+exec docker compose "${args[@]}"

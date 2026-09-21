@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Run deterministic AI evaluation tests"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+exec ./gradlew test --tests '*AiRegressionEvaluationTest' --no-daemon --no-configuration-cache
