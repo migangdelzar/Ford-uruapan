@@ -41,6 +41,9 @@ test("grouped mise task files exist and are executable", async () => {
     "env/check",
     "env/list",
     "docker/up",
+    "docker/deps/up",
+    "docker/deps/down",
+    "docker/deps/ps",
     "docker/down",
     "docker/build",
     "docker/config",
@@ -73,6 +76,9 @@ test("Docker task groups support Compose v2 and standalone Compose", async () =>
 
   const tasks = [
     "docker/up",
+    "docker/deps/up",
+    "docker/deps/down",
+    "docker/deps/ps",
     "docker/down",
     "docker/build",
     "docker/config",
@@ -90,6 +96,25 @@ test("Docker task groups support Compose v2 and standalone Compose", async () =>
     assert.match(source, /compose\.sh/);
     assert.match(source, /ford_compose/);
   }
+});
+
+test("Docker development modes separate dependencies from the host JVM", async () => {
+  const dependencyUp = await read(`${serviceRoot}/.mise/tasks/docker/deps/up`);
+  const dependencyDown = await read(`${serviceRoot}/.mise/tasks/docker/deps/down`);
+  const dependencyPs = await read(`${serviceRoot}/.mise/tasks/docker/deps/ps`);
+  const fullStack = await read(`${serviceRoot}/.mise/tasks/docker/up`);
+
+  for (const source of [dependencyUp, dependencyDown, dependencyPs]) {
+    assert.match(source, /compose\.sh/);
+    assert.match(source, /ford_compose/);
+    assert.match(source, /postgres/);
+    assert.match(source, /redis/);
+  }
+  assert.match(dependencyUp, /ford_compose up -d postgres redis/);
+  assert.match(dependencyDown, /ford_compose stop postgres redis/);
+  assert.match(dependencyPs, /ford_compose ps postgres redis/);
+  assert.match(fullStack, /ford_compose up --build -d/);
+  assert.doesNotMatch(fullStack, /postgres redis/);
 });
 
 test("tracked mise configuration contains no credential-shaped values", async () => {

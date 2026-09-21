@@ -62,6 +62,9 @@ Useful grouped tasks:
 
 ```bash
 mise run app:run
+mise run docker:deps:up
+mise run docker:deps:ps
+mise run docker:deps:down
 mise run test:unit
 mise run test:integration
 mise run test:check
@@ -69,6 +72,21 @@ mise run docker:up
 mise run docker:logs
 mise run observability:up
 mise run load:gate
+```
+
+For host-JVM development, start PostgreSQL and Redis in Compose, then run
+Spring Boot directly with the mise-selected Java version:
+
+```bash
+mise run docker:deps:up
+mise run app:run
+```
+
+For the fully containerized mode, build and start PostgreSQL, Redis, and
+Spring Boot together:
+
+```bash
+mise run docker:up
 ```
 
 Inspect available tasks with `mise tasks ls`.

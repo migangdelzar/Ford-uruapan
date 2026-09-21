@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Stop PostgreSQL and Redis without deleting volumes"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ford_compose stop postgres redis

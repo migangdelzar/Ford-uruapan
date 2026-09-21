@@ -34,11 +34,32 @@ production overlay.
 ```bash
 mise run env:check
 mise run env:list
+mise run docker:deps:up
+mise run docker:deps:ps
+mise run docker:deps:down
+mise run app:run
 mise run docker:up
 mise run docker:ps
 mise run observability:up
 mise run observability:logs
 ```
+
+Use the host-JVM mode when only PostgreSQL and Redis should run in containers:
+
+```bash
+mise run docker:deps:up
+mise run app:run
+```
+
+Use the full container mode when PostgreSQL, Redis, and Spring Boot should all
+run in Compose:
+
+```bash
+mise run docker:up
+```
+
+`docker:deps:down` stops only PostgreSQL and Redis and preserves the named
+PostgreSQL volume.
 
 Production requires database variables from the caller, CI, or a secret
 manager:

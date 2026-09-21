@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Start PostgreSQL and Redis for host-JVM development"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ford_compose up -d postgres redis
