@@ -68,6 +68,8 @@ mise run app:run
 mise run docker:deps:up
 mise run docker:deps:ps
 mise run docker:deps:down
+mise run db:reset -- --confirm
+mise run db:reset-volume -- --confirm
 mise run test:unit
 mise run test:integration
 mise run test:check
@@ -91,6 +93,21 @@ Spring Boot together:
 ```bash
 mise run docker:up
 ```
+
+To start with a clean local database, stop the Spring application first and
+choose one of these explicit reset tasks:
+
+```bash
+# Recreate the PostgreSQL schema but preserve the Docker volume.
+mise run db:reset -- --confirm
+
+# Delete the project PostgreSQL volume and recreate PostgreSQL/Redis.
+mise run db:reset-volume -- --confirm
+```
+
+Both commands delete application data, including Meta channel bindings. Start
+the application afterward so Liquibase recreates the schema. The volume reset
+is more destructive; neither command touches unrelated Docker projects.
 
 Inspect available tasks with `mise tasks ls`.
 

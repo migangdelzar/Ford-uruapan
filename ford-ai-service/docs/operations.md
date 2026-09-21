@@ -78,6 +78,8 @@ mise run env:list
 mise run docker:deps:up
 mise run docker:deps:ps
 mise run docker:deps:down
+mise run db:reset -- --confirm
+mise run db:reset-volume -- --confirm
 mise run app:run
 mise run docker:up
 mise run docker:ps
@@ -130,6 +132,25 @@ Meta signatures.
 
 `docker:deps:down` stops only PostgreSQL and Redis and preserves the named
 PostgreSQL volume.
+
+For a clean local database, stop the application first. The schema reset keeps
+the named volume but deletes all application tables and data; Liquibase
+recreates them when the application starts:
+
+```bash
+mise run db:reset -- --confirm
+mise run app:run
+```
+
+The full reset deletes this Compose project's PostgreSQL volumes, recreates
+PostgreSQL and Redis, and also requires explicit confirmation:
+
+```bash
+mise run db:reset-volume -- --confirm
+mise run app:run
+```
+
+Both resets delete channel bindings and require Meta binding setup again.
 
 Production requires database variables from the caller, CI, or a secret
 manager:
