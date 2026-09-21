@@ -31,6 +31,10 @@ public class InboundWebhookService {
         var providerAccountId = adapter.providerAccountId(body);
         var binding = bindingService.resolve(channel, providerAccountId);
 
+        if (adapter.isStatusCallback(body)) {
+            return;
+        }
+
         var webhook = RawWebhook.fromBinding(binding, body,
                 "meta:" + channel.name().toLowerCase() + ":" + UUID.randomUUID());
         messageService.accept(webhook, adapter);

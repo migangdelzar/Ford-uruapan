@@ -15,6 +15,14 @@ public class WhatsAppChannelAdapter extends AbstractMetaChannelAdapter {
         }
         return phoneNumberId;
     }
+
+    @Override public boolean isStatusCallback(String body) {
+        var value = readTree(body).at("/entry/0/changes/0/value");
+        return value.path("statuses").isArray()
+                && value.path("statuses").size() > 0
+                && !value.path("messages").isArray();
+    }
+
     @Override protected JsonNode messageNode(JsonNode root) { return root.at("/entry/0/changes/0/value/messages/0"); }
     @Override protected String messageIdPath() { return "/id"; }
     @Override protected String participantPath() { return "/from"; }

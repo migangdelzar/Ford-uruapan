@@ -44,6 +44,15 @@ class MetaWebhookSecurityTest {
     }
 
     @Test
+    void recognizesWhatsAppDeliveryStatusCallbacksWithoutTreatingThemAsMessages() {
+        var body = """
+                {"entry":[{"changes":[{"value":{"metadata":{"phone_number_id":"phone-42"},"statuses":[{"id":"wamid.1","status":"sent"}]}}]}]}
+                """;
+
+        assertThat(new WhatsAppChannelAdapter(new ObjectMapper()).isStatusCallback(body)).isTrue();
+    }
+
+    @Test
     void acknowledgesDuplicateProviderMessageOnlyOnce() {
         var body = """
                 {"entry":[{"changes":[{"value":{"messages":[{"id":"wamid.duplicate","from":"5214521234567","text":{"body":"Hola"}}]}}]}]}
