@@ -1,0 +1,9 @@
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+ford:
+  conversations:
+    human-handoff:
+      enabled: ${FORD_HUMAN_HANDOFF_ENABLED:true}

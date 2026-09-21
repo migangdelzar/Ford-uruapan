@@ -1,6 +1,8 @@
 spring:
   application:
     name: ford-service
+  profiles:
+    default: dev
   threads:
     virtual:
       enabled: true
@@ -56,6 +58,9 @@ spring:
       - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
 
 ford:
+  conversations:
+    human-handoff:
+      enabled: ${FORD_HUMAN_HANDOFF_ENABLED:true}
   ingestion:
     enabled: ${FORD_INGESTION_ENABLED:false}
     tenant-id: ${FORD_TENANT_ID:00000000-0000-0000-0000-000000000001}
