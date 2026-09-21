@@ -3,6 +3,9 @@ package com.ford.service.ai.application;
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantResponse;
 import com.ford.service.ai.api.AssistantTurn;
+import com.ford.service.conversations.application.HumanHandoffPolicy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Objects;
@@ -10,16 +13,24 @@ import java.util.UUID;
 
 public final class SpringAiAssistantService implements AssistantService {
 
-    private static final String FALLBACK_TEXT = "En este momento te comunicaré con un asesor humano.";
+    private static final Logger log = LoggerFactory.getLogger(SpringAiAssistantService.class);
 
     private final AssistantOrchestrator orchestrator;
     private final IntentRouter intentRouter;
+    private final HumanHandoffPolicy handoffPolicy;
     private final ModelProviderPolicy providerPolicy;
 
     public SpringAiAssistantService(AssistantOrchestrator orchestrator,
                                     ModelProviderPolicy providerPolicy) {
+        this(orchestrator, new HumanHandoffPolicy(true), providerPolicy);
+    }
+
+    public SpringAiAssistantService(AssistantOrchestrator orchestrator,
+                                    HumanHandoffPolicy handoffPolicy,
+                                    ModelProviderPolicy providerPolicy) {
         this.orchestrator = Objects.requireNonNull(orchestrator);
         this.intentRouter = new IntentRouter();
+        this.handoffPolicy = Objects.requireNonNull(handoffPolicy);
         this.providerPolicy = Objects.requireNonNull(providerPolicy);
     }
 
@@ -39,8 +50,19 @@ public final class SpringAiAssistantService implements AssistantService {
             return new AssistantTurn(response.content(), intent, response.handoffRequired(),
                     response.sourceDocumentIds(), response.provider(), modelVersion(response.provider()));
         } catch (RuntimeException exception) {
-            return new AssistantTurn(FALLBACK_TEXT, intent, true, List.of(), "fallback", "none");
+            log.warn("AI completion failed: providers={} exceptionType={}",
+                    providerSummary(), exception.getClass().getSimpleName());
+            return new AssistantTurn(handoffPolicy.fallbackText(), intent,
+                    handoffPolicy.enabled(), List.of(), "fallback", "none");
         }
+    }
+
+    private String providerSummary() {
+        return providerPolicy.providers().stream()
+                .map(provider -> provider.id() + ":" + provider.modelVersion())
+                .sorted()
+                .reduce((left, right) -> left + "," + right)
+                .orElse("none");
     }
 
     private String modelVersion(String provider) {

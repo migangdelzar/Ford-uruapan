@@ -3,6 +3,7 @@ package com.ford.service.conversations;
 import com.ford.service.channels.api.InboundMessageAccepted;
 import com.ford.service.channels.domain.Channel;
 import com.ford.service.conversations.application.ConversationWorkflow;
+import com.ford.service.conversations.application.HumanHandoffPolicy;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
 import com.ford.service.conversations.api.AssistantReply;
@@ -88,6 +89,26 @@ class ConversationWorkflowTest {
             assertThat(event.reason()).isEqualTo("assistant_requested_handoff");
             assertThat(event.eventId()).isNotNull();
         });
+    }
+
+    @Test
+    void disabledHandoffConvertsRequestedHandoffIntoOutboundBotReply() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var repository = new RecordingConversationRepository(snapshot(
+                tenantId, conversationId, ConversationState.BOT_ACTIVE, 2));
+        var assistant = new RecordingAssistant(new AssistantReply(
+                "Te comunico con un asesor.", true));
+        var publisher = new RecordingPublisher();
+
+        new ConversationWorkflow(repository, assistant, publisher,
+                new HumanHandoffPolicy(false)).on(new InboundMessageAccepted(
+                UUID.randomUUID(), tenantId, conversationId, Channel.MESSENGER,
+                "msg.3-disabled", Instant.now()));
+
+        assertThat(repository.handoffDecision).isNull();
+        assertThat(repository.completedTurn.text()).contains("No pude generar");
+        assertThat(publisher.events).singleElement().isInstanceOf(OutboundDeliveryRequested.class);
     }
 
     @Test

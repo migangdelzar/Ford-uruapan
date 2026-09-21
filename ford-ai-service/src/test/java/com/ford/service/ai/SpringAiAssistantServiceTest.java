@@ -5,6 +5,7 @@ import com.ford.service.ai.application.AiExecutionContext;
 import com.ford.service.ai.application.AssistantOrchestrator;
 import com.ford.service.ai.application.DefaultModelProviderPolicy;
 import com.ford.service.ai.application.Intent;
+import com.ford.service.conversations.application.HumanHandoffPolicy;
 import com.ford.service.ai.application.ProviderCapabilities;
 import com.ford.service.ai.application.ProviderDescriptor;
 import com.ford.service.ai.application.SpringAiAssistantService;
@@ -52,6 +53,25 @@ class SpringAiAssistantServiceTest {
         assertThat(turn.text()).isEqualTo("En este momento te comunicaré con un asesor humano.");
         assertThat(turn.intent()).isEqualTo(Intent.CATALOG);
         assertThat(turn.requestsHuman()).isTrue();
+        assertThat(turn.provider()).isEqualTo("fallback");
+        assertThat(turn.modelVersion()).isEqualTo("none");
+    }
+
+    @Test
+    void convertsProviderFailureIntoBotFallbackWhenHandoffIsDisabled() {
+        var orchestrator = mock(AssistantOrchestrator.class);
+        when(orchestrator.respond(org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new IllegalStateException("provider timeout"));
+        var service = new SpringAiAssistantService(orchestrator,
+                new HumanHandoffPolicy(false), new DefaultModelProviderPolicy(List.of()));
+
+        var turn = service.respond(new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID()),
+                "¿Qué precio tiene la Ranger?");
+
+        assertThat(turn.text()).isEqualTo(
+                "No pude generar una respuesta en este momento. Intenta de nuevo en unos segundos.");
+        assertThat(turn.intent()).isEqualTo(Intent.CATALOG);
+        assertThat(turn.requestsHuman()).isFalse();
         assertThat(turn.provider()).isEqualTo("fallback");
         assertThat(turn.modelVersion()).isEqualTo("none");
     }

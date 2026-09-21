@@ -12,6 +12,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import com.ford.service.ai.application.AssistantService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -24,6 +25,9 @@ class ConversationConfigurationSliceTest {
 
     @MockitoBean
     ConversationRepository conversationRepository;
+
+    @MockitoBean
+    AssistantService assistantService;
 
     @Test
     void registersTheAssistantAndWorkflowWithConfiguredDependencies() {

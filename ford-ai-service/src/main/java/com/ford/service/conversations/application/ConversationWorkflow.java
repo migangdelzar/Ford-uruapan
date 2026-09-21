@@ -21,13 +21,22 @@ public class ConversationWorkflow {
     private final ConversationRepository repository;
     private final ConversationAssistant assistant;
     private final ApplicationEventPublisher eventPublisher;
+    private final HumanHandoffPolicy handoffPolicy;
 
     public ConversationWorkflow(ConversationRepository repository,
                                 ConversationAssistant assistant,
                                 ApplicationEventPublisher eventPublisher) {
+        this(repository, assistant, eventPublisher, new HumanHandoffPolicy(true));
+    }
+
+    public ConversationWorkflow(ConversationRepository repository,
+                                ConversationAssistant assistant,
+                                ApplicationEventPublisher eventPublisher,
+                                HumanHandoffPolicy handoffPolicy) {
         this.repository = Objects.requireNonNull(repository);
         this.assistant = Objects.requireNonNull(assistant);
         this.eventPublisher = Objects.requireNonNull(eventPublisher);
+        this.handoffPolicy = Objects.requireNonNull(handoffPolicy);
     }
 
     @ApplicationModuleListener
@@ -40,7 +49,7 @@ public class ConversationWorkflow {
         var reply = assistant.respond(new ConversationTurnRequest(
                 snapshot.tenantId(), snapshot.conversationId(), snapshot.inboundText(), snapshot.state()));
 
-        if (reply.handoffRequired()) {
+        if (reply.handoffRequired() && handoffPolicy.shouldCreateHandoff(true)) {
             var accepted = repository.requestHumanHandoff(snapshot.conversationId(), snapshot.version(),
                     new HandoffDecision("assistant_requested_handoff"));
             if (accepted) {
@@ -51,12 +60,13 @@ public class ConversationWorkflow {
             return;
         }
 
+        var text = reply.handoffRequired() ? handoffPolicy.fallbackText() : reply.text();
         var accepted = repository.completeBotTurn(snapshot.conversationId(), snapshot.version(),
-                new ConversationTurn(reply.text()));
+                new ConversationTurn(text));
         if (accepted) {
             eventPublisher.publishEvent(new OutboundDeliveryRequested(
                     snapshot.tenantId(), snapshot.conversationId(), snapshot.channel(),
-                    snapshot.recipientId(), reply.text()));
+                    snapshot.recipientId(), text));
         }
     }
 
