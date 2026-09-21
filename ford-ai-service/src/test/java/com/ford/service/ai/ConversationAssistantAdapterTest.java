@@ -37,4 +37,15 @@ class ConversationAssistantAdapterTest {
         verify(ai).respond(new com.ford.service.ai.application.AiExecutionContext(
                 tenantId, false, conversationId), "Quiero comprar una Ranger");
     }
+
+    @Test
+    void requestsHumanHandoffWhenTheAiServiceIsUnavailable() {
+        var adapter = new ConversationAssistantAdapter(() -> null);
+
+        AssistantReply reply = adapter.respond(new ConversationTurnRequest(
+                UUID.randomUUID(), UUID.randomUUID(), "Hola", ConversationState.BOT_ACTIVE));
+
+        assertThat(reply.text()).isNotBlank();
+        assertThat(reply.handoffRequired()).isTrue();
+    }
 }

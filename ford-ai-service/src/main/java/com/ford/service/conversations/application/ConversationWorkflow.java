@@ -9,17 +9,13 @@ import com.ford.service.conversations.application.port.out.ConversationRepositor
 import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.conversations.domain.ConversationTurn;
 import com.ford.service.conversations.domain.HandoffDecision;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.modulith.events.ApplicationModuleListener;
-import org.springframework.stereotype.Component;
 
 import java.util.Objects;
 import java.time.Instant;
 import java.util.UUID;
 
-@Component
-@ConditionalOnBean({ConversationRepository.class, ConversationAssistant.class})
 public class ConversationWorkflow {
 
     private final ConversationRepository repository;
