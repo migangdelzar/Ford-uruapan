@@ -8,6 +8,14 @@ if [[ "$profile" == "development" ]]; then
     echo "Missing $MISE_PROJECT_ROOT/.env; copy .env.example first." >&2
     exit 1
   }
+  if [[ "$(uname -s)" == "Linux" ]]; then
+    for name in FORD_AI_LOCAL_BASE_URL FORD_OTEL_TRACES_ENDPOINT; do
+      if [[ "${!name:-}" == *host.docker.internal* ]]; then
+        printf '%s points to a Docker-only hostname on Linux host mode; use 127.0.0.1 or set the *_DOCKER variant for Compose.\n' "$name" >&2
+        exit 1
+      fi
+    done
+  fi
 elif [[ "$profile" == "production" ]]; then
   missing=()
   for name in FORD_DATABASE_URL FORD_DATABASE_USERNAME FORD_DATABASE_PASSWORD; do

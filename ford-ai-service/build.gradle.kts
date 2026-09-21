@@ -62,6 +62,16 @@ tasks.test {
     useJUnitPlatform()
 }
 
+val java25NativeAccessArgs = listOf("--enable-native-access=ALL-UNNAMED")
+
+tasks.withType<org.gradle.api.tasks.JavaExec>().configureEach {
+    jvmArgs(java25NativeAccessArgs)
+}
+
+tasks.withType<Test>().configureEach {
+    jvmArgs(java25NativeAccessArgs)
+}
+
 val testcontainersSocketOverride = providers.environmentVariable("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE")
 
 tasks.withType<Test>().configureEach {

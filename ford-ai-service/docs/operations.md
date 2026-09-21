@@ -58,6 +58,28 @@ run in Compose:
 mise run docker:up
 ```
 
+Host-JVM observability uses host loopback addresses. Keep these values in the
+private `.env` used by `mise run app:run`:
+
+```dotenv
+FORD_AI_LOCAL_BASE_URL=http://127.0.0.1:11434
+FORD_OTEL_TRACES_ENDPOINT=http://127.0.0.1:4318/v1/traces
+```
+
+Compose uses the separate `*_DOCKER` values from `.env.example`, so
+`host.docker.internal` is not used by a JVM running directly on Linux. Start
+the local collector before the application when tracing is enabled:
+
+```bash
+mise run observability:up
+mise run app:run
+```
+
+The HTTP exchange filter logs request arrival and completion with method, path,
+status, duration, content types, and `X-Request-Id`. It intentionally does not
+log query values, request/response bodies, authorization headers, cookies, or
+Meta signatures.
+
 `docker:deps:down` stops only PostgreSQL and Redis and preserves the named
 PostgreSQL volume.
 
