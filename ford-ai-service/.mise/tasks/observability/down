@@ -2,4 +2,5 @@
 #MISE description="Stop the local Langfuse and OTel stack"
 set -euo pipefail
 cd "$MISE_PROJECT_ROOT/deployment/observability/langfuse"
-exec docker compose down
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ford_compose down

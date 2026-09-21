@@ -2,4 +2,5 @@
 #MISE description="Stop the local Ford Service Compose stack"
 set -euo pipefail
 cd "$MISE_PROJECT_ROOT"
-exec docker compose down
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ford_compose down

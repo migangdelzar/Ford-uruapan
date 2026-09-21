@@ -2,8 +2,9 @@
 #MISE description="Follow local Ford Service Compose logs"
 set -euo pipefail
 cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
 args=(logs --tail="${FORD_DOCKER_LOG_TAIL:-100}" -f)
 if (($# > 0)); then
   args+=("$@")
 fi
-exec docker compose "${args[@]}"
+ford_compose "${args[@]}"

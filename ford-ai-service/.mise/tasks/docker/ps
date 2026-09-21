@@ -2,4 +2,5 @@
 #MISE description="Show local Ford Service Compose status"
 set -euo pipefail
 cd "$MISE_PROJECT_ROOT"
-exec docker compose ps
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ford_compose ps

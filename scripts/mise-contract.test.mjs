@@ -61,6 +61,32 @@ test("grouped mise task files exist and are executable", async () => {
   }
 });
 
+test("Docker task groups support Compose v2 and standalone Compose", async () => {
+  const helper = await read(`${serviceRoot}/.mise/lib/compose.sh`);
+  assert.match(helper, /docker compose/);
+  assert.match(helper, /docker-compose/);
+
+  const tasks = [
+    "docker/up",
+    "docker/down",
+    "docker/build",
+    "docker/config",
+    "docker/ps",
+    "docker/logs",
+    "observability/up",
+    "observability/down",
+    "observability/config",
+    "observability/ps",
+    "observability/logs"
+  ];
+
+  for (const task of tasks) {
+    const source = await read(`${serviceRoot}/.mise/tasks/${task}`);
+    assert.match(source, /compose\.sh/);
+    assert.match(source, /ford_compose/);
+  }
+});
+
 test("tracked mise configuration contains no credential-shaped values", async () => {
   const paths = [
     `${serviceRoot}/.miserc.toml`,

@@ -2,4 +2,5 @@
 #MISE description="Show local Langfuse and OTel Compose status"
 set -euo pipefail
 cd "$MISE_PROJECT_ROOT/deployment/observability/langfuse"
-exec docker compose ps
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ford_compose ps

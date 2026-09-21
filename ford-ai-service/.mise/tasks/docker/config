@@ -2,4 +2,5 @@
 #MISE description="Validate the local Ford Service Compose configuration"
 set -euo pipefail
 cd "$MISE_PROJECT_ROOT"
-exec docker compose config --quiet
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ford_compose config --quiet
