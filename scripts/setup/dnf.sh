@@ -152,21 +152,23 @@ dnf_setup_docker() {
   setup_report "rootless Docker is ready"
 }
 
-case "${1:-}" in
-  check)
-    shift
-    dnf_check "$@"
-    ;;
-  host)
-    shift
-    dnf_setup_host "$@"
-    ;;
-  docker)
-    shift
-    dnf_setup_docker "$@"
-    ;;
-  *)
-    printf 'Usage: %s {check|host|docker} [--apply]\n' "$0" >&2
-    exit 2
-    ;;
-esac
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  case "${1:-}" in
+    check)
+      shift
+      dnf_check "$@"
+      ;;
+    host)
+      shift
+      dnf_setup_host "$@"
+      ;;
+    docker)
+      shift
+      dnf_setup_docker "$@"
+      ;;
+    *)
+      printf 'Usage: %s {check|host|docker} [--apply]\n' "$0" >&2
+      exit 2
+      ;;
+  esac
+fi

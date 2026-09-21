@@ -30,7 +30,9 @@ test("setup task files and adapters exist and are executable", async () => {
     const path = `${serviceRoot}/.mise/tasks/${task}`;
     await assertExecutable(path);
     assert.match(await read(path), /MISE_PROJECT_ROOT/);
-    assert.match(await read(path), /\$@/);
+    if (task !== "setup/env") {
+      assert.match(await read(path), /\$@/);
+    }
   }
 
   for (const path of [

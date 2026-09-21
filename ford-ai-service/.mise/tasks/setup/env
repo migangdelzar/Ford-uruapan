@@ -3,9 +3,8 @@
 set -euo pipefail
 
 cd "$MISE_PROJECT_ROOT"
-setup_arguments=("$@")
-if ((${#setup_arguments[@]} > 0)); then
-  printf 'setup:env does not accept arguments: %s\n' "${setup_arguments[*]}" >&2
+if (($# > 0)); then
+  printf 'setup:env does not accept arguments: %s\n' "$*" >&2
   exit 2
 fi
 target="$MISE_PROJECT_ROOT/.env"

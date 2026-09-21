@@ -7,7 +7,6 @@ setup_root="$MISE_PROJECT_ROOT/../scripts/setup"
 source "$setup_root/common.sh"
 source "$setup_root/runtime.sh"
 
-setup_arguments=("$@")
 setup_require_command mise
 setup_require_command java
 setup_require_command node
@@ -16,11 +15,19 @@ setup_require_command node
 case "$(uname -s)" in
   Darwin)
     source "$setup_root/macos.sh"
-    macos_check "${setup_arguments[@]}"
+    if (($# > 0)); then
+      macos_check "$@"
+    else
+      macos_check
+    fi
     ;;
   Linux)
     source "$setup_root/dnf.sh"
-    dnf_check "${setup_arguments[@]}"
+    if (($# > 0)); then
+      dnf_check "$@"
+    else
+      dnf_check
+    fi
     ;;
   *)
     setup_fail "unsupported host operating system: $(uname -s)"

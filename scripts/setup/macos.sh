@@ -104,21 +104,23 @@ macos_setup_docker() {
   setup_report "Docker runs as root inside the isolated Colima VM on macOS."
 }
 
-case "${1:-}" in
-  check)
-    shift
-    macos_check "$@"
-    ;;
-  host)
-    shift
-    macos_setup_host "$@"
-    ;;
-  docker)
-    shift
-    macos_setup_docker "$@"
-    ;;
-  *)
-    printf 'Usage: %s {check|host|docker} [--apply]\n' "$0" >&2
-    exit 2
-    ;;
-esac
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  case "${1:-}" in
+    check)
+      shift
+      macos_check "$@"
+      ;;
+    host)
+      shift
+      macos_setup_host "$@"
+      ;;
+    docker)
+      shift
+      macos_setup_docker "$@"
+      ;;
+    *)
+      printf 'Usage: %s {check|host|docker} [--apply]\n' "$0" >&2
+      exit 2
+      ;;
+  esac
+fi
