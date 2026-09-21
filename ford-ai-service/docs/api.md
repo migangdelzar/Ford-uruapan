@@ -28,13 +28,16 @@ before application processing.
 
 ## Operator inbox
 
-Operator endpoints require an authenticated user with role `OPERATOR`:
+Operator endpoints require a bearer JWT issued by the configured OIDC issuer.
+The token audience must include `ford-ai-service`, and tenant access is read
+from its `tenant_id` or `tenant_ids` claim. Current scope requirements are:
 
-- `POST /api/operator/handoffs`
-- `POST /api/operator/handoffs/{ticketId}/claim?operatorId=...`
-- `POST /api/operator/handoffs/conversations/{conversationId}/pause?operatorId=...`
-- `POST /api/operator/handoffs/conversations/{conversationId}/resume?operatorId=...`
-- `GET /api/operator/handoffs?tenantId=...`
+- `handoff:manage`: create, claim, pause, and resume handoffs
+- `operator:read`: list handoffs
+
+The service maps JWT scopes to Spring authorities with the `SCOPE_` prefix,
+for example `SCOPE_handoff:manage`. Tenant identity is never accepted from a
+request header or query parameter.
 
 CRM, email, Slack and WhatsApp notifications are represented by ports/outbox
 events so their provider adapters can be added without changing lead scoring or

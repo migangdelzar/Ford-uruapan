@@ -34,4 +34,17 @@ class OperatorPrincipalTest {
                 .isInstanceOf(SecurityException.class)
                 .hasMessageContaining("Tenant claim is required");
     }
+
+    @Test
+    void treatsHandoffScopeAsOperatorAuthority() {
+        var tenantId = UUID.randomUUID();
+        var authentication = new UsernamePasswordAuthenticationToken(
+                UUID.randomUUID().toString(), "credentials",
+                List.of(new SimpleGrantedAuthority("SCOPE_handoff:manage"),
+                        new SimpleGrantedAuthority("TENANT_" + tenantId)));
+
+        var principal = OperatorPrincipal.from(authentication);
+
+        org.assertj.core.api.Assertions.assertThat(principal.isOperator()).isTrue();
+    }
 }

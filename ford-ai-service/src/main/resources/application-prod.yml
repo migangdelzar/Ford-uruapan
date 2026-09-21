@@ -4,6 +4,9 @@ spring:
       on-profile: prod
 
 ford:
+  security:
+    jwt:
+      enabled: ${FORD_SECURITY_JWT_ENABLED:true}
   conversations:
     human-handoff:
       enabled: ${FORD_HUMAN_HANDOFF_ENABLED:true}

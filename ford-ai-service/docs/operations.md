@@ -10,6 +10,7 @@ the schema. Do not edit production tables manually; create a new YAML changeSet.
 Use environment variables or a deployment profile; keep secrets outside Git.
 
 - `FORD_DATABASE_URL`, `FORD_DATABASE_USERNAME`, `FORD_DATABASE_PASSWORD`
+- `FORD_SECURITY_JWT_ENABLED`, `FORD_SECURITY_ISSUER_URI`, `FORD_SECURITY_AUDIENCE`
 - `FORD_META_APP_SECRET`, `FORD_META_VERIFY_TOKEN`
 - `FORD_META_DELIVERY_ENABLED`, channel delivery endpoints and access tokens
 - `FORD_HUMAN_HANDOFF_ENABLED` (`false` enables bot-only mode)
@@ -42,6 +43,25 @@ source control, tickets, or chat.
 The Spring profile is selected with `SPRING_PROFILES_ACTIVE=dev` or
 `SPRING_PROFILES_ACTIVE=prod`; environment variables override both profile and
 common YAML values. The default profile is `dev`.
+
+API authentication uses Spring Security's OAuth2 Resource Server JWT support.
+Set `FORD_SECURITY_JWT_ENABLED=true` only when the configured issuer is
+available and publishes OIDC discovery/JWKS metadata. The issuer validates
+`iss`, `exp`, and `nbf`; the configured audience validates `aud`. Tenant scope
+is carried by `tenant_id` or `tenant_ids` claims and is mapped to the existing
+tenant authorization boundary. Webhooks remain unauthenticated at the HTTP
+bearer layer because Meta requests are authenticated with HMAC, verify-token,
+and channel-binding checks.
+
+The current operator scopes are:
+
+- `operator:read` for read-only operator endpoints
+- `handoff:manage` for handoff commands
+
+Spring Security 7 method security is enabled with `@EnableMethodSecurity`, and
+endpoint-specific rules use `@PreAuthorize`. This is the current
+AuthorizationManager-based replacement for the deprecated
+`@EnableGlobalMethodSecurity`; `@PreAuthorize` itself remains supported.
 
 Bot-only mode is controlled by:
 

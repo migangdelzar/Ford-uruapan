@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -33,6 +34,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(HandoffController.class)
 @Import(SecurityConfiguration.class)
 @AutoConfigureMockMvc
+@org.springframework.test.context.TestPropertySource(properties = {
+        "ford.security.jwt.enabled=true",
+        "ford.security.jwt.issuer-uri=https://issuer.example.test",
+        "ford.security.jwt.audience=ford-ai-service"
+})
 class ToolAndWebhookSecurityTest {
 
     @Autowired
@@ -40,6 +46,9 @@ class ToolAndWebhookSecurityTest {
 
     @MockitoBean
     HandoffService handoffService;
+
+    @MockitoBean
+    JwtDecoder jwtDecoder;
 
     @Test
     void rejectsMissingTenantForToolExecution() {
@@ -79,7 +88,7 @@ class ToolAndWebhookSecurityTest {
     }
 
     @Test
-    void permitsOperatorRole() throws Exception {
+    void permitsOperatorScope() throws Exception {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
         when(handoffService.request(any(), any())).thenReturn(new HandoffTicket(UUID.randomUUID(), tenantId, conversationId,
@@ -87,13 +96,30 @@ class ToolAndWebhookSecurityTest {
         var principal = new OperatorPrincipal(UUID.randomUUID(), Set.of(tenantId), Set.of("ROLE_OPERATOR"));
 
         mockMvc.perform(post("/api/operator/handoffs")
-                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(
-                                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
-                                        principal, "n", java.util.List.of(
-                                                new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_OPERATOR")))))
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(token -> token
+                                        .subject(principal.operatorId().toString())
+                                        .claim("tenant_ids", Set.of(tenantId.toString()))
+                                        .claim("scope", "operator:read handoff:manage"))
+                                .authorities(
+                                        new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_operator:read"),
+                                        new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_handoff:manage"),
+                                        new org.springframework.security.core.authority.SimpleGrantedAuthority("TENANT_" + tenantId)))
                         .contentType(APPLICATION_JSON)
                         .content("{\"tenantId\":\"%s\",\"conversationId\":\"%s\",\"reason\":\"HOT_LEAD\"}"
                                 .formatted(tenantId, conversationId)))
                 .andExpect(status().isCreated());
+    }
+
+    @Test
+    void rejectsAuthenticatedRequestWithoutHandoffScope() throws Exception {
+        mockMvc.perform(post("/api/operator/handoffs")
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(token -> token
+                                        .subject(UUID.randomUUID().toString())
+                                        .claim("scope", "operator:read")))
+                        .contentType(APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
     }
 }

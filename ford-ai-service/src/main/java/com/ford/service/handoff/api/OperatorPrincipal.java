@@ -23,7 +23,11 @@ public record OperatorPrincipal(UUID operatorId, Set<UUID> tenantIds, Set<String
     }
 
     public boolean isOperator() {
-        return authorities.contains("ROLE_OPERATOR") || authorities.contains("OPERATOR");
+        return authorities.contains("ROLE_OPERATOR")
+                || authorities.contains("OPERATOR")
+                || authorities.contains("SCOPE_operator:read")
+                || authorities.contains("SCOPE_operator:write")
+                || authorities.contains("SCOPE_handoff:manage");
     }
 
     public static OperatorPrincipal from(Authentication authentication) {

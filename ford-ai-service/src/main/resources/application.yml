@@ -54,12 +54,18 @@ spring:
           model: ${FORD_AI_EMBEDDING_MODEL_VERSION:nomic-embed-text}
   autoconfigure:
     exclude:
+      - org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
 
 ford:
+  security:
+    jwt:
+      enabled: ${FORD_SECURITY_JWT_ENABLED:false}
+      issuer-uri: ${FORD_SECURITY_ISSUER_URI:}
+      audience: ${FORD_SECURITY_AUDIENCE:ford-ai-service}
   conversations:
     human-handoff:
       enabled: ${FORD_HUMAN_HANDOFF_ENABLED:true}

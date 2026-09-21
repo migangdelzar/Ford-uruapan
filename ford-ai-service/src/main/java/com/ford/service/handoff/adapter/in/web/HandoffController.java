@@ -5,6 +5,8 @@ import com.ford.service.handoff.application.HandoffService;
 import com.ford.service.handoff.domain.HandoffRequest;
 import com.ford.service.handoff.domain.HandoffTicket;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -13,7 +15,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.List;
 import java.util.UUID;
@@ -29,32 +30,40 @@ public class HandoffController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('SCOPE_handoff:manage')")
     @ResponseStatus(HttpStatus.CREATED)
-    public HandoffTicket request(@RequestBody HandoffRequest request) {
-        return service.request(request, principal());
+    public HandoffTicket request(@RequestBody HandoffRequest request, Authentication authentication) {
+        return service.request(request, principal(authentication));
     }
 
     @PostMapping("/{ticketId}/claim")
-    public HandoffTicket claim(@PathVariable UUID ticketId, @RequestParam long expectedVersion) {
-        return service.claim(ticketId, expectedVersion, principal());
+    @PreAuthorize("hasAuthority('SCOPE_handoff:manage')")
+    public HandoffTicket claim(@PathVariable UUID ticketId, @RequestParam long expectedVersion,
+                               Authentication authentication) {
+        return service.claim(ticketId, expectedVersion, principal(authentication));
     }
 
     @PostMapping("/conversations/{conversationId}/pause")
-    public HandoffTicket pause(@PathVariable UUID conversationId, @RequestParam long expectedVersion) {
-        return service.pauseBot(conversationId, expectedVersion, principal());
+    @PreAuthorize("hasAuthority('SCOPE_handoff:manage')")
+    public HandoffTicket pause(@PathVariable UUID conversationId, @RequestParam long expectedVersion,
+                               Authentication authentication) {
+        return service.pauseBot(conversationId, expectedVersion, principal(authentication));
     }
 
     @PostMapping("/conversations/{conversationId}/resume")
-    public HandoffTicket resume(@PathVariable UUID conversationId, @RequestParam long expectedVersion) {
-        return service.resumeBot(conversationId, expectedVersion, principal());
+    @PreAuthorize("hasAuthority('SCOPE_handoff:manage')")
+    public HandoffTicket resume(@PathVariable UUID conversationId, @RequestParam long expectedVersion,
+                                Authentication authentication) {
+        return service.resumeBot(conversationId, expectedVersion, principal(authentication));
     }
 
     @GetMapping
-    public List<HandoffTicket> list() {
-        return service.list(principal());
+    @PreAuthorize("hasAuthority('SCOPE_operator:read')")
+    public List<HandoffTicket> list(Authentication authentication) {
+        return service.list(principal(authentication));
     }
 
-    private static OperatorPrincipal principal() {
-        return OperatorPrincipal.from(SecurityContextHolder.getContext().getAuthentication());
+    private static OperatorPrincipal principal(Authentication authentication) {
+        return OperatorPrincipal.from(authentication);
     }
 }

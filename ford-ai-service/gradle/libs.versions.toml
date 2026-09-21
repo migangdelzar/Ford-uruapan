@@ -21,6 +21,7 @@ spring-boot-starter-jdbc = { module = "org.springframework.boot:spring-boot-star
 spring-boot-starter-liquibase = { module = "org.springframework.boot:spring-boot-starter-liquibase" }
 spring-boot-starter-data-redis = { module = "org.springframework.boot:spring-boot-starter-data-redis" }
 spring-boot-starter-security = { module = "org.springframework.boot:spring-boot-starter-security" }
+spring-boot-starter-oauth2-resource-server = { module = "org.springframework.boot:spring-boot-starter-oauth2-resource-server" }
 spring-modulith-starter-jdbc = { module = "org.springframework.modulith:spring-modulith-starter-jdbc" }
 spring-modulith-starter-insight = { module = "org.springframework.modulith:spring-modulith-starter-insight" }
 spring-modulith-starter-test = { module = "org.springframework.modulith:spring-modulith-starter-test" }
