@@ -189,6 +189,24 @@ test("macOS host setup applies Homebrew installs without destructive actions", a
   assert.doesNotMatch(result.stdout, /delete/);
 });
 
+test("Docker and Gradle tasks share runtime socket detection", async () => {
+  const compose = await read(`${serviceRoot}/.mise/lib/compose.sh`);
+  const gradle = await read(`${serviceRoot}/build.gradle.kts`);
+  const workflow = await read(".github/workflows/reusable-java-ci.yml");
+
+  assert.match(compose, /runtime\.sh/);
+  assert.match(compose, /ford_runtime_export/);
+  assert.match(gradle, /TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE/);
+  assert.doesNotMatch(gradle, /environment\("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE",\s*"\/var\/run\/docker\.sock"\)/);
+  assert.match(workflow, /TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE:\s*\/var\/run\/docker\.sock/);
+
+  for (const task of ["unit", "integration", "check", "ai-evaluation"]) {
+    const source = await read(`${serviceRoot}/.mise/tasks/test/${task}`);
+    assert.match(source, /runtime\.sh/);
+    assert.match(source, /ford_runtime_export/);
+  }
+});
+
 test("setup documentation describes both supported platforms", async () => {
   const readme = await read(`${serviceRoot}/README.md`);
   const operations = await read(`${serviceRoot}/docs/operations.md`);
