@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, chmod, constants, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { access, chmod, constants, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
@@ -83,7 +83,7 @@ test("dnf host setup is dry-run by default", async () => {
   const root = await mkdtemp(join(tmpdir(), "ford-dnf-dry-run-"));
   const bin = join(root, "bin");
   const osRelease = join(root, "os-release");
-  await import("node:fs/promises").then(({ mkdir }) => mkdir(bin));
+  await mkdir(bin);
   await writeFile(osRelease, "ID=fedora\n");
   await mockCommand(bin, "dnf");
   await mockCommand(bin, "sudo");
@@ -108,7 +108,7 @@ test("dnf Docker setup uses rootless user services without Docker group changes"
   const subuid = join(root, "subuid");
   const subgid = join(root, "subgid");
   const userName = process.env.USER ?? "developer";
-  await import("node:fs/promises").then(({ mkdir }) => mkdir(bin));
+  await mkdir(bin);
   await writeFile(osRelease, "ID=ol\n");
   await writeFile(subuid, `${userName}:100000:65536\n`);
   await writeFile(subgid, `${userName}:100000:65536\n`);
@@ -134,6 +134,41 @@ test("dnf Docker setup uses rootless user services without Docker group changes"
 
   assert.match(result.stdout, /rootless/);
   assert.doesNotMatch(result.stdout, /groupadd|usermod/);
+});
+
+test("macOS Docker setup is dry-run by default and keeps the emme profile", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ford-macos-dry-run-"));
+  const bin = join(root, "bin");
+  await mkdir(bin);
+  await mockCommand(bin, "brew", "if [[ \"$1\" == list ]]; then exit 1; else echo brew \"$@\"; fi");
+
+  const result = await execFileAsync("scripts/setup/macos.sh", ["docker"], {
+    env: {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH}`,
+      HOME: root,
+      FORD_COLIMA_PROFILE: "emme"
+    }
+  });
+
+  assert.match(result.stdout, /emme/);
+  assert.match(result.stdout, /\[dry-run\]/);
+  assert.doesNotMatch(result.stdout, /delete/);
+});
+
+test("macOS host setup applies Homebrew installs without destructive actions", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ford-macos-apply-"));
+  const bin = join(root, "bin");
+  await mkdir(bin);
+  await mockCommand(bin, "brew", "if [[ \"$1\" == list ]]; then exit 1; else echo brew \"$@\"; fi");
+
+  const result = await execFileAsync("scripts/setup/macos.sh", ["host", "--apply"], {
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }
+  });
+
+  assert.match(result.stdout, /brew install mise/);
+  assert.match(result.stdout, /brew install colima/);
+  assert.doesNotMatch(result.stdout, /delete/);
 });
 
 test("setup documentation describes both supported platforms", async () => {
