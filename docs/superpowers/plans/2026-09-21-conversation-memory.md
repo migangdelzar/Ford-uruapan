@@ -81,6 +81,7 @@ ford-ai-service/src/test/java/com/ford/service/
 - Create: `ford-ai-service/src/main/java/com/ford/service/conversations/domain/MemoryQuery.java`
 - Create: `ford-ai-service/src/main/java/com/ford/service/conversations/domain/MemoryUpdateResult.java`
 - Create: `ford-ai-service/src/main/java/com/ford/service/conversations/application/ConversationMemoryPort.java`
+- Create: `ford-ai-service/src/main/java/com/ford/service/conversations/application/ConversationMemoryService.java`
 - Create: `ford-ai-service/src/main/java/com/ford/service/conversations/application/MemoryProperties.java`
 - Test: `ford-ai-service/src/test/java/com/ford/service/conversations/ConversationIdentityTest.java`
 - Test: `ford-ai-service/src/test/java/com/ford/service/conversations/ConversationMemoryServiceTest.java`
@@ -351,6 +352,8 @@ MemoryUpdateResult updateProjection(
 - Modify: `ford-ai-service/src/main/java/com/ford/service/conversations/application/ConversationWorkflow.java`
 - Modify: `ford-ai-service/src/main/java/com/ford/service/conversations/application/ConversationAssistantAdapter.java`
 - Modify: `ford-ai-service/src/main/java/com/ford/service/conversations/api/ConversationTurnRequest.java`
+- Modify: `ford-ai-service/src/main/java/com/ford/service/conversations/domain/ConversationSnapshot.java`
+- Modify: `ford-ai-service/src/main/java/com/ford/service/conversations/adapter/out/JdbcConversationRepository.java`
 - Modify: `ford-ai-service/src/main/java/com/ford/service/ai/application/AiExecutionContext.java`
 - Modify: `ford-ai-service/src/main/java/com/ford/service/ai/api/AssistantRequest.java`
 - Modify: `ford-ai-service/src/main/java/com/ford/service/ai/adapter/out/springai/SpringAiChatCompletionAdapter.java`

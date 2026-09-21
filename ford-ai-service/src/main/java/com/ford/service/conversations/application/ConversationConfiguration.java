@@ -10,8 +10,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(ConversationProperties.class)
+@EnableConfigurationProperties({ConversationProperties.class, MemoryProperties.class})
 public class ConversationConfiguration {
+
+    @Bean
+    ConversationMemoryService conversationMemoryService(ConversationMemoryPort memory,
+                                                        MemoryProperties properties) {
+        return new ConversationMemoryService(memory, properties);
+    }
 
     @Bean
     HumanHandoffPolicy humanHandoffPolicy(ConversationProperties properties) {
