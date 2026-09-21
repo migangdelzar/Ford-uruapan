@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#MISE description="Preview or apply the platform Docker runtime setup"
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+setup_root="$MISE_PROJECT_ROOT/../scripts/setup"
+source "$setup_root/common.sh"
+
+case "$(uname -s)" in
+  Darwin)
+    exec "$setup_root/macos.sh" docker "$@"
+    ;;
+  Linux)
+    exec "$setup_root/dnf.sh" docker "$@"
+    ;;
+  *)
+    setup_fail "unsupported host operating system: $(uname -s)"
+    ;;
+esac

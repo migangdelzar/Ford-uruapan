@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+#MISE description="Check platform, project, and Docker prerequisites"
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+setup_root="$MISE_PROJECT_ROOT/../scripts/setup"
+source "$setup_root/common.sh"
+source "$setup_root/runtime.sh"
+
+setup_arguments=("$@")
+setup_require_command mise
+setup_require_command java
+setup_require_command node
+[[ -x "$MISE_PROJECT_ROOT/gradlew" ]] || setup_fail "Gradle wrapper is missing or not executable"
+
+case "$(uname -s)" in
+  Darwin)
+    source "$setup_root/macos.sh"
+    macos_check "${setup_arguments[@]}"
+    ;;
+  Linux)
+    source "$setup_root/dnf.sh"
+    dnf_check "${setup_arguments[@]}"
+    ;;
+  *)
+    setup_fail "unsupported host operating system: $(uname -s)"
+    ;;
+esac
+
+ford_runtime_export
+ford_runtime_status

@@ -71,12 +71,30 @@ test("setup sources define platform, rootless, and safety contracts", async () =
 test("setup env task refuses to overwrite an existing file", async () => {
   const root = await mkdtemp(join(tmpdir(), "ford-setup-"));
   await writeFile(join(root, ".env.example"), "FORD_DATABASE_URL=jdbc:example\n");
+  await writeFile(join(root, ".env"), "existing\n");
   const script = join(process.cwd(), serviceRoot, ".mise/tasks/setup/env");
 
   await assert.rejects(execFileAsync(script, [], {
     cwd: root,
     env: { ...process.env, MISE_PROJECT_ROOT: root }
   }));
+});
+
+test("setup env task creates a private file from the example", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ford-setup-create-"));
+  const example = "FORD_DATABASE_URL=jdbc:example\n";
+  await writeFile(join(root, ".env.example"), example);
+  const script = join(process.cwd(), serviceRoot, ".mise/tasks/setup/env");
+
+  await execFileAsync(script, [], {
+    cwd: root,
+    env: { ...process.env, MISE_PROJECT_ROOT: root }
+  });
+
+  const created = join(root, ".env");
+  const metadata = await stat(created);
+  assert.equal(metadata.mode & 0o777, 0o600);
+  assert.equal(await read(created), example);
 });
 
 test("dnf host setup is dry-run by default", async () => {
