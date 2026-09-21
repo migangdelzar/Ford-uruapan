@@ -25,6 +25,39 @@ source control, tickets, or chat.
 The default ingestion flag is disabled. Enable it only after official Ford
 endpoints or authorized scraper endpoints and credentials are configured.
 
+## mise environments and task groups
+
+`ford-ai-service/.miserc.toml` selects `dev` by default, so local commands do
+not need an environment flag. Use `mise -E prod ...` only when validating the
+production overlay.
+
+```bash
+mise run env:check
+mise run env:list
+mise run docker:up
+mise run docker:ps
+mise run observability:up
+mise run observability:logs
+```
+
+Production requires database variables from the caller, CI, or a secret
+manager:
+
+```bash
+mise -E prod run env:check
+mise -E prod run docker:config
+```
+
+`.env` is ignored and is used only for local development. An optional ignored
+`mise.prod.local.toml` may load `.env.prod` for manual production-like testing;
+it must not be used as the production secret source. The local override has
+this shape:
+
+```toml
+[env]
+_.file = { path = ".env.prod", redact = true }
+```
+
 ## Health and metrics
 
 - `GET /actuator/health`

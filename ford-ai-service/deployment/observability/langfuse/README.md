@@ -8,10 +8,12 @@ customer-facing service.
 ## Start
 
 ```bash
+cd ford-ai-service
 cp deployment/observability/langfuse/.env.example deployment/observability/langfuse/.env
 openssl rand -hex 32
-docker compose -f deployment/observability/langfuse/docker-compose.yml up -d
-docker compose -f deployment/observability/langfuse/docker-compose.yml ps
+mise run observability:up
+mise run observability:ps
+mise run observability:logs
 ```
 
 Open `http://localhost:3300` after the Web container is ready. The application
@@ -20,6 +22,9 @@ can send traces to `http://localhost:4318/v1/traces`.
 The `LANGFUSE_AUTH_HEADER` value is the HTTP Basic credential containing the
 Langfuse public key and secret key. Generate it outside the repository and
 keep it only in `.env` or a deployment secret manager.
+
+For direct debugging, run `docker compose` from this directory. The mise tasks
+use the same Compose file and local `.env` automatically.
 
 ## Operations
 

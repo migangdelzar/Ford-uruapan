@@ -18,18 +18,42 @@ operator handoff.
 - All application configuration is YAML (`application.yml` and profiles); no
   `.properties` configuration is required.
 
-## Run locally
+## Local development with mise
+
+From this directory, trust the project once and copy the development template:
 
 ```bash
-docker compose up --build
+mise trust
+cp .env.example .env
+mise run doctor
 ```
 
-For tests, use Java 25 and run:
+The service defaults to the `dev` mise environment through `.miserc.toml`.
+Useful grouped tasks:
 
 ```bash
-./gradlew clean check --no-configuration-cache
-./gradlew integrationTest
+mise run app:run
+mise run test:unit
+mise run test:integration
+mise run test:check
+mise run docker:up
+mise run docker:logs
+mise run observability:up
+mise run load:gate
 ```
+
+Inspect available tasks with `mise tasks ls`.
+
+For production-like validation, select the production overlay explicitly and
+provide its required variables through the shell, CI, or a secret manager:
+
+```bash
+mise -E prod run env:check
+mise -E prod run docker:config
+```
+
+Do not commit `.env`, `.env.prod`, or any provider credentials. Use
+`.env.prod.example` only as a variable-name template.
 
 The integration suite uses Testcontainers. The Gradle test tasks persist the
 Colima-compatible `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock`

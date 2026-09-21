@@ -20,6 +20,18 @@ upload SARIF to the repository security tab.
 
 ## Local checks
 
+The preferred local entry point is mise from `ford-ai-service`:
+
+```bash
+cd ford-ai-service
+mise run test:check
+mise run test:ai-evaluation
+mise run docker:config
+mise run observability:config
+```
+
+The equivalent direct commands remain useful for matching CI exactly:
+
 ```bash
 node --test scripts/workflow-contract.test.mjs \
   scripts/observability-contract.test.mjs \
