@@ -129,7 +129,7 @@ mise will expose the directory hierarchy as colon-separated task names.
     ai-evaluation
   env/
     check
-    show
+    list
   docker/
     up
     down
@@ -184,8 +184,8 @@ Compose contracts:
 - Ingestion and outbox: `FORD_INGESTION_*`, `FORD_OUTBOX_*`.
 - Telemetry: `FORD_OTEL_*` and observability stack variables.
 
-No task will print raw environment values. `env:show` will use mise's redacted
-view and will be documented as diagnostic output, not a secret export command.
+No task will print raw environment values. `env:list` will print configured
+variable names and presence status only; it will not export or display values.
 
 ## Docker and observability behavior
 
@@ -209,6 +209,7 @@ Update service README and operations documentation with:
 - production override syntax;
 - task group reference;
 - `.env` and `.env.prod` handling;
+- environment-variable presence diagnostics without secret output;
 - secret-handling rules.
 
 Verify with:
@@ -228,4 +229,3 @@ Verify with:
 - No deployment, registry, or production infrastructure implementation.
 - No destructive Docker volume cleanup task.
 - No unrelated Java or application behavior changes.
-
