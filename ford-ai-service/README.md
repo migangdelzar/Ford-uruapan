@@ -18,13 +18,42 @@ operator handoff.
 - All application configuration is YAML (`application.yml` and profiles); no
   `.properties` configuration is required.
 
-## Local development with mise
+## Local development and onboarding
 
-From this directory, trust the project once and copy the development template:
+Install mise once before running project tasks. The official installer works
+on macOS, Fedora, and Oracle Linux:
+
+```bash
+curl -fsSL https://mise.run | sh
+echo 'eval "$(~/.local/bin/mise activate zsh)"' >> ~/.zshrc
+```
+
+Restart the shell, then from this directory trust the project and inspect the
+host requirements:
 
 ```bash
 mise trust
-cp .env.example .env
+mise run setup:check
+```
+
+On macOS, setup uses Homebrew and the existing `emme` Colima profile. On
+Fedora or Oracle Linux, preview the DNF and rootless Docker changes first:
+
+```bash
+mise run setup:host
+mise run setup:host -- --apply
+mise run setup:docker -- --apply
+```
+
+Linux setup uses rootless Docker and never adds the user to the `docker` group.
+Docker runs as root inside Colima’s isolated Linux VM on macOS; Docker Desktop
+is not required. A new Linux login session may be required after enabling the
+user Docker service.
+
+Create the local environment file without overwriting an existing one:
+
+```bash
+mise run setup:env
 mise run doctor
 ```
 
@@ -55,10 +84,10 @@ mise -E prod run docker:config
 Do not commit `.env`, `.env.prod`, or any provider credentials. Use
 `.env.prod.example` only as a variable-name template.
 
-The integration suite uses Testcontainers. The Gradle test tasks persist the
-Colima-compatible `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock`
-setting; use the `emme` profile and run `ford-colima-recover` if Docker is not
-available.
+The integration suite uses Testcontainers. Setup derives the Docker socket for
+rootless Linux or the `emme` Colima profile. If Colima is unavailable, run
+`mise run setup:check` and use `ford-colima-recover` only when its diagnostics
+indicate the profile needs recovery.
 
 Important environment variables are listed in [operations.md](docs/operations.md),
 and the complete external integration checklist is in

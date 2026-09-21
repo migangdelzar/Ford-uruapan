@@ -30,6 +30,22 @@ mise run docker:config
 mise run observability:config
 ```
 
+Fresh local hosts should start with the platform-aware setup flow:
+
+```bash
+mise run setup:check
+mise run setup:host
+mise run setup:host -- --apply
+mise run setup:docker -- --apply
+mise run setup:env
+```
+
+Fedora and Oracle Linux use rootless Docker Engine through `dnf`; no Docker
+group membership is required. macOS uses the `emme` Colima profile. The Docker
+daemon is root inside Colima’s isolated VM, and the runtime helper derives its
+profile socket for Compose and Testcontainers. CI runners use their standard
+`/var/run/docker.sock` and pass that path explicitly to the integration job.
+
 The equivalent direct commands remain useful for matching CI exactly:
 
 ```bash
@@ -41,12 +57,10 @@ cd ford-ai-service
 ./gradlew clean check --no-configuration-cache
 ```
 
-For the persisted Colima `emme` profile, the Gradle test tasks set
-`TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock` so Testcontainers
-Ryuk binds the Docker socket inside the VM. CI uses a standard GitHub-hosted
-Docker service and does not need that override. If a shell predates the global
-profile configuration, reload it with `source ~/.zshrc` or run
-`ford-colima-recover` before the integration suite.
+For the persisted Colima `emme` profile, the runtime helper sets the
+Testcontainers in-VM socket override. On Linux it derives the rootless user
+socket. If a shell predates the global profile configuration, reload it with
+`source ~/.zshrc` or run `ford-colima-recover` before the integration suite.
 
 The verification suite includes Spring Modulith architecture/documentation
 checks, PostgreSQL event-publication and outbox recovery tests, signed

@@ -48,6 +48,41 @@ mise -E prod run env:check
 mise -E prod run docker:config
 ```
 
+## Fresh-host setup
+
+Install mise once with the official installer, then run setup from this
+directory:
+
+```bash
+curl -fsSL https://mise.run | sh
+mise trust
+mise run setup:check
+mise run setup:host
+mise run setup:host -- --apply
+mise run setup:docker -- --apply
+mise run setup:env
+```
+
+`setup:host` is a dry-run unless `--apply` is supplied. Fedora and Oracle
+Linux use Docker’s RPM repository through `dnf`, install rootless prerequisites,
+and configure a per-user Docker systemd service. They do not use the Docker
+group. Rootless Docker requires `newuidmap`, `newgidmap`, and at least 65,536
+subordinate UIDs and GIDs in `/etc/subuid` and `/etc/subgid`.
+
+macOS uses Homebrew and the `emme` Colima profile. Colima provides the Docker
+Linux VM; its Docker daemon runs as root inside that VM, while the macOS host
+does not run a Docker daemon. The setup preserves existing profile data and
+does not delete or recreate profiles automatically.
+
+`setup:check` reports the active Docker context and socket. The runtime helper
+passes the user-scoped rootless socket to Gradle/Testcontainers on Linux and
+the Colima socket plus in-VM override on macOS. If a rootful Docker service is
+already active on Linux, setup stops with migration instructions instead of
+disabling or deleting it.
+
+`setup:env` copies `.env.example` to a private `.env` only when `.env` is
+absent. It never overwrites an existing file or creates production env files.
+
 `.env` is ignored and is used only for local development. An optional ignored
 `mise.prod.local.toml` may load `.env.prod` for manual production-like testing;
 it must not be used as the production secret source. The local override has
