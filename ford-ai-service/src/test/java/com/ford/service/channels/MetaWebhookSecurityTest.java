@@ -55,7 +55,7 @@ class MetaWebhookSecurityTest {
     @Test
     void acknowledgesDuplicateProviderMessageOnlyOnce() {
         var body = """
-                {"entry":[{"changes":[{"value":{"messages":[{"id":"wamid.duplicate","from":"5214521234567","text":{"body":"Hola"}}]}}]}]}
+                {"entry":[{"changes":[{"value":{"metadata":{"phone_number_id":"phone-42"},"messages":[{"id":"wamid.duplicate","from":"5214521234567","text":{"body":"Hola"}}]}}]}]}
                 """;
         var service = new ChannelMessageService();
         var adapter = new WhatsAppChannelAdapter(new ObjectMapper());

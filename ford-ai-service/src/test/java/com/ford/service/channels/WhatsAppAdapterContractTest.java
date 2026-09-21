@@ -16,7 +16,7 @@ class WhatsAppAdapterContractTest {
     void normalizesTextMessage() {
         var message = new WhatsAppChannelAdapter(new ObjectMapper()).parseInbound(new RawWebhook(
                 UUID.randomUUID(), """
-                        {"entry":[{"changes":[{"value":{"messages":[{"id":"wamid.1","from":"5214521234567","text":{"body":"¿Hay Ranger?"}}]}}]}]}
+                        {"entry":[{"changes":[{"value":{"metadata":{"phone_number_id":"phone-42"},"messages":[{"id":"wamid.1","from":"5214521234567","text":{"body":"¿Hay Ranger?"}}]}}]}]}
                         """, "{}"));
         assertThat(message).extracting(InboundMessage::channel, InboundMessage::providerMessageId, InboundMessage::text)
                 .containsExactly(Channel.WHATSAPP, "wamid.1", "¿Hay Ranger?");

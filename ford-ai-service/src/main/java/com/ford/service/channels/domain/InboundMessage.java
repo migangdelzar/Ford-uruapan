@@ -8,6 +8,7 @@ import java.util.UUID;
 public record InboundMessage(
         UUID tenantId,
         Channel channel,
+        String providerAccountId,
         String providerMessageId,
         String participantId,
         String text,
@@ -20,7 +21,7 @@ public record InboundMessage(
                           String participantId, String text,
                           List<Map<String, Object>> attachments, Instant receivedAt,
                           String rawPayloadReference) {
-        this(tenantId, channel, providerMessageId, participantId, text, attachments,
+        this(tenantId, channel, "unknown", providerMessageId, participantId, text, attachments,
                 receivedAt, rawPayloadReference, null, null);
     }
 

@@ -11,3 +11,5 @@ databaseChangeLog:
       file: db/changelog/changes/005-canonical-upsert.yaml
   - include:
       file: db/changelog/changes/006-meta-webhook-routing.yaml
+  - include:
+      file: db/changelog/changes/007-conversation-memory.yaml

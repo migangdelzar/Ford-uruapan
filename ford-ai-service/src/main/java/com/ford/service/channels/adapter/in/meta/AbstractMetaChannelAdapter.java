@@ -29,13 +29,14 @@ abstract class AbstractMetaChannelAdapter implements ChannelAdapter {
             var providerMessageId = text(message, messageIdPath());
             var participantId = text(message, participantPath());
             var text = text(message, textPath());
+            var providerAccountId = providerAccountId(payload.body());
             if (providerMessageId == null || participantId == null || text == null || text.isBlank()) {
                 throw new IllegalArgumentException("Unsupported or non-text Meta message");
             }
             return new InboundMessage(
-                    payload.tenantId(), channel(), providerMessageId, participantId, text,
+                    payload.tenantId(), channel(), providerAccountId, providerMessageId, participantId, text,
                     List.of(), Instant.now(), payload.rawPayloadReference(), payload.bindingId(),
-                    conversationId(payload.tenantId(), channel(), participantId));
+                    conversationId(payload.tenantId(), channel(), providerAccountId, participantId));
         } catch (IllegalArgumentException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -46,13 +47,14 @@ abstract class AbstractMetaChannelAdapter implements ChannelAdapter {
     protected InboundMessage normalize(RawWebhook payload, JsonNode message, String participantId) {
         var providerMessageId = text(message, messageIdPath());
         var text = text(message, textPath());
+        var providerAccountId = providerAccountId(payload.body());
         if (providerMessageId == null || participantId == null || text == null || text.isBlank()) {
             throw new IllegalArgumentException("Unsupported or non-text Meta message");
         }
         return new InboundMessage(
-                payload.tenantId(), channel(), providerMessageId, participantId, text,
+                payload.tenantId(), channel(), providerAccountId, providerMessageId, participantId, text,
                 List.of(), Instant.now(), payload.rawPayloadReference(), payload.bindingId(),
-                conversationId(payload.tenantId(), channel(), participantId));
+                conversationId(payload.tenantId(), channel(), providerAccountId, participantId));
     }
 
     protected JsonNode readTree(String body) {
@@ -94,8 +96,10 @@ abstract class AbstractMetaChannelAdapter implements ChannelAdapter {
         return value.isMissingNode() || value.isNull() ? null : value.asText();
     }
 
-    private static java.util.UUID conversationId(java.util.UUID tenantId, Channel channel, String participantId) {
-        return java.util.UUID.nameUUIDFromBytes((tenantId + ":" + channel + ":" + participantId)
+    private static java.util.UUID conversationId(java.util.UUID tenantId, Channel channel,
+                                                String providerAccountId, String participantId) {
+        return java.util.UUID.nameUUIDFromBytes((tenantId + ":" + channel + ":"
+                + providerAccountId + ":" + participantId)
                 .getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 }
