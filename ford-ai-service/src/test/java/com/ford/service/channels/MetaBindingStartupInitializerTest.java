@@ -3,6 +3,7 @@ package com.ford.service.channels;
 import com.ford.service.channels.adapter.in.meta.MetaBindingStartupInitializer;
 import com.ford.service.channels.adapter.in.meta.MetaWebhookProperties;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 import java.util.UUID;
@@ -21,9 +22,10 @@ class MetaBindingStartupInitializerTest {
     @Test
     void doesNothingWhenAutomaticBindingIsDisabled() {
         var jdbc = mock(JdbcClient.class);
+        var jdbcClients = jdbcProvider(jdbc);
         var properties = new MetaWebhookProperties();
 
-        new MetaBindingStartupInitializer(jdbc, properties).run(null);
+        new MetaBindingStartupInitializer(jdbcClients, properties).run(null);
 
         verifyNoInteractions(jdbc);
     }
@@ -31,6 +33,7 @@ class MetaBindingStartupInitializerTest {
     @Test
     void upsertsTheConfiguredWhatsAppBindingForCleanStartup() {
         var jdbc = mock(JdbcClient.class);
+        var jdbcClients = jdbcProvider(jdbc);
         var statement = mock(JdbcClient.StatementSpec.class);
         when(jdbc.sql(anyString())).thenReturn(statement);
         when(statement.param(anyString(), any())).thenReturn(statement);
@@ -41,7 +44,7 @@ class MetaBindingStartupInitializerTest {
         properties.getAutoBinding().setTenantId(TENANT_ID);
         properties.getAutoBinding().setProviderAccountId("1254270961113240");
 
-        new MetaBindingStartupInitializer(jdbc, properties).run(null);
+        new MetaBindingStartupInitializer(jdbcClients, properties).run(null);
 
         var sql = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(jdbc).sql(sql.capture());
@@ -57,12 +60,20 @@ class MetaBindingStartupInitializerTest {
     @Test
     void skipsAutomaticBindingWhenTheProviderAccountIsNotConfigured() {
         var jdbc = mock(JdbcClient.class);
+        var jdbcClients = jdbcProvider(jdbc);
         var properties = new MetaWebhookProperties();
         properties.getAutoBinding().setEnabled(true);
         properties.getAutoBinding().setTenantId(TENANT_ID);
 
-        new MetaBindingStartupInitializer(jdbc, properties).run(null);
+        new MetaBindingStartupInitializer(jdbcClients, properties).run(null);
 
         verifyNoInteractions(jdbc);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ObjectProvider<JdbcClient> jdbcProvider(JdbcClient jdbc) {
+        var provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(jdbc);
+        return provider;
     }
 }

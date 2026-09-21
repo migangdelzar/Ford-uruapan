@@ -1,8 +1,8 @@
 package com.ford.service.channels.adapter.in.meta;
 
 import com.ford.service.channels.application.port.in.ChannelAdapter;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -27,9 +27,8 @@ public class MetaChannelConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(JdbcClient.class)
     MetaBindingStartupInitializer metaBindingStartupInitializer(
-            JdbcClient jdbc, MetaWebhookProperties properties) {
-        return new MetaBindingStartupInitializer(jdbc, properties);
+            ObjectProvider<JdbcClient> jdbcClients, MetaWebhookProperties properties) {
+        return new MetaBindingStartupInitializer(jdbcClients, properties);
     }
 }

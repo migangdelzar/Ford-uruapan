@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 import java.util.UUID;
@@ -12,11 +13,12 @@ public class MetaBindingStartupInitializer implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(MetaBindingStartupInitializer.class);
 
-    private final JdbcClient jdbc;
+    private final ObjectProvider<JdbcClient> jdbcClients;
     private final MetaWebhookProperties properties;
 
-    public MetaBindingStartupInitializer(JdbcClient jdbc, MetaWebhookProperties properties) {
-        this.jdbc = jdbc;
+    public MetaBindingStartupInitializer(ObjectProvider<JdbcClient> jdbcClients,
+                                         MetaWebhookProperties properties) {
+        this.jdbcClients = jdbcClients;
         this.properties = properties;
     }
 
@@ -33,6 +35,12 @@ public class MetaBindingStartupInitializer implements ApplicationRunner {
         if (binding.getTenantId() == null || !isConfiguredProviderAccount(binding.getProviderAccountId())) {
             log.warn("Meta automatic binding skipped: configure a numeric provider-account-id and tenant-id "
                     + "before enabling it");
+            return;
+        }
+
+        var jdbc = jdbcClients.getIfAvailable();
+        if (jdbc == null) {
+            log.warn("Meta automatic binding skipped: JDBC is not available");
             return;
         }
 
