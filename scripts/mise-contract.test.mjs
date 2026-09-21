@@ -22,6 +22,7 @@ test("mise selects development by default and manages Java 25", async () => {
 
   assert.match(miserc, /env\s*=\s*\[\s*["']dev["']\s*\]/);
   assert.match(config, /\[tools\][\s\S]*\bjava\s*=\s*["']25["']/);
+  assert.match(config, /\bnode\s*=\s*["']22["']/);
   assert.match(dev, /FORD_RUNTIME_ENV\s*=\s*["']development["']/);
   assert.match(dev, /_\.file\s*=\s*\{[^}]*path\s*=\s*["']\.env["']/);
   assert.match(prod, /FORD_RUNTIME_ENV\s*=\s*["']production["']/);
@@ -51,6 +52,10 @@ test("grouped mise task files exist and are executable", async () => {
     "observability/ps",
     "observability/logs",
     "load/gate",
+    "setup/check",
+    "setup/host",
+    "setup/docker",
+    "setup/env",
     "doctor"
   ];
 
