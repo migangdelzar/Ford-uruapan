@@ -16,6 +16,18 @@ Use environment variables or a deployment profile; keep secrets outside Git.
 - `FORD_AI_CHAT_PROVIDER`, `FORD_AI_EMBEDDING_PROVIDER`
 - `FORD_AI_CLOUD_ENABLED`, `FORD_AI_LOCAL_ENABLED`, provider base URLs and model names
 - `FORD_AI_LOG_PROVIDER_ERRORS` (opt-in bounded provider error details)
+
+For OpenAI-compatible providers, `FORD_AI_CLOUD_BASE_URL` must include the
+provider API version because the Spring AI SDK appends `/chat/completions`
+directly to it. For example, OpenRouter uses:
+
+```dotenv
+FORD_AI_CLOUD_BASE_URL=https://openrouter.ai/api/v1
+```
+
+The same shape works for the official OpenAI endpoint:
+`https://api.openai.com/v1`.
+
 - `FORD_INGESTION_ENABLED`, `FORD_TENANT_ID`, `FORD_INGESTION_CRON`
 - `FORD_CATALOG_ENDPOINT`, `FORD_INVENTORY_ENDPOINT`, `FORD_SCRAPER_ENDPOINT`
 - `FORD_MANUAL_CSV_PATH`, `FORD_INGESTION_MAX_ATTEMPTS`

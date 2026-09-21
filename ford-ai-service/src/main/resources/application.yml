@@ -34,7 +34,9 @@ spring:
           log-prompt: ${FORD_AI_LOG_PROMPT:false}
           log-completion: ${FORD_AI_LOG_COMPLETION:false}
     openai:
-      base-url: ${FORD_AI_CLOUD_BASE_URL:https://api.openai.com}
+      # Spring AI 2.x passes this value directly to the OpenAI-compatible SDK,
+      # which appends /chat/completions. Keep the provider API version here.
+      base-url: ${FORD_AI_CLOUD_BASE_URL:https://api.openai.com/v1}
       api-key: ${OPENAI_API_KEY:}
       chat:
         options:
