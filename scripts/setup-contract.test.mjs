@@ -121,6 +121,36 @@ test("dnf host setup is dry-run by default", async () => {
   assert.match(result.stdout, /\[dry-run\]/);
 });
 
+test("Oracle Linux host setup uses EL package names", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ford-dnf-ol-apply-"));
+  const bin = join(root, "bin");
+  const osRelease = join(root, "os-release");
+  await mkdir(bin);
+  await writeFile(osRelease, "ID=ol\n");
+  await mockCommand(bin, "dnf", `
+for argument in "$@"; do
+  case "$argument" in
+    uidmap|dbus-user-session) exit 42 ;;
+  esac
+done
+printf 'dnf %s\\n' "$*"
+`);
+  await mockCommand(bin, "sudo", '"$@"');
+
+  const result = await execFileAsync("scripts/setup/dnf.sh", ["host", "--apply"], {
+    env: {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH}`,
+      SETUP_OS_RELEASE_FILE: osRelease
+    }
+  });
+
+  assert.match(result.stdout, /shadow-utils/);
+  assert.match(result.stdout, /fuse-overlayfs/);
+  assert.match(result.stdout, /slirp4netns/);
+  assert.doesNotMatch(result.stdout, /uidmap|dbus-user-session/);
+});
+
 test("dnf Docker setup uses rootless user services without Docker group changes", async () => {
   const root = await mkdtemp(join(tmpdir(), "ford-dnf-rootless-"));
   const bin = join(root, "bin");

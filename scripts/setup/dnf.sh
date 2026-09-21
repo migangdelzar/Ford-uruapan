@@ -30,11 +30,10 @@ dnf_packages=(
   dnf-plugins-core
   curl
   ca-certificates
-  uidmap
+  shadow-utils
   fuse-overlayfs
   slirp4netns
-  iptables
-  dbus-user-session
+  iptables-nft
   docker-ce
   docker-ce-cli
   containerd.io
@@ -56,8 +55,8 @@ dnf_check_rootless() {
   local subgid_file="${SETUP_SUBGID_FILE:-/etc/subgid}"
 
   [[ "$(id -u)" != "0" ]] || setup_fail "rootless Docker setup must run as a non-root user"
-  command -v newuidmap >/dev/null 2>&1 || setup_fail "newuidmap is missing; install the uidmap package"
-  command -v newgidmap >/dev/null 2>&1 || setup_fail "newgidmap is missing; install the uidmap package"
+  command -v newuidmap >/dev/null 2>&1 || setup_fail "newuidmap is missing; install the shadow-utils package"
+  command -v newgidmap >/dev/null 2>&1 || setup_fail "newgidmap is missing; install the shadow-utils package"
   dnf_user_has_subordinate_range "$subuid_file" "$user_name" || setup_fail "${user_name} needs at least 65536 subordinate UIDs in $subuid_file"
   dnf_user_has_subordinate_range "$subgid_file" "$user_name" || setup_fail "${user_name} needs at least 65536 subordinate GIDs in $subgid_file"
   [[ -d "$runtime_dir" ]] || setup_fail "user runtime directory is unavailable: $runtime_dir"
@@ -122,7 +121,7 @@ dnf_setup_docker() {
   fi
   dnf_supported
   if ! setup_is_apply; then
-    setup_report "[dry-run] requires docker-ce-rootless-extras, uidmap, subordinate UID/GID ranges, and a user systemd session"
+    setup_report "[dry-run] requires docker-ce-rootless-extras, shadow-utils, subordinate UID/GID ranges, and a user systemd session"
     setup_run dockerd-rootless-setuptool.sh install
     setup_run systemctl --user enable --now docker.service
     setup_run sudo loginctl enable-linger "${USER:-$(id -un)}"

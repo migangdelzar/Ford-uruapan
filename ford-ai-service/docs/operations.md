@@ -66,7 +66,8 @@ mise run setup:env
 `setup:host` is a dry-run unless `--apply` is supplied. Fedora and Oracle
 Linux use Docker’s RPM repository through `dnf`, install rootless prerequisites,
 and configure a per-user Docker systemd service. They do not use the Docker
-group. Rootless Docker requires `newuidmap`, `newgidmap`, and at least 65,536
+group. On Fedora and Oracle Linux, `newuidmap` and `newgidmap` come from
+`shadow-utils`. Rootless Docker requires those commands and at least 65,536
 subordinate UIDs and GIDs in `/etc/subuid` and `/etc/subgid`.
 
 macOS uses Homebrew and the `emme` Colima profile. Colima provides the Docker
