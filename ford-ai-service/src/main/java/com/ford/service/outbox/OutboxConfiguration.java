@@ -9,11 +9,11 @@ import org.springframework.context.annotation.Configuration;
 import java.time.Duration;
 
 @Configuration(proxyBeanMethods = false)
-@ConditionalOnProperty(name = "ford.outbox.enabled", havingValue = "true")
 @EnableConfigurationProperties(OutboxProperties.class)
 public class OutboxConfiguration {
 
     @Bean
+    @ConditionalOnProperty(name = "ford.outbox.enabled", havingValue = "true")
     OutboxPublisher outboxPublisher(OutboxStore store, OutboxDeliveryRouter router,
                                     AiObservationService observations,
                                     OutboxProperties properties) {
@@ -24,11 +24,13 @@ public class OutboxConfiguration {
     }
 
     @Bean
+    @ConditionalOnProperty(name = "ford.outbox.enabled", havingValue = "true")
     OutboxDeliveryJob outboxDeliveryJob(OutboxPublisher publisher) {
         return new OutboxDeliveryJob(publisher);
     }
 
     @Bean
+    @ConditionalOnProperty(name = "ford.outbox.enabled", havingValue = "true")
     OutboxRecoveryJob outboxRecoveryJob(OutboxStore store) {
         return new OutboxRecoveryJob(store);
     }
