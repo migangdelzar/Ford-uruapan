@@ -19,12 +19,12 @@ public final class AiProviderFailureDiagnostics {
 
     public static String describe(Throwable failure, boolean includeResponseBody) {
         var serviceFailure = find(failure, OpenAIServiceException.class).orElse(null);
-        Integer status = serviceFailure == null ? inferStatus(failure) : Integer.valueOf(serviceFailure.statusCode());
+        Integer status = serviceFailure == null ? inferStatus(failure) : safeStatus(serviceFailure, failure);
         var category = category(status, failure);
-        var retryAfter = serviceFailure == null ? null : firstHeader(serviceFailure, "retry-after");
-        var requestId = serviceFailure == null ? null : firstHeader(serviceFailure, "x-request-id");
-        var code = serviceFailure == null ? null : serviceFailure.code().orElse(null);
-        var type = serviceFailure == null ? null : serviceFailure.type().orElse(null);
+        var retryAfter = serviceFailure == null ? null : safeHeader(serviceFailure, "retry-after");
+        var requestId = serviceFailure == null ? null : safeHeader(serviceFailure, "x-request-id");
+        var code = serviceFailure == null ? null : safeCode(serviceFailure);
+        var type = serviceFailure == null ? null : safeType(serviceFailure);
 
         var result = new StringBuilder("category=").append(category);
         append(result, "status", status == null ? null : status.toString());
@@ -33,7 +33,7 @@ public final class AiProviderFailureDiagnostics {
         append(result, "code", code);
         append(result, "type", type);
         if (includeResponseBody) {
-            var detail = serviceFailure == null ? failure.getMessage() : serviceFailure.body().toString();
+            var detail = serviceFailure == null ? failure.getMessage() : safeBody(serviceFailure);
             append(result, "responseBody", sanitize(detail));
         }
         return result.toString();
@@ -50,8 +50,49 @@ public final class AiProviderFailureDiagnostics {
         return Optional.empty();
     }
 
-    private static String firstHeader(OpenAIServiceException failure, String name) {
-        return failure.headers().values(name).stream().findFirst().orElse(null);
+    private static Integer safeStatus(OpenAIServiceException failure, Throwable original) {
+        try {
+            return failure.statusCode();
+        }
+        catch (RuntimeException ignored) {
+            return inferStatus(original);
+        }
+    }
+
+    private static String safeHeader(OpenAIServiceException failure, String name) {
+        try {
+            return failure.headers().values(name).stream().findFirst().orElse(null);
+        }
+        catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static String safeCode(OpenAIServiceException failure) {
+        try {
+            return failure.code().orElse(null);
+        }
+        catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static String safeType(OpenAIServiceException failure) {
+        try {
+            return failure.type().orElse(null);
+        }
+        catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static String safeBody(OpenAIServiceException failure) {
+        try {
+            return failure.body().toString();
+        }
+        catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     private static Integer inferStatus(Throwable failure) {

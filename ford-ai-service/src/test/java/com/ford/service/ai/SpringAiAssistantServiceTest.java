@@ -2,6 +2,7 @@ package com.ford.service.ai;
 
 import com.ford.service.ai.api.AssistantResponse;
 import com.ford.service.ai.application.AiExecutionContext;
+import com.ford.service.ai.application.AiProviderFailureDiagnostics;
 import com.ford.service.ai.application.AssistantOrchestrator;
 import com.ford.service.ai.application.DefaultModelProviderPolicy;
 import com.ford.service.ai.application.Intent;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -112,5 +114,20 @@ class SpringAiAssistantServiceTest {
         finally {
             logger.detachAppender(appender);
         }
+    }
+
+    @Test
+    void providerDiagnosticsDoNotFailWhenTheProviderErrorMetadataIsMalformed() {
+        var failure = mock(OpenAIServiceException.class);
+        when(failure.statusCode()).thenReturn(404);
+        when(failure.headers()).thenReturn(Headers.builder().build());
+        when(failure.code()).thenThrow(new IllegalStateException("code is invalid"));
+        when(failure.type()).thenThrow(new IllegalStateException("type is invalid"));
+
+        assertThatCode(() -> AiProviderFailureDiagnostics.describe(failure, false))
+                .doesNotThrowAnyException();
+        assertThat(AiProviderFailureDiagnostics.describe(failure, false))
+                .contains("category=not_found", "status=404")
+                .doesNotContain("responseBody=");
     }
 }
