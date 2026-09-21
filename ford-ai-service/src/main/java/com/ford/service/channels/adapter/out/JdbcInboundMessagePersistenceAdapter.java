@@ -19,15 +19,15 @@ public class JdbcInboundMessagePersistenceAdapter implements InboundMessagePersi
     }
 
     @Override
-    public void persist(InboundMessage message) {
-        persist(message, UUID.randomUUID());
+    public UUID persist(InboundMessage message) {
+        return persist(message, UUID.randomUUID());
     }
 
     @Override
     @Transactional
-    public void persist(InboundMessage message, UUID receiptId) {
+    public UUID persist(InboundMessage message, UUID receiptId) {
         var now = Timestamp.from(Instant.now());
-        jdbc.sql("""
+        var conversationId = jdbc.sql("""
                 insert into conversation
                     (id, tenant_id, channel, provider_account_id, participant_id,
                      provider_conversation_id, state,
@@ -37,6 +37,7 @@ public class JdbcInboundMessagePersistenceAdapter implements InboundMessagePersi
                         'BOT_ACTIVE', 0, :now, :now)
                 on conflict (tenant_id, channel, provider_account_id, participant_id)
                 do update set updated_at = excluded.updated_at
+                returning id
                 """)
                 .param("conversationId", message.conversationId())
                 .param("tenantId", message.tenantId())
@@ -45,7 +46,8 @@ public class JdbcInboundMessagePersistenceAdapter implements InboundMessagePersi
                 .param("participantId", message.participantId())
                 .param("providerConversationId", message.participantId())
                 .param("now", now)
-                .update();
+                .query(UUID.class)
+                .single();
 
         jdbc.sql("""
                 insert into channel_message
@@ -59,7 +61,7 @@ public class JdbcInboundMessagePersistenceAdapter implements InboundMessagePersi
                 """)
                 .param("receiptId", receiptId)
                 .param("bindingId", message.bindingId())
-                .param("conversationId", message.conversationId())
+                .param("conversationId", conversationId)
                 .param("tenantId", message.tenantId())
                 .param("channel", message.channel().name())
                 .param("providerMessageId", message.providerMessageId())
@@ -76,10 +78,11 @@ public class JdbcInboundMessagePersistenceAdapter implements InboundMessagePersi
                 on conflict (conversation_id, provider_message_id) do nothing
                 """)
                 .param("id", UUID.randomUUID())
-                .param("conversationId", message.conversationId())
+                .param("conversationId", conversationId)
                 .param("providerMessageId", message.providerMessageId())
                 .param("content", message.text())
                 .param("receivedAt", Timestamp.from(message.receivedAt()))
                 .update();
+        return conversationId;
     }
 }

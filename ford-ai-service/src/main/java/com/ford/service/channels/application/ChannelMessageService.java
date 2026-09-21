@@ -56,12 +56,13 @@ public class ChannelMessageService {
         if (!firstDelivery) {
             return null;
         }
+        var conversationId = message.conversationId();
         if (persistence != null) {
-            persistence.persist(message, receiptId);
+            conversationId = persistence.persist(message, receiptId);
         }
         if (eventPublisher != null) {
             eventPublisher.publishEvent(new InboundMessageAccepted(
-                    receiptId, message.tenantId(), message.conversationId(), message.channel(),
+                    receiptId, message.tenantId(), conversationId, message.channel(),
                     message.providerMessageId(), message.receivedAt()));
         }
         return message;
