@@ -70,3 +70,13 @@ test("collector contract includes OTLP, protection, redaction, and Langfuse expo
   assert.match(source, /attributes\/redaction/);
   assert.match(source, /langfuse/);
 });
+
+test("local tracing export is opt-in when the collector is not running", async () => {
+  const application = await read("ford-ai-service/src/main/resources/application.yml");
+  const env = await read("ford-ai-service/.env.example");
+  const compose = await read("ford-ai-service/docker-compose.yml");
+
+  assert.match(application, /enabled: \$\{FORD_OTEL_TRACES_EXPORT_ENABLED:false\}/);
+  assert.match(env, /^FORD_OTEL_TRACES_EXPORT_ENABLED=false$/m);
+  assert.match(compose, /FORD_OTEL_TRACES_EXPORT_ENABLED: \$\{FORD_OTEL_TRACES_EXPORT_ENABLED:-false\}/);
+});

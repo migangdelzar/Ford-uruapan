@@ -62,13 +62,16 @@ Host-JVM observability uses host loopback addresses. Keep these values in the
 private `.env` used by `mise run app:run`:
 
 ```dotenv
+FORD_OTEL_TRACES_EXPORT_ENABLED=false
 FORD_AI_LOCAL_BASE_URL=http://127.0.0.1:11434
 FORD_OTEL_TRACES_ENDPOINT=http://127.0.0.1:4318/v1/traces
 ```
 
 Compose uses the separate `*_DOCKER` values from `.env.example`, so
-`host.docker.internal` is not used by a JVM running directly on Linux. Start
-the local collector before the application when tracing is enabled:
+`host.docker.internal` is not used by a JVM running directly on Linux. Trace
+export is disabled by default. If you want observability, set
+`FORD_OTEL_TRACES_EXPORT_ENABLED=true`, start the local collector, and then
+start the application:
 
 ```bash
 mise run observability:up

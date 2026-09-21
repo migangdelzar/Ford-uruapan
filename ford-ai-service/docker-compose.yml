@@ -50,6 +50,7 @@ services:
       FORD_SCRAPER_ENDPOINT: ${FORD_SCRAPER_ENDPOINT:-}
       FORD_MANUAL_CSV_PATH: ${FORD_MANUAL_CSV_PATH:-}
       FORD_OUTBOX_ENABLED: ${FORD_OUTBOX_ENABLED:-false}
+      FORD_OTEL_TRACES_EXPORT_ENABLED: ${FORD_OTEL_TRACES_EXPORT_ENABLED:-false}
       FORD_OTEL_TRACES_ENDPOINT: ${FORD_OTEL_TRACES_ENDPOINT_DOCKER:-http://host.docker.internal:4318/v1/traces}
     extra_hosts:
       - "host.docker.internal:host-gateway"
