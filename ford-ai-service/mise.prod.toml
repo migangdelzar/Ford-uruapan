@@ -1,0 +1,6 @@
+[env]
+FORD_RUNTIME_ENV = "production"
+COMPOSE_PROJECT_NAME = "ford-service-prod"
+FORD_DATABASE_URL = { required = "Set the production JDBC URL before running prod tasks" }
+FORD_DATABASE_USERNAME = { required = "Set the production database username before running prod tasks" }
+FORD_DATABASE_PASSWORD = { required = "Set the production database password before running prod tasks", redact = true }

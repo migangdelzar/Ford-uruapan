@@ -29,6 +29,7 @@ Thumbs.db
 .env.*
 !.env.example
 !.env.template
+!.env.prod.example
 application-local.yml
 application-local.yaml
 application-secrets.yml
@@ -57,3 +58,7 @@ application-secrets.yaml
 # Docker/local tooling overrides
 docker-compose.override.yml
 docker-compose.override.yaml
+
+# Local mise environment overrides
+mise.local.toml
+mise.*.local.toml

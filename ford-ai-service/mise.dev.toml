@@ -1,0 +1,4 @@
+[env]
+FORD_RUNTIME_ENV = "development"
+COMPOSE_PROJECT_NAME = "ford-service-dev"
+_.file = { path = ".env", redact = true }
