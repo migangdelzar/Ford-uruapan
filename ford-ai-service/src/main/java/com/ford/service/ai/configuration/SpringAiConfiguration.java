@@ -27,12 +27,14 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.ai.support.ToolCallbacks;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /** Composition root marker for Spring AI adapters and read-only tool wiring. */
 @Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(ClassificationProperties.class)
 public class SpringAiConfiguration {
 
     @Bean

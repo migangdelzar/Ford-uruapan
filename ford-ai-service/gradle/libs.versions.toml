@@ -2,6 +2,7 @@
 spring-boot = "4.1.0"
 spring-dependency-management = "1.1.7"
 spring-ai = "2.0.1"
+typesafe = "0.1.0"
 spring-modulith = "2.1.1"
 postgresql = "42.7.12"
 liquibase = "4.29.2"
@@ -37,6 +38,8 @@ spring-ai-vector-store-advisor = { module = "org.springframework.ai:spring-ai-ve
 spring-ai-starter-model-ollama = { module = "org.springframework.ai:spring-ai-starter-model-ollama" }
 spring-ai-starter-model-openai = { module = "org.springframework.ai:spring-ai-starter-model-openai" }
 spring-ai-starter-vector-store-pgvector = { module = "org.springframework.ai:spring-ai-starter-vector-store-pgvector" }
+spring-ai-starter-typesafe = { module = "org.springaicommunity:spring-ai-starter-typesafe", version.ref = "typesafe" }
+typesafe-spring-ai = { module = "org.springaicommunity:typesafe-spring-ai", version.ref = "typesafe" }
 testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
 testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
 archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }

@@ -41,6 +41,8 @@ spring:
       chat:
         options:
           model: ${FORD_AI_CLOUD_MODEL_VERSION:gpt-4o-mini}
+    typesafe:
+      api-key: ${TYPESAFE_API_KEY:}
     model:
       chat: ${FORD_AI_CHAT_PROVIDER:ollama}
       embedding: ${FORD_AI_EMBEDDING_PROVIDER:ollama}
@@ -121,6 +123,22 @@ ford:
     cloud-enabled: ${FORD_AI_CLOUD_ENABLED:false}
     local-enabled: ${FORD_AI_LOCAL_ENABLED:true}
     log-provider-errors: ${FORD_AI_LOG_PROVIDER_ERRORS:false}
+    classification:
+      enabled: ${FORD_AI_CLASSIFICATION_ENABLED:true}
+      mode: ${FORD_AI_CLASSIFICATION_MODE:active}
+      provider: ${FORD_AI_CLASSIFICATION_PROVIDER:typesafe}
+      timeout-ms: ${FORD_AI_CLASSIFICATION_TIMEOUT_MS:1500}
+      min-confidence: ${FORD_AI_CLASSIFICATION_MIN_CONFIDENCE:0.70}
+      fallback: ${FORD_AI_CLASSIFICATION_FALLBACK:rules}
+      pii-policy: ${FORD_AI_CLASSIFICATION_PII_POLICY:redact}
+      intent-enabled: ${FORD_AI_CLASSIFIER_INTENT_ENABLED:true}
+      lead-enabled: ${FORD_AI_CLASSIFIER_LEAD_ENABLED:true}
+      handoff-enabled: ${FORD_AI_CLASSIFIER_HANDOFF_ENABLED:true}
+      tools-enabled: ${FORD_AI_CLASSIFIER_TOOLS_ENABLED:true}
+      sensitive-data-enabled: ${FORD_AI_CLASSIFIER_SENSITIVE_DATA_ENABLED:true}
+      guardrails-enabled: ${FORD_AI_GUARDRAILS_ENABLED:false}
+      self-refine-enabled: ${FORD_AI_SELF_REFINE_ENABLED:false}
+      self-refine-max-attempts: ${FORD_AI_SELF_REFINE_MAX_ATTEMPTS:1}
 
 management:
   otlp:

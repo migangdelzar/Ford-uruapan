@@ -10,6 +10,9 @@ ford:
   conversations:
     human-handoff:
       enabled: ${FORD_HUMAN_HANDOFF_ENABLED:true}
+  ai:
+    classification:
+      enabled: ${FORD_AI_CLASSIFICATION_ENABLED:true}
   channels:
     meta:
       auto-binding:
