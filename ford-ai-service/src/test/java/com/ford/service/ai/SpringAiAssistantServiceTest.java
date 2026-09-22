@@ -4,8 +4,18 @@ import com.ford.service.ai.api.AssistantResponse;
 import com.ford.service.ai.application.AiExecutionContext;
 import com.ford.service.ai.application.AiProviderFailureDiagnostics;
 import com.ford.service.ai.application.AssistantOrchestrator;
+import com.ford.service.ai.application.ConversationDecision;
+import com.ford.service.ai.application.ConversationDecisionService;
+import com.ford.service.ai.application.ConversationIntent;
 import com.ford.service.ai.application.DefaultModelProviderPolicy;
+import com.ford.service.ai.application.HandoffRecommendation;
 import com.ford.service.ai.application.Intent;
+import com.ford.service.ai.application.LeadStage;
+import com.ford.service.ai.application.LeadTemperature;
+import com.ford.service.ai.application.SensitiveDataLevel;
+import com.ford.service.ai.application.ToolFamily;
+import com.ford.service.ai.application.ConversationDecisionPort;
+import com.ford.service.ai.configuration.ClassificationProperties;
 import com.ford.service.shared.HumanHandoffPolicy;
 import com.ford.service.ai.application.ProviderCapabilities;
 import com.ford.service.ai.application.ProviderDescriptor;
@@ -25,8 +35,32 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 class SpringAiAssistantServiceTest {
+
+    @Test
+    void classifiesBeforeGenerationAndPropagatesTheDecision() {
+        var orchestrator = mock(AssistantOrchestrator.class);
+        when(orchestrator.respond(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AssistantResponse("La mensualidad depende del plazo.", false, "ollama", List.of()));
+        var decision = new ConversationDecision(ConversationIntent.FINANCE, LeadTemperature.WARM,
+                LeadStage.QUALIFYING, HandoffRecommendation.NONE, ToolFamily.FINANCE_ESTIMATE,
+                SensitiveDataLevel.NONE, List.of());
+        ConversationDecisionPort classifier = context -> decision;
+        var decisionService = new ConversationDecisionService(classifier, classifier, new ClassificationProperties());
+        var service = new SpringAiAssistantService(orchestrator, new HumanHandoffPolicy(false),
+                new DefaultModelProviderPolicy(List.of()), false, decisionService);
+
+        var turn = service.respond(new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID()),
+                "Quiero una mensualidad");
+
+        var request = org.mockito.ArgumentCaptor.forClass(com.ford.service.ai.api.AssistantRequest.class);
+        verify(orchestrator).respond(request.capture());
+        assertThat(request.getValue().decision()).isSameAs(decision);
+        assertThat(turn.decision()).isSameAs(decision);
+        assertThat(turn.intent()).isEqualTo(Intent.FINANCE);
+    }
 
     @Test
     void mapsOrchestratedResponseToGroundedAssistantTurn() {

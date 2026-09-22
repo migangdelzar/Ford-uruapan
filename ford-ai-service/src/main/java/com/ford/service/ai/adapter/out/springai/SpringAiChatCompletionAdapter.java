@@ -2,6 +2,7 @@ package com.ford.service.ai.adapter.out.springai;
 
 import com.ford.service.ai.application.ToolContext;
 import com.ford.service.ai.application.AiExecutionContext;
+import com.ford.service.ai.application.DecisionPolicy;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
 import com.ford.service.ai.application.port.out.ProviderChatCompletionPort;
 import com.ford.service.ai.api.AssistantRequest;
@@ -17,16 +18,24 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
     private final ChatClient client;
     private final String provider;
     private final ToolAuthorizationPolicy toolPolicy;
+    private final DecisionPolicy decisionPolicy;
 
     public SpringAiChatCompletionAdapter(ChatClient client, String provider) {
-        this(client, provider, new ToolAuthorizationPolicy());
+        this(client, provider, new ToolAuthorizationPolicy(), new DecisionPolicy());
     }
 
     public SpringAiChatCompletionAdapter(ChatClient client, String provider,
                                          ToolAuthorizationPolicy toolPolicy) {
+        this(client, provider, toolPolicy, new DecisionPolicy());
+    }
+
+    public SpringAiChatCompletionAdapter(ChatClient client, String provider,
+                                         ToolAuthorizationPolicy toolPolicy,
+                                         DecisionPolicy decisionPolicy) {
         this.client = Objects.requireNonNull(client);
         this.provider = Objects.requireNonNull(provider);
         this.toolPolicy = Objects.requireNonNull(toolPolicy);
+        this.decisionPolicy = Objects.requireNonNull(decisionPolicy);
     }
 
     @Override
@@ -37,10 +46,14 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
     @Override
     public AssistantResponse complete(AssistantRequest request, ToolContext context) {
         var prompt = client.prompt()
-                .system(systemPrompt(request.memoryContext()))
+                .system(systemPrompt(request.memoryContext(), request.decision()))
                 .user(request.message());
-        var tools = toolPolicy.readOnlyTools(new AiExecutionContext(
-                request.tenantId(), request.containsSensitiveData(), request.conversationId()));
+        var executionContext = new AiExecutionContext(
+                request.tenantId(), request.containsSensitiveData(), request.conversationId());
+        var tools = request.decision().evidence().isEmpty()
+                ? toolPolicy.readOnlyTools(executionContext)
+                : toolPolicy.readOnlyTools(executionContext, decisionPolicy.allowedToolNames(
+                        request.decision(), toolPolicy.availableReadOnlyToolNames()));
         if (!tools.isEmpty()) {
             prompt = prompt.tools(tools.toArray());
         }
@@ -57,8 +70,11 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         return new AssistantResponse(content.strip(), false, provider, List.of());
     }
 
-    private static String systemPrompt(String memory) {
+    private static String systemPrompt(String memory, com.ford.service.ai.application.ConversationDecision decision) {
         var prompt = new StringBuilder("Responde en español, no inventes datos y usa solo herramientas autorizadas.");
+        if (decision != null && !decision.evidence().isEmpty()) {
+            prompt.append("\n\n").append(decision.toPromptContext());
+        }
         if (memory == null || memory.isBlank()) {
             return prompt.toString();
         }
@@ -68,6 +84,8 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
 
     private static String safe(String value) {
         return value == null ? "" : value.replace("[MEMORIA DE SESIÓN]", "[memoria]")
-                .replace("[/MEMORIA DE SESIÓN]", "[/memoria]");
+                .replace("[/MEMORIA DE SESIÓN]", "[/memoria]")
+                .replace("[DECISION CONTEXT]", "[decision]")
+                .replace("[/DECISION CONTEXT]", "[/decision]");
     }
 }

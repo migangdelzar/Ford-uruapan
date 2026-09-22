@@ -10,6 +10,7 @@ import com.ford.service.ai.application.AssistantService;
 import com.ford.service.ai.application.IntentRouter;
 import com.ford.service.ai.application.SpringAiAssistantService;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
+import com.ford.service.ai.application.DecisionPolicy;
 import com.ford.service.ai.application.port.out.UnavailableChatCompletionPort;
 import com.ford.service.ai.application.port.out.ChatCompletionPort;
 import com.ford.service.ai.application.port.out.ProviderChatCompletionPort;
@@ -43,6 +44,11 @@ public class SpringAiConfiguration {
     }
 
     @Bean
+    DecisionPolicy decisionPolicy() {
+        return new DecisionPolicy();
+    }
+
+    @Bean
     ToolAuthorizationPolicy toolAuthorizationPolicy(ObjectProvider<VehicleCatalog> catalog,
                                                     ObjectProvider<FinanceOperations> finance,
                                                     ObjectProvider<FinanceTermsRepository> terms,
@@ -72,17 +78,18 @@ public class SpringAiConfiguration {
                                            ObjectProvider<OllamaChatModel> localModel,
                                            AiProperties properties,
                                            ToolAuthorizationPolicy toolPolicy,
-                                           ModelProviderPolicy providerPolicy) {
+                                           ModelProviderPolicy providerPolicy,
+                                           DecisionPolicy decisionPolicy) {
         var providers = new ArrayList<ProviderChatCompletionPort>();
         var openAi = cloudModel.getIfAvailable();
         if (properties.cloudEnabled() && openAi != null) {
             providers.add(new SpringAiChatCompletionAdapter(
-                    ChatClient.builder(openAi).build(), properties.cloudChatProvider(), toolPolicy));
+                    ChatClient.builder(openAi).build(), properties.cloudChatProvider(), toolPolicy, decisionPolicy));
         }
         var ollama = localModel.getIfAvailable();
         if (properties.localEnabled() && ollama != null) {
             providers.add(new SpringAiChatCompletionAdapter(
-                    ChatClient.builder(ollama).build(), properties.localChatProvider(), toolPolicy));
+                    ChatClient.builder(ollama).build(), properties.localChatProvider(), toolPolicy, decisionPolicy));
         }
         return providers.isEmpty()
                 ? new UnavailableChatCompletionPort()

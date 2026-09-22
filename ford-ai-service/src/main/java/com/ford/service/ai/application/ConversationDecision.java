@@ -13,6 +13,11 @@ public record ConversationDecision(
         SensitiveDataLevel sensitiveDataLevel,
         List<ClassificationEvidence> evidence) {
 
+    public static ConversationDecision deterministicDefault() {
+        return new ConversationDecision(ConversationIntent.GENERAL, LeadTemperature.UNKNOWN, LeadStage.NEW,
+                HandoffRecommendation.NONE, ToolFamily.NONE, SensitiveDataLevel.NONE, List.of());
+    }
+
     public ConversationDecision {
         Objects.requireNonNull(intent, "intent is required");
         Objects.requireNonNull(leadTemperature, "lead temperature is required");
