@@ -13,3 +13,5 @@ databaseChangeLog:
       file: db/changelog/changes/006-meta-webhook-routing.yaml
   - include:
       file: db/changelog/changes/007-conversation-memory.yaml
+  - include:
+      file: db/changelog/changes/008-conversation-decisions.yaml

@@ -26,5 +26,10 @@ class LiquibaseStartupTest {
                 .query(Integer.class)
                 .single())
                 .isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from information_schema.tables "
+                        + "where table_name = 'CONVERSATION_DECISION'")
+                .query(Integer.class)
+                .single())
+                .isEqualTo(1);
     }
 }

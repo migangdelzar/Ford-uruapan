@@ -33,7 +33,7 @@ public final class ConversationAssistantAdapter implements ConversationAssistant
         }
         var turn = assistant.respond(new AiExecutionContext(
                 request.tenantId(), false, request.conversationId(), memoryPrompt(request.memory())), request.message());
-        return new AssistantReply(turn.text(), turn.requestsHuman());
+        return new AssistantReply(turn.text(), turn.requestsHuman(), turn.decision());
     }
 
     private static String memoryPrompt(ConversationMemoryContext memory) {

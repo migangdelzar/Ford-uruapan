@@ -1,0 +1,29 @@
+databaseChangeLog:
+  - changeSet:
+      id: 008-conversation-decisions
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              create table if not exists conversation_decision (
+                  id uuid primary key,
+                  conversation_id uuid not null references conversation(id) on delete cascade,
+                  provider_message_id varchar(240) not null,
+                  classifier_type varchar(60) not null,
+                  classification varchar(120) not null,
+                  confidence numeric(8,6) not null,
+                  reason_code varchar(120) not null,
+                  provider varchar(80) not null,
+                  model varchar(160) not null,
+                  latency_ms bigint not null,
+                  fallback_used boolean not null,
+                  created_at timestamptz not null,
+                  unique (conversation_id, provider_message_id, classifier_type)
+              );
+              create index if not exists idx_conversation_decision_created
+                  on conversation_decision(conversation_id, created_at desc);
+      rollback:
+        - sql:
+            sql: |
+              drop index if exists idx_conversation_decision_created;
+              drop table if exists conversation_decision;

@@ -14,6 +14,8 @@ import com.ford.service.conversations.domain.HandoffDecision;
 import com.ford.service.shared.HumanHandoffPolicy;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.modulith.events.ApplicationModuleListener;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
 import java.time.Instant;
@@ -21,22 +23,36 @@ import java.util.UUID;
 
 public class ConversationWorkflow {
 
+    private static final Logger log = LoggerFactory.getLogger(ConversationWorkflow.class);
+
     private final ConversationRepository repository;
     private final ConversationAssistant assistant;
     private final ApplicationEventPublisher eventPublisher;
     private final HumanHandoffPolicy handoffPolicy;
     private final ConversationMemoryService memoryService;
+    private final ConversationDecisionRepository decisionRepository;
 
     public ConversationWorkflow(ConversationRepository repository,
                                 ConversationAssistant assistant,
                                 ApplicationEventPublisher eventPublisher,
                                 HumanHandoffPolicy handoffPolicy,
                                 ConversationMemoryService memoryService) {
+        this(repository, assistant, eventPublisher, handoffPolicy, memoryService,
+                (conversationId, providerMessageId, decision) -> { });
+    }
+
+    public ConversationWorkflow(ConversationRepository repository,
+                                ConversationAssistant assistant,
+                                ApplicationEventPublisher eventPublisher,
+                                HumanHandoffPolicy handoffPolicy,
+                                ConversationMemoryService memoryService,
+                                ConversationDecisionRepository decisionRepository) {
         this.repository = Objects.requireNonNull(repository);
         this.assistant = Objects.requireNonNull(assistant);
         this.eventPublisher = Objects.requireNonNull(eventPublisher);
         this.handoffPolicy = Objects.requireNonNull(handoffPolicy);
         this.memoryService = Objects.requireNonNull(memoryService);
+        this.decisionRepository = Objects.requireNonNull(decisionRepository);
     }
 
     @ApplicationModuleListener
@@ -52,6 +68,12 @@ public class ConversationWorkflow {
                 snapshot.providerMessageId()));
         var reply = assistant.respond(new ConversationTurnRequest(
                 snapshot.tenantId(), snapshot.conversationId(), snapshot.inboundText(), snapshot.state(), memory));
+        try {
+            decisionRepository.save(snapshot.conversationId(), snapshot.providerMessageId(), reply.decision());
+        } catch (RuntimeException exception) {
+            log.warn("Conversation decision persistence failed: conversationId={} providerMessageId={} exceptionType={}",
+                    snapshot.conversationId(), snapshot.providerMessageId(), exception.getClass().getSimpleName());
+        }
 
         if (reply.handoffRequired() && handoffPolicy.shouldCreateHandoff(true)) {
             var accepted = repository.requestHumanHandoff(snapshot.conversationId(), snapshot.version(),

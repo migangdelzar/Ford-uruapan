@@ -49,7 +49,9 @@ public class ConversationConfiguration {
                                                ConversationAssistant assistant,
                                                ApplicationEventPublisher eventPublisher,
                                                HumanHandoffPolicy handoffPolicy,
-                                               ConversationMemoryService memoryService) {
-        return new ConversationWorkflow(repository, assistant, eventPublisher, handoffPolicy, memoryService);
+                                               ConversationMemoryService memoryService,
+                                               ConversationDecisionRepository decisionRepository) {
+        return new ConversationWorkflow(repository, assistant, eventPublisher, handoffPolicy, memoryService,
+                decisionRepository);
     }
 }

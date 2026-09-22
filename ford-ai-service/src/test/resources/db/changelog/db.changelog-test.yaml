@@ -7,3 +7,27 @@ databaseChangeLog:
             sql: create table liquibase_startup_probe (id integer not null);
         - sql:
             sql: insert into liquibase_startup_probe (id) values (1);
+  - changeSet:
+      id: conversation-decision-test-schema
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              create table conversation (
+                  id uuid primary key
+              );
+              create table conversation_decision (
+                  id uuid primary key,
+                  conversation_id uuid not null references conversation(id) on delete cascade,
+                  provider_message_id varchar(240) not null,
+                  classifier_type varchar(60) not null,
+                  classification varchar(120) not null,
+                  confidence numeric(8,6) not null,
+                  reason_code varchar(120) not null,
+                  provider varchar(80) not null,
+                  model varchar(160) not null,
+                  latency_ms bigint not null,
+                  fallback_used boolean not null,
+                  created_at timestamp with time zone not null,
+                  unique (conversation_id, provider_message_id, classifier_type)
+              );

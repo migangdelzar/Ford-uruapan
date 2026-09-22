@@ -2,7 +2,17 @@ package com.ford.service.conversations;
 
 import com.ford.service.channels.api.InboundMessageAccepted;
 import com.ford.service.channels.domain.Channel;
+import com.ford.service.ai.application.ClassificationEvidence;
+import com.ford.service.ai.application.ClassifierType;
+import com.ford.service.ai.application.ConversationDecision;
+import com.ford.service.ai.application.ConversationIntent;
+import com.ford.service.ai.application.HandoffRecommendation;
+import com.ford.service.ai.application.LeadStage;
+import com.ford.service.ai.application.LeadTemperature;
+import com.ford.service.ai.application.SensitiveDataLevel;
+import com.ford.service.ai.application.ToolFamily;
 import com.ford.service.conversations.application.ConversationWorkflow;
+import com.ford.service.conversations.application.ConversationDecisionRepository;
 import com.ford.service.conversations.application.ConversationMemoryPort;
 import com.ford.service.conversations.application.ConversationMemoryService;
 import com.ford.service.conversations.application.MemoryProperties;
@@ -143,6 +153,35 @@ class ConversationWorkflowTest {
         assertThat(publisher.events).isEmpty();
     }
 
+    @Test
+    void persistsClassifierEvidenceBeforeCompletingTheBotTurn() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var repository = new RecordingConversationRepository(snapshot(
+                tenantId, conversationId, ConversationState.BOT_ACTIVE, 1));
+        var decision = decision();
+        var assistant = new RecordingAssistant(new AssistantReply("Respuesta", false, decision));
+        var publisher = new RecordingPublisher();
+        var decisions = new RecordingDecisionRepository();
+
+        new ConversationWorkflow(repository, assistant, publisher,
+                new HumanHandoffPolicy(false), memoryService(), decisions).on(new InboundMessageAccepted(
+                UUID.randomUUID(), tenantId, conversationId, Channel.WHATSAPP,
+                "wamid.decision", Instant.now()));
+
+        assertThat(decisions.conversationId).isEqualTo(conversationId);
+        assertThat(decisions.providerMessageId).isEqualTo("wamid.inbound");
+        assertThat(decisions.decision).isEqualTo(decision);
+        assertThat(repository.completedTurn).isEqualTo(new ConversationTurn("Respuesta"));
+    }
+
+    private static ConversationDecision decision() {
+        return new ConversationDecision(ConversationIntent.GENERAL, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.NONE, SensitiveDataLevel.NONE,
+                List.of(new ClassificationEvidence(ClassifierType.INTENT, "GENERAL", 1.0,
+                        "rules", "rules", "deterministic", 0, true)));
+    }
+
     private static ConversationSnapshot snapshot(UUID tenantId, UUID conversationId,
                                                  ConversationState state, long version) {
         return new ConversationSnapshot(tenantId, conversationId, Channel.WHATSAPP,
@@ -240,6 +279,19 @@ class ConversationWorkflowTest {
 
         @Override
         public void transition(UUID conversationId, ConversationState expected, ConversationState target) {
+        }
+    }
+
+    private static final class RecordingDecisionRepository implements ConversationDecisionRepository {
+        private UUID conversationId;
+        private String providerMessageId;
+        private ConversationDecision decision;
+
+        @Override
+        public void save(UUID conversationId, String providerMessageId, ConversationDecision decision) {
+            this.conversationId = conversationId;
+            this.providerMessageId = providerMessageId;
+            this.decision = decision;
         }
     }
 }
