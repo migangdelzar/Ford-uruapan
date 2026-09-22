@@ -26,10 +26,15 @@ import com.ford.service.finance.application.FinanceOperations;
 import com.ford.service.finance.application.port.out.FinanceTermsRepository;
 import com.ford.service.knowledge.application.KnowledgeRetrieval;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springaicommunity.typesafe.TypeSafeClient;
 import org.springaicommunity.typesafe.autoconfigure.TypeSafeProperties;
+import org.springaicommunity.typesafe.advisor.JevGuardrailAdvisor;
+import org.springaicommunity.typesafe.advisor.JevSelfRefineAdvisor;
+import org.springaicommunity.typesafe.judge.JevJudge;
+import org.springaicommunity.typesafe.question.Noul;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Bean;
@@ -113,21 +118,77 @@ public class SpringAiConfiguration {
                                            AiProperties properties,
                                            ToolAuthorizationPolicy toolPolicy,
                                            ModelProviderPolicy providerPolicy,
-                                           DecisionPolicy decisionPolicy) {
+                                           DecisionPolicy decisionPolicy,
+                                           ClassificationProperties classificationProperties,
+                                           ObjectProvider<TypeSafeClient> typeSafeClients,
+                                           ObjectProvider<TypeSafeProperties> typeSafeProperties) {
         var providers = new ArrayList<ProviderChatCompletionPort>();
+        var typeSafeClient = typeSafeClients.getIfAvailable();
+        var typeSafeConfigured = usableTypeSafeConfiguration(typeSafeClient, typeSafeProperties.getIfAvailable(),
+                classificationProperties);
         var openAi = cloudModel.getIfAvailable();
         if (properties.cloudEnabled() && openAi != null) {
             providers.add(new SpringAiChatCompletionAdapter(
-                    ChatClient.builder(openAi).build(), properties.cloudChatProvider(), toolPolicy, decisionPolicy));
+                    chatClient(openAi, classificationProperties,
+                            typeSafeConfigured ? typeSafeClient : null),
+                    properties.cloudChatProvider(), toolPolicy, decisionPolicy));
         }
         var ollama = localModel.getIfAvailable();
         if (properties.localEnabled() && ollama != null) {
             providers.add(new SpringAiChatCompletionAdapter(
-                    ChatClient.builder(ollama).build(), properties.localChatProvider(), toolPolicy, decisionPolicy));
+                    chatClient(ollama, classificationProperties,
+                            typeSafeConfigured ? typeSafeClient : null),
+                    properties.localChatProvider(), toolPolicy, decisionPolicy));
         }
         return providers.isEmpty()
                 ? new UnavailableChatCompletionPort()
                 : new ProviderRoutingChatCompletionPort(providers, providerPolicy);
+    }
+
+    private static ChatClient chatClient(ChatModel model,
+                                         ClassificationProperties properties,
+                                         TypeSafeClient typeSafeClient) {
+        var builder = ChatClient.builder(model);
+        if (typeSafeClient == null) {
+            return builder.build();
+        }
+        if (properties.selfRefineEnabled()) {
+            var judge = JevJudge.builder(typeSafeClient)
+                    .noul("is_grounded", Noul.of(
+                            "La respuesta está respaldada por el contexto y las herramientas disponibles."),
+                            properties.minConfidence())
+                    .noul("is_safe", Noul.of(
+                            "La respuesta es segura y apropiada para un asistente de ventas automotrices."),
+                            properties.minConfidence())
+                    .minConfidence(properties.minConfidence())
+                    .failOnInconclusive(true)
+                    .build();
+            builder.defaultAdvisors(JevSelfRefineAdvisor.builder()
+                    .judge(judge)
+                    .maxRepeatAttempts(properties.selfRefineMaxAttempts())
+                    .failOnExhaustedAttempts(false)
+                    .build());
+        }
+        if (properties.guardrailsEnabled()) {
+            builder.defaultAdvisors(JevGuardrailAdvisor.builder(typeSafeClient)
+                    .blockOnReview(true)
+                    .build());
+        }
+        return builder.build();
+    }
+
+    private static boolean usableTypeSafeConfiguration(TypeSafeClient client,
+                                                       TypeSafeProperties providerProperties,
+                                                       ClassificationProperties properties) {
+        var apiKey = providerProperties == null ? null : providerProperties.getApiKey();
+        return client != null
+                && properties.enabled()
+                && !"disabled".equalsIgnoreCase(properties.mode())
+                && "typesafe".equalsIgnoreCase(properties.provider())
+                && apiKey != null
+                && !apiKey.isBlank()
+                && !apiKey.equalsIgnoreCase("replace-with-secret")
+                && !apiKey.equalsIgnoreCase("test-only-placeholder");
     }
 
     @Bean
