@@ -23,6 +23,9 @@ public class CapabilityDiagnostics {
     private final boolean memoryEnabled;
     private final boolean semanticMemoryEnabled;
     private final int memoryRecentMessageLimit;
+    private final boolean classificationEnabled;
+    private final String classificationMode;
+    private final String classificationProvider;
 
     public CapabilityDiagnostics(boolean aiCloudEnabled,
                                  boolean aiLocalEnabled,
@@ -34,7 +37,7 @@ public class CapabilityDiagnostics {
                                  boolean metricsEnabled) {
         this(aiCloudEnabled, aiLocalEnabled, aiProvider, humanHandoffEnabled,
                 metaOutboundEnabled, outboxEnabled, tracesEnabled, metricsEnabled,
-                true, false, 20);
+                true, false, 20, false, "disabled", "rules");
     }
 
     public CapabilityDiagnostics(boolean aiCloudEnabled,
@@ -47,7 +50,10 @@ public class CapabilityDiagnostics {
                                  boolean metricsEnabled,
                                  boolean memoryEnabled,
                                  boolean semanticMemoryEnabled,
-                                 int memoryRecentMessageLimit) {
+                                 int memoryRecentMessageLimit,
+                                 boolean classificationEnabled,
+                                 String classificationMode,
+                                 String classificationProvider) {
         this.aiCloudEnabled = aiCloudEnabled;
         this.aiLocalEnabled = aiLocalEnabled;
         this.aiProvider = Objects.requireNonNull(aiProvider);
@@ -59,6 +65,9 @@ public class CapabilityDiagnostics {
         this.memoryEnabled = memoryEnabled;
         this.semanticMemoryEnabled = semanticMemoryEnabled;
         this.memoryRecentMessageLimit = memoryRecentMessageLimit;
+        this.classificationEnabled = classificationEnabled;
+        this.classificationMode = Objects.requireNonNull(classificationMode);
+        this.classificationProvider = Objects.requireNonNull(classificationProvider);
     }
 
     public String summary() {
@@ -71,6 +80,9 @@ public class CapabilityDiagnostics {
                 + ", memory=" + state(memoryEnabled)
                 + ", memory.semantic=" + state(semanticMemoryEnabled)
                 + ", memory.recentLimit=" + memoryRecentMessageLimit
+                + ", classification=" + state(classificationEnabled)
+                + ", classification.mode=" + safeMode(classificationMode)
+                + ", classification.provider=" + safeProvider(classificationProvider)
                 + ", observability.traces=" + state(tracesEnabled)
                 + ", observability.metrics=" + state(metricsEnabled);
     }
@@ -87,7 +99,15 @@ public class CapabilityDiagnostics {
     private static String safeProvider(String provider) {
         var normalized = provider == null ? "" : provider.strip().toLowerCase(Locale.ROOT);
         return switch (normalized) {
-            case "openai", "ollama" -> normalized;
+            case "openai", "ollama", "typesafe", "rules" -> normalized;
+            default -> "other";
+        };
+    }
+
+    private static String safeMode(String mode) {
+        var normalized = mode == null ? "" : mode.strip().toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "active", "shadow", "disabled" -> normalized;
             default -> "other";
         };
     }

@@ -5,6 +5,7 @@ import com.ford.service.ai.application.ClassificationContext;
 import com.ford.service.ai.application.ClassificationEvidence;
 import com.ford.service.ai.application.ClassifierType;
 import com.ford.service.ai.application.ConversationIntent;
+import com.ford.service.ai.application.HandoffRecommendation;
 import com.ford.service.ai.application.LeadStage;
 import com.ford.service.ai.application.LeadTemperature;
 import com.ford.service.ai.application.ToolFamily;
@@ -51,6 +52,28 @@ class TypeSafeConversationDecisionAdapterTest {
                         ClassifierType.TOOL_FAMILY, ClassifierType.SENSITIVE_DATA);
         assertThat(decision.evidence()).allMatch(evidence -> evidence.provider().equals("typesafe"));
         verify(client).systemOne(anyString(), anyMap());
+    }
+
+    @Test
+    void usesConfiguredConfidenceThresholdAndClassifierToggles() {
+        var client = mock(TypeSafeClient.class);
+        when(client.systemOne(anyString(), anyMap())).thenReturn(response());
+        var properties = new ClassificationProperties();
+        properties.setMinConfidence(0.95);
+        properties.setIntentEnabled(false);
+        properties.setToolsEnabled(false);
+        var adapter = new TypeSafeConversationDecisionAdapter(client, properties);
+
+        var decision = adapter.decide(new ClassificationContext(
+                UUID.randomUUID(), UUID.randomUUID(), "Quiero una mensualidad", null, "BOT_ACTIVE", false));
+
+        assertThat(decision.intent()).isEqualTo(ConversationIntent.GENERAL);
+        assertThat(decision.toolFamily()).isEqualTo(com.ford.service.ai.application.ToolFamily.NONE);
+        assertThat(decision.handoffRecommendation()).isEqualTo(HandoffRecommendation.NONE);
+        assertThat(decision.evidence()).filteredOn(evidence ->
+                        evidence.classifier() == ClassifierType.INTENT
+                                || evidence.classifier() == ClassifierType.TOOL_FAMILY)
+                .allMatch(ClassificationEvidence::fallbackUsed);
     }
 
     private static SystemOneResponse response() {

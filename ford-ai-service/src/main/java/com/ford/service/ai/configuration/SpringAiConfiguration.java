@@ -4,6 +4,8 @@ import com.ford.service.ai.adapter.in.tool.FinanceEstimateTool;
 import com.ford.service.ai.adapter.in.tool.KnowledgeTools;
 import com.ford.service.ai.adapter.in.tool.VehicleTools;
 import com.ford.service.ai.adapter.out.springai.SpringAiChatCompletionAdapter;
+import com.ford.service.ai.adapter.out.rules.RulesConversationDecisionAdapter;
+import com.ford.service.ai.adapter.out.typesafe.TypeSafeConversationDecisionAdapter;
 import com.ford.service.ai.application.AssistantOrchestrator;
 import com.ford.service.ai.application.DefaultAssistantOrchestrator;
 import com.ford.service.ai.application.AssistantService;
@@ -11,6 +13,8 @@ import com.ford.service.ai.application.IntentRouter;
 import com.ford.service.ai.application.SpringAiAssistantService;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
 import com.ford.service.ai.application.DecisionPolicy;
+import com.ford.service.ai.application.ConversationDecisionPort;
+import com.ford.service.ai.application.ConversationDecisionService;
 import com.ford.service.ai.application.port.out.UnavailableChatCompletionPort;
 import com.ford.service.ai.application.port.out.ChatCompletionPort;
 import com.ford.service.ai.application.port.out.ProviderChatCompletionPort;
@@ -24,6 +28,8 @@ import com.ford.service.knowledge.application.KnowledgeRetrieval;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springaicommunity.typesafe.TypeSafeClient;
+import org.springaicommunity.typesafe.autoconfigure.TypeSafeProperties;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Bean;
@@ -41,6 +47,34 @@ public class SpringAiConfiguration {
     @Bean
     IntentRouter intentRouter() {
         return new IntentRouter();
+    }
+
+    @Bean
+    ConversationDecisionPort conversationDecisionPort(ObjectProvider<TypeSafeClient> clients,
+                                                      ObjectProvider<TypeSafeProperties> typeSafeProperties,
+                                                      ClassificationProperties properties,
+                                                      IntentRouter intentRouter) {
+        var rules = new RulesConversationDecisionAdapter(intentRouter);
+        var client = clients.getIfAvailable();
+        var providerProperties = typeSafeProperties.getIfAvailable();
+        if (!properties.enabled()
+                || "disabled".equalsIgnoreCase(properties.mode())
+                || !"typesafe".equalsIgnoreCase(properties.provider())
+                || client == null
+                || providerProperties == null
+                || providerProperties.getApiKey() == null
+                || providerProperties.getApiKey().isBlank()) {
+            return rules;
+        }
+        return new TypeSafeConversationDecisionAdapter(client, properties);
+    }
+
+    @Bean
+    ConversationDecisionService conversationDecisionService(ConversationDecisionPort primary,
+                                                            IntentRouter intentRouter,
+                                                            ClassificationProperties properties) {
+        var rules = new RulesConversationDecisionAdapter(intentRouter);
+        return new ConversationDecisionService(primary, rules, properties);
     }
 
     @Bean
@@ -107,9 +141,11 @@ public class SpringAiConfiguration {
     AssistantService assistantService(AssistantOrchestrator orchestrator,
                                       ModelProviderPolicy providerPolicy,
                                       ObjectProvider<HumanHandoffPolicy> handoffPolicy,
-                                      AiProperties properties) {
+                                      AiProperties properties,
+                                      ConversationDecisionService decisionService,
+                                      DecisionPolicy decisionPolicy) {
         return new SpringAiAssistantService(orchestrator,
                 handoffPolicy.getIfAvailable(() -> new HumanHandoffPolicy(true)), providerPolicy,
-                properties.logProviderErrors());
+                properties.logProviderErrors(), decisionService, decisionPolicy);
     }
 }

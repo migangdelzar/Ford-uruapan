@@ -1,5 +1,6 @@
 package com.ford.service.observability;
 
+import com.ford.service.ai.configuration.ClassificationProperties;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,10 +20,12 @@ public class ObservabilityConfiguration {
             @Value("${management.otlp.metrics.export.enabled:false}") boolean metricsEnabled,
             @Value("${ford.memory.enabled:true}") boolean memoryEnabled,
             @Value("${ford.memory.semantic-enabled:false}") boolean semanticMemoryEnabled,
-            @Value("${ford.memory.recent-message-limit:20}") int memoryRecentMessageLimit) {
+            @Value("${ford.memory.recent-message-limit:20}") int memoryRecentMessageLimit,
+            ClassificationProperties classificationProperties) {
         return new CapabilityDiagnostics(aiCloudEnabled, aiLocalEnabled, aiProvider,
                 humanHandoffEnabled, metaOutboundEnabled, outboxEnabled,
                 tracesEnabled, metricsEnabled, memoryEnabled, semanticMemoryEnabled,
-                memoryRecentMessageLimit);
+                memoryRecentMessageLimit, classificationProperties.enabled(),
+                classificationProperties.mode(), classificationProperties.provider());
     }
 }

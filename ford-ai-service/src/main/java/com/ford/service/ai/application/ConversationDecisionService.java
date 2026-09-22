@@ -1,11 +1,15 @@
 package com.ford.service.ai.application;
 
 import com.ford.service.ai.configuration.ClassificationProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Locale;
 import java.util.Objects;
 
 public final class ConversationDecisionService {
+
+    private static final Logger log = LoggerFactory.getLogger(ConversationDecisionService.class);
 
     private final ConversationDecisionPort primary;
     private final ConversationDecisionPort rules;
@@ -31,6 +35,8 @@ public final class ConversationDecisionService {
             }
             return classified;
         } catch (RuntimeException ignored) {
+            log.warn("Conversation classification failed; using rules fallback: exceptionType={}",
+                    ignored.getClass().getSimpleName());
             return rules.decide(context);
         }
     }

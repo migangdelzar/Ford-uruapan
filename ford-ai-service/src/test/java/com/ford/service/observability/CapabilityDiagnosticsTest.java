@@ -20,6 +20,9 @@ class CapabilityDiagnosticsTest {
         assertThat(summary).contains("outbox=disabled");
         assertThat(summary).contains("memory=enabled");
         assertThat(summary).contains("memory.semantic=disabled");
+        assertThat(summary).contains("classification=disabled");
+        assertThat(summary).contains("classification.mode=disabled");
+        assertThat(summary).contains("classification.provider=rules");
         assertThat(summary).contains("observability.traces=disabled");
         assertThat(summary).doesNotContain("private-model", "token=secret");
     }

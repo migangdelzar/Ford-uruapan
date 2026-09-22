@@ -12,17 +12,13 @@ import com.ford.service.ai.application.LeadTemperature;
 import com.ford.service.ai.application.SensitiveDataLevel;
 import com.ford.service.ai.application.ToolFamily;
 import com.ford.service.ai.configuration.ClassificationProperties;
-import org.springaicommunity.typesafe.JsonContent;
 import org.springaicommunity.typesafe.TypeSafeClient;
 import org.springaicommunity.typesafe.question.Choice;
 import org.springaicommunity.typesafe.question.Noul;
 import org.springaicommunity.typesafe.question.Score;
-import org.springaicommunity.typesafe.response.ChoiceAnswer;
-import org.springaicommunity.typesafe.response.NoulAnswer;
 import org.springaicommunity.typesafe.response.ScoreAnswer;
 import org.springaicommunity.typesafe.response.SystemOneResponse;
 
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -50,31 +46,48 @@ public final class TypeSafeConversationDecisionAdapter implements ConversationDe
 
     private ConversationDecision map(SystemOneResponse response, long latencyMs) {
         Objects.requireNonNull(response, "TypeSafe response is required");
-        var intent = choice(response, "intent", ConversationIntent.class);
-        var leadStage = choice(response, "lead_stage", LeadStage.class);
-        var temperature = score(response.score("lead_temperature"));
-        var userRequested = noul(response, "user_requests_human");
-        var negative = noul(response, "negative_sentiment");
-        var complex = noul(response, "complex_request");
-        var toolFamily = choice(response, "tool_family", ToolFamily.class);
-        var sensitive = noul(response, "has_sensitive_data");
+        var intent = properties.intentEnabled()
+                ? choice(response, "intent", ConversationIntent.class) : ConversationIntent.GENERAL;
+        var leadStage = properties.leadEnabled()
+                ? choice(response, "lead_stage", LeadStage.class) : LeadStage.NEW;
+        var temperature = properties.leadEnabled()
+                ? score(response.score("lead_temperature"))
+                : new ScoreValue(LeadTemperature.UNKNOWN, 1.0);
+        var userRequested = properties.handoffEnabled()
+                ? noul(response, "user_requests_human") : NoulValue.none();
+        var negative = properties.handoffEnabled()
+                ? noul(response, "negative_sentiment") : NoulValue.none();
+        var complex = properties.handoffEnabled()
+                ? noul(response, "complex_request") : NoulValue.none();
+        var toolFamily = properties.toolsEnabled()
+                ? choice(response, "tool_family", ToolFamily.class) : ToolFamily.NONE;
+        var sensitive = properties.sensitiveDataEnabled()
+                ? noul(response, "has_sensitive_data") : NoulValue.none();
         var handoff = handoff(userRequested, negative, complex,
-                response.choice("intent").confidence(), response.choice("tool_family").confidence());
+                properties.intentEnabled() ? response.choice("intent").confidence() : 1.0,
+                properties.toolsEnabled() ? response.choice("tool_family").confidence() : 1.0);
         var model = response.model() == null || response.model().isBlank() ? "typesafe" : response.model();
 
         return new ConversationDecision(intent, temperature.value(), leadStage, handoff.value(),
                 toolFamily, sensitive.level(), List.of(
-                        evidence(ClassifierType.INTENT, intent.name(), response.choice("intent").confidence(),
-                                "model_choice", model, latencyMs),
+                        evidence(ClassifierType.INTENT, intent.name(),
+                                properties.intentEnabled() ? response.choice("intent").confidence() : 1.0,
+                                properties.intentEnabled() ? "model_choice" : "classifier_disabled", model, latencyMs,
+                                !properties.intentEnabled()),
                         evidence(ClassifierType.LEAD, leadStage.name() + "/" + temperature.value().name(),
                                 Math.min(response.choice("lead_stage").confidence(), temperature.confidence()),
-                                "model_choice_score", model, latencyMs),
+                                properties.leadEnabled() ? "model_choice_score" : "classifier_disabled",
+                                model, latencyMs, !properties.leadEnabled()),
                         evidence(ClassifierType.HANDOFF, handoff.value().name(), handoff.confidence(),
-                                "noul_threshold", model, latencyMs),
-                        evidence(ClassifierType.TOOL_FAMILY, toolFamily.name(), response.choice("tool_family").confidence(),
-                                "model_choice", model, latencyMs),
+                                properties.handoffEnabled() ? "noul_threshold" : "classifier_disabled",
+                                model, latencyMs, !properties.handoffEnabled()),
+                        evidence(ClassifierType.TOOL_FAMILY, toolFamily.name(),
+                                properties.toolsEnabled() ? response.choice("tool_family").confidence() : 1.0,
+                                properties.toolsEnabled() ? "model_choice" : "classifier_disabled",
+                                model, latencyMs, !properties.toolsEnabled()),
                         evidence(ClassifierType.SENSITIVE_DATA, sensitive.level().name(), sensitive.confidence(),
-                                "noul_threshold", model, latencyMs)));
+                                properties.sensitiveDataEnabled() ? "noul_threshold" : "classifier_disabled",
+                                model, latencyMs, !properties.sensitiveDataEnabled())));
     }
 
     private static String state(ClassificationContext context) {
@@ -138,8 +151,8 @@ public final class TypeSafeConversationDecisionAdapter implements ConversationDe
         return new NoulValue(value, Math.max(value, 1.0 - value), level);
     }
 
-    private static HandoffValue handoff(NoulValue userRequested, NoulValue negative, NoulValue complex,
-                                        double intentConfidence, double toolConfidence) {
+    private HandoffValue handoff(NoulValue userRequested, NoulValue negative, NoulValue complex,
+                                 double intentConfidence, double toolConfidence) {
         if (userRequested.value() >= 0.5) {
             return new HandoffValue(HandoffRecommendation.USER_REQUESTED, userRequested.confidence());
         }
@@ -149,22 +162,27 @@ public final class TypeSafeConversationDecisionAdapter implements ConversationDe
         if (complex.value() >= 0.5) {
             return new HandoffValue(HandoffRecommendation.COMPLEX_REQUEST, complex.confidence());
         }
-        var lowConfidence = intentConfidence < 0.70 || toolConfidence < 0.70;
+        var lowConfidence = intentConfidence < properties.minConfidence()
+                || toolConfidence < properties.minConfidence();
         return new HandoffValue(lowConfidence ? HandoffRecommendation.LOW_CONFIDENCE : HandoffRecommendation.NONE,
                 lowConfidence ? Math.min(intentConfidence, toolConfidence) :
                         Math.min(Math.min(userRequested.confidence(), negative.confidence()), complex.confidence()));
     }
 
     private static ClassificationEvidence evidence(ClassifierType classifier, String classification, double confidence,
-                                                   String reason, String model, long latencyMs) {
+                                                   String reason, String model, long latencyMs, boolean fallbackUsed) {
         if (Double.isNaN(confidence) || confidence < 0.0 || confidence > 1.0) {
             throw new IllegalArgumentException("Invalid TypeSafe confidence for " + classifier);
         }
         return new ClassificationEvidence(classifier, classification, confidence, reason,
-                "typesafe", model, latencyMs, false);
+                "typesafe", model, latencyMs, fallbackUsed);
     }
 
     private record ScoreValue(LeadTemperature value, double confidence) { }
-    private record NoulValue(double value, double confidence, SensitiveDataLevel level) { }
+    private record NoulValue(double value, double confidence, SensitiveDataLevel level) {
+        private static NoulValue none() {
+            return new NoulValue(0.0, 1.0, SensitiveDataLevel.NONE);
+        }
+    }
     private record HandoffValue(HandoffRecommendation value, double confidence) { }
 }
