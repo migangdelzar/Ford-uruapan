@@ -4,6 +4,7 @@ import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -13,8 +14,10 @@ public class ClassificationProperties {
 
     private boolean enabled = true;
     @NotBlank
+    @Pattern(regexp = "(?i)active|shadow|disabled")
     private String mode = "active";
     @NotBlank
+    @Pattern(regexp = "(?i)typesafe|rules")
     private String provider = "typesafe";
     @Min(1)
     private int timeoutMs = 1500;
@@ -22,8 +25,10 @@ public class ClassificationProperties {
     @DecimalMax("1.0")
     private double minConfidence = 0.70;
     @NotBlank
+    @Pattern(regexp = "(?i)rules")
     private String fallback = "rules";
     @NotBlank
+    @Pattern(regexp = "(?i)redact|block|allow")
     private String piiPolicy = "redact";
     private boolean intentEnabled = true;
     private boolean leadEnabled = true;

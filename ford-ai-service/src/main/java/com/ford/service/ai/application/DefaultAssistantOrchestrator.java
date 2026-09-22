@@ -48,7 +48,8 @@ public final class DefaultAssistantOrchestrator implements AssistantOrchestrator
         if ("HUMAN_ACTIVE".equals(request.conversationState())) {
             return new AssistantResponse("Un asesor humano ya está atendiendo tu conversación.", true, "none", List.of());
         }
-        var context = new AiExecutionContext(request.tenantId(), request.containsSensitiveData());
+        var context = new AiExecutionContext(request.tenantId(), request.containsSensitiveData(),
+                request.conversationId(), request.memoryContext(), request.decision());
         toolAuthorizationPolicy.readOnlyTools(context);
         intentRouter.route(request.message());
         return completion.complete(request, new ToolContext(request.tenantId(), request.conversationId()));

@@ -83,7 +83,7 @@ class SpringAiAssistantServiceTest {
     }
 
     @Test
-    void convertsProviderFailureIntoDeterministicHumanHandoff() {
+    void convertsProviderFailureIntoBotFallbackWithoutImplicitHandoff() {
         var orchestrator = mock(AssistantOrchestrator.class);
         when(orchestrator.respond(org.mockito.ArgumentMatchers.any()))
                 .thenThrow(new IllegalStateException("provider timeout"));
@@ -94,7 +94,7 @@ class SpringAiAssistantServiceTest {
 
         assertThat(turn.text()).isEqualTo("En este momento te comunicaré con un asesor humano.");
         assertThat(turn.intent()).isEqualTo(Intent.CATALOG);
-        assertThat(turn.requestsHuman()).isTrue();
+        assertThat(turn.requestsHuman()).isFalse();
         assertThat(turn.provider()).isEqualTo("fallback");
         assertThat(turn.modelVersion()).isEqualTo("none");
     }

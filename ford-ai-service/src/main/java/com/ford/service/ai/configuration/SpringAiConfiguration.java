@@ -42,6 +42,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.ai.support.ToolCallbacks;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -55,13 +56,19 @@ public class SpringAiConfiguration {
     @Conditional(TypeSafeApiKeyCondition.class)
     TypeSafeClient typeSafeClient(TypeSafeProperties properties,
                                    ObjectProvider<RestClient.Builder> restClientBuilders) {
+        var requestFactory = new JdkClientHttpRequestFactory();
+        requestFactory.setReadTimeout(properties.getTimeout());
+        var restClientBuilder = restClientBuilders
+                .getIfAvailable(RestClient::builder)
+                .clone()
+                .requestFactory(requestFactory);
         return TypeSafeClient.builder()
                 .apiKey(properties.getApiKey())
                 .baseUrl(properties.getBaseUrl())
                 .defaultModel(properties.getModel())
                 .timeout(properties.getTimeout())
                 .retryPolicy(properties.toRetryPolicy())
-                .restClientBuilder(restClientBuilders.getIfAvailable(RestClient::builder))
+                .restClientBuilder(restClientBuilder)
                 .build();
     }
 

@@ -53,6 +53,26 @@ class ConversationDecisionServiceTest {
         assertThat(primaryCalled[0]).isFalse();
     }
 
+    @Test
+    void usesRulesWhenATypeSafeClassifierReturnsLowConfidenceEvidence() {
+        var properties = new ClassificationProperties();
+        properties.setMinConfidence(0.8);
+        var lowConfidence = new ConversationDecision(ConversationIntent.FINANCE,
+                LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE,
+                ToolFamily.FINANCE_ESTIMATE, SensitiveDataLevel.NONE,
+                List.of(new com.ford.service.ai.application.ClassificationEvidence(
+                        com.ford.service.ai.application.ClassifierType.INTENT, "FINANCE", 0.4,
+                        "model_choice", "typesafe", "test", 1, false)));
+        ConversationDecisionPort rules = context -> new ConversationDecision(
+                ConversationIntent.GENERAL, LeadTemperature.UNKNOWN, LeadStage.NEW,
+                HandoffRecommendation.NONE, ToolFamily.NONE, SensitiveDataLevel.NONE, List.of());
+
+        var decision = new ConversationDecisionService(context -> lowConfidence, rules, properties)
+                .decide(context("mensualidad"));
+
+        assertThat(decision.intent()).isEqualTo(ConversationIntent.GENERAL);
+    }
+
     private static ClassificationContext context(String message) {
         return new ClassificationContext(UUID.randomUUID(), UUID.randomUUID(), message,
                 null, "BOT_ACTIVE", false);

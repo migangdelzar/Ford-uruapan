@@ -91,7 +91,7 @@ public final class SpringAiAssistantService implements AssistantService {
                     providerSummary(), exception.getClass().getSimpleName(),
                     AiProviderFailureDiagnostics.describe(exception, logProviderErrors));
             return new AssistantTurn(handoffPolicy.fallbackText(), decision.toLegacyIntent(),
-                    handoffPolicy.enabled(), List.of(), "fallback", "none", decision);
+                    false, List.of(), "fallback", "none", decision);
         }
     }
 

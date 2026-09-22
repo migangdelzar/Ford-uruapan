@@ -170,7 +170,7 @@ class ConversationWorkflowTest {
                 "wamid.decision", Instant.now()));
 
         assertThat(decisions.conversationId).isEqualTo(conversationId);
-        assertThat(decisions.providerMessageId).isEqualTo("wamid.inbound");
+        assertThat(decisions.providerMessageId).isEqualTo("wamid.decision");
         assertThat(decisions.decision).isEqualTo(decision);
         assertThat(repository.completedTurn).isEqualTo(new ConversationTurn("Respuesta"));
     }

@@ -4,20 +4,14 @@ import com.openai.errors.OpenAIServiceException;
 
 import java.util.Locale;
 import java.util.Optional;
-import java.util.regex.Pattern;
 
 /** Builds bounded, credential-safe diagnostics for provider failures. */
 public final class AiProviderFailureDiagnostics {
 
-    private static final int MAX_DETAIL_LENGTH = 500;
-    private static final Pattern SECRET = Pattern.compile(
-            "(?i)(authorization|api[_-]?key|access[_-]?token|password|secret)\\s*[:=]\\s*[^,}\\s]+"
-    );
-
     private AiProviderFailureDiagnostics() {
     }
 
-    public static String describe(Throwable failure, boolean includeResponseBody) {
+    public static String describe(Throwable failure, boolean ignoredIncludeResponseBody) {
         var serviceFailure = find(failure, OpenAIServiceException.class).orElse(null);
         Integer status = serviceFailure == null ? inferStatus(failure) : safeStatus(serviceFailure, failure);
         var category = category(status, failure);
@@ -32,10 +26,6 @@ public final class AiProviderFailureDiagnostics {
         append(result, "requestId", requestId);
         append(result, "code", code);
         append(result, "type", type);
-        if (includeResponseBody) {
-            var detail = serviceFailure == null ? failure.getMessage() : safeBody(serviceFailure);
-            append(result, "responseBody", sanitize(detail));
-        }
         return result.toString();
     }
 
@@ -86,15 +76,6 @@ public final class AiProviderFailureDiagnostics {
         }
     }
 
-    private static String safeBody(OpenAIServiceException failure) {
-        try {
-            return failure.body().toString();
-        }
-        catch (RuntimeException ignored) {
-            return null;
-        }
-    }
-
     private static Integer inferStatus(Throwable failure) {
         var name = failure.getClass().getSimpleName().toLowerCase(Locale.ROOT);
         if (name.contains("ratelimit")) {
@@ -130,16 +111,6 @@ public final class AiProviderFailureDiagnostics {
         var name = failure.getClass().getSimpleName().toLowerCase(Locale.ROOT);
         return name.contains("timeout") || name.contains("io")
                 ? "network" : "provider_error";
-    }
-
-    private static String sanitize(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        var redacted = SECRET.matcher(value).replaceAll("$1=<redacted>");
-        return redacted.length() > MAX_DETAIL_LENGTH
-                ? redacted.substring(0, MAX_DETAIL_LENGTH) + "..."
-                : redacted;
     }
 
     private static void append(StringBuilder result, String name, String value) {

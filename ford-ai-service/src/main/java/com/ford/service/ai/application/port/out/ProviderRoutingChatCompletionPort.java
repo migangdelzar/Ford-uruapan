@@ -34,7 +34,8 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
     public AssistantResponse complete(AssistantRequest request, ToolContext context) {
         Objects.requireNonNull(request, "request must not be null");
         var selected = policy.select(
-                new AiExecutionContext(request.tenantId(), request.containsSensitiveData(), request.conversationId()),
+                new AiExecutionContext(request.tenantId(), request.containsSensitiveData(), request.conversationId(),
+                        request.memoryContext(), request.decision()),
                 new ModelRequirements(true, true));
         var port = ports.get(selected.id());
         if (port == null) {

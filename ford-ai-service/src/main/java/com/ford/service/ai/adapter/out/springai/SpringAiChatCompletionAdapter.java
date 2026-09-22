@@ -49,7 +49,8 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                 .system(systemPrompt(request.memoryContext(), request.decision()))
                 .user(request.message());
         var executionContext = new AiExecutionContext(
-                request.tenantId(), request.containsSensitiveData(), request.conversationId());
+                request.tenantId(), request.containsSensitiveData(), request.conversationId(),
+                request.memoryContext(), request.decision());
         var tools = request.decision().evidence().isEmpty()
                 ? toolPolicy.readOnlyTools(executionContext)
                 : toolPolicy.readOnlyTools(executionContext, decisionPolicy.allowedToolNames(

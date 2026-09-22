@@ -48,8 +48,10 @@ public final class TypeSafeConversationDecisionAdapter implements ConversationDe
         Objects.requireNonNull(response, "TypeSafe response is required");
         var intent = properties.intentEnabled()
                 ? choice(response, "intent", ConversationIntent.class) : ConversationIntent.GENERAL;
+        var intentConfidence = properties.intentEnabled() ? response.choice("intent").confidence() : 1.0;
         var leadStage = properties.leadEnabled()
                 ? choice(response, "lead_stage", LeadStage.class) : LeadStage.NEW;
+        var leadStageConfidence = properties.leadEnabled() ? response.choice("lead_stage").confidence() : 1.0;
         var temperature = properties.leadEnabled()
                 ? score(response.score("lead_temperature"))
                 : new ScoreValue(LeadTemperature.UNKNOWN, 1.0);
@@ -61,28 +63,28 @@ public final class TypeSafeConversationDecisionAdapter implements ConversationDe
                 ? noul(response, "complex_request") : NoulValue.none();
         var toolFamily = properties.toolsEnabled()
                 ? choice(response, "tool_family", ToolFamily.class) : ToolFamily.NONE;
+        var toolConfidence = properties.toolsEnabled() ? response.choice("tool_family").confidence() : 1.0;
         var sensitive = properties.sensitiveDataEnabled()
                 ? noul(response, "has_sensitive_data") : NoulValue.none();
         var handoff = handoff(userRequested, negative, complex,
-                properties.intentEnabled() ? response.choice("intent").confidence() : 1.0,
-                properties.toolsEnabled() ? response.choice("tool_family").confidence() : 1.0);
+                intentConfidence, toolConfidence);
         var model = response.model() == null || response.model().isBlank() ? "typesafe" : response.model();
 
         return new ConversationDecision(intent, temperature.value(), leadStage, handoff.value(),
                 toolFamily, sensitive.level(), List.of(
                         evidence(ClassifierType.INTENT, intent.name(),
-                                properties.intentEnabled() ? response.choice("intent").confidence() : 1.0,
+                                intentConfidence,
                                 properties.intentEnabled() ? "model_choice" : "classifier_disabled", model, latencyMs,
                                 !properties.intentEnabled()),
                         evidence(ClassifierType.LEAD, leadStage.name() + "/" + temperature.value().name(),
-                                Math.min(response.choice("lead_stage").confidence(), temperature.confidence()),
+                                Math.min(leadStageConfidence, temperature.confidence()),
                                 properties.leadEnabled() ? "model_choice_score" : "classifier_disabled",
                                 model, latencyMs, !properties.leadEnabled()),
                         evidence(ClassifierType.HANDOFF, handoff.value().name(), handoff.confidence(),
                                 properties.handoffEnabled() ? "noul_threshold" : "classifier_disabled",
                                 model, latencyMs, !properties.handoffEnabled()),
                         evidence(ClassifierType.TOOL_FAMILY, toolFamily.name(),
-                                properties.toolsEnabled() ? response.choice("tool_family").confidence() : 1.0,
+                                toolConfidence,
                                 properties.toolsEnabled() ? "model_choice" : "classifier_disabled",
                                 model, latencyMs, !properties.toolsEnabled()),
                         evidence(ClassifierType.SENSITIVE_DATA, sensitive.level().name(), sensitive.confidence(),

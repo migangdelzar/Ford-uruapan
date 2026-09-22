@@ -107,10 +107,10 @@ public class ConversationWorkflow {
         var reply = assistant.respond(new ConversationTurnRequest(
                 snapshot.tenantId(), snapshot.conversationId(), snapshot.inboundText(), snapshot.state(), memory));
         try {
-            decisionRepository.save(snapshot.conversationId(), snapshot.providerMessageId(), reply.decision());
+            decisionRepository.save(snapshot.conversationId(), event.providerMessageId(), reply.decision());
         } catch (RuntimeException exception) {
             log.warn("Conversation decision persistence failed: conversationId={} providerMessageId={} exceptionType={}",
-                    snapshot.conversationId(), snapshot.providerMessageId(), exception.getClass().getSimpleName());
+                    snapshot.conversationId(), event.providerMessageId(), exception.getClass().getSimpleName());
         }
 
         if (reply.handoffRequired() && handoffPolicy.shouldCreateHandoff(true)) {

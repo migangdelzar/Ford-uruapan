@@ -33,6 +33,11 @@ public final class ConversationDecisionService {
             if ("shadow".equalsIgnoreCase(properties.mode())) {
                 return rules.decide(context);
             }
+            if (classified.evidence().stream()
+                    .anyMatch(evidence -> !evidence.fallbackUsed()
+                            && evidence.confidence() < properties.minConfidence())) {
+                throw new IllegalStateException("TypeSafe classification confidence is below the configured threshold");
+            }
             return classified;
         } catch (RuntimeException ignored) {
             log.warn("Conversation classification failed; using rules fallback: exceptionType={}",
