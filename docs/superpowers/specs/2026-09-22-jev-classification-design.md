@@ -6,7 +6,7 @@ Approved design pending implementation.
 
 ## Goal
 
-Use TypeSafe Jev through OpenRouter to classify each eligible conversation turn, then pass the validated classification bundle into the normal response-generation model. The generation model may be a free OpenRouter model, while Java remains responsible for authorization, tool access, persistence, handoff policy, and delivery.
+Use the official Spring AI TypeSafe integration to call TypeSafe Jev for each eligible conversation turn, then pass the validated classification bundle into the normal response-generation model. The generation model may be a free OpenRouter model, while Java remains responsible for authorization, tool access, persistence, handoff policy, and delivery.
 
 The feature must support the existing WhatsApp webhook, durable conversation memory, read-only dealership tools, outbox delivery, and the current bot-only deployment mode.
 
@@ -20,7 +20,7 @@ The first implementation covers five logical classifiers:
 - tool capability/family;
 - sensitive-data level.
 
-Jev is the active classifier provider. A deterministic rules implementation remains available as a per-classifier fallback. The response generator remains a separate provider and receives only normalized, validated decision data.
+Jev is the active classifier provider through `TypeSafeClient`. A deterministic rules implementation remains available as a per-classifier fallback. The response generator remains a separate provider and receives only normalized, validated decision data.
 
 This design does not allow an AI provider to directly send messages, mutate business state, authorize tools, or create a handoff.
 
@@ -46,7 +46,7 @@ ConversationDecisionService
   └── SensitiveDataClassifier
 ```
 
-Each port has a Jev adapter and a deterministic fallback adapter. The service may batch compatible classifier questions into one Jev decision request or execute independent requests in parallel. The application-facing contract is unchanged by that optimization.
+Each port has a Jev implementation backed by `TypeSafeClient` and a deterministic fallback implementation. The service issues one System One request containing atomic `Noul`, `Choice`, and `Score` questions whenever the classifiers share the same conversation state. The application-facing contract is unchanged by that optimization.
 
 The existing keyword `IntentRouter` becomes the deterministic intent fallback. It must not be removed until the Jev path has proven stable.
 
@@ -106,7 +106,9 @@ ConversationDecision
   evidence per classifier
 ```
 
-Each evidence entry includes classification, confidence, reason code, provider, model, latency, and whether fallback was used. Provider output is parsed and validated against the enum contract. Unknown labels, malformed payloads, and missing required values become fallback results rather than unchecked values.
+Each evidence entry includes classification, confidence, reason code, provider, model, latency, and whether fallback was used. `Choice` probability distributions and confidence values are mapped into the application contract; `Score` values are mapped to lead-temperature thresholds; `Noul` values are mapped to boolean policy signals. Unknown labels, malformed payloads, and missing required values become fallback results rather than unchecked values.
+
+The classifier questions are written as narrow statements with explicit option descriptions and thresholds. A `Choice` includes `NONE` where no tool or intent applies. A low-confidence answer is treated as inconclusive rather than automatically wrong, and `JevConfidenceGate` semantics are represented in `DecisionPolicy`.
 
 ## Decision policy
 
@@ -138,21 +140,20 @@ sensitive_data=NONE
 
 The generator may use this context to answer in the correct mode and request an appropriate tool. The application still filters tools before invocation and validates tool arguments after invocation. Raw Jev explanations, prompts, and provider metadata are not sent to the customer-facing model unless explicitly required by a future design.
 
-## OpenRouter and model configuration
+## Spring AI TypeSafe and OpenRouter configuration
 
-Jev and response generation are separate provider roles:
+Jev and response generation are separate provider roles. The TypeSafe Spring Boot starter supplies the `TypeSafeClient`; OpenRouter remains the OpenAI-compatible provider for normal response generation:
 
 ```properties
 FORD_AI_CLASSIFICATION_ENABLED=true
 FORD_AI_CLASSIFICATION_MODE=active
-FORD_AI_CLASSIFICATION_PROVIDER=jev-openrouter
-FORD_AI_CLASSIFICATION_MODEL=~typesafe/jev-latest
-FORD_AI_CLASSIFICATION_ENDPOINT=https://openrouter.ai/api
-FORD_AI_CLASSIFICATION_API_KEY=${OPENROUTER_API_KEY}
+FORD_AI_CLASSIFICATION_PROVIDER=typesafe
 FORD_AI_CLASSIFICATION_TIMEOUT_MS=1500
 FORD_AI_CLASSIFICATION_MIN_CONFIDENCE=0.70
 FORD_AI_CLASSIFICATION_FALLBACK=rules
 FORD_AI_CLASSIFICATION_PII_POLICY=redact
+TYPESAFE_API_KEY=replace-with-secret
+SPRING_AI_TYPESAFE_API_KEY=${TYPESAFE_API_KEY}
 
 FORD_AI_CHAT_PROVIDER=openai
 FORD_AI_CLOUD_PROVIDER=openai
@@ -163,9 +164,29 @@ FORD_AI_CLOUD_FALLBACK_MODEL_VERSION=openrouter/free
 OPENAI_API_KEY=${OPENROUTER_API_KEY}
 ```
 
+The implementation should use the official community modules compatible with the project's Spring Boot 4 and Spring AI 2.x versions:
+
+```text
+org.springaicommunity:spring-ai-starter-typesafe:0.1.0
+org.springaicommunity:typesafe-spring-ai:0.1.0
+```
+
+The implementation must verify that these artifacts resolve cleanly with the project's dependency management before wiring them into production. The direct starter/client is sufficient for classification; `typesafe-spring-ai` is added when using `JevJudge`, `JevGuardrailAdvisor`, `JevSelfRefineAdvisor`, RAG post-processors, or tool indexing.
+
 The actual free generation model remains deployment configuration, not Java code. This is necessary because free-model availability, quotas, context limits, and tool-calling support can change. The provider capability registry must reject a selected model that cannot support the requested tool or structured-output behavior, or route to a compatible fallback.
 
-The Jev adapter isolates the provider-specific decision API from the OpenAI-compatible chat API. The endpoint, authentication, request envelope, and response parser must remain inside that adapter so a provider API change does not leak into application code.
+The TypeSafe integration isolates TypeSafe authentication and `SystemOneResponse` handling from the application classifier ports. OpenRouter authentication and chat request handling remain in the existing chat adapter. These providers must not share assumptions about request envelopes, model IDs, or response parsing.
+
+## Spring AI judgment features
+
+The first release uses `TypeSafeClient` and the typed primitives directly for conversation classification. The following features are staged additions:
+
+- `JevGuardrailAdvisor`: screen clearly unsafe inputs before generation and unsafe outputs after generation; it is not a replacement for authorization or dealership policy.
+- `JevSelfRefineAdvisor`: retry only high-value generated responses, such as financing explanations or vehicle quotations, when a groundedness/completeness judge fails. Do not apply it to every turn initially because it can add model calls and latency.
+- `JevToolIndex`: consider only after the tool catalog grows beyond the current small allowlist; existing `ToolAuthorizationPolicy` remains mandatory.
+- `JevDocumentFilter` and `JevDocumentReranker`: consider for the pgvector knowledge path after retrieval quality and document volume justify the extra judgment calls.
+
+These advisors must be introduced behind feature flags and bounded retry counts. Safety guardrails run as the final decision layer; self-refinement may improve quality but cannot override safety or authorization policy.
 
 ## Classifier controls
 
@@ -193,7 +214,7 @@ tool-family failure     → NONE
 sensitive-data failure  → most restrictive configured policy
 ```
 
-Rate limits, timeouts, HTTP errors, invalid decision payloads, and unsupported model capabilities are recorded as provider failures. They must not leave the database transaction aborted or prevent durable inbound-message persistence.
+TypeSafe rate limits, timeouts, HTTP errors, invalid decision payloads, and unsupported model capabilities are recorded as provider failures. They must not leave the database transaction aborted or prevent durable inbound-message persistence.
 
 If classification is unavailable, response generation may continue using the fallback decision bundle when configured. If the free generation model is unavailable, the provider routing policy may use its configured fallback or produce the existing safe failure response. No automatic handoff is created solely because a provider failed.
 
@@ -223,7 +244,9 @@ Operational logs and metrics include classifier type, outcome, confidence bucket
 
 - Unit-test each classifier contract with valid, unknown, malformed, low-confidence, timeout, and provider-error results.
 - Test `DecisionPolicy` independently, especially bot-only handoff behavior and tool allowlists.
-- Test Jev adapter parsing with recorded sanitized provider fixtures.
+- Test TypeSafe client mapping with recorded sanitized `SystemOneResponse` fixtures.
+- Test confidence gates, inconclusive answers, score thresholds, and probability distributions.
+- Test guardrail and self-refine advisors with bounded retry counts when those features are enabled.
 - Test provider routing when the configured generation model is free, rate-limited, unavailable, or lacks tool support.
 - Test conversation workflow persistence when classification or generation fails.
 - Test duplicate webhook delivery remains idempotent.
