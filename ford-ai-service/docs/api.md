@@ -3,6 +3,12 @@
 All monetary values are MXN. Finance estimates are explicitly non-binding and
 must not be presented as a credit decision.
 
+The machine-readable frontend contract is
+[`openapi/frontend-api.yaml`](openapi/frontend-api.yaml). Authentication and
+JWT acquisition are documented in
+[`openapi/security.md`](openapi/security.md). The OpenAPI document marks each
+operation as `implemented` or `planned`.
+
 ## Meta webhooks
 
 Configure `FORD_META_VERIFY_TOKEN` and `FORD_META_APP_SECRET`. Meta subscription
