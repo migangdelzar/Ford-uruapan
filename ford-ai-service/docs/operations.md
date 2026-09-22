@@ -20,6 +20,13 @@ Use environment variables or a deployment profile; keep secrets outside Git.
 - `FORD_AI_CHAT_PROVIDER`, `FORD_AI_EMBEDDING_PROVIDER`
 - `FORD_AI_CLOUD_ENABLED`, `FORD_AI_LOCAL_ENABLED`, provider base URLs and model names
 - `FORD_AI_LOG_PROVIDER_ERRORS` (opt-in bounded provider error details)
+- `TYPESAFE_API_KEY` (optional Jev classification key; never log or commit it)
+- `FORD_AI_CLASSIFICATION_ENABLED`, `FORD_AI_CLASSIFICATION_MODE` (`active`,
+  `shadow`, or `disabled`), and `FORD_AI_CLASSIFICATION_PROVIDER`
+- `FORD_AI_CLASSIFICATION_MIN_CONFIDENCE`, classifier-specific `FORD_AI_CLASSIFIER_*`
+  toggles, and `FORD_AI_CLASSIFICATION_FALLBACK=rules`
+- `FORD_AI_GUARDRAILS_ENABLED` and `FORD_AI_SELF_REFINE_ENABLED` (both default
+  to `false`); self-refinement is bounded by `FORD_AI_SELF_REFINE_MAX_ATTEMPTS`
 
 For OpenAI-compatible providers, `FORD_AI_CLOUD_BASE_URL` must include the
 provider API version because the Spring AI SDK appends `/chat/completions`
@@ -84,6 +91,31 @@ not the source of truth. Semantic fact retrieval is disabled by default and
 should only be enabled after the configured embedding model is compatible with
 the pgvector memory table. Memory read, embedding, and provider failures are
 fail-open for webhook processing.
+
+Jev classification is a separate structured decision step, not the response
+generation model. When enabled with a real `TYPESAFE_API_KEY`, it classifies
+intent, lead stage/temperature, handoff signals, tool family, and sensitive
+data. The application passes only a sanitized decision context to generation,
+keeps authorization and handoff policy in Java, and persists normalized
+evidence in `conversation_decision`. If Jev is unavailable, malformed, or
+below the configured confidence floor, deterministic rules continue the turn.
+Use `FORD_AI_CLASSIFICATION_MODE=shadow` to exercise the provider while
+retaining rules decisions.
+
+The optional Jev self-refine advisor evaluates groundedness and safety and may
+retry a generated answer up to the configured bounded attempt count. The Jev
+guardrail advisor is the final safety layer when enabled. Both are disabled by
+default because they add latency and provider calls; enable them only after
+classification and generation have been verified.
+
+To inspect persisted classifier evidence:
+
+```sql
+select classifier_type, classification, confidence, fallback_used, created_at
+from conversation_decision
+where conversation_id = '<conversation-id>'
+order by created_at desc;
+```
 
 The default ingestion flag is disabled. Enable it only after official Ford
 endpoints or authorized scraper endpoints and credentials are configured.

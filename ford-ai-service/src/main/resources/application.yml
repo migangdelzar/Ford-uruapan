@@ -43,6 +43,7 @@ spring:
           model: ${FORD_AI_CLOUD_MODEL_VERSION:gpt-4o-mini}
     typesafe:
       api-key: ${TYPESAFE_API_KEY:}
+      timeout: ${FORD_AI_CLASSIFICATION_TIMEOUT_MS:1500}ms
     model:
       chat: ${FORD_AI_CHAT_PROVIDER:ollama}
       embedding: ${FORD_AI_EMBEDDING_PROVIDER:ollama}
@@ -57,6 +58,7 @@ spring:
   autoconfigure:
     exclude:
       - org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
+      - org.springaicommunity.typesafe.autoconfigure.TypeSafeAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration

@@ -29,6 +29,9 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Conditional;
+import org.springframework.web.client.RestClient;
 import org.springaicommunity.typesafe.TypeSafeClient;
 import org.springaicommunity.typesafe.autoconfigure.TypeSafeProperties;
 import org.springaicommunity.typesafe.advisor.JevGuardrailAdvisor;
@@ -39,15 +42,28 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.ai.support.ToolCallbacks;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /** Composition root marker for Spring AI adapters and read-only tool wiring. */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(ClassificationProperties.class)
+@EnableConfigurationProperties({ClassificationProperties.class, TypeSafeProperties.class})
 public class SpringAiConfiguration {
+
+    @Bean
+    @Conditional(TypeSafeApiKeyCondition.class)
+    TypeSafeClient typeSafeClient(TypeSafeProperties properties,
+                                   ObjectProvider<RestClient.Builder> restClientBuilders) {
+        return TypeSafeClient.builder()
+                .apiKey(properties.getApiKey())
+                .baseUrl(properties.getBaseUrl())
+                .defaultModel(properties.getModel())
+                .timeout(properties.getTimeout())
+                .retryPolicy(properties.toRetryPolicy())
+                .restClientBuilder(restClientBuilders.getIfAvailable(RestClient::builder))
+                .build();
+    }
 
     @Bean
     IntentRouter intentRouter() {

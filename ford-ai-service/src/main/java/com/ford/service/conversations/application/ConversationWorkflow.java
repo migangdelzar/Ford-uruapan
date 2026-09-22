@@ -8,9 +8,13 @@ import com.ford.service.conversations.application.port.out.ConversationAssistant
 import com.ford.service.conversations.application.port.out.ConversationRepository;
 import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.conversations.domain.ConversationTurn;
+import com.ford.service.conversations.domain.ConversationMemoryContext;
 import com.ford.service.conversations.domain.ConversationMemoryKey;
+import com.ford.service.conversations.domain.ConversationMessage;
 import com.ford.service.conversations.domain.MemoryQuery;
 import com.ford.service.conversations.domain.HandoffDecision;
+import com.ford.service.conversations.domain.MemoryProjectionUpdate;
+import com.ford.service.conversations.domain.MemoryUpdateResult;
 import com.ford.service.shared.HumanHandoffPolicy;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.modulith.events.ApplicationModuleListener;
@@ -31,6 +35,16 @@ public class ConversationWorkflow {
     private final HumanHandoffPolicy handoffPolicy;
     private final ConversationMemoryService memoryService;
     private final ConversationDecisionRepository decisionRepository;
+
+    /**
+     * Compatibility constructor for lightweight callers that do not provide
+     * durable memory or classifier evidence adapters.
+     */
+    public ConversationWorkflow(ConversationRepository repository,
+                                ConversationAssistant assistant,
+                                ApplicationEventPublisher eventPublisher) {
+        this(repository, assistant, eventPublisher, new HumanHandoffPolicy(true), noOpMemoryService());
+    }
 
     public ConversationWorkflow(ConversationRepository repository,
                                 ConversationAssistant assistant,
@@ -53,6 +67,30 @@ public class ConversationWorkflow {
         this.handoffPolicy = Objects.requireNonNull(handoffPolicy);
         this.memoryService = Objects.requireNonNull(memoryService);
         this.decisionRepository = Objects.requireNonNull(decisionRepository);
+    }
+
+    private static ConversationMemoryService noOpMemoryService() {
+        return new ConversationMemoryService(new ConversationMemoryPort() {
+            @Override
+            public ConversationMemoryContext load(MemoryQuery query) {
+                return ConversationMemoryContext.empty(query.key());
+            }
+
+            @Override
+            public void recordInbound(ConversationMemoryKey key, ConversationMessage message) {
+            }
+
+            @Override
+            public void recordOutbound(ConversationMemoryKey key, ConversationMessage message) {
+            }
+
+            @Override
+            public MemoryUpdateResult updateProjection(ConversationMemoryKey key,
+                                                        MemoryProjectionUpdate update,
+                                                        long expectedVersion) {
+                return new MemoryUpdateResult(false, expectedVersion);
+            }
+        }, new MemoryProperties());
     }
 
     @ApplicationModuleListener

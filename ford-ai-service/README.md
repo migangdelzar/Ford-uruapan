@@ -138,6 +138,12 @@ Durable conversation memory is enabled by default. Tune its bounded context
 with the `FORD_MEMORY_*` variables in `.env.example`. Keep semantic retrieval
 disabled until the embedding model and pgvector dimensions have been verified.
 
+Optional TypeSafe Jev classification is configured with `TYPESAFE_API_KEY` and
+the `FORD_AI_CLASSIFICATION_*` variables. It falls back to deterministic rules
+when unavailable. Keep `FORD_AI_GUARDRAILS_ENABLED` and
+`FORD_AI_SELF_REFINE_ENABLED` disabled until the base bot flow is verified;
+both add provider calls and latency.
+
 Do not commit `.env`, `.env.prod`, or any provider credentials. Use
 `.env.prod.example` only as a variable-name template.
 
