@@ -26,7 +26,7 @@ public class JdbcLeadQueryRepository implements LeadQueryService {
         if (pageSize < 1 || pageSize > 100) throw new IllegalArgumentException("page size must be between 1 and 100");
         var sql = new StringBuilder("""
                 select l.id, l.tenant_id, l.conversation_id, l.name, l.phone, l.email,
-                       l.preferred_vehicle, l.budget_range, l.updated_at,
+                       l.preferred_vehicle, l.budget_range, l.updated_at, l.version,
                        latest.band, latest.score
                 from lead l
                 left join lateral (select band, score from lead_score where lead_id = l.id
@@ -60,7 +60,7 @@ public class JdbcLeadQueryRepository implements LeadQueryService {
     public Optional<LeadView> find(UUID tenantId, UUID leadId) {
         return jdbc.sql("""
                 select l.id, l.tenant_id, l.conversation_id, l.name, l.phone, l.email,
-                       l.preferred_vehicle, l.budget_range, l.updated_at, latest.band, latest.score
+                       l.preferred_vehicle, l.budget_range, l.updated_at, l.version, latest.band, latest.score
                 from lead l
                 left join lateral (select band, score from lead_score where lead_id = l.id
                                    order by created_at desc limit 1) latest on true
@@ -74,7 +74,8 @@ public class JdbcLeadQueryRepository implements LeadQueryService {
         return new LeadView(rs.getObject("id", UUID.class), rs.getObject("tenant_id", UUID.class),
                 rs.getObject("conversation_id", UUID.class), rs.getString("name"), rs.getString("phone"),
                 rs.getString("email"), rs.getString("preferred_vehicle"), rs.getString("budget_range"),
-                rs.getString("band"), rs.getObject("score", Integer.class), rs.getTimestamp("updated_at").toInstant());
+                rs.getString("band"), rs.getObject("score", Integer.class), rs.getTimestamp("updated_at").toInstant(),
+                rs.getLong("version"));
     }
 
     private static String encode(Instant updatedAt, UUID id) {

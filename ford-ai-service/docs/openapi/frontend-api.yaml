@@ -579,9 +579,13 @@ paths:
     patch:
       tags: [Leads]
       summary: Update lead qualification
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
       requestBody:
         required: true
         content:
@@ -603,6 +607,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /api/v1/leads/{leadId}/sync:
     post:
@@ -1760,7 +1766,7 @@ components:
       enum: [COLD, WARM, HOT]
     Lead:
       type: object
-      required: [id, tenantId, temperature, updatedAt]
+      required: [id, tenantId, temperature, updatedAt, version]
       properties:
         id:
           type: string
@@ -1790,6 +1796,9 @@ components:
         updatedAt:
           type: string
           format: date-time
+        version:
+          type: integer
+          format: int64
     LeadPatch:
       type: object
       properties:
@@ -1798,6 +1807,22 @@ components:
           nullable: true
         temperature:
           $ref: '#/components/schemas/LeadTemperature'
+        temperatureSource:
+          type: string
+          enum: [AI, HUMAN]
+        email:
+          type: string
+          format: email
+          nullable: true
+        preferredVehicle:
+          type: string
+          nullable: true
+        budgetRange:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
         interestVin:
           type: string
           nullable: true
