@@ -2,7 +2,7 @@
 
 | Field | Detail |
 |---|---|
-| Design | [Frontend BFF Compatibility Design](../specs/2026-09-23-frontend-bff-compatibility-design.md) |
+| Design | [Frontend `/api/v1` Contract Design](../specs/2026-09-23-frontend-bff-compatibility-design.md) |
 | Contract | [`ford-ai-service/docs/openapi/frontend-api.yaml`](../../../ford-ai-service/docs/openapi/frontend-api.yaml) |
 | Branch | `feat/ford-service-mvp` |
 | Status | Planned |
@@ -17,8 +17,9 @@ memory, and truthful metrics.
 
 1. Write an OpenAPI contract test that validates OpenAPI 3.1.0, operation IDs,
    security schemes, required mutation headers, and implementation markers.
-2. Update `frontend-api.yaml` to use servers ending in `/api/v1`, remove
-   duplicated `/api/v1` path prefixes, and correct the security model.
+2. Update `frontend-api.yaml` to use OpenAPI 3.1.0, explicit `/api/v1` path
+   keys, provider-only webhook paths outside that namespace, and the corrected
+   security model.
 3. Add canonical DTOs and mappers for conversation, message, event, AI, health,
    and analytics responses.
 4. Add shared tenant resolution so every canonical route uses the validated JWT

@@ -1,14 +1,14 @@
-openapi: 3.1.2
+openapi: 3.1.0
 info:
   title: Ford AI Operator API
   version: 1.0.0
   description: |
     Contract-first API for the Ford operator application.
 
-    This document contains the target `/api/v1` frontend contract, the
-    currently implemented legacy handoff routes, and Meta provider webhook
-    routes. Operations marked with `x-implementation-status: planned` are not
-    available until their backend implementation is released.
+    This document contains the canonical `/api/v1` frontend contract and the
+    provider-only Meta webhook routes. Operations marked with
+    `x-implementation-status: planned` are not available until their backend
+    implementation is released.
     Authentication is provided by the deployment's external OIDC provider;
     this backend is a resource server and does not issue login tokens.
   contact:
@@ -33,13 +33,15 @@ x-authentication:
     - roles
     - tenant_id_or_tenant_ids
   roleValues: [OPERATOR, MANAGER, ADMIN]
-  currentScopes: [openid, profile, email, 'operator:read', 'handoff:manage']
+  currentScopes: [openid, profile, email, 'operator:read', 'operator:write', 'handoff:manage']
   tokenHandling: |
     The frontend or BFF obtains the access token from the OIDC provider.
     It sends only the short-lived access token to this API as a Bearer token.
     Refresh tokens and client secrets must stay in the BFF or identity
     provider; they must never be embedded in frontend JavaScript.
 tags:
+  - name: Health
+  - name: AI
   - name: Conversations
   - name: Messages
   - name: Handoffs
@@ -56,6 +58,53 @@ tags:
 security:
   - bearerAuth: []
 paths:
+  /api/v1/health:
+    get:
+      tags: [Health]
+      summary: Check service availability
+      description: Public liveness response. It does not reveal provider secrets or API-key readiness.
+      operationId: getHealth
+      x-implementation-status: implemented
+      security: []
+      responses:
+        '200':
+          description: Service is available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+  /api/v1/ai/respond:
+    post:
+      tags: [AI]
+      summary: Generate a display-safe assistant response
+      description: Runs the configured assistant and returns display-safe classification and handoff information.
+      operationId: respondWithAi
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiRespondRequest'
+      responses:
+        '200':
+          description: Assistant response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiRespondResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
   /api/v1/conversations:
     get:
       tags: [Conversations]
@@ -1104,129 +1153,6 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
-  /api/operator/handoffs:
-    get:
-      tags: [Handoffs]
-      summary: List handoffs (legacy implemented route)
-      x-implementation-status: implemented
-      deprecated: true
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Handoff tickets
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/HandoffTicket'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-    post:
-      tags: [Handoffs]
-      summary: Request a handoff (legacy implemented route)
-      x-implementation-status: implemented
-      deprecated: true
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/HandoffRequest'
-      responses:
-        '201':
-          description: Handoff ticket
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HandoffTicket'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  /api/operator/handoffs/{ticketId}/claim:
-    post:
-      tags: [Handoffs]
-      summary: Claim a handoff (legacy implemented route)
-      x-implementation-status: implemented
-      deprecated: true
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/TicketId'
-        - $ref: '#/components/parameters/ExpectedVersion'
-      responses:
-        '200':
-          description: Claimed handoff
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HandoffTicket'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-
-  /api/operator/handoffs/conversations/{conversationId}/pause:
-    post:
-      tags: [Handoffs]
-      summary: Pause bot (legacy implemented route)
-      x-implementation-status: implemented
-      deprecated: true
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/ConversationId'
-        - $ref: '#/components/parameters/ExpectedVersion'
-      responses:
-        '200':
-          description: Paused handoff
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HandoffTicket'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-
-  /api/operator/handoffs/conversations/{conversationId}/resume:
-    post:
-      tags: [Handoffs]
-      summary: Resume bot (legacy implemented route)
-      x-implementation-status: implemented
-      deprecated: true
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/ConversationId'
-        - $ref: '#/components/parameters/ExpectedVersion'
-      responses:
-        '200':
-          description: Resumed handoff
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HandoffTicket'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-
   /webhooks/meta/{channel}:
     get:
       tags: [Meta webhooks]
@@ -1489,6 +1415,68 @@ components:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
   schemas:
+    HealthStatus:
+      type: object
+      required: [status, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        timestamp:
+          type: string
+          format: date-time
+    AiRespondRequest:
+      type: object
+      required: [messages]
+      properties:
+        conversationId:
+          type: string
+          format: uuid
+          nullable: true
+        containsSensitiveData:
+          type: boolean
+          default: false
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/AiMessage'
+    AiMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, customer, assistant, model, system]
+        content:
+          type: string
+          minLength: 1
+          maxLength: 10000
+    AiRespondResponse:
+      type: object
+      required: [replyText, suggestedTemperature, handoffSuggested,
+                 handoffReason, intent, leadStage, toolFamily, sourceDocumentIds]
+      properties:
+        replyText:
+          type: string
+        suggestedTemperature:
+          type: string
+          enum: [UNKNOWN, COLD, WARM, HOT]
+        handoffSuggested:
+          type: boolean
+        handoffReason:
+          type: string
+        intent:
+          type: string
+        leadStage:
+          type: string
+        toolFamily:
+          type: string
+        sourceDocumentIds:
+          type: array
+          items:
+            type: string
     ProblemDetail:
       type: object
       required: [type, title, status, detail]

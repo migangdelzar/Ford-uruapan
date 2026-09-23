@@ -19,9 +19,9 @@ idempotency, optimistic concurrency, webhook security, or metric integrity.
    tables or duplicate conversation/handoff state transitions.
 4. Derive tenant, role, and permissions only from the validated JWT. Ignore
    client-provided `role`, `sender`, dealership, and tenant authorization hints.
-5. Preserve `Idempotency-Key` and `If-Match` on mutations. The compatibility
-   contract will document them as required headers, even where the initial
-   frontend draft omitted them.
+5. Preserve `Idempotency-Key` and `If-Match` on mutations. The canonical
+   frontend contract documents them as required headers, even where the
+   initial frontend draft omitted them.
 6. Persist bot configuration per tenant. Environment variables remain startup
    defaults; database values are the runtime override.
 7. Report only authoritative metrics. CRM-derived revenue and margin values
@@ -29,9 +29,10 @@ idempotency, optimistic concurrency, webhook security, or metric integrity.
 8. Keep chaos/failure injection behind the existing Test Lab property and
    `testlab:run` authority. `/api/ai/respond` cannot activate injectors in
    normal production traffic.
-9. Use RFC 9457 `ProblemDetail` for all errors, including compatibility routes.
-10. Use OpenAPI 3.1.0 with `servers.url` ending in `/api/v1`; path keys do not
-    repeat `/api/v1`.
+9. Use RFC 9457 `ProblemDetail` for all errors on the canonical operator API.
+10. Use OpenAPI 3.1.0 with servers set to the public origin and explicit
+    `/api/v1` operator path keys. Meta webhook paths remain outside that
+    namespace and are clearly marked provider-only.
 
 ## Surface mapping
 
@@ -137,7 +138,7 @@ The plan chooses rejection to prevent silent test behavior in production.
 4. Provider credentials never enter the database configuration table or API
    response.
 
-## Error and compatibility rules
+## Error and routing rules
 
 - `401`: missing/invalid JWT.
 - `403`: valid JWT without required authority or tenant access.

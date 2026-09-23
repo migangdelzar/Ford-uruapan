@@ -68,7 +68,7 @@ public class OperatorConversationHandoffController {
     }
 
     @PostMapping("/handoffs")
-    @PreAuthorize("hasAuthority('SCOPE_handoff:manage') || hasRole('ADMIN')")
+    @PreAuthorize("(hasAuthority('SCOPE_handoff:manage') || hasRole('ADMIN')) && @tenantAuthorization.canAccess(authentication, #request.tenantId())")
     public ResponseEntity<HandoffTicket> request(@RequestBody HandoffRequest request,
                                                   Authentication authentication) {
         return ResponseEntity.status(HttpStatus.CREATED)

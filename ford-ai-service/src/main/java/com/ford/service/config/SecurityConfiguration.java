@@ -42,8 +42,7 @@ public class SecurityConfiguration {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/webhooks/meta/**", "/actuator/health", "/actuator/info").permitAll()
-                        .requestMatchers("/api/operator/**").hasAnyRole("OPERATOR", "MANAGER", "ADMIN")
+                        .requestMatchers("/webhooks/meta/**", "/api/v1/health", "/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/api/**", "/actuator/**").authenticated()
                         .anyRequest().denyAll());
 

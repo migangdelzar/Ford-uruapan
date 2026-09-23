@@ -4,7 +4,7 @@ import com.ford.service.ai.application.AiExecutionContext;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
 import com.ford.service.channels.security.MetaSignatureVerifier;
 import com.ford.service.config.SecurityConfiguration;
-import com.ford.service.handoff.adapter.in.web.HandoffController;
+import com.ford.service.handoff.adapter.in.web.OperatorConversationHandoffController;
 import com.ford.service.handoff.application.HandoffService;
 import com.ford.service.handoff.api.OperatorPrincipal;
 import com.ford.service.handoff.domain.HandoffStatus;
@@ -32,7 +32,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(HandoffController.class)
+@WebMvcTest(OperatorConversationHandoffController.class)
 @Import({SecurityConfiguration.class, TenantAuthorization.class})
 @AutoConfigureMockMvc
 @org.springframework.test.context.TestPropertySource(properties = {
@@ -66,7 +66,7 @@ class ToolAndWebhookSecurityTest {
 
     @Test
     void rejectsAnonymousOperatorRequest() throws Exception {
-        mockMvc.perform(post("/api/operator/handoffs")
+        mockMvc.perform(post("/api/v1/handoffs")
                         .contentType(APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isUnauthorized());
@@ -96,7 +96,7 @@ class ToolAndWebhookSecurityTest {
                 null, HandoffStatus.HUMAN_PENDING, null, "HOT_LEAD", 0, Instant.now(), null, null));
         var principal = new OperatorPrincipal(UUID.randomUUID(), Set.of(tenantId), Set.of("ROLE_OPERATOR"));
 
-        mockMvc.perform(post("/api/operator/handoffs")
+        mockMvc.perform(post("/api/v1/handoffs")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt()
                                 .jwt(token -> token
                                         .subject(principal.operatorId().toString())
@@ -114,18 +114,20 @@ class ToolAndWebhookSecurityTest {
     }
 
     @Test
-    void rejectsOperatorApiRequestWithoutAnOperatorRole() throws Exception {
-        mockMvc.perform(post("/api/operator/handoffs")
+    void permitsTheHandoffScopeWithoutRequiringAClientRoleHeader() throws Exception {
+        var tenantId = UUID.randomUUID();
+        mockMvc.perform(post("/api/v1/handoffs")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt()
                                 .jwt(token -> token
                                         .subject(UUID.randomUUID().toString())
-                                        .claim("tenant_ids", Set.of(UUID.randomUUID().toString()))
+                                        .claim("tenant_ids", Set.of(tenantId.toString()))
                                         .claim("scope", "handoff:manage"))
                                 .authorities(
                                         new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_handoff:manage")))
                         .contentType(APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isForbidden());
+                        .content("{\"tenantId\":\"%s\",\"conversationId\":\"%s\",\"reason\":\"test\"}"
+                                .formatted(tenantId, UUID.randomUUID())))
+                .andExpect(status().isCreated());
     }
 
     @Test
@@ -134,7 +136,7 @@ class ToolAndWebhookSecurityTest {
         var requestedTenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
 
-        mockMvc.perform(post("/api/operator/handoffs")
+        mockMvc.perform(post("/api/v1/handoffs")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt()
                                 .jwt(token -> token
                                         .subject(UUID.randomUUID().toString())
@@ -152,7 +154,7 @@ class ToolAndWebhookSecurityTest {
 
     @Test
     void rejectsAuthenticatedRequestWithoutHandoffScope() throws Exception {
-        mockMvc.perform(post("/api/operator/handoffs")
+        mockMvc.perform(post("/api/v1/handoffs")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt()
                                 .jwt(token -> token
                                         .subject(UUID.randomUUID().toString())
@@ -160,5 +162,21 @@ class ToolAndWebhookSecurityTest {
                         .contentType(APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void doesNotExposeTheUnversionedOperatorRoute() throws Exception {
+        mockMvc.perform(post("/api/operator/handoffs")
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(token -> token
+                                        .subject(UUID.randomUUID().toString())
+                                        .claim("tenant_ids", Set.of(UUID.randomUUID().toString()))
+                                        .claim("scope", "handoff:manage"))
+                                .authorities(
+                                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_OPERATOR"),
+                                        new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_handoff:manage")))
+                        .contentType(APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isNotFound());
     }
 }

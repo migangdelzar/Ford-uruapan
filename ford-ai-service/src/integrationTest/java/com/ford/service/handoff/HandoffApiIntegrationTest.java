@@ -1,7 +1,7 @@
 package com.ford.service.handoff;
 
 import com.ford.service.handoff.application.HandoffService;
-import com.ford.service.handoff.adapter.in.web.HandoffController;
+import com.ford.service.handoff.adapter.in.web.OperatorConversationHandoffController;
 import com.ford.service.handoff.api.OperatorPrincipal;
 import com.ford.service.config.SecurityConfiguration;
 import com.ford.service.handoff.domain.HandoffStatus;
@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(HandoffController.class)
+@WebMvcTest(OperatorConversationHandoffController.class)
 @Import({SecurityConfiguration.class, TenantAuthorization.class})
 class HandoffApiIntegrationTest {
 
@@ -48,7 +48,7 @@ class HandoffApiIntegrationTest {
         var principal = new OperatorPrincipal(UUID.randomUUID(), Set.of(tenantId), Set.of("ROLE_OPERATOR"));
         when(service.request(any(), any())).thenReturn(ticket);
 
-        mockMvc.perform(post("/api/operator/handoffs")
+        mockMvc.perform(post("/api/v1/handoffs")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(
                                 new UsernamePasswordAuthenticationToken(principal, "n", java.util.List.of(
                                         new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_OPERATOR"),
@@ -72,7 +72,7 @@ class HandoffApiIntegrationTest {
                 principal.operatorId(), "HOT_LEAD", 1, Instant.now(), Instant.now(), null);
         when(service.claim(eq(ticketId), eq(0L), eq(principal))).thenReturn(ticket);
 
-        mockMvc.perform(post("/api/operator/handoffs/{ticketId}/claim", ticketId)
+        mockMvc.perform(post("/api/v1/handoffs/{ticketId}/claim", ticketId)
                         .param("expectedVersion", "0")
                         .param("operatorId", UUID.randomUUID().toString())
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(

@@ -4,7 +4,7 @@
 
 **Goal:** Expose a secure, tenant-scoped `/api/v1` operator API backed by the existing Ford conversation domain, and add durable AI, lead, delivery, conversation, and audit metrics that the future BFF can query without reading provider tables directly.
 
-**Architecture:** Keep Meta webhooks, AI orchestration, PostgreSQL persistence, and outbound delivery inside the OCI service. Add thin REST adapters under `/api/v1` that call application ports and return stable DTOs. Use JWT authorities and tenant claims for authorization, optimistic concurrency for conversation mutations, `Idempotency-Key` for retriable commands, RFC 9457 Problem Details for errors, and an append-only metric-fact model with query projections. Keep the existing `/api/operator/**` routes as compatibility routes while the new contract becomes the supported BFF boundary.
+**Architecture:** Keep Meta webhooks, AI orchestration, PostgreSQL persistence, and outbound delivery inside the OCI service. Add thin REST adapters under `/api/v1` that call application ports and return stable DTOs. Use JWT authorities and tenant claims for authorization, optimistic concurrency for conversation mutations, `Idempotency-Key` for retriable commands, RFC 9457 Problem Details for errors, and an append-only metric-fact model with query projections. The new application exposes one versioned operator API surface; Meta webhooks remain provider callbacks outside that surface.
 
 **Tech Stack:** Java 25, Spring Boot 4.1, Spring Security 7, Spring MVC, Spring JDBC `JdbcClient`, Liquibase, PostgreSQL, Spring Modulith events, Micrometer, JUnit 5, Spring Security Test, Testcontainers PostgreSQL.
 
@@ -255,4 +255,3 @@
 - [ ] Dashboard responses distinguish authoritative CRM values from unavailable values.
 - [ ] Meta webhook verification and signature handling remain compatible with Meta retries.
 - [ ] Full verification passes before branch integration.
-
