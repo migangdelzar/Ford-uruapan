@@ -527,7 +527,7 @@ paths:
     get:
       tags: [Leads]
       summary: List leads
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -560,7 +560,7 @@ paths:
     get:
       tags: [Leads]
       summary: Get a lead
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       responses:
@@ -855,12 +855,13 @@ paths:
     get:
       tags: [Events]
       summary: List audit events
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/TenantId'
         - name: severity
           in: query
           schema:
@@ -896,9 +897,11 @@ paths:
       tags: [Events]
       summary: Stream audit events
       description: Server-sent event stream for operator dashboards.
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
       responses:
         '200':
           description: Event stream
