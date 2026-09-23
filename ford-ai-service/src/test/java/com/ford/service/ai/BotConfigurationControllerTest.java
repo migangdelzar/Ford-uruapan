@@ -2,6 +2,7 @@ package com.ford.service.ai;
 
 import com.ford.service.ai.adapter.in.web.BotConfigurationController;
 import com.ford.service.ai.configuration.AiProperties;
+import com.ford.service.ai.configuration.ClassificationProperties;
 import com.ford.service.config.SecurityConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class BotConfigurationControllerTest {
     @Autowired MockMvc mockMvc;
     @MockitoBean AiProperties ai;
+    @MockitoBean ClassificationProperties classification;
 
     @Test
     void requiresBotManagementAuthority() throws Exception {

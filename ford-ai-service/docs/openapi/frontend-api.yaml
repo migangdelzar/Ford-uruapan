@@ -2179,7 +2179,9 @@ components:
           format: date-time
     BotConfigView:
       type: object
-      required: [enabled, humanHandoffEnabled, model, updatedAt]
+      required: [enabled, humanHandoffEnabled, model, cloudProvider, cloudEnabled, localEnabled,
+                 classificationEnabled, classificationMode, classificationProvider, jevEnabled,
+                 memoryEnabled, semanticMemoryEnabled, recentMessageLimit, updatedAt]
       properties:
         enabled:
           type: boolean
@@ -2187,6 +2189,28 @@ components:
           type: boolean
         model:
           type: string
+        cloudProvider:
+          type: string
+        cloudEnabled:
+          type: boolean
+        localEnabled:
+          type: boolean
+        classificationEnabled:
+          type: boolean
+        classificationMode:
+          type: string
+          enum: [active, shadow, disabled]
+        classificationProvider:
+          type: string
+        jevEnabled:
+          type: boolean
+        memoryEnabled:
+          type: boolean
+        semanticMemoryEnabled:
+          type: boolean
+        recentMessageLimit:
+          type: integer
+          minimum: 0
         systemPrompt:
           type: [string, 'null']
           description: Always redacted by the operator API.
