@@ -9,7 +9,8 @@ databaseChangeLog:
               alter table lead add column if not exists version bigint not null default 0;
               alter table lead_score add column if not exists source varchar(20) not null default 'AI';
               create index if not exists idx_lead_tenant_updated on lead(tenant_id, updated_at desc, id desc);
-        - rollback:
+      rollback:
+        - sql:
             sql: |
               drop index if exists idx_lead_tenant_updated;
               alter table lead_score drop column if exists source;

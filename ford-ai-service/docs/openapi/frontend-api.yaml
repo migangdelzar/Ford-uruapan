@@ -672,11 +672,12 @@ paths:
     post:
       tags: [Leads]
       summary: Synchronize a lead with the dealership CRM
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/LeadId'
+        - $ref: '#/components/parameters/TenantId'
       responses:
         '202':
           description: Lead synchronization accepted
@@ -690,15 +691,18 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
 
   /api/v1/inventory:
     get:
       tags: [Vehicles]
       summary: Search available inventory
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
+        - $ref: '#/components/parameters/TenantId'
         - name: model
           in: query
           schema:
@@ -731,16 +735,19 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
 
   /api/v1/vehicles/{vin}:
     get:
       tags: [Vehicles]
       summary: Get vehicle details
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/Vin'
+        - $ref: '#/components/parameters/TenantId'
       responses:
         '200':
           description: Vehicle details
@@ -754,14 +761,18 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
 
   /api/v1/finance/quote:
     post:
       tags: [Finance]
       summary: Calculate a non-binding finance estimate
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
       requestBody:
         required: true
         content:
@@ -781,15 +792,18 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
 
   /api/v1/appointments/available-slots:
     get:
       tags: [Appointments]
       summary: List available test-drive slots
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
+        - $ref: '#/components/parameters/TenantId'
         - name: branchId
           in: query
           required: true
@@ -820,14 +834,18 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
 
   /api/v1/appointments/book:
     post:
       tags: [Appointments]
       summary: Book a test drive
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
       requestBody:
         required: true
         content:
@@ -849,14 +867,18 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
 
   /api/v1/branches/on-duty:
     get:
       tags: [Advisors]
       summary: List branches and advisors currently on duty
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
       responses:
         '200':
           description: On-duty branches and advisors
@@ -870,6 +892,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
 
   /api/v1/team/advisors:
     get:
@@ -1958,8 +1982,11 @@ components:
           format: date-time
     VehicleSummary:
       type: object
-      required: [vin, model, year, status]
+      required: [vehicleId, vin, model, year, status]
       properties:
+        vehicleId:
+          type: string
+          format: uuid
         vin:
           type: string
         model:
@@ -2000,14 +2027,17 @@ components:
                 format: uri
     VehiclePage:
       type: object
-      required: [items, page]
+      required: [items, hasNext]
       properties:
         items:
           type: array
           items:
             $ref: '#/components/schemas/VehicleSummary'
-        page:
-          $ref: '#/components/schemas/PageInfo'
+        nextCursor:
+          type: string
+          nullable: true
+        hasNext:
+          type: boolean
     FinanceQuoteRequest:
       type: object
       required: [vin, downPayment, termMonths, creditScoreTier]
