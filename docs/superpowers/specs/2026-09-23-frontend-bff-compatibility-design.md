@@ -1,22 +1,21 @@
-# Frontend BFF Compatibility Design
+# Frontend `/api/v1` Contract Design
 
 ## Status
 
-Proposed on 2026-09-23. This design supersedes the assumption that the
-frontend will consume only `/api/v1` paths. The canonical operator API remains
-`/api/v1`; a compatibility facade exposes the frontend-requested `/api` paths.
+Proposed on 2026-09-23. This design establishes `/api/v1` as the only
+frontend/operator API surface for this new application. No compatibility
+facade or unversioned operator routes will be added.
 
 ## Goal
 
 Make the OCI backend consumable by the frontend contract supplied on
-2026-09-23 without weakening tenant isolation, JWT authorization,
+2026-09-23 under a single `/api/v1` namespace without weakening tenant isolation, JWT authorization,
 idempotency, optimistic concurrency, webhook security, or metric integrity.
 
 ## Decisions
 
 1. Keep `/api/v1` as the canonical, versioned operator API.
-2. Add `/api` as a thin compatibility facade for the frontend/BFF contract.
-3. Reuse application ports and repositories. The facade must not query provider
+2. Reuse application ports and repositories. Controllers must not query provider
    tables or duplicate conversation/handoff state transitions.
 4. Derive tenant, role, and permissions only from the validated JWT. Ignore
    client-provided `role`, `sender`, dealership, and tenant authorization hints.
@@ -31,27 +30,26 @@ idempotency, optimistic concurrency, webhook security, or metric integrity.
    `testlab:run` authority. `/api/ai/respond` cannot activate injectors in
    normal production traffic.
 9. Use RFC 9457 `ProblemDetail` for all errors, including compatibility routes.
-10. Use OpenAPI 3.1.0 for the frontend contract and document both `/api` and
-    `/api/v1` surfaces where necessary.
+10. Use OpenAPI 3.1.0 with `servers.url` ending in `/api/v1`; path keys do not
+    repeat `/api/v1`.
 
 ## Surface mapping
 
-| Requested path | Implementation | Notes |
+| Requested capability | Implementation | Notes |
 |---|---|---|
-| `/api/health` | New health facade | Public liveness/readiness; no secret or key value disclosure |
-| `/api/ai/respond` | New AI facade over `AssistantService` | Safe diagnostics only; no raw prompt/completion by default |
-| `/api/conversations` | New mapper over `ConversationQuery` | JWT tenant context; bounded pagination |
-| `/api/conversations/{id}` | New mapper over `ConversationQuery` | Explicit internal-state to UI-state mapping |
-| `/api/conversations/{id}/messages` | Existing query/command ports through facade | GET page; POST remains idempotent/version-aware |
-| `/api/conversations/{id}/takeover` | Existing `HandoffService` | `takeover=true/false` maps to takeover/handback |
-| `/api/conversations/{id}/temperature` | New lead/conversation application command | Persist source as `HUMAN`; no direct controller SQL |
-| `/api/bot/config` | Existing redacted GET plus persisted PUT | Tenant-scoped runtime settings and audit event |
-| `/api/analytics/kpis` | Metrics compatibility projection | No fabricated financial values |
-| `/api/analytics/telemetry` | AI execution fact query | Token/cost fields nullable when provider omits usage |
-| `/api/events` | Existing audit query through mapper | Add event type/status filters and bounded pagination |
-| `/api/events/stream` | Existing SSE broker through facade | Single-instance until Redis adapter is configured |
+| `/api/v1/health` | New health endpoint | Public liveness/readiness; no secret or key value disclosure |
+| `/api/v1/ai/respond` | New AI endpoint over `AssistantService` | Safe diagnostics only; no raw prompt/completion by default |
+| `/api/v1/conversations` | Existing `ConversationQuery` | JWT tenant context; bounded pagination |
+| `/api/v1/conversations/{id}` | Existing `ConversationQuery` | Explicit internal-state to UI-state mapping |
+| `/api/v1/conversations/{id}/messages` | Existing query/command ports | GET page; POST remains idempotent/version-aware |
+| `/api/v1/conversations/{id}/takeover` | Existing `HandoffService` | `takeover=true/false` maps to takeover/handback |
+| `/api/v1/conversations/{id}/fields` | New lead/prospect application command | Durable structured prospect fields |
+| `/api/v1/bot/config` | Existing redacted GET plus persisted PUT | Tenant-scoped runtime settings and audit event |
+| `/api/v1/metrics` | Existing metrics query services | No fabricated financial values |
+| `/api/v1/events` | Existing audit query | Add event type/status filters and bounded pagination |
+| `/api/v1/events/stream` | Existing SSE broker | Single-instance until Redis adapter is configured |
 
-Meta webhooks remain outside `/api` because Meta requires their public
+Meta webhooks remain outside `/api/v1` because Meta requires their public
 verification and signed provider callback shape.
 
 ## Database changes
@@ -118,7 +116,7 @@ synthetic totals such as `$3.84M MXN`.
 
 ## AI response safety
 
-`/api/ai/respond` accepts conversation context and returns reply text,
+`/api/v1/ai/respond` accepts conversation context and returns reply text,
 classification, handoff recommendation, extracted lead fields, provider/model,
 latency, and token counts when available. It does not return system prompts or
 raw provider responses by default. A separate privileged diagnostic view may
