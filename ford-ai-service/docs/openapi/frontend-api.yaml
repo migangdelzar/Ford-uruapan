@@ -807,11 +807,35 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /api/v1/team/advisors:
+    get:
+      tags: [Advisors]
+      summary: List tenant-scoped operator workload
+      description: Returns authoritative operator IDs and handoff workload. Directory profile fields are null until a directory adapter is configured.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Advisor workload list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Advisor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /api/v1/bot/config:
     get:
       tags: [Bot configuration]
       summary: Get bot configuration
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       responses:
@@ -820,7 +844,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BotConfig'
+                $ref: '#/components/schemas/BotConfigView'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1940,12 +1964,28 @@ components:
               nullable: true
     Advisor:
       type: object
-      required: [advisorId, displayName]
+      required: [advisorId, role, status, assignedCount]
       properties:
         advisorId:
           type: string
+          format: uuid
         displayName:
           type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+        role:
+          type: string
+        branch:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [available, in_meeting, away]
+        assignedCount:
+          type: integer
         phone:
           type: string
           nullable: true
@@ -1974,6 +2014,22 @@ components:
         systemPrompt:
           type: string
           maxLength: 20000
+        updatedAt:
+          type: string
+          format: date-time
+    BotConfigView:
+      type: object
+      required: [enabled, humanHandoffEnabled, model, updatedAt]
+      properties:
+        enabled:
+          type: boolean
+        humanHandoffEnabled:
+          type: boolean
+        model:
+          type: string
+        systemPrompt:
+          type: [string, 'null']
+          description: Always redacted by the operator API.
         updatedAt:
           type: string
           format: date-time
