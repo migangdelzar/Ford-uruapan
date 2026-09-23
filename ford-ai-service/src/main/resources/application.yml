@@ -141,6 +141,8 @@ ford:
       guardrails-enabled: ${FORD_AI_GUARDRAILS_ENABLED:false}
       self-refine-enabled: ${FORD_AI_SELF_REFINE_ENABLED:false}
       self-refine-max-attempts: ${FORD_AI_SELF_REFINE_MAX_ATTEMPTS:1}
+  testlab:
+    enabled: ${FORD_TESTLAB_ENABLED:false}
 
 management:
   otlp:
