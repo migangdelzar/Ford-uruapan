@@ -1,5 +1,6 @@
 package com.ford.service.config;
 
+import com.ford.service.shared.UpstreamUnavailableException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,6 +72,12 @@ public class ApiExceptionHandler {
     public ResponseEntity<ProblemDetail> handleConflict(IllegalStateException exception,
                                                          HttpServletRequest request) {
         return problem(HttpStatus.CONFLICT, "State conflict", "state_conflict", exception, request);
+    }
+
+    @ExceptionHandler(UpstreamUnavailableException.class)
+    public ResponseEntity<ProblemDetail> handleUpstreamUnavailable(UpstreamUnavailableException exception,
+                                                                     HttpServletRequest request) {
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, "Upstream unavailable", "upstream_unavailable", exception, request);
     }
 
     private ResponseEntity<ProblemDetail> problem(HttpStatus status, String title, String code,

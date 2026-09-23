@@ -245,6 +245,64 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
 
+  /api/v1/conversations/{conversationId}/window:
+    get:
+      tags: [Messages]
+      summary: Get the Meta customer service window
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Customer service window state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerWindow'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/conversations/{conversationId}/hsm:
+    post:
+      tags: [Messages]
+      summary: Send an approved Meta template message
+      description: Requires an approved template adapter and returns 503 when template delivery is not configured.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateMessageCommand'
+      responses:
+        '202':
+          description: Template accepted for delivery
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateMessageReceipt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
   /api/v1/handoffs:
     get:
       tags: [Handoffs]
@@ -1396,6 +1454,12 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
+    UpstreamUnavailable:
+      description: Required upstream adapter is not configured or available
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
   schemas:
     ProblemDetail:
       type: object
@@ -1420,6 +1484,47 @@ components:
           type: string
         traceId:
           type: string
+    CustomerWindow:
+      type: object
+      required: [open, channel]
+      properties:
+        open:
+          type: boolean
+        lastInboundAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        channel:
+          $ref: '#/components/schemas/Channel'
+    TemplateMessageCommand:
+      type: object
+      required: [templateName, language]
+      properties:
+        templateName:
+          type: string
+          pattern: '^[a-z0-9_]{1,120}$'
+        language:
+          type: string
+          pattern: '^[a-z]{2}_[A-Z]{2}$'
+        parameters:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 1024
+    TemplateMessageReceipt:
+      type: object
+      required: [accepted]
+      properties:
+        providerMessageId:
+          type: string
+          nullable: true
+        accepted:
+          type: boolean
     Channel:
       type: string
       enum: [WHATSAPP, MESSENGER, INSTAGRAM]
