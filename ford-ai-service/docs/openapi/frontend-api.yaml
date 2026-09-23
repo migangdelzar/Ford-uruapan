@@ -60,12 +60,13 @@ paths:
       tags: [Conversations]
       summary: List conversations
       description: Returns conversations visible to the authenticated operator's tenant claims.
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/TenantId'
         - name: state
           in: query
           schema:
@@ -103,9 +104,11 @@ paths:
     get:
       tags: [Conversations]
       summary: Get a conversation
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
       responses:
         '200':
           description: Conversation
@@ -126,12 +129,13 @@ paths:
     get:
       tags: [Messages]
       summary: List conversation messages
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/TenantId'
       responses:
         '200':
           description: Message page
@@ -149,9 +153,13 @@ paths:
       tags: [Messages]
       summary: Send an operator message
       description: Sends a message through the channel adapter and returns its initial delivery state.
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
       requestBody:
         required: true
         content:
@@ -164,7 +172,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ConversationMessage'
+                $ref: '#/components/schemas/CommandReceipt'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1058,6 +1066,37 @@ components:
         minimum: 1
         maximum: 100
         default: 25
+    TenantId:
+      name: tenantId
+      in: query
+      required: false
+      description: Tenant selected from the authenticated JWT tenant membership.
+      schema:
+        type: string
+        format: uuid
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 240
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: Strong conversation version validator, for example `"v7"`.
+      schema:
+        type: string
+        pattern: '^"?v[0-9]+"?$'
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 120
     ExpectedVersion:
       name: expectedVersion
       in: query
@@ -1298,9 +1337,32 @@ components:
         clientMessageId:
           type: string
           maxLength: 120
-        idempotencyKey:
+        internalNote:
+          type: boolean
+          default: false
+    CommandReceipt:
+      type: object
+      required: [messageId, conversationId, accepted, deliveryStatus, conversationVersion, internalNote, acceptedAt]
+      properties:
+        messageId:
           type: string
-          maxLength: 240
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        accepted:
+          type: boolean
+        deliveryStatus:
+          type: string
+          enum: [QUEUED, INTERNAL]
+        conversationVersion:
+          type: integer
+          format: int64
+        internalNote:
+          type: boolean
+        acceptedAt:
+          type: string
+          format: date-time
     TakeoverRequest:
       type: object
       properties:

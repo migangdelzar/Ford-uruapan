@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.Set;
+import java.util.NoSuchElementException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -46,5 +47,48 @@ public class ApiExceptionHandler {
         var headers = new HttpHeaders();
         headers.setAllow(supportedMethods);
         return new ResponseEntity<>(detail, headers, HttpStatus.METHOD_NOT_ALLOWED);
+    }
+
+    @ExceptionHandler(NoSuchElementException.class)
+    public ResponseEntity<ProblemDetail> handleNotFound(NoSuchElementException exception,
+                                                          HttpServletRequest request) {
+        return problem(HttpStatus.NOT_FOUND, "Resource not found", "resource_not_found", exception, request);
+    }
+
+    @ExceptionHandler(SecurityException.class)
+    public ResponseEntity<ProblemDetail> handleForbidden(SecurityException exception,
+                                                          HttpServletRequest request) {
+        return problem(HttpStatus.FORBIDDEN, "Forbidden", "forbidden", exception, request);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ProblemDetail> handleBadRequest(IllegalArgumentException exception,
+                                                            HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, "Invalid request", "invalid_request", exception, request);
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ProblemDetail> handleConflict(IllegalStateException exception,
+                                                         HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, "State conflict", "state_conflict", exception, request);
+    }
+
+    private ResponseEntity<ProblemDetail> problem(HttpStatus status, String title, String code,
+                                                    RuntimeException exception, HttpServletRequest request) {
+        var detail = ProblemDetail.forStatusAndDetail(status,
+                exception.getMessage() == null || exception.getMessage().isBlank()
+                        ? title : exception.getMessage());
+        detail.setTitle(title);
+        detail.setProperty("code", code);
+        detail.setProperty("path", request.getRequestURI());
+        var traceId = MDC.get("traceId");
+        if (traceId != null && !traceId.isBlank()) {
+            detail.setProperty("traceId", traceId);
+        }
+        var correlationId = request.getHeader("X-Correlation-Id");
+        if (correlationId != null && !correlationId.isBlank()) {
+            detail.setProperty("correlationId", correlationId);
+        }
+        return ResponseEntity.status(status).body(detail);
     }
 }

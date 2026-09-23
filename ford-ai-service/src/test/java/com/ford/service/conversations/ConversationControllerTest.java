@@ -5,6 +5,7 @@ import com.ford.service.conversations.adapter.in.web.ConversationController;
 import com.ford.service.conversations.api.ConversationPage;
 import com.ford.service.conversations.api.PageInfoView;
 import com.ford.service.conversations.application.port.in.ConversationQuery;
+import com.ford.service.conversations.application.ConversationCommandService;
 import com.ford.service.config.SecurityConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +37,9 @@ class ConversationControllerTest {
 
     @MockitoBean
     ConversationQuery query;
+
+    @MockitoBean
+    ConversationCommandService commands;
 
     @Test
     void listsConversationsForJwtTenant() throws Exception {
