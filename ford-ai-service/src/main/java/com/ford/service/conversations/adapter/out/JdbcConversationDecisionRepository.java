@@ -5,6 +5,7 @@ import com.ford.service.ai.application.ConversationDecision;
 import com.ford.service.conversations.application.ConversationDecisionRepository;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
@@ -22,7 +23,7 @@ public class JdbcConversationDecisionRepository implements ConversationDecisionR
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void save(UUID conversationId, String providerMessageId, ConversationDecision decision) {
         Objects.requireNonNull(conversationId, "conversation id is required");
         if (providerMessageId == null || providerMessageId.isBlank()) {
@@ -41,7 +42,7 @@ public class JdbcConversationDecisionRepository implements ConversationDecisionR
                 merge into conversation_decision as target
                 using (values (:id, :conversationId, :providerMessageId, :classifierType,
                                :classification, :confidence, :reasonCode, :provider, :model,
-                               :latencyMs, :fallbackUsed, :createdAt))
+                               :latencyMs, :fallbackUsed, cast(:createdAt as timestamp with time zone)))
                     as incoming(id, conversation_id, provider_message_id, classifier_type,
                                 classification, confidence, reason_code, provider, model,
                                 latency_ms, fallback_used, created_at)
