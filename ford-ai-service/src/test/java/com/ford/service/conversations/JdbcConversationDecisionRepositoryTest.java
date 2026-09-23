@@ -32,9 +32,10 @@ class JdbcConversationDecisionRepositoryTest {
         var dataSource = new DriverManagerDataSource(
                 "jdbc:h2:mem:decision;MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", "");
         jdbc = JdbcClient.create(dataSource);
+        jdbc.sql("drop table if exists ai_execution").update();
         jdbc.sql("drop table if exists conversation_decision").update();
         jdbc.sql("drop table if exists conversation").update();
-        jdbc.sql("create table conversation (id uuid primary key)").update();
+        jdbc.sql("create table conversation (id uuid primary key, tenant_id uuid not null)").update();
         jdbc.sql("""
                 create table conversation_decision (
                     id uuid primary key,
@@ -52,8 +53,27 @@ class JdbcConversationDecisionRepositoryTest {
                     unique (conversation_id, provider_message_id, classifier_type)
                 )
                 """).update();
+        jdbc.sql("""
+                create table ai_execution (
+                    id uuid primary key,
+                    tenant_id uuid not null,
+                    conversation_id uuid not null references conversation(id),
+                    provider_message_id varchar(240) not null,
+                    classifier_type varchar(60) not null,
+                    provider varchar(80) not null,
+                    model varchar(160) not null,
+                    latency_ms bigint not null,
+                    classification_confidence numeric(8,6),
+                    outcome varchar(80) not null,
+                    fallback_used boolean not null,
+                    handoff_recommended boolean not null,
+                    created_at timestamp with time zone not null,
+                    unique (conversation_id, provider_message_id, classifier_type)
+                )
+                """).update();
         conversationId = UUID.randomUUID();
-        jdbc.sql("insert into conversation values (:id)").param("id", conversationId).update();
+        jdbc.sql("insert into conversation (id, tenant_id) values (:id, :tenantId)")
+                .param("id", conversationId).param("tenantId", UUID.randomUUID()).update();
         repository = new JdbcConversationDecisionRepository(jdbc);
     }
 

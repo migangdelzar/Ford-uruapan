@@ -33,6 +33,7 @@ public class JdbcConversationDecisionRepository implements ConversationDecisionR
         var createdAt = Timestamp.from(Instant.now());
         for (var evidence : decision.evidence()) {
             saveEvidence(conversationId, providerMessageId, evidence, createdAt);
+            saveAiExecution(conversationId, providerMessageId, evidence, createdAt);
         }
     }
 
@@ -77,6 +78,54 @@ public class JdbcConversationDecisionRepository implements ConversationDecisionR
                 .param("provider", evidence.provider())
                 .param("model", evidence.model())
                 .param("latencyMs", evidence.latencyMs())
+                .param("fallbackUsed", evidence.fallbackUsed())
+                .param("createdAt", createdAt)
+                .update();
+    }
+
+    private void saveAiExecution(UUID conversationId, String providerMessageId,
+                                 ClassificationEvidence evidence, Timestamp createdAt) {
+        var tenantId = jdbc.sql("select tenant_id from conversation where id = :conversationId")
+                .param("conversationId", conversationId)
+                .query(UUID.class)
+                .single();
+        jdbc.sql("""
+                merge into ai_execution as target
+                using (values (:id, :tenantId, :conversationId, :providerMessageId, :classifierType,
+                               :provider, :model, :latencyMs, :confidence, 'CLASSIFIED',
+                               :fallbackUsed, false, cast(:createdAt as timestamp with time zone)))
+                    as incoming(id, tenant_id, conversation_id, provider_message_id, classifier_type,
+                                provider, model, latency_ms, classification_confidence, outcome,
+                                fallback_used, handoff_recommended, created_at)
+                on target.conversation_id = incoming.conversation_id
+                   and target.provider_message_id = incoming.provider_message_id
+                   and target.classifier_type = incoming.classifier_type
+                when matched then update set
+                    provider = incoming.provider,
+                    model = incoming.model,
+                    latency_ms = incoming.latency_ms,
+                    classification_confidence = incoming.classification_confidence,
+                    fallback_used = incoming.fallback_used,
+                    created_at = incoming.created_at
+                when not matched then insert
+                    (id, tenant_id, conversation_id, provider_message_id, classifier_type,
+                     provider, model, latency_ms, classification_confidence, outcome,
+                     fallback_used, handoff_recommended, created_at)
+                values (incoming.id, incoming.tenant_id, incoming.conversation_id,
+                        incoming.provider_message_id, incoming.classifier_type, incoming.provider,
+                        incoming.model, incoming.latency_ms, incoming.classification_confidence,
+                        incoming.outcome, incoming.fallback_used, incoming.handoff_recommended,
+                        incoming.created_at)
+                """)
+                .param("id", UUID.randomUUID())
+                .param("tenantId", tenantId)
+                .param("conversationId", conversationId)
+                .param("providerMessageId", providerMessageId)
+                .param("classifierType", evidence.classifier().name())
+                .param("provider", evidence.provider())
+                .param("model", evidence.model())
+                .param("latencyMs", evidence.latencyMs())
+                .param("confidence", clamp(evidence.confidence()))
                 .param("fallbackUsed", evidence.fallbackUsed())
                 .param("createdAt", createdAt)
                 .update();

@@ -1,0 +1,37 @@
+databaseChangeLog:
+  - changeSet:
+      id: 010-ai-execution-facts
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              create table if not exists ai_execution (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  conversation_id uuid not null references conversation(id) on delete cascade,
+                  provider_message_id varchar(240) not null,
+                  classifier_type varchar(60) not null,
+                  provider varchar(80) not null,
+                  model varchar(160) not null,
+                  latency_ms bigint not null,
+                  classification_confidence numeric(8,6),
+                  tool_family varchar(80),
+                  outcome varchar(80) not null,
+                  fallback_used boolean not null,
+                  handoff_recommended boolean not null default false,
+                  tokens_in bigint,
+                  tokens_out bigint,
+                  estimated_cost numeric(18,8),
+                  created_at timestamptz not null,
+                  unique (conversation_id, provider_message_id, classifier_type)
+              );
+              create index if not exists idx_ai_execution_tenant_created
+                  on ai_execution(tenant_id, created_at desc);
+              create index if not exists idx_ai_execution_conversation_created
+                  on ai_execution(conversation_id, created_at desc);
+      rollback:
+        - sql:
+            sql: |
+              drop index if exists idx_ai_execution_conversation_created;
+              drop index if exists idx_ai_execution_tenant_created;
+              drop table if exists ai_execution;

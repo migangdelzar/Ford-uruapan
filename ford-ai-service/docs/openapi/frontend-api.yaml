@@ -48,6 +48,7 @@ tags:
   - name: Finance
   - name: Appointments
   - name: Advisors
+  - name: Metrics
   - name: Bot configuration
   - name: Events
   - name: Test lab
@@ -190,7 +191,7 @@ paths:
     post:
       tags: [Handoffs]
       summary: Take over a conversation
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -219,7 +220,7 @@ paths:
     post:
       tags: [Handoffs]
       summary: Return a conversation to the bot
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -248,7 +249,7 @@ paths:
     get:
       tags: [Handoffs]
       summary: List handoff tickets
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -272,7 +273,7 @@ paths:
     post:
       tags: [Handoffs]
       summary: Request a human handoff
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       requestBody:
@@ -299,7 +300,7 @@ paths:
     post:
       tags: [Handoffs]
       summary: Claim a pending handoff
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -323,7 +324,7 @@ paths:
     post:
       tags: [Handoffs]
       summary: Pause bot processing for a handoff
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -347,7 +348,7 @@ paths:
     post:
       tags: [Handoffs]
       summary: Resume bot processing for a handoff
-      x-implementation-status: planned
+      x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
@@ -366,6 +367,161 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
+
+  /api/v1/metrics/overview:
+    get:
+      tags: [Metrics]
+      operationId: getMetricsOverview
+      summary: Get tenant-scoped operational overview metrics
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/MetricFrom'
+        - $ref: '#/components/parameters/MetricTo'
+        - $ref: '#/components/parameters/MetricTimezone'
+      responses:
+        '200':
+          description: Operational overview
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MetricsOverview' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/metrics/bot:
+    get:
+      tags: [Metrics]
+      operationId: getBotMetrics
+      summary: Get AI classification and provider metrics
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/MetricFrom'
+        - $ref: '#/components/parameters/MetricTo'
+        - $ref: '#/components/parameters/MetricTimezone'
+      responses:
+        '200':
+          description: Bot metrics
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BotMetrics' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/metrics/leads:
+    get:
+      tags: [Metrics]
+      operationId: getLeadMetrics
+      summary: Get lead temperature metrics
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/MetricFrom'
+        - $ref: '#/components/parameters/MetricTo'
+        - $ref: '#/components/parameters/MetricTimezone'
+      responses:
+        '200':
+          description: Lead metrics
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeadMetrics' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/metrics/conversations:
+    get:
+      tags: [Metrics]
+      operationId: getConversationMetrics
+      summary: Get conversation state metrics
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/MetricFrom'
+        - $ref: '#/components/parameters/MetricTo'
+      responses:
+        '200':
+          description: Conversation metrics
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationMetrics' }
+
+  /api/v1/metrics/channels:
+    get:
+      tags: [Metrics]
+      operationId: getChannelMetrics
+      summary: Get channel volume metrics
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/MetricFrom'
+        - $ref: '#/components/parameters/MetricTo'
+      responses:
+        '200':
+          description: Channel metrics
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChannelMetrics' }
+
+  /api/v1/metrics/advisors:
+    get:
+      tags: [Metrics]
+      operationId: getAdvisorMetrics
+      summary: Get advisor handoff metrics
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/MetricFrom'
+        - $ref: '#/components/parameters/MetricTo'
+      responses:
+        '200':
+          description: Advisor metrics
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdvisorMetrics' }
+
+  /api/v1/metrics/funnel:
+    get:
+      tags: [Metrics]
+      operationId: getFunnelMetrics
+      summary: Get lead funnel metrics
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/MetricFrom'
+        - $ref: '#/components/parameters/MetricTo'
+      responses:
+        '200':
+          description: Funnel metrics
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FunnelMetrics' }
+
+  /api/v1/metrics/timeseries:
+    get:
+      tags: [Metrics]
+      operationId: getMetricsTimeSeries
+      summary: Get metrics time series
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/MetricFrom'
+        - $ref: '#/components/parameters/MetricTo'
+        - $ref: '#/components/parameters/MetricTimezone'
+        - $ref: '#/components/parameters/MetricGroupBy'
+      responses:
+        '200':
+          description: Metrics time series
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimeSeriesMetrics' }
 
   /api/v1/leads:
     get:
@@ -1097,6 +1253,35 @@ components:
       schema:
         type: string
         maxLength: 120
+    MetricFrom:
+      name: from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    MetricTo:
+      name: to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    MetricTimezone:
+      name: timezone
+      in: query
+      required: false
+      schema:
+        type: string
+        default: UTC
+    MetricGroupBy:
+      name: groupBy
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [day, week, month]
+        default: day
     ExpectedVersion:
       name: expectedVersion
       in: query
@@ -1363,6 +1548,99 @@ components:
         acceptedAt:
           type: string
           format: date-time
+    MetricPeriod:
+      type: object
+      required: [from, to, timezone]
+      properties:
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        timezone: { type: string }
+    MetricsOverview:
+      type: object
+      required: [period, totalConversations, activeConversations, inboundMessages, outboundMessages, handoffs, failedDeliveries]
+      properties:
+        period: { $ref: '#/components/schemas/MetricPeriod' }
+        totalConversations: { type: integer, format: int64 }
+        activeConversations: { type: integer, format: int64 }
+        inboundMessages: { type: integer, format: int64 }
+        outboundMessages: { type: integer, format: int64 }
+        handoffs: { type: integer, format: int64 }
+        failedDeliveries: { type: integer, format: int64 }
+    BotMetrics:
+      type: object
+      required: [period, classifiedDecisions, fallbackDecisions, handoffRecommendations, averageLatencyMs, successfulProviderCalls, failedProviderCalls]
+      properties:
+        period: { $ref: '#/components/schemas/MetricPeriod' }
+        classifiedDecisions: { type: integer, format: int64 }
+        fallbackDecisions: { type: integer, format: int64 }
+        handoffRecommendations: { type: integer, format: int64 }
+        averageLatencyMs: { type: number, format: double }
+        successfulProviderCalls: { type: integer, format: int64 }
+        failedProviderCalls: { type: integer, format: int64 }
+    LeadMetrics:
+      type: object
+      required: [period, totalLeads, hot, warm, cold, unknown]
+      properties:
+        period: { $ref: '#/components/schemas/MetricPeriod' }
+        totalLeads: { type: integer, format: int64 }
+        hot: { type: integer, format: int64 }
+        warm: { type: integer, format: int64 }
+        cold: { type: integer, format: int64 }
+        unknown: { type: integer, format: int64 }
+    ConversationMetrics:
+      type: object
+      required: [period, byState]
+      properties:
+        period: { $ref: '#/components/schemas/MetricPeriod' }
+        byState: { type: object, additionalProperties: { type: integer, format: int64 } }
+    ChannelMetrics:
+      type: object
+      required: [period, byChannel]
+      properties:
+        period: { $ref: '#/components/schemas/MetricPeriod' }
+        byChannel: { type: object, additionalProperties: { type: integer, format: int64 } }
+    AdvisorMetrics:
+      type: object
+      required: [period, advisors]
+      properties:
+        period: { $ref: '#/components/schemas/MetricPeriod' }
+        advisors:
+          type: array
+          items:
+            type: object
+            required: [advisorId, activeHandoffs, closedHandoffs]
+            properties:
+              advisorId: { type: string, format: uuid }
+              activeHandoffs: { type: integer, format: int64 }
+              closedHandoffs: { type: integer, format: int64 }
+    FunnelMetrics:
+      type: object
+      required: [period, conversations, leads, hotLeads, handoffs, appointments]
+      properties:
+        period: { $ref: '#/components/schemas/MetricPeriod' }
+        conversations: { type: integer, format: int64 }
+        leads: { type: integer, format: int64 }
+        hotLeads: { type: integer, format: int64 }
+        handoffs: { type: integer, format: int64 }
+        appointments: { type: integer, format: int64 }
+    TimeSeriesMetrics:
+      type: object
+      required: [period, groupBy, points]
+      properties:
+        period: { $ref: '#/components/schemas/MetricPeriod' }
+        groupBy: { type: string, enum: [day, week, month] }
+        points:
+          type: array
+          items:
+            type: object
+            required: [bucket, conversations, inboundMessages, outboundMessages, handoffs, failedDeliveries]
+            properties:
+              bucket: { type: string, format: date-time }
+              conversations: { type: integer, format: int64 }
+              inboundMessages: { type: integer, format: int64 }
+              outboundMessages: { type: integer, format: int64 }
+              handoffs: { type: integer, format: int64 }
+              failedDeliveries: { type: integer, format: int64 }
     TakeoverRequest:
       type: object
       properties:
