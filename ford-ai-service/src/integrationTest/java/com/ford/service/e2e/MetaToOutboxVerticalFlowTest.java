@@ -38,7 +38,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Testcontainers
-@SpringBootTest(properties = "spring.modulith.runtime.verification-enabled=false")
+@SpringBootTest(properties = {
+        "spring.modulith.runtime.verification-enabled=false",
+        "spring.main.allow-bean-definition-overriding=true"
+})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Import(MetaToOutboxVerticalFlowTest.TestBeans.class)

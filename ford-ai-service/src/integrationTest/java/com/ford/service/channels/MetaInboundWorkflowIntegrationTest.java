@@ -72,6 +72,7 @@ class MetaInboundWorkflowIntegrationTest {
     @AfterEach
     void cleanUp() {
         jdbc.sql("delete from channel_message").update();
+        jdbc.sql("delete from conversation_message").update();
         jdbc.sql("delete from channel_delivery").update();
         jdbc.sql("delete from conversation").update();
         jdbc.sql("delete from channel_binding").update();
@@ -97,7 +98,7 @@ class MetaInboundWorkflowIntegrationTest {
                 .query(UUID.class).single()).isEqualTo(tenantId);
         awaitPublication();
         assertThat(PublicationProbe.ACCEPTED.get()).isEqualTo(1);
-        assertThat(publicationCount()).isEqualTo(publicationsBefore + 1);
+        assertThat(publicationCount()).isEqualTo(publicationsBefore + 2);
     }
 
     @Test
@@ -150,7 +151,7 @@ class MetaInboundWorkflowIntegrationTest {
         assertThat(jdbc.sql("select count(*) from channel_message")
                 .query(Integer.class).single()).isEqualTo(1);
         assertThat(PublicationProbe.ACCEPTED.get()).isEqualTo(1);
-        assertThat(publicationCount()).isEqualTo(publicationsBefore + 1);
+        assertThat(publicationCount()).isEqualTo(publicationsBefore + 2);
     }
 
     private org.springframework.test.web.servlet.ResultActions postWebhook(

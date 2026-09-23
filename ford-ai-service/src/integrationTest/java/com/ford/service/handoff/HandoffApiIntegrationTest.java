@@ -6,6 +6,7 @@ import com.ford.service.handoff.api.OperatorPrincipal;
 import com.ford.service.config.SecurityConfiguration;
 import com.ford.service.handoff.domain.HandoffStatus;
 import com.ford.service.handoff.domain.HandoffTicket;
+import com.ford.service.handoff.security.TenantAuthorization;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -28,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(HandoffController.class)
-@Import(SecurityConfiguration.class)
+@Import({SecurityConfiguration.class, TenantAuthorization.class})
 class HandoffApiIntegrationTest {
 
     @Autowired
@@ -50,7 +51,8 @@ class HandoffApiIntegrationTest {
         mockMvc.perform(post("/api/operator/handoffs")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(
                                 new UsernamePasswordAuthenticationToken(principal, "n", java.util.List.of(
-                                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_OPERATOR")))))
+                                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_OPERATOR"),
+                                        new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_handoff:manage")))))
                         .contentType(APPLICATION_JSON)
                         .content("""
                                 {"tenantId":"%s","conversationId":"%s","reason":"HOT_LEAD"}
@@ -75,7 +77,8 @@ class HandoffApiIntegrationTest {
                         .param("operatorId", UUID.randomUUID().toString())
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(
                                 new UsernamePasswordAuthenticationToken(principal, "n", java.util.List.of(
-                                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_OPERATOR"))))))
+                                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_OPERATOR"),
+                                        new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_handoff:manage"))))))
                 .andExpect(status().isOk());
 
         verify(service).claim(ticketId, 0L, principal);

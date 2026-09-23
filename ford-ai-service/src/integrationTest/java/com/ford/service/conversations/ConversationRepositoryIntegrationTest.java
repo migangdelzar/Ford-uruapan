@@ -90,8 +90,10 @@ class ConversationRepositoryIntegrationTest {
         var now = Instant.now();
         jdbc.sql("""
                 insert into conversation
-                    (id, tenant_id, channel, provider_conversation_id, state, version, created_at, updated_at)
-                values (:id, :tenantId, 'WHATSAPP', '5214521234567', 'BOT_ACTIVE', 0, :now, :now)
+                    (id, tenant_id, channel, provider_conversation_id, state, version, created_at, updated_at,
+                     provider_account_id, participant_id)
+                values (:id, :tenantId, 'WHATSAPP', '5214521234567', 'BOT_ACTIVE', 0, :now, :now,
+                        'phone-number-1', '5214521234567')
                 """)
                 .param("id", conversationId)
                 .param("tenantId", tenantId)

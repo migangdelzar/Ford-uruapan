@@ -9,6 +9,7 @@ import com.ford.service.conversations.api.AssistantReply;
 import com.ford.service.conversations.api.OutboundDeliveryRequested;
 import com.ford.service.conversations.domain.ConversationSnapshot;
 import com.ford.service.conversations.domain.ConversationState;
+import com.ford.service.outbox.OutboxStore;
 import org.junit.jupiter.api.Test;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.modulith.test.Scenario;
@@ -81,6 +82,11 @@ class ConversationScenarioIntegrationTest {
         @Bean
         ConversationAssistant conversationAssistant() {
             return assistant;
+        }
+
+        @Bean
+        OutboxStore outboxStore() {
+            return org.mockito.Mockito.mock(OutboxStore.class);
         }
 
         @Bean(name = "conversationWorkflow")
