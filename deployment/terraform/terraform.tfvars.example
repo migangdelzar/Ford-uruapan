@@ -3,11 +3,18 @@ user_ocid            = ""
 fingerprint          = ""
 private_key_path     = ""
 region               = "us-ashburn-1"
+oci_config_profile   = "DEFAULT"
 compartment_ocid     = ""
 availability_domain  = ""
 existing_subnet_id   = ""
 ssh_public_key       = ""
 object_storage_namespace = ""
+backup_bucket_name       = "emme-business"
+backup_object_prefix     = "ford/backups"
+backup_compartment_ocid  = ""
+emme_2_instance_ocid     = ""
+backup_dynamic_group_name = "ford-backup-emme2"
+backup_policy_name        = "ford-backup-emme2-policy"
 
 # Keep false during adoption. Import existing instances before enabling creation.
 create_instances     = false

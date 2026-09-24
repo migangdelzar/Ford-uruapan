@@ -33,3 +33,38 @@ test("service README links the operational contracts", async () => {
   assert.match(readme, /docs\/ci-cd\.md/);
   assert.match(readme, /docs\/observability\.md/);
 });
+
+test("OCI backup identity is declarative and reproducible", async () => {
+  const storage = await read("deployment/terraform/storage.tf");
+  const variables = await read("deployment/terraform/variables.tf");
+  const example = await read("deployment/config/oci.env.example");
+  const identityTask = await read("ford-ai-service/.mise/tasks/backup/identity-check");
+  const backupListTask = await read("ford-ai-service/.mise/tasks/backup/list");
+  const backupVerifyTask = await read("ford-ai-service/.mise/tasks/backup/verify");
+  const backupRunTask = await read("ford-ai-service/.mise/tasks/backup/run");
+  const deployBackupTask = await read("ford-ai-service/.mise/tasks/deploy/backup");
+  const backupPlaybook = await read("deployment/ansible/backup.yml");
+  const backupTasks = await read("deployment/ansible/roles/backup/tasks/main.yml");
+  const backupScript = await read("deployment/ansible/roles/backup/templates/backup-databases.sh.j2");
+
+  assert.match(storage, /oci_identity_dynamic_group/);
+  assert.match(storage, /oci_identity_policy/);
+  assert.match(storage, /objectstorage-\$\{var\.region\}/);
+  assert.match(storage, /emme-business|backup_bucket_name/);
+  assert.match(storage, /backup_object_prefix.*\*/);
+  assert.match(variables, /emme_2_instance_ocid/);
+  assert.match(example, /^OCI_BACKUP_BUCKET=emme-business$/m);
+  assert.match(example, /^OCI_BACKUP_PREFIX=ford\/backups$/m);
+  assert.match(identityTask, /instance_principal/);
+  assert.match(identityTask, /emme-2/);
+  assert.match(backupTasks, /systemd/);
+  assert.match(backupTasks, /oci-cli|oci/);
+  assert.match(backupScript, /instance_principal/);
+  assert.match(backupScript, /redis/);
+  assert.match(backupScript, /ford\/backups/);
+  assert.match(backupListTask, /oci os object list/);
+  assert.match(backupVerifyTask, /oci os object head/);
+  assert.match(backupRunTask, /ford-backup\.service/);
+  assert.match(deployBackupTask, /backup\.yml/);
+  assert.match(backupPlaybook, /roles:\n\s+- backup/);
+});

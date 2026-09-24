@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#MISE description="Verify emme-2 Instance Principal access to the backup prefix"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+require_command ssh
+
+missing=()
+for name in OCI_REGION OCI_SSH_USER EMME_2_SSH_HOST OCI_OBJECT_STORAGE_NAMESPACE; do
+  [[ -n "${!name:-}" ]] || missing+=("$name")
+done
+[[ -r "${EMME_2_SSH_KEY:-${OCI_SSH_PRIVATE_KEY:-}}" ]] || missing+=("readable:EMME_2_SSH_KEY")
+(( ${#missing[@]} == 0 )) || {
+  printf 'Missing backup identity configuration: %s\n' "${missing[*]}" >&2
+  exit 1
+}
+
+bucket="${OCI_BACKUP_BUCKET:-emme-business}"
+namespace="${OCI_OBJECT_STORAGE_NAMESPACE:?OCI_OBJECT_STORAGE_NAMESPACE is required}"
+prefix="${OCI_BACKUP_PREFIX:-ford/backups}"
+remote_key="${EMME_2_SSH_KEY:-${OCI_SSH_PRIVATE_KEY}}"
+remote_host="${OCI_SSH_USER}@${EMME_2_SSH_HOST}"
+remote_env="OCI_REGION='${OCI_REGION}' OCI_NAMESPACE='${namespace}' OCI_BUCKET='${bucket}' OCI_PREFIX='${prefix}'"
+
+ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$remote_key" "$remote_host" \
+  "$remote_env oci os ns get --auth instance_principal --region '$OCI_REGION' --query data --raw-output >/dev/null"
+
+ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$remote_key" "$remote_host" \
+  "$remote_env bash -c 'set -euo pipefail; tmp=\$(mktemp); trap \"rm -f \\\"\$tmp\\\"\" EXIT; object=\"\${OCI_PREFIX}/identity-check/\$(hostname)-\$(date -u +%Y%m%dT%H%M%SZ).txt\"; : > \"\$tmp\"; oci os object put --auth instance_principal --region \"\$OCI_REGION\" --namespace-name \"\$OCI_NAMESPACE\" --bucket-name \"\$OCI_BUCKET\" --name \"\$object\" --file \"\$tmp\" --force >/dev/null; oci os object head --auth instance_principal --region \"\$OCI_REGION\" --namespace-name \"\$OCI_NAMESPACE\" --bucket-name \"\$OCI_BUCKET\" --name \"\$object\" >/dev/null; oci os object delete --auth instance_principal --region \"\$OCI_REGION\" --namespace-name \"\$OCI_NAMESPACE\" --bucket-name \"\$OCI_BUCKET\" --object-name \"\$object\" --force >/dev/null; echo instance_principal=ready bucket=\$OCI_BUCKET prefix=\$OCI_PREFIX'"

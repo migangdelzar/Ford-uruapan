@@ -22,6 +22,11 @@ variable "region" {
   type = string
 }
 
+variable "oci_config_profile" {
+  type    = string
+  default = "DEFAULT"
+}
+
 variable "compartment_ocid" {
   type = string
 }
@@ -51,12 +56,37 @@ variable "data_image_ocid" {
 
 variable "backup_bucket_name" {
   type    = string
-  default = "ford-service-backups"
+  default = "emme-business"
 }
 
 variable "object_storage_namespace" {
   type    = string
   default = ""
+}
+
+variable "backup_object_prefix" {
+  type    = string
+  default = "ford/backups"
+}
+
+variable "backup_compartment_ocid" {
+  type    = string
+  default = ""
+}
+
+variable "emme_2_instance_ocid" {
+  type    = string
+  default = ""
+}
+
+variable "backup_dynamic_group_name" {
+  type    = string
+  default = "ford-backup-emme2"
+}
+
+variable "backup_policy_name" {
+  type    = string
+  default = "ford-backup-emme2-policy"
 }
 
 variable "admin_cidr" {

@@ -117,6 +117,22 @@ Read-only Terraform checks are `mise run infra:check` and
 preserve data volumes. Database operations are `backup:run`, `backup:list`,
 `backup:verify`, and the explicitly guarded `backup:restore`.
 
+The OCI backup capability is reproducible with:
+
+```bash
+mise run infra:backup-plan
+mise run infra:backup-apply
+mise run deploy:backup
+mise run backup:identity-check
+mise run backup:run
+```
+
+The first two tasks create the protected `emme-business` bucket, the
+`ford-backup-emme2` dynamic group, and its least-privilege policies. The VM
+uses Instance Principal authentication; no OCI API private key is copied to
+emme-2. Backup objects use the fixed prefixes `ford/backups/postgres/`,
+`ford/backups/redis/`, and `ford/backups/manifests/`.
+
 For production, set `EMME_APP_IMAGE` to the immutable GHCR image reference
 published by CI (preferably `ghcr.io/...@sha256:...`) and provide a read-only
 classic PAT in `GHCR_TOKEN`. The app deploy authenticates and pulls the image

@@ -11,9 +11,37 @@
   ansible.builtin.template:
     src: backup-databases.sh.j2
     dest: "{{ remote_root }}/backup/backup-databases.sh"
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
+    owner: root
+    group: root
     mode: "0750"
+
+- name: Install OCI CLI prerequisites
+  ansible.builtin.dnf:
+    name: python3-pip
+    state: present
+    update_cache: true
+
+- name: Install OCI CLI for Instance Principal backups
+  ansible.builtin.pip:
+    name: "oci-cli=={{ backup_oci_cli_version | default('3.94.0') }}"
+    executable: pip3
+    state: present
+
+- name: Install backup systemd service
+  ansible.builtin.template:
+    src: ford-backup.service.j2
+    dest: /etc/systemd/system/ford-backup.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install backup systemd timer
+  ansible.builtin.template:
+    src: ford-backup.timer.j2
+    dest: /etc/systemd/system/ford-backup.timer
+    owner: root
+    group: root
+    mode: "0644"
 
 - name: Install restore script
   ansible.builtin.template:
@@ -23,10 +51,18 @@
     group: "{{ ansible_user }}"
     mode: "0750"
 
-- name: Schedule daily database backup
+- name: Remove legacy backup cron entry
   ansible.builtin.cron:
     name: Ford database backup
     user: root
-    minute: "15"
-    hour: "3"
-    job: "{{ remote_root }}/backup/backup-databases.sh >> {{ remote_root }}/backup/backup.log 2>&1"
+    state: absent
+
+- name: Reload systemd after installing backup units
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable and start backup timer
+  ansible.builtin.systemd:
+    name: ford-backup.timer
+    enabled: true
+    state: started

@@ -14,6 +14,7 @@ deploy_repo_root() { printf '%s\n' "$(cd "$MISE_PROJECT_ROOT/.." && pwd -P)"; }
 deploy_config_file() { printf '%s\n' "$(deploy_repo_root)/deployment/config/oci.env"; }
 deploy_state_dir() { printf '%s\n' "$MISE_PROJECT_ROOT/.mise/state/deploy"; }
 deploy_inventory_file() { printf '%s\n' "$(deploy_state_dir)/inventory.yml"; }
+backup_inventory_file() { printf '%s\n' "$(deploy_state_dir)/backup-inventory.yml"; }
 infra_state_dir() { printf '%s\n' "$MISE_PROJECT_ROOT/.mise/state/infra"; }
 infra_vars_file() { printf '%s\n' "$(infra_state_dir)/terraform.tfvars"; }
 
@@ -69,23 +70,48 @@ ensure_deploy_state_dir() { mkdir -p "$(deploy_state_dir)"; chmod 700 "$(deploy_
 
 ensure_infra_state_dir() { mkdir -p "$(infra_state_dir)"; chmod 700 "$(infra_state_dir)"; }
 
+oci_profile_value() {
+  local key="$1" profile="${OCI_CONFIG_PROFILE:-DEFAULT}" config_file="${OCI_CLI_CONFIG_FILE:-$HOME/.oci/config}"
+  [[ -r "$config_file" ]] || return 0
+  awk -v section="[$profile]" -v key="$key" '
+    $0 == section { in_section = 1; next }
+    /^\[/ { in_section = 0 }
+    in_section && $0 ~ "^" key "[[:space:]]*=" {
+      sub("^[^=]+=[[:space:]]*", "")
+      print
+      exit
+    }
+  ' "$config_file"
+}
+
 render_terraform_vars() {
   ensure_infra_state_dir
+  local tenancy_ocid="${OCI_TENANCY_OCID:-}"
+  local compartment_ocid="${OCI_COMPARTMENT_OCID:-}"
+  tenancy_ocid="${tenancy_ocid:-$(oci_profile_value tenancy)}"
+  compartment_ocid="${compartment_ocid:-$tenancy_ocid}"
   umask 077
   cat > "$(infra_vars_file)" <<EOF
-tenancy_ocid = "${OCI_TENANCY_OCID:-}"
+tenancy_ocid = "${tenancy_ocid}"
 user_ocid = "${OCI_USER_OCID:-}"
 fingerprint = "${OCI_FINGERPRINT:-}"
 private_key_path = "${OCI_API_PRIVATE_KEY_PATH:-}"
 region = "${OCI_REGION:-}"
-compartment_ocid = "${OCI_COMPARTMENT_OCID:-}"
+oci_config_profile = "${OCI_CONFIG_PROFILE:-DEFAULT}"
+compartment_ocid = "${compartment_ocid}"
 availability_domain = "${OCI_AVAILABILITY_DOMAIN:-}"
 existing_subnet_id = "${OCI_EXISTING_SUBNET_OCID:-}"
 ssh_public_key = "${OCI_SSH_PUBLIC_KEY:-}"
 object_storage_namespace = "${OCI_OBJECT_STORAGE_NAMESPACE:-}"
+backup_bucket_name = "${OCI_BACKUP_BUCKET:-emme-business}"
+backup_object_prefix = "${OCI_BACKUP_PREFIX:-ford/backups}"
+backup_compartment_ocid = "${OCI_BACKUP_COMPARTMENT_OCID:-${OCI_COMPARTMENT_OCID:-}}"
+emme_2_instance_ocid = "${EMME_2_INSTANCE_OCID:-}"
+backup_dynamic_group_name = "${OCI_BACKUP_DYNAMIC_GROUP_NAME:-ford-backup-emme2}"
+backup_policy_name = "${OCI_BACKUP_POLICY_NAME:-ford-backup-emme2-policy}"
 create_instances = false
 manage_data_volume = false
-manage_backup_bucket = false
+manage_backup_bucket = ${OCI_MANAGE_BACKUP_BUCKET:-false}
 EOF
   chmod 600 "$(infra_vars_file)"
 }
@@ -97,6 +123,7 @@ render_deploy_inventory() {
   local private_1_yaml private_2_yaml root_yaml mount_yaml data_bind_yaml
   local postgres_yaml redis_yaml operator_user_yaml operator_password_yaml
   local meta_secret_yaml verify_token_yaml openai_key_yaml app_image_yaml ghcr_username_yaml ghcr_token_yaml
+  local backup_bucket_yaml backup_namespace_yaml backup_prefix_yaml backup_region_yaml
   ansible_user_yaml="$(yaml_quote "$OCI_SSH_USER")"
   ansible_host_1_yaml="$(yaml_quote "$EMME_1_SSH_HOST")"
   ansible_host_2_yaml="$(yaml_quote "$EMME_2_SSH_HOST")"
@@ -117,6 +144,10 @@ render_deploy_inventory() {
   app_image_yaml="$(yaml_quote "${EMME_APP_IMAGE:-ford-service:deployment}")"
   ghcr_username_yaml="$(yaml_quote "${GHCR_USERNAME:-}")"
   ghcr_token_yaml="$(yaml_quote "${GHCR_TOKEN:-}")"
+  backup_bucket_yaml="$(yaml_quote "${OCI_BACKUP_BUCKET:-emme-business}")"
+  backup_namespace_yaml="$(yaml_quote "${OCI_OBJECT_STORAGE_NAMESPACE:-}")"
+  backup_prefix_yaml="$(yaml_quote "${OCI_BACKUP_PREFIX:-ford/backups}")"
+  backup_region_yaml="$(yaml_quote "${OCI_REGION}")"
   umask 077
   cat > "$inventory_file" <<EOF
 all:
@@ -138,8 +169,10 @@ all:
     app_image: ${app_image_yaml}
     ghcr_username: ${ghcr_username_yaml}
     ghcr_token: ${ghcr_token_yaml}
-    backup_bucket: $(yaml_quote "${OCI_BACKUP_BUCKET:-}")
-    object_storage_namespace: $(yaml_quote "${OCI_OBJECT_STORAGE_NAMESPACE:-}")
+    backup_bucket: ${backup_bucket_yaml}
+    object_storage_namespace: ${backup_namespace_yaml}
+    backup_object_prefix: ${backup_prefix_yaml}
+    oci_region: ${backup_region_yaml}
   children:
     app:
       hosts:
@@ -151,6 +184,39 @@ all:
         emme-2:
           ansible_host: ${ansible_host_2_yaml}
           ansible_ssh_private_key_file: ${key_2_yaml}
+EOF
+  chmod 600 "$inventory_file"
+}
+
+render_backup_inventory() {
+  ensure_deploy_state_dir
+  local inventory_file="$(backup_inventory_file)"
+  local ansible_user_yaml host_yaml key_yaml root_yaml bucket_yaml namespace_yaml prefix_yaml region_yaml
+  ansible_user_yaml="$(yaml_quote "$OCI_SSH_USER")"
+  host_yaml="$(yaml_quote "$EMME_2_SSH_HOST")"
+  key_yaml="$(yaml_quote "${EMME_2_SSH_KEY:-${OCI_SSH_PRIVATE_KEY}}")"
+  root_yaml="$(yaml_quote "$EMME_REMOTE_ROOT")"
+  bucket_yaml="$(yaml_quote "${OCI_BACKUP_BUCKET:-emme-business}")"
+  namespace_yaml="$(yaml_quote "$OCI_OBJECT_STORAGE_NAMESPACE")"
+  prefix_yaml="$(yaml_quote "${OCI_BACKUP_PREFIX:-ford/backups}")"
+  region_yaml="$(yaml_quote "$OCI_REGION")"
+  umask 077
+  cat > "$inventory_file" <<EOF
+all:
+  vars:
+    ansible_user: ${ansible_user_yaml}
+    ansible_python_interpreter: /usr/bin/python3
+    remote_root: ${root_yaml}
+    backup_bucket: ${bucket_yaml}
+    object_storage_namespace: ${namespace_yaml}
+    backup_object_prefix: ${prefix_yaml}
+    oci_region: ${region_yaml}
+  children:
+    data:
+      hosts:
+        emme-2:
+          ansible_host: ${host_yaml}
+          ansible_ssh_private_key_file: ${key_yaml}
 EOF
   chmod 600 "$inventory_file"
 }
