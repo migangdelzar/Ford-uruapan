@@ -25,6 +25,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(HandoffController.class)
@@ -56,6 +57,13 @@ class ToolAndWebhookSecurityTest {
         mockMvc.perform(post("/api/operator/handoffs")
                         .contentType(APPLICATION_JSON)
                         .content("{}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void rejectsAnonymousRealtimeStreamRequest() throws Exception {
+        mockMvc.perform(get("/api/operator/events/stream")
+                        .queryParam("tenantId", UUID.randomUUID().toString()))
                 .andExpect(status().isUnauthorized());
     }
 

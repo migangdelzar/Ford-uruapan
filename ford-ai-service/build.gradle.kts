@@ -16,6 +16,7 @@ java {
 dependencies {
     implementation(platform(libs.spring.boot.bom))
     implementation(platform(libs.spring.ai.bom))
+    implementation(platform(libs.spring.modulith.bom))
 
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.validation)
@@ -24,6 +25,7 @@ dependencies {
     implementation(libs.spring.boot.starter.jdbc)
     implementation(libs.spring.boot.starter.data.redis)
     implementation(libs.spring.boot.starter.security)
+    implementation(libs.spring.modulith.starter.jdbc)
     implementation(libs.liquibase.core)
     runtimeOnly(libs.postgresql)
 

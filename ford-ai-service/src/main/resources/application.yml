@@ -12,6 +12,11 @@ spring:
     password: ${FORD_DATABASE_PASSWORD:ford}
   liquibase:
     enabled: true
+  modulith:
+    events:
+      jdbc:
+        schema-initialization:
+          enabled: false
   ai:
     chat:
       client:

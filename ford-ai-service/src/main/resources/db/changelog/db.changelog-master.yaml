@@ -5,3 +5,5 @@ databaseChangeLog:
       file: db/changelog/changes/002-channel-delivery.yaml
   - include:
       file: db/changelog/changes/003-channel-message.yaml
+  - include:
+      file: db/changelog/changes/004-modulith-events.yaml
