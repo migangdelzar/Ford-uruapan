@@ -45,4 +45,15 @@ class RealtimeEventStreamControllerTest {
         assertThat(consumer).hasValueSatisfying(value -> value.accept(new FrontendEvent(
                 UUID.randomUUID(), tenant, null, "message.created", Instant.now(), Map.of("text", "Hola"))));
     }
+
+    @Test
+    void supportsSingleTenantConnectionWithoutTenantParameter() {
+        var hub = mock(RealtimeEventHub.class);
+        when(hub.subscribe(any(), any())).thenReturn(mock(AutoCloseable.class));
+        var properties = new com.ford.service.channels.adapter.in.meta.MetaWebhookProperties();
+        var controller = new RealtimeEventStreamController(hub, properties);
+
+        assertThat(controller.stream()).isNotNull();
+        verify(hub).subscribe(eq(properties.getTenantId()), any());
+    }
 }

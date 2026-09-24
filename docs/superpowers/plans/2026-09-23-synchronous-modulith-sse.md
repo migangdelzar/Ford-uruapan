@@ -93,7 +93,7 @@ Run both realtime and channel event tests; expected result is `BUILD SUCCESSFUL`
 - Test: `ford-ai-service/src/test/java/com/ford/service/realtime/RealtimeEventStreamControllerTest.java`
 
 **Interfaces:**
-- `GET /api/v1/operator/events/stream?tenantId={uuid}` returns `text/event-stream`.
+- `GET /api/v1/operator/events/stream` returns `text/event-stream`; an optional `tenantId` query parameter is reserved for future multi-tenant mode.
 - Each event uses its envelope ID as SSE `id`, envelope type as SSE `event`, and the envelope as JSON `data`.
 - Client disconnect or send failure removes its registration.
 

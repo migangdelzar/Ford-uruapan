@@ -1,7 +1,9 @@
 package com.ford.service.realtime.adapter.in.web;
 
+import com.ford.service.channels.adapter.in.meta.MetaWebhookProperties;
 import com.ford.service.realtime.application.RealtimeEventHub;
 import com.ford.service.realtime.domain.FrontendEvent;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,18 +23,30 @@ public final class RealtimeEventStreamController {
     private static final long EMITTER_TIMEOUT_MILLIS = 30 * 60 * 1000L;
 
     private final RealtimeEventHub hub;
+    private final UUID defaultTenantId;
 
     public RealtimeEventStreamController(RealtimeEventHub hub) {
+        this(hub, new MetaWebhookProperties());
+    }
+
+    @Autowired
+    public RealtimeEventStreamController(RealtimeEventHub hub, MetaWebhookProperties properties) {
         this.hub = hub;
+        this.defaultTenantId = properties.getTenantId();
+    }
+
+    public SseEmitter stream() {
+        return stream(null);
     }
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@RequestParam UUID tenantId) {
+    public SseEmitter stream(@RequestParam(required = false) UUID tenantId) {
+        var resolvedTenantId = tenantId == null ? defaultTenantId : tenantId;
         var emitter = new SseEmitter(EMITTER_TIMEOUT_MILLIS);
         var registration = new AtomicReference<AutoCloseable>();
         var cleanup = (Runnable) () -> closeQuietly(registration.getAndSet(null));
 
-        var subscription = hub.subscribe(tenantId, event -> send(emitter, event, cleanup));
+        var subscription = hub.subscribe(resolvedTenantId, event -> send(emitter, event, cleanup));
         registration.set(subscription);
         emitter.onCompletion(cleanup);
         emitter.onTimeout(() -> {
@@ -40,7 +54,7 @@ public final class RealtimeEventStreamController {
             emitter.complete();
         });
         emitter.onError(error -> cleanup.run());
-        sendConnected(emitter, tenantId, cleanup);
+        sendConnected(emitter, resolvedTenantId, cleanup);
         return emitter;
     }
 

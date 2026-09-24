@@ -11,6 +11,7 @@ Use environment variables or a deployment profile; keep secrets outside Git.
 
 - `FORD_DATABASE_URL`, `FORD_DATABASE_USERNAME`, `FORD_DATABASE_PASSWORD`
 - `FORD_META_APP_SECRET`, `FORD_META_VERIFY_TOKEN`
+- `FORD_META_TENANT_ID` (optional single-tenant UUID; defaults to the local development tenant)
 - `FORD_AI_CHAT_PROVIDER`, `FORD_AI_EMBEDDING_PROVIDER`
 - `FORD_AI_CLOUD_ENABLED`, `FORD_AI_LOCAL_ENABLED`
 - `FORD_INGESTION_ENABLED`, `FORD_TENANT_ID`, `FORD_INGESTION_CRON`

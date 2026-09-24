@@ -48,6 +48,7 @@ class MetaWebhookIntegrationTest {
     @Test
     void verifiesMetaSubscriptionAndAcceptsSignedWebhook() throws Exception {
         var tenantId = UUID.randomUUID();
+        when(properties.getTenantId()).thenReturn(tenantId);
         mockMvc.perform(get("/webhooks/meta/whatsapp")
                         .queryParam("hub.mode", "subscribe")
                         .queryParam("hub.verify_token", "verify-token")
@@ -55,7 +56,6 @@ class MetaWebhookIntegrationTest {
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/webhooks/meta/whatsapp")
-                        .header("X-Tenant-Id", tenantId)
                         .header("X-Hub-Signature-256", "sha256=valid")
                         .contentType(APPLICATION_JSON)
                         .content("{\"entry\":[]}"))
@@ -67,7 +67,6 @@ class MetaWebhookIntegrationTest {
         doThrow(new SecurityException("invalid")).when(adapter).validateWebhook(any());
 
         mockMvc.perform(post("/webhooks/meta/whatsapp")
-                        .header("X-Tenant-Id", UUID.randomUUID())
                         .header("X-Hub-Signature-256", "sha256=invalid")
                         .contentType(APPLICATION_JSON)
                         .content("{\"entry\":[]}"))

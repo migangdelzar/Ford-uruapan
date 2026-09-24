@@ -57,7 +57,6 @@ public final class MetaWebhookController {
     public ResponseEntity<Void> receive(
             @PathVariable String channel,
             @RequestHeader(name = "X-Hub-Signature-256", required = false) String signature,
-            @RequestHeader(name = "X-Tenant-Id") UUID tenantId,
             @RequestBody String body) {
         try {
             var adapter = adapterFor(channel);
@@ -69,7 +68,7 @@ public final class MetaWebhookController {
                 headers.put("X-Hub-Signature-256", signature);
             }
             adapter.validateWebhook(new WebhookRequest(body, headers));
-            messageService.accept(new RawWebhook(tenantId, body,
+            messageService.accept(new RawWebhook(properties.getTenantId(), body,
                     "meta:" + channel.toLowerCase(Locale.ROOT) + ":" + UUID.randomUUID()), adapter);
             return ResponseEntity.accepted().build();
         } catch (SecurityException exception) {

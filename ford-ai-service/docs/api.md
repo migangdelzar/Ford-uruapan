@@ -16,10 +16,12 @@ Inbound delivery is:
 
 ```text
 POST /webhooks/meta/{channel}
-X-Tenant-Id: <tenant UUID>
 X-Hub-Signature-256: sha256=<HMAC-SHA256(body, app secret)>
 Content-Type: application/json
 ```
+
+For the current single-tenant deployment, the backend assigns the configured
+`FORD_META_TENANT_ID` internally. Meta does not need to send a tenant header.
 
 The endpoint returns `202` for a valid new or duplicate delivery, `403` for an
 invalid signature, and `400` for malformed/non-text payloads. Provider message
@@ -34,6 +36,7 @@ Operator endpoints require an authenticated user with role `OPERATOR`:
 - `POST /api/operator/handoffs/conversations/{conversationId}/pause?operatorId=...`
 - `POST /api/operator/handoffs/conversations/{conversationId}/resume?operatorId=...`
 - `GET /api/operator/handoffs?tenantId=...`
+- `GET /api/v1/operator/events/stream` (optional `tenantId` override for future multi-tenant mode)
 
 CRM, email, Slack and WhatsApp notifications are represented by ports/outbox
 events so their provider adapters can be added without changing lead scoring or

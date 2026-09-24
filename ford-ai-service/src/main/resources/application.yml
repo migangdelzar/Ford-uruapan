@@ -56,6 +56,7 @@ ford:
     meta:
       app-secret: ${FORD_META_APP_SECRET:}
       verify-token: ${FORD_META_VERIFY_TOKEN:}
+      tenant-id: ${FORD_META_TENANT_ID:00000000-0000-0000-0000-000000000001}
   ai:
     cloud-chat-provider: ${FORD_AI_CLOUD_PROVIDER:openai}
     local-chat-provider: ${FORD_AI_LOCAL_PROVIDER:ollama}
