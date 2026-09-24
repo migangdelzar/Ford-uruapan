@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Start databases, cache, and observability"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+mise run db:start
+mise run cache:start
+mise run telemetry:start

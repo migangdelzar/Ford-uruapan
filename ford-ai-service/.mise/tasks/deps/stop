@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Stop databases, cache, and observability"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+mise run telemetry:stop
+mise run cache:stop
+mise run db:stop

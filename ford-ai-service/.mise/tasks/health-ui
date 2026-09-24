@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-#MISE description="Wait for the core stack and Grafana UI"
-
-set -euo pipefail
-
-"$MISE_PROJECT_ROOT/.mise/tasks/health"
-source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
-wait_for_url "Grafana" "http://localhost:3000/api/health"

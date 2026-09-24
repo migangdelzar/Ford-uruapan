@@ -10,6 +10,18 @@ require_command() {
     return 1
   fi
 }
+
+require_service_running() {
+  local service_name="$1"
+
+  if ! ford_compose ps --status running --services | grep -Fxq "$service_name"; then
+    echo "$service_name: not running" >&2
+    return 1
+  fi
+
+  echo "$service_name: running"
+}
+
 ford_compose() {
   if command -v docker-compose >/dev/null 2>&1; then
     docker-compose "$@"
@@ -27,20 +39,35 @@ ford_compose() {
 }
 
 ensure_local_env() {
-  if [[ -f "$MISE_PROJECT_ROOT/.env" ]]; then
-    echo "Preserving existing $MISE_PROJECT_ROOT/.env"
+  require_command openssl
+
+  local env_file="$MISE_PROJECT_ROOT/.env"
+  local grafana_password
+  local operator_password
+
+  if [[ ! -f "$env_file" ]]; then
+    grafana_password="$(openssl rand -hex 32)"
+    operator_password="$(openssl rand -hex 32)"
+
+    umask 077
+    printf 'GRAFANA_ADMIN_PASSWORD=%s\nFORD_OPERATOR_USERNAME=operator\nFORD_OPERATOR_PASSWORD=%s\n' \
+      "$grafana_password" "$operator_password" > "$env_file"
+    echo "Created $env_file with generated local Grafana and operator credentials."
+    echo "The file is ignored by Git; keep it safe for local access."
     return
   fi
 
-  require_command openssl
+  if ! grep -q '^FORD_OPERATOR_USERNAME=' "$env_file"; then
+    printf 'FORD_OPERATOR_USERNAME=operator\n' >> "$env_file"
+  fi
 
-  local grafana_password
-  grafana_password="$(openssl rand -hex 32)"
-
-  umask 077
-  printf 'GRAFANA_ADMIN_PASSWORD=%s\n' "$grafana_password" > "$MISE_PROJECT_ROOT/.env"
-  echo "Created $MISE_PROJECT_ROOT/.env with a generated Grafana admin password."
-  echo "The file is ignored by Git; keep it safe for local access to Grafana."
+  if ! grep -q '^FORD_OPERATOR_PASSWORD=' "$env_file"; then
+    operator_password="$(openssl rand -hex 32)"
+    printf 'FORD_OPERATOR_PASSWORD=%s\n' "$operator_password" >> "$env_file"
+    echo "Added a generated local operator credential to $env_file."
+  else
+    echo "Preserving existing $env_file"
+  fi
 }
 
 wait_for_url() {
@@ -58,5 +85,83 @@ wait_for_url() {
   done
 
   echo "$name: not ready after $((attempts * 2)) seconds ($url)" >&2
+  return 1
+}
+
+ford_service_url() {
+  printf 'http://localhost:%s\n' "${FORD_SERVICE_PORT:-18080}"
+}
+
+dev_state_dir() {
+  printf '%s\n' "$MISE_PROJECT_ROOT/.mise/state"
+}
+
+dev_pid_file() {
+  printf '%s/dev.pid\n' "$(dev_state_dir)"
+}
+
+dev_log_file() {
+  printf '%s/dev.log\n' "$(dev_state_dir)"
+}
+
+ensure_dev_state_dir() {
+  mkdir -p "$(dev_state_dir)"
+}
+
+read_dev_pid() {
+  local pid_file
+  pid_file="$(dev_pid_file)"
+
+  [[ -f "$pid_file" ]] || return 1
+  local pid
+  IFS= read -r pid < "$pid_file" || true
+  [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+  printf '%s\n' "$pid"
+}
+
+dev_process_running() {
+  local pid="$1"
+  [[ "$pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$pid" >/dev/null 2>&1
+}
+
+clear_stale_dev_pid() {
+  local pid
+  pid="$(read_dev_pid 2>/dev/null || true)"
+
+  if [[ -z "$pid" ]] || ! dev_process_running "$pid"; then
+    rm -f "$(dev_pid_file)"
+  fi
+}
+
+application_jar() {
+  local jar
+  jar="$(find "$MISE_PROJECT_ROOT/build/libs" -maxdepth 1 -type f -name '*.jar' ! -name '*-plain.jar' -print -quit 2>/dev/null || true)"
+
+  if [[ -z "$jar" ]]; then
+    echo "No Spring Boot jar found under $MISE_PROJECT_ROOT/build/libs" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$jar"
+}
+
+stop_dev_process() {
+  local pid="$1"
+
+  if ! dev_process_running "$pid"; then
+    rm -f "$(dev_pid_file)"
+    return
+  fi
+
+  kill "$pid"
+  for _ in {1..20}; do
+    if ! dev_process_running "$pid"; then
+      rm -f "$(dev_pid_file)"
+      return
+    fi
+    sleep 1
+  done
+
+  echo "Development JVM did not stop cleanly (pid=$pid)." >&2
   return 1
 }

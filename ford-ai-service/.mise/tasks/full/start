@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Validate the Docker Compose configuration"
+#MISE description="Start the complete local stack, including Grafana"
 
 set -euo pipefail
 
@@ -7,4 +7,6 @@ cd "$MISE_PROJECT_ROOT"
 source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
 ensure_local_env
 ford_compose config --quiet
-echo "Docker Compose configuration is valid."
+mise run deps:start
+mise run app:rebuild
+ford_compose --profile ui up -d grafana

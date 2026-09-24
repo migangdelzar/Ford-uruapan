@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Restart databases, cache, and observability"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+mise run deps:stop
+mise run deps:start

@@ -2,11 +2,38 @@ databaseChangeLog:
   - changeSet:
       id: 003-channel-message
       author: ford-service
+      validCheckSum: 9:cad63aeed476b5734fba6d6b78cc0d46
       changes:
         - sql:
             sql: |
+              create table if not exists channel_binding (
+                  id uuid primary key,
+                  webhook_key_hash varchar(128) not null,
+                  tenant_id uuid not null,
+                  channel varchar(30) not null,
+                  provider_account_id varchar(200) not null,
+                  secret_reference varchar(512) not null,
+                  enabled boolean not null default true,
+                  created_at timestamptz not null,
+                  updated_at timestamptz not null,
+                  unique (webhook_key_hash)
+              );
+              create index if not exists idx_channel_binding_provider
+                  on channel_binding(channel, provider_account_id);
+
+              alter table channel_delivery add column if not exists receipt_id uuid;
+              alter table channel_delivery add column if not exists binding_id uuid;
+              alter table channel_delivery add column if not exists conversation_id uuid;
+              update channel_delivery set receipt_id = gen_random_uuid() where receipt_id is null;
+              alter table channel_delivery alter column receipt_id set not null;
+              create unique index if not exists uq_channel_delivery_receipt on channel_delivery(receipt_id);
+              create index if not exists idx_channel_delivery_binding on channel_delivery(binding_id, received_at);
+              create index if not exists idx_channel_delivery_conversation on channel_delivery(conversation_id, received_at);
+
               create table if not exists channel_message (
                   id uuid primary key,
+                  binding_id uuid,
+                  conversation_id uuid,
                   tenant_id uuid not null,
                   channel varchar(30) not null,
                   provider_message_id varchar(200) not null,
@@ -16,7 +43,13 @@ databaseChangeLog:
                   raw_payload_reference varchar(240) not null,
                   unique (tenant_id, channel, provider_message_id)
               );
+              alter table channel_message add column if not exists binding_id uuid;
+              alter table channel_message add column if not exists conversation_id uuid;
               create index if not exists idx_channel_message_received on channel_message(tenant_id, received_at);
+              create index if not exists idx_channel_message_binding on channel_message(binding_id, received_at);
+              create index if not exists idx_channel_message_conversation on channel_message(conversation_id, received_at);
       rollback:
         - sql:
-            sql: drop table if exists channel_message;
+            sql: |
+              drop table if exists channel_message;
+              drop table if exists channel_binding;

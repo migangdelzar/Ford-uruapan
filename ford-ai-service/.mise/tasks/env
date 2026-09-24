@@ -3,5 +3,6 @@
 
 set -euo pipefail
 
+cd "$MISE_PROJECT_ROOT"
 source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
 ensure_local_env

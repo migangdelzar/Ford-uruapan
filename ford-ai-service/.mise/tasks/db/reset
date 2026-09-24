@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+#MISE description="Delete and recreate only the local PostgreSQL volume"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+
+if [[ $# -ne 1 || "$1" != "--confirm" ]]; then
+  echo "Refusing to delete the PostgreSQL volume. Usage: mise run db:reset -- --confirm" >&2
+  exit 2
+fi
+
+require_command docker
+ford_compose stop postgres >/dev/null 2>&1 || true
+if docker volume inspect ford-postgres >/dev/null 2>&1; then
+  docker volume rm ford-postgres
+fi
+ford_compose up -d postgres
+
+echo "PostgreSQL volume deleted and a fresh PostgreSQL container started."
+echo "Run 'mise run app:start' to let Liquibase recreate the schema."

@@ -23,10 +23,11 @@ dependencies {
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.opentelemetry)
     implementation(libs.spring.boot.starter.jdbc)
+    implementation(libs.spring.boot.starter.liquibase)
+    implementation(libs.liquibase.core)
     implementation(libs.spring.boot.starter.data.redis)
     implementation(libs.spring.boot.starter.security)
     implementation(libs.spring.modulith.starter.jdbc)
-    implementation(libs.liquibase.core)
     runtimeOnly(libs.postgresql)
 
     implementation(libs.spring.ai.rag)

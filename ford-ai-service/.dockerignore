@@ -1,0 +1,9 @@
+.git
+.gradle
+build
+bin
+.env
+.mise
+docs
+README.md
+docker-compose.yml

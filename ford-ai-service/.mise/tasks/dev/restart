@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Restart the background host JVM"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+mise run dev:stop
+mise run dev:start

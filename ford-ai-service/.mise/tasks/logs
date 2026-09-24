@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Follow application logs"
+#MISE description="Follow application container logs"
 
 set -euo pipefail
 

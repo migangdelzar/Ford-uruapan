@@ -6,17 +6,19 @@ services:
       POSTGRES_USER: ford
       POSTGRES_PASSWORD: ford
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
     volumes:
       - ford-postgres:/var/lib/postgresql/data
 
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
 
   ford-service:
-    build: .
+    build:
+      context: .
+      network: host
     depends_on:
       - postgres
       - redis
@@ -25,6 +27,11 @@ services:
       FORD_DATABASE_URL: jdbc:postgresql://postgres:5432/ford_service
       FORD_DATABASE_USERNAME: ford
       FORD_DATABASE_PASSWORD: ford
+      FORD_REDIS_HOST: redis
+      FORD_REDIS_PORT: 6379
+      FORD_OPERATOR_USERNAME: ${FORD_OPERATOR_USERNAME:?FORD_OPERATOR_USERNAME must be supplied}
+      FORD_OPERATOR_PASSWORD: ${FORD_OPERATOR_PASSWORD:?FORD_OPERATOR_PASSWORD must be supplied}
+      FORD_OPERATOR_ROLES: ${FORD_OPERATOR_ROLES:-OPERATOR}
       FORD_META_APP_SECRET: ${FORD_META_APP_SECRET:-}
       FORD_META_VERIFY_TOKEN: ${FORD_META_VERIFY_TOKEN:-}
       FORD_META_TENANT_ID: ${FORD_META_TENANT_ID:-00000000-0000-0000-0000-000000000001}
@@ -33,7 +40,7 @@ services:
       FORD_INGESTION_ENABLED: ${FORD_INGESTION_ENABLED:-false}
       FORD_OTEL_TRACES_ENDPOINT: ${FORD_OTEL_TRACES_ENDPOINT:-http://otel-collector:4318/v1/traces}
     ports:
-      - "8080:8080"
+      - "127.0.0.1:${FORD_SERVICE_PORT:-18080}:8080"
 
   prometheus:
     image: prom/prometheus:v3.8.0

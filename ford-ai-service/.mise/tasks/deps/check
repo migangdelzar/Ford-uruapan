@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-#MISE description="Wait for the application and local observability services"
+#MISE description="Check database, cache, and observability readiness"
 
 set -euo pipefail
 
+cd "$MISE_PROJECT_ROOT"
 source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
 require_command curl
 
-wait_for_url "Ford API" "http://localhost:8080/actuator/health"
+for service in postgres redis prometheus loki tempo otel-collector alloy; do
+  require_service_running "$service"
+done
+
 wait_for_url "Prometheus" "http://localhost:9090/-/ready"
 wait_for_url "Loki" "http://localhost:3100/ready"
 wait_for_url "Tempo" "http://localhost:3200/ready"
-wait_for_url "Grafana" "http://localhost:3000/api/health"
-
-echo "All local services are ready."
+echo "Dependencies are ready."

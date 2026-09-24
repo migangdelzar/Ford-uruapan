@@ -25,45 +25,61 @@ mise install
 mise run setup
 ```
 
-Mise creates `.env` only when it does not exist, generates the local Grafana
-admin password without printing it, validates Compose, builds the Java 25
+Mise creates `.env` when needed, generates local Grafana and operator
+credentials without printing them, validates Compose, builds the Java 25
 application image, starts PostgreSQL, Redis, and the minimum metrics, logging,
 and tracing pipeline, and waits for their health endpoints. Docker Desktop (or
-Docker Engine with Compose) must be installed and running.
+Docker Engine with Compose) must be installed and running. Host bindings default
+to PostgreSQL `55432` and the API `18080` so this stack can coexist with other
+local projects; set `POSTGRES_PORT` or `FORD_SERVICE_PORT` to override them.
 
 The normal setup uses Docker for the complete JVM application and its runtime
 dependencies. For a faster edit/debug loop, run the dependencies in Docker and
 the Java 25 JVM on the host:
 
 ```bash
-mise run deps:up
-mise run app:run
+mise run deps:start
+mise run dev:start
 ```
 
 Grafana is optional because it is a visualization UI, not part of collection or
-storage. Start it when needed with `mise run up-ui`; then open
+storage. Start the complete stack with `mise run full:start`; then open
 `http://localhost:3000`.
 
 Useful tasks, run from this directory:
 
 ```bash
-mise run health                 # Check service readiness
-mise run health-ui              # Check readiness including Grafana
-mise run verify                 # Run unit and integration tests
-mise run logs                   # Follow application logs
-mise run down                   # Remove containers, preserve volumes
-mise run db:reset:volume -- --confirm
+mise run db:start              # PostgreSQL only
+mise run deps:start            # Database, Redis, and observability
+mise run app:start             # Application container
+mise run full:start            # Everything, including Grafana
+mise run dev:start             # Dependencies plus a host JVM
+mise run check                 # Readiness checks
+mise run test                  # Unit and integration tests
+mise run logs                  # Follow application logs
+mise run full:stop             # Stop everything, preserve volumes
+mise run db:reset -- --confirm
 ```
 
+Each target uses the same lifecycle verbs: `start`, `stop`, `restart`, and
+`status`. `deps` contains databases, Redis, and telemetry; `app` contains the
+JVM container; `full` adds Grafana; and `dev` runs the JVM on the host while
+reusing Gradle's daemon and build cache. The host JVM writes its PID and log to
+`.mise/state/`, which is ignored by Git.
+
 The database reset task is deliberately guarded because it deletes the local
-PostgreSQL volume. `mise run down` does not delete named volumes.
+PostgreSQL volume. Stop tasks preserve named volumes; use Compose directly only
+when you intentionally need to remove containers or volumes.
 
 For tests, use Java 25 and run:
 
 ```bash
-./gradlew clean check --no-configuration-cache
-./gradlew integrationTest
+mise run test
 ```
+
+Gradle is the JVM/build owner: its daemon and build cache are enabled, workers
+are bounded to two, and the JVM heap is capped at 1 GiB. Mise owns tool
+selection and service lifecycle; Docker Compose owns containers and volumes.
 
 The integration suite uses Testcontainers. Set `TESTCONTAINERS_RYUK_DISABLED=true`
 when the local Docker socket cannot mount the Ryuk helper.

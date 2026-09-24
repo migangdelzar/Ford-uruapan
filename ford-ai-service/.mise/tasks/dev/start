@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+#MISE description="Start dependencies and a background host JVM"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+clear_stale_dev_pid
+
+export FORD_DATABASE_URL="${FORD_DATABASE_URL:-jdbc:postgresql://localhost:${POSTGRES_PORT:-55432}/ford_service}"
+export FORD_REDIS_HOST="${FORD_REDIS_HOST:-localhost}"
+export FORD_REDIS_PORT="${FORD_REDIS_PORT:-${REDIS_PORT:-6379}}"
+export FORD_OTEL_TRACES_ENDPOINT="${FORD_OTEL_TRACES_ENDPOINT:-http://localhost:${OTEL_HTTP_PORT:-4318}/v1/traces}"
+export SERVER_PORT="${SERVER_PORT:-${FORD_SERVICE_PORT:-18080}}"
+
+if pid="$(read_dev_pid 2>/dev/null || true)" && [[ -n "$pid" ]] && dev_process_running "$pid"; then
+  echo "Development JVM already running (pid=$pid)."
+  exit 0
+fi
+
+mise run deps:start
+mise exec -- ./gradlew bootJar --no-scan
+
+jar="$(application_jar)"
+ensure_dev_state_dir
+log_file="$(dev_log_file)"
+nohup java -jar "$jar" >"$log_file" 2>&1 < /dev/null &
+pid=$!
+printf '%s\n' "$pid" > "$(dev_pid_file)"
+
+sleep 2
+if ! dev_process_running "$pid"; then
+  tail -40 "$log_file" >&2 || true
+  rm -f "$(dev_pid_file)"
+  echo "Development JVM exited during startup." >&2
+  exit 1
+fi
+
+echo "Development JVM started (pid=$pid)."
+echo "Log: $log_file"

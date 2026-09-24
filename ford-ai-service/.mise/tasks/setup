@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
-#MISE description="Install the pinned toolchain, start the core stack, and verify health"
+#MISE description="Install the pinned toolchain, start the full stack, and verify health"
 
 set -euo pipefail
 
 cd "$MISE_PROJECT_ROOT"
-source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
-require_command curl
-require_command openssl
-require_command docker
-ensure_local_env
-ford_compose config --quiet
-ford_compose up -d --build
-mise run health
+mise install
+mise run env
+mise run full:start
+mise run full:check
