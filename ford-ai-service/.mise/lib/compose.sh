@@ -70,6 +70,27 @@ ensure_local_env() {
   fi
 }
 
+require_langfuse_env() {
+  local missing=()
+
+  for variable_name in LANGFUSE_PUBLIC_KEY LANGFUSE_SECRET_KEY; do
+    if [[ -z "${!variable_name:-}" ]]; then
+      missing+=("$variable_name")
+    fi
+  done
+
+  if (( ${#missing[@]} > 0 )); then
+    echo "Cloud Langfuse requires: ${missing[*]}" >&2
+    echo "Export the values in the shell or load them from a secret manager; never commit them." >&2
+    return 1
+  fi
+}
+
+export_langfuse_otel_env() {
+  local base_url="${LANGFUSE_BASE_URL:-https://us.cloud.langfuse.com}"
+  export LANGFUSE_OTLP_ENDPOINT="${LANGFUSE_OTLP_ENDPOINT:-${base_url%/}/api/public/otel}"
+}
+
 wait_for_url() {
   local name="$1"
   local url="$2"
