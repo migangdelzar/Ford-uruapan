@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="List remote database backups"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+require_deploy_config
+render_deploy_inventory
+ANSIBLE_CONFIG="$(deploy_repo_root)/deployment/ansible/ansible.cfg" ansible data -b -i "$(deploy_inventory_file)" -m shell -a "find '${EMME_REMOTE_ROOT}/backup/archive' -type f -name '*.dump.gz' -printf '%f\\n' | sort"

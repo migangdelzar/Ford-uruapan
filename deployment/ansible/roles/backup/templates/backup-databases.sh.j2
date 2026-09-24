@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+backup_root="{{ remote_root }}/backup/archive"
+mkdir -p "$backup_root"
+timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+dump_file="$backup_root/ford_service_${timestamp}.dump"
+docker compose --env-file "{{ remote_root }}/data/.env" -f "{{ remote_root }}/data/compose.yml" exec -T postgres pg_dump -U ford -d ford_service --format=custom --no-owner > "$dump_file"
+gzip -9 "$dump_file"
+find "$backup_root" -type f -name '*.dump.gz' -mtime +7 -delete
+printf 'backup_created=%s\n' "${dump_file}.gz"

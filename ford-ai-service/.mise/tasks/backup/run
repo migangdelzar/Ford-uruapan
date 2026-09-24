@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Run the remote PostgreSQL backup"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+require_deploy_config
+render_deploy_inventory
+ANSIBLE_CONFIG="$(deploy_repo_root)/deployment/ansible/ansible.cfg" ansible data -b -i "$(deploy_inventory_file)" -m shell -a "${EMME_REMOTE_ROOT}/backup/backup-databases.sh"
+mkdir -p "$MISE_PROJECT_ROOT/.mise/state/backup"
+date -u +%Y-%m-%dT%H:%M:%SZ > "$MISE_PROJECT_ROOT/.mise/state/backup/last-success"

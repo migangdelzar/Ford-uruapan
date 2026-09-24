@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#MISE description="Build and deploy the ARM64 Ford app to emme-1"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+require_deploy_config
+require_command docker
+render_deploy_inventory
+
+ensure_deploy_state_dir
+image="${EMME_APP_IMAGE:-ford-service:deployment}"
+archive="$(deploy_state_dir)/app-image.tar"
+if [[ "$image" == ghcr.io/* && -n "${GHCR_TOKEN:-}" ]]; then
+  ansible_command "$(deploy_repo_root)/deployment/ansible/site.yml" \
+    --tags common,app,verify --limit app \
+    -e "app_image=$image" "$@"
+else
+  docker buildx build --platform linux/arm64 --load -t "$image" "$MISE_PROJECT_ROOT"
+  docker save --output "$archive" "$image"
+  ansible_command "$(deploy_repo_root)/deployment/ansible/site.yml" \
+    --tags common,app,verify --limit app \
+    -e "app_image_archive=$archive" \
+    -e "app_image=$image" "$@"
+  rm -f "$archive"
+fi

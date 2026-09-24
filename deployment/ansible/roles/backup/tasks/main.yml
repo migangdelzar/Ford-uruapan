@@ -1,0 +1,32 @@
+---
+- name: Create backup directory
+  ansible.builtin.file:
+    path: "{{ remote_root }}/backup"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0750"
+
+- name: Install backup script
+  ansible.builtin.template:
+    src: backup-databases.sh.j2
+    dest: "{{ remote_root }}/backup/backup-databases.sh"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0750"
+
+- name: Install restore script
+  ansible.builtin.template:
+    src: restore-database.sh.j2
+    dest: "{{ remote_root }}/backup/restore-database.sh"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0750"
+
+- name: Schedule daily database backup
+  ansible.builtin.cron:
+    name: Ford database backup
+    user: root
+    minute: "15"
+    hour: "3"
+    job: "{{ remote_root }}/backup/backup-databases.sh >> {{ remote_root }}/backup/backup.log 2>&1"

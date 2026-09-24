@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Create a reviewed Terraform plan"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+require_command terraform
+ensure_infra_state_dir
+render_terraform_vars
+terraform -chdir="$(deploy_repo_root)/deployment/terraform" plan \
+  -var-file="$(infra_vars_file)" \
+  -out="$(infra_state_dir)/planned.tfplan"
