@@ -21,9 +21,42 @@ operator handoff.
 ## Run locally
 
 ```bash
-printf 'GRAFANA_ADMIN_PASSWORD=replace-with-a-secret\n' > .env
-docker compose up --build
+mise install
+mise run setup
 ```
+
+Mise creates `.env` only when it does not exist, generates the local Grafana
+admin password without printing it, validates Compose, builds the Java 25
+application image, starts PostgreSQL, Redis, and the minimum metrics, logging,
+and tracing pipeline, and waits for their health endpoints. Docker Desktop (or
+Docker Engine with Compose) must be installed and running.
+
+The normal setup uses Docker for the complete JVM application and its runtime
+dependencies. For a faster edit/debug loop, run the dependencies in Docker and
+the Java 25 JVM on the host:
+
+```bash
+mise run deps:up
+mise run app:run
+```
+
+Grafana is optional because it is a visualization UI, not part of collection or
+storage. Start it when needed with `mise run up-ui`; then open
+`http://localhost:3000`.
+
+Useful tasks, run from this directory:
+
+```bash
+mise run health                 # Check service readiness
+mise run health-ui              # Check readiness including Grafana
+mise run verify                 # Run unit and integration tests
+mise run logs                   # Follow application logs
+mise run down                   # Remove containers, preserve volumes
+mise run db:reset:volume -- --confirm
+```
+
+The database reset task is deliberately guarded because it deletes the local
+PostgreSQL volume. `mise run down` does not delete named volumes.
 
 For tests, use Java 25 and run:
 

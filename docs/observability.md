@@ -2,25 +2,27 @@
 
 Ford Service exposes Actuator health/metrics endpoints and exports traces
 through Spring Boot's supported OpenTelemetry starter. The application Compose
-stack includes Prometheus, Grafana, Loki, Grafana Alloy, Tempo, and an
-OpenTelemetry Collector. The application-to-collector protocol is OTLP over
-HTTP; container stdout is the log source for Alloy.
+stack includes Prometheus, Loki, Grafana Alloy, Tempo, and an OpenTelemetry
+Collector. Grafana is an optional UI profile. The application-to-collector
+protocol is OTLP over HTTP; container stdout is the log source for Alloy.
 
 ## Local or OCI observability stack
 
-Create a local env file with a strong Grafana password, then start the stack:
+Use Mise to create the local environment and start the minimum collection
+pipeline:
 
 ```bash
 cd ford-ai-service
-printf 'GRAFANA_ADMIN_PASSWORD=replace-with-a-secret\n' > .env
-docker compose up -d
+mise install
+mise run setup
 ```
 
-Grafana is available on `http://localhost:3000`. Prometheus, Loki, Tempo, and
-Alloy are bound to loopback by default. The service sends traces to the
-collector, Prometheus scrapes `/actuator/prometheus`, and Alloy discovers all
-Docker containers and forwards their stdout to Loki. Change the published
-ports or place Grafana behind the OCI reverse proxy for deployment.
+Prometheus, Loki, Tempo, the collector, and Alloy are bound to loopback by
+default. The service sends traces to the collector, Prometheus scrapes
+`/actuator/prometheus`, and Alloy discovers all Docker containers and forwards
+their stdout to Loki. Start the optional dashboard with `mise run up-ui`; it is
+available on `http://localhost:3000`. Change the published ports or place
+Grafana behind the OCI reverse proxy for deployment.
 
 The observability services use named volumes and bounded trace/log retention
 defaults. Review memory limits and retention before enabling this stack on a

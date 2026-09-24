@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Run the Spring JVM on the host against Docker dependencies"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+export FORD_OTEL_TRACES_ENDPOINT="${FORD_OTEL_TRACES_ENDPOINT:-http://localhost:4318/v1/traces}"
+mise exec -- ./gradlew bootRun --no-scan

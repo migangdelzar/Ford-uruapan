@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Run unit and integration tests"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+mise exec -- ./gradlew test integrationTest --no-scan

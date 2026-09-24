@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Create the local environment file without overwriting secrets"
+
+set -euo pipefail
+
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ensure_local_env
