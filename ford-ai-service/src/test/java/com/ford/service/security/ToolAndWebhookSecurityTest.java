@@ -68,6 +68,12 @@ class ToolAndWebhookSecurityTest {
     }
 
     @Test
+    void rejectsAnonymousSystemPromptRequest() throws Exception {
+        mockMvc.perform(get("/api/v1/operator/ai/system-prompt"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void permitsOperatorRole() throws Exception {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();

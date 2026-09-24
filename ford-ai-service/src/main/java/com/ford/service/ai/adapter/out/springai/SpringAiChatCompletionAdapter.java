@@ -1,5 +1,6 @@
 package com.ford.service.ai.adapter.out.springai;
 
+import com.ford.service.ai.application.SystemPromptService;
 import com.ford.service.ai.application.ToolContext;
 import com.ford.service.ai.application.port.out.ChatCompletionPort;
 import com.ford.service.ai.api.AssistantRequest;
@@ -13,16 +14,18 @@ public final class SpringAiChatCompletionAdapter implements ChatCompletionPort {
 
     private final ChatClient client;
     private final String provider;
+    private final SystemPromptService systemPrompt;
 
-    public SpringAiChatCompletionAdapter(ChatClient client, String provider) {
+    public SpringAiChatCompletionAdapter(ChatClient client, String provider, SystemPromptService systemPrompt) {
         this.client = Objects.requireNonNull(client);
         this.provider = Objects.requireNonNull(provider);
+        this.systemPrompt = Objects.requireNonNull(systemPrompt);
     }
 
     @Override
     public AssistantResponse complete(AssistantRequest request, ToolContext context) {
         var content = client.prompt()
-                .system("Responde en español, no inventes datos y usa solo herramientas autorizadas.")
+                .system(systemPrompt.currentContent())
                 .user(request.message())
                 .call()
                 .content();

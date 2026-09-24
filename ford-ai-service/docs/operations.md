@@ -14,6 +14,7 @@ Use environment variables or a deployment profile; keep secrets outside Git.
 - `FORD_META_TENANT_ID` (optional single-tenant UUID; defaults to the local development tenant)
 - `FORD_AI_CHAT_PROVIDER`, `FORD_AI_EMBEDDING_PROVIDER`
 - `FORD_AI_CLOUD_ENABLED`, `FORD_AI_LOCAL_ENABLED`
+- `FORD_AI_SYSTEM_PROMPT_LOCATION` (optional classpath or external resource override for the seed prompt)
 - `FORD_INGESTION_ENABLED`, `FORD_TENANT_ID`, `FORD_INGESTION_CRON`
 - `FORD_CATALOG_ENDPOINT`, `FORD_INVENTORY_ENDPOINT`, `FORD_SCRAPER_ENDPOINT`
 - `FORD_MANUAL_CSV_PATH`, `FORD_INGESTION_MAX_ATTEMPTS`
@@ -44,6 +45,15 @@ To disable AI while keeping webhook acknowledgement and operator access,
 disable both AI provider flags and route the conversation to the human queue.
 To disable ingestion, set `FORD_INGESTION_ENABLED=false` and leave canonical
 data available with its freshness status.
+
+## Runtime system prompt
+
+The default Spanish dealership prompt is versioned in
+`src/main/resources/prompts/ford-uruapan-system.md`. Operators can replace it
+at runtime through the authenticated `PUT /api/v1/operator/ai/system-prompt`
+endpoint. The request must include the latest `expectedVersion`; this prevents
+two CRM users from silently overwriting each other. Prompt content is not
+written to logs or telemetry.
 
 ## Rollback
 

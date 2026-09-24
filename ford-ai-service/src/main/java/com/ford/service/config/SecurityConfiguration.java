@@ -19,6 +19,7 @@ public class SecurityConfiguration {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/webhooks/meta/**", "/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/api/v1/operator/events/**").hasRole("OPERATOR")
+                        .requestMatchers("/api/v1/operator/ai/**").hasRole("OPERATOR")
                         .requestMatchers("/api/operator/**").hasRole("OPERATOR")
                         .anyRequest().permitAll())
                 .httpBasic(httpBasic -> {});

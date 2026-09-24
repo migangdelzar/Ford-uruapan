@@ -1,0 +1,17 @@
+databaseChangeLog:
+  - changeSet:
+      id: 005-ai-system-prompt
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              create table if not exists ai_system_prompt (
+                  id smallint primary key check (id = 1),
+                  content text not null,
+                  version bigint not null,
+                  updated_by varchar(160) not null,
+                  updated_at timestamptz not null
+              );
+      rollback:
+        - sql:
+            sql: drop table if exists ai_system_prompt;
