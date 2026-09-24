@@ -3,14 +3,15 @@
 ## Goal
 
 Deploy the production runtime to two OCI Always Free VMs from the local
-development machine using Mise, direct SSH, rsync, and Docker Compose while
+development machine using Mise, Ansible, direct SSH, and Docker Compose while
 keeping VM addresses and credentials outside Git.
 
 ## Approved approach
 
-Use direct SSH for the first version. Mise is the orchestration interface;
-SSH and rsync are the transport layer; Docker Compose is the remote runtime.
-The design must not depend on a particular IP address or cloud-specific SSH
+Use Ansible over direct SSH for the first version. Mise is the user-facing
+orchestration interface; Ansible is responsible for idempotent remote
+configuration and lifecycle; Docker Compose is the remote runtime. The design
+must not depend on a particular IP address or cloud-specific SSH
 implementation.
 
 The deployment supports two logical machines:
@@ -75,21 +76,21 @@ Always Free VMs. OTEL export is disabled by default for this footprint. The
 observability stack can be added later as an independent capability without
 changing the database or app deployment contracts.
 
-The application image is built locally for `linux/arm64`, streamed to `emme-1`
-with `docker save | ssh docker load`, and started by Compose. This avoids
-requiring a registry or a build toolchain on the VM.
+The application image is built locally for `linux/arm64`, transferred to
+`emme-1` by an Ansible task using Docker image/archive modules, and started by
+Compose. This avoids requiring a registry or a build toolchain on the VM.
 
 ## Mise orchestration interface
 
 The following commands are the public deployment interface:
 
 ```text
-deploy:check       Validate local tools, environment, SSH, Docker, and Compose.
-deploy:bootstrap   Create remote directories and validate runtime prerequisites.
-deploy:data        Upload and start PostgreSQL/Redis on emme-2.
+deploy:check       Validate local tools, environment, SSH, Ansible, and collections.
+deploy:bootstrap   Configure Docker and remote directories on both VMs.
+deploy:data        Configure and start PostgreSQL/Redis on emme-2.
 deploy:app         Build, transfer, configure, and start the app on emme-1.
 deploy:all         Bootstrap both VMs, deploy data, then deploy the app.
-deploy:status      Show remote Compose status for both VMs.
+deploy:status      Show Ansible/Docker status for both VMs.
 deploy:logs        Follow app or data logs remotely.
 deploy:restart     Restart app, data, or both by role.
 deploy:stop        Stop app, data, or both without removing volumes.
@@ -103,17 +104,21 @@ executes volume deletion or database reset.
 ## Deployment flow
 
 1. `deploy:check` loads `.env.deploy`, validates required variables, checks
-   `ssh`, `rsync`, `docker`, `docker compose`, and tests SSH connectivity.
-2. `deploy:bootstrap` creates `${EMME_REMOTE_ROOT}/app` and
-   `${EMME_REMOTE_ROOT}/data` with safe permissions and verifies Docker Compose
-   exists remotely.
-3. `deploy:data` transfers the data Compose file and its remote environment,
-   starts PostgreSQL and Redis, and waits for both health checks.
-4. `deploy:app` builds the ARM64 image, transfers the image and app Compose
-   file, writes the app environment, starts the service, and waits for
-   `/actuator/health` through the VM-local endpoint.
-5. `deploy:all` verifies that the app can resolve and connect to PostgreSQL
-   and Redis through `EMME_2_PRIVATE_IP`.
+   `ssh`, `ansible-playbook`, the pinned Ansible collection, and tests SSH
+   connectivity through the generated inventory.
+2. `deploy:bootstrap` runs the common Ansible role on both VMs. It verifies
+   Docker Compose, creates `${EMME_REMOTE_ROOT}/app` and
+   `${EMME_REMOTE_ROOT}/data` with safe permissions, and does not modify OCI
+   networking or create infrastructure.
+3. `deploy:data` runs the data role on `emme-2`, transfers the data Compose
+   file and its remote environment, starts PostgreSQL and Redis, and waits for
+   both health checks.
+4. `deploy:app` builds the ARM64 image, transfers it with Ansible, writes the
+   app environment, starts the service, and waits for `/actuator/health`
+   through the VM-local endpoint.
+5. `deploy:all` runs the playbook in dependency order and verifies that the
+   app can resolve and connect to PostgreSQL and Redis through
+   `EMME_2_PRIVATE_IP`.
 
 The remote app environment uses:
 
@@ -158,11 +163,12 @@ Remote checks:
 
 ## Alternatives considered
 
-### Ansible
+### Custom SSH and rsync scripts
 
-Ansible would provide richer inventory, idempotent package installation, and
-rolling deployment primitives. It adds another tool and inventory model for a
-two-VM deployment, so it is deferred until the topology grows.
+Custom SSH and rsync scripts would have fewer local dependencies, but they
+would duplicate idempotency, inventory, permissions, and Docker Compose state
+handling. Ansible is selected because those are the core requirements of this
+deployment.
 
 ### OCI Bastion first
 
