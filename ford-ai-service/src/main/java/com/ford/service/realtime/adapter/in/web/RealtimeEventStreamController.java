@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Map;
@@ -21,6 +23,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class RealtimeEventStreamController {
 
     private static final long EMITTER_TIMEOUT_MILLIS = 30 * 60 * 1000L;
+    private static final Logger log = LoggerFactory.getLogger(RealtimeEventStreamController.class);
 
     private final RealtimeEventHub hub;
     private final UUID defaultTenantId;
@@ -50,10 +53,16 @@ public final class RealtimeEventStreamController {
         registration.set(subscription);
         emitter.onCompletion(cleanup);
         emitter.onTimeout(() -> {
+            log.info("Operator event stream closed outcome=timeout");
             cleanup.run();
             emitter.complete();
         });
-        emitter.onError(error -> cleanup.run());
+        emitter.onError(error -> {
+            log.warn("Operator event stream closed outcome=error errorType={}",
+                    error == null ? "unknown" : error.getClass().getSimpleName());
+            cleanup.run();
+        });
+        log.info("Operator event stream connected");
         sendConnected(emitter, resolvedTenantId, cleanup);
         return emitter;
     }
@@ -65,6 +74,8 @@ public final class RealtimeEventStreamController {
                     .name("connected")
                     .data(Map.of("tenantId", tenantId)));
         } catch (IOException exception) {
+            log.warn("Operator event stream closed outcome=send_failure errorType={}",
+                    exception.getClass().getSimpleName());
             cleanup.run();
             emitter.completeWithError(exception);
         }
@@ -77,6 +88,8 @@ public final class RealtimeEventStreamController {
                     .name(event.type())
                     .data(event));
         } catch (IOException exception) {
+            log.warn("Operator event stream closed outcome=send_failure errorType={}",
+                    exception.getClass().getSimpleName());
             cleanup.run();
             emitter.completeWithError(exception);
         }

@@ -55,6 +55,18 @@ endpoint. The request must include the latest `expectedVersion`; this prevents
 two CRM users from silently overwriting each other. Prompt content is not
 written to logs or telemetry.
 
+## Application logging
+
+Production application logs use `INFO` for operational outcomes: startup,
+webhook rejection, inbound-message acceptance or deduplication, AI completion,
+outbox delivery, catalog synchronization, prompt changes, SSE lifecycle, and
+failures. These messages include bounded technical fields such as channel,
+outcome, error type, record counts, and `durationMs`.
+
+Request bodies, customer messages, prompts, tokens, phone numbers, provider
+payloads, and response bodies are never logged. Framework and database noise
+is reduced to `WARN`; `DEBUG` remains available for temporary diagnostics.
+
 ## Rollback
 
 Deploy the previous application image, preserve the database volume, and do not

@@ -20,6 +20,7 @@ services:
     depends_on:
       - postgres
       - redis
+      - otel-collector
     environment:
       FORD_DATABASE_URL: jdbc:postgresql://postgres:5432/ford_service
       FORD_DATABASE_USERNAME: ford
@@ -30,8 +31,86 @@ services:
       FORD_AI_CLOUD_ENABLED: ${FORD_AI_CLOUD_ENABLED:-false}
       FORD_AI_LOCAL_ENABLED: ${FORD_AI_LOCAL_ENABLED:-true}
       FORD_INGESTION_ENABLED: ${FORD_INGESTION_ENABLED:-false}
+      FORD_OTEL_TRACES_ENDPOINT: ${FORD_OTEL_TRACES_ENDPOINT:-http://otel-collector:4318/v1/traces}
     ports:
       - "8080:8080"
 
+  prometheus:
+    image: prom/prometheus:v3.8.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-7d}
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ../deployment/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ford-prometheus:/prometheus
+
+  loki:
+    image: grafana/loki:3.5.0
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki.yml
+    ports:
+      - "127.0.0.1:${LOKI_PORT:-3100}:3100"
+    volumes:
+      - ../deployment/observability/loki/loki.yml:/etc/loki/loki.yml:ro
+      - ford-loki:/loki
+
+  tempo:
+    image: grafana/tempo:2.8.0
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    ports:
+      - "127.0.0.1:${TEMPO_PORT:-3200}:3200"
+    volumes:
+      - ../deployment/observability/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - ford-tempo:/var/tempo
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.161.0
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ../deployment/observability/otel-collector/tempo-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on:
+      - tempo
+
+  alloy:
+    image: grafana/alloy:v1.8.3
+    restart: unless-stopped
+    command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+    ports:
+      - "127.0.0.1:${ALLOY_PORT:-12345}:12345"
+    volumes:
+      - ../deployment/observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ford-alloy:/var/lib/alloy
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:12.0.0
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be supplied}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ford-grafana:/var/lib/grafana
+      - ../deployment/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+
 volumes:
   ford-postgres:
+  ford-prometheus:
+  ford-loki:
+  ford-tempo:
+  ford-alloy:
+  ford-grafana:

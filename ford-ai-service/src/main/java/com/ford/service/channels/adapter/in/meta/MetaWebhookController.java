@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Locale;
@@ -25,6 +27,8 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/webhooks/meta")
 public final class MetaWebhookController {
+
+    private static final Logger log = LoggerFactory.getLogger(MetaWebhookController.class);
 
     private final List<ChannelAdapter> adapters;
     private final ChannelMessageService messageService;
@@ -48,8 +52,10 @@ public final class MetaWebhookController {
                 && properties.getVerifyToken().equals(verifyToken)
                 && challenge != null
                 && adapterFor(channel) != null) {
+            log.info("Meta webhook verification succeeded channel={}", channel);
             return ResponseEntity.ok(challenge);
         }
+        log.warn("Meta webhook verification rejected channel={}", channel);
         return ResponseEntity.badRequest().build();
     }
 
@@ -58,9 +64,12 @@ public final class MetaWebhookController {
             @PathVariable String channel,
             @RequestHeader(name = "X-Hub-Signature-256", required = false) String signature,
             @RequestBody String body) {
+        var started = System.nanoTime();
         try {
             var adapter = adapterFor(channel);
             if (adapter == null) {
+                log.warn("Meta webhook rejected channel={} outcome=unknown_channel durationMs={}",
+                        channel, elapsedMs(started));
                 return ResponseEntity.notFound().build();
             }
             var headers = new HashMap<String, String>();
@@ -72,10 +81,18 @@ public final class MetaWebhookController {
                     "meta:" + channel.toLowerCase(Locale.ROOT) + ":" + UUID.randomUUID()), adapter);
             return ResponseEntity.accepted().build();
         } catch (SecurityException exception) {
+            log.warn("Meta webhook rejected channel={} outcome=invalid_signature durationMs={}",
+                    channel, elapsedMs(started));
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         } catch (IllegalArgumentException exception) {
+            log.warn("Meta webhook rejected channel={} outcome=invalid_payload durationMs={}",
+                    channel, elapsedMs(started));
             return ResponseEntity.badRequest().build();
         }
+    }
+
+    private static long elapsedMs(long started) {
+        return (System.nanoTime() - started) / 1_000_000L;
     }
 
     private ChannelAdapter adapterFor(String channel) {

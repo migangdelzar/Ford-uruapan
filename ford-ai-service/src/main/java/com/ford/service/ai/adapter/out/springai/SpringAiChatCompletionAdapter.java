@@ -6,11 +6,15 @@ import com.ford.service.ai.application.port.out.ChatCompletionPort;
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantResponse;
 import org.springframework.ai.chat.client.ChatClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Objects;
 
 public final class SpringAiChatCompletionAdapter implements ChatCompletionPort {
+
+    private static final Logger log = LoggerFactory.getLogger(SpringAiChatCompletionAdapter.class);
 
     private final ChatClient client;
     private final String provider;
@@ -24,14 +28,28 @@ public final class SpringAiChatCompletionAdapter implements ChatCompletionPort {
 
     @Override
     public AssistantResponse complete(AssistantRequest request, ToolContext context) {
-        var content = client.prompt()
-                .system(systemPrompt.currentContent())
-                .user(request.message())
-                .call()
-                .content();
-        if (content == null || content.isBlank()) {
-            throw new IllegalStateException("AI provider returned an empty response");
+        var started = System.nanoTime();
+        try {
+            var content = client.prompt()
+                    .system(systemPrompt.currentContent())
+                    .user(request.message())
+                    .call()
+                    .content();
+            if (content == null || content.isBlank()) {
+                throw new IllegalStateException("AI provider returned an empty response");
+            }
+            log.info("AI completion finished provider={} outcome=success durationMs={}",
+                    provider, elapsedMs(started));
+            return new AssistantResponse(content.strip(), false, provider, List.of());
+        } catch (RuntimeException exception) {
+            log.error("AI completion failed provider={} outcome=failure durationMs={} errorType={}",
+                    provider, elapsedMs(started), exception.getClass().getSimpleName());
+            log.debug("AI completion failure details provider={}", provider, exception);
+            throw exception;
         }
-        return new AssistantResponse(content.strip(), false, provider, List.of());
+    }
+
+    private static long elapsedMs(long started) {
+        return (System.nanoTime() - started) / 1_000_000L;
     }
 }

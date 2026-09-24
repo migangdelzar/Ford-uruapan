@@ -6,6 +6,7 @@ spring:
       enabled: true
   main:
     keep-alive: true
+    banner-mode: off
   datasource:
     url: ${FORD_DATABASE_URL:jdbc:postgresql://localhost:5432/ford_service}
     username: ${FORD_DATABASE_USERNAME:ford}
@@ -42,6 +43,23 @@ spring:
       - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
 
+logging:
+  level:
+    root: INFO
+    com.ford.service: INFO
+    org.springframework: WARN
+    org.springframework.boot: INFO
+    org.springframework.modulith: WARN
+    org.springframework.security: WARN
+    org.springframework.web: WARN
+    org.springframework.jdbc: WARN
+    org.springframework.data: WARN
+    com.zaxxer.hikari: WARN
+    org.apache.catalina: WARN
+    org.apache.tomcat: WARN
+  pattern:
+    correlation: "[trace_id=%X{traceId:-},span_id=%X{spanId:-}] "
+
 ford:
   ingestion:
     enabled: ${FORD_INGESTION_ENABLED:false}
@@ -68,6 +86,9 @@ ford:
     local-enabled: ${FORD_AI_LOCAL_ENABLED:true}
 
 management:
+  metrics:
+    tags:
+      application: ${spring.application.name}
   otlp:
     metrics:
       export:

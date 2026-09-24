@@ -21,6 +21,7 @@ operator handoff.
 ## Run locally
 
 ```bash
+printf 'GRAFANA_ADMIN_PASSWORD=replace-with-a-secret\n' > .env
 docker compose up --build
 ```
 

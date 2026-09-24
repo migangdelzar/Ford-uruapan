@@ -6,6 +6,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.io.ResourceLoader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +20,7 @@ import java.util.Objects;
 public class SystemPromptService {
 
     public static final int MAX_CONTENT_LENGTH = 32_000;
+    private static final Logger log = LoggerFactory.getLogger(SystemPromptService.class);
 
     private final SystemPromptRepository repository;
     private final String seedContent;
@@ -50,15 +53,26 @@ public class SystemPromptService {
 
     @Transactional
     public SystemPromptSnapshot replace(String content, long expectedVersion, String updatedBy) {
+        var started = System.nanoTime();
         if (expectedVersion < 0) {
             throw new IllegalArgumentException("expectedVersion must not be negative");
         }
         var normalizedContent = validateContent(content);
         var actor = updatedBy == null || updatedBy.isBlank() ? "operator" : updatedBy;
-        var updated = repository.replace(normalizedContent, expectedVersion, actor)
-                .orElseThrow(() -> new VersionConflictException(expectedVersion));
-        events.publishEvent(new SystemPromptChanged(updated.version(), updated.updatedBy(), updated.updatedAt()));
-        return updated;
+        var updated = repository.replace(normalizedContent, expectedVersion, actor);
+        if (updated.isEmpty()) {
+            log.warn("System prompt update rejected outcome=version_conflict expectedVersion={} durationMs={}",
+                    expectedVersion, elapsedMs(started));
+            throw new VersionConflictException(expectedVersion);
+        }
+        var snapshot = updated.get();
+        events.publishEvent(new SystemPromptChanged(snapshot.version(), snapshot.updatedBy(), snapshot.updatedAt()));
+        log.info("System prompt updated version={} durationMs={}", snapshot.version(), elapsedMs(started));
+        return snapshot;
+    }
+
+    private static long elapsedMs(long started) {
+        return (System.nanoTime() - started) / 1_000_000L;
     }
 
     private static String validateContent(String content) {

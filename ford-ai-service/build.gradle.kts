@@ -35,6 +35,7 @@ dependencies {
     implementation(libs.spring.ai.starter.model.ollama)
     implementation(libs.spring.ai.starter.model.openai)
     implementation(libs.spring.ai.starter.vector.store.pgvector)
+    runtimeOnly("io.micrometer:micrometer-registry-prometheus")
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.security.test)

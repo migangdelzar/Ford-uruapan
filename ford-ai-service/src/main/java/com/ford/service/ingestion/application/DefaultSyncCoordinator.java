@@ -21,8 +21,12 @@ import java.util.List;
 import java.util.UUID;
 import java.util.Map;
 import java.util.function.Supplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class DefaultSyncCoordinator implements SyncCoordinator {
+
+    private static final Logger log = LoggerFactory.getLogger(DefaultSyncCoordinator.class);
 
     private final FordCatalogSource catalogSource;
     private final FordInventorySource inventorySource;
@@ -72,6 +76,7 @@ public final class DefaultSyncCoordinator implements SyncCoordinator {
     }
 
     private SyncResult runInternal(SyncRequest request) {
+        var started = System.nanoTime();
         var syncRunId = UUID.randomUUID();
         syncRunRepository.start(syncRunId, request);
         var snapshots = new ArrayList<SourceSnapshot>();
@@ -82,6 +87,9 @@ public final class DefaultSyncCoordinator implements SyncCoordinator {
             snapshots.add(fetch(() -> manualSource.fetchManual(request)));
         } catch (RuntimeException exception) {
             syncRunRepository.fail(syncRunId, safeMessage(exception));
+            log.error("Catalog synchronization failed outcome=failure durationMs={} errorType={}",
+                    elapsedMs(started), exception.getClass().getSimpleName());
+            log.debug("Catalog synchronization failure details", exception);
             return new SyncResult(syncRunId, SyncResult.Status.FAILED, 0, 0, 0, false, safeMessage(exception));
         }
 
@@ -99,6 +107,9 @@ public final class DefaultSyncCoordinator implements SyncCoordinator {
         var syncResult = new SyncResult(syncRunId, SyncResult.Status.COMPLETED,
                 unique.size() + quarantined, unique.size(), quarantined, stale, null);
         syncRunRepository.complete(syncRunId, syncResult);
+        log.info("Catalog synchronization completed outcome=success recordsSeen={} recordsApplied={} recordsQuarantined={} staleData={} durationMs={}",
+                syncResult.recordsSeen(), syncResult.recordsApplied(), syncResult.recordsQuarantined(),
+                syncResult.staleDataMarked(), elapsedMs(started));
         return syncResult;
     }
 
@@ -129,5 +140,9 @@ public final class DefaultSyncCoordinator implements SyncCoordinator {
     private static String safeMessage(Throwable exception) {
         var message = exception.getMessage();
         return message == null || message.isBlank() ? exception.getClass().getSimpleName() : message;
+    }
+
+    private static long elapsedMs(long started) {
+        return (System.nanoTime() - started) / 1_000_000L;
     }
 }
