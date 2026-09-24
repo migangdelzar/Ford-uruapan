@@ -10,17 +10,43 @@ render_deploy_inventory
 
 ensure_deploy_state_dir
 image="${EMME_APP_IMAGE:-ford-service:deployment}"
-archive="$(deploy_state_dir)/app-image.tar"
 if [[ "$image" == ghcr.io/* && -n "${GHCR_TOKEN:-}" ]]; then
   ansible_command "$(deploy_repo_root)/deployment/ansible/site.yml" \
     --tags common,app,verify --limit app \
     -e "app_image=$image" "$@"
 else
-  docker buildx build --platform linux/arm64 --load -t "$image" "$MISE_PROJECT_ROOT"
-  docker save --output "$archive" "$image"
+  if docker buildx version >/dev/null 2>&1; then
+    docker buildx build --platform linux/arm64 --load -t "$image" "$MISE_PROJECT_ROOT"
+  else
+    docker_architecture="$(docker info --format '{{.Architecture}}')"
+    case "$docker_architecture" in
+      aarch64|arm64)
+        docker build --platform linux/arm64 -t "$image" "$MISE_PROJECT_ROOT"
+        ;;
+      *)
+        echo "Docker buildx is unavailable and the Docker daemon is not ARM64 ($docker_architecture)." >&2
+        exit 1
+        ;;
+    esac
+  fi
+  remote_build_dir="/tmp/ford-service-build-$$"
+  tar \
+    --exclude=.git \
+    --exclude=.gradle \
+    --exclude=build \
+    --exclude=bin \
+    --exclude=.mise \
+    --exclude=.env \
+    -czf - \
+    -C "$MISE_PROJECT_ROOT" . | ssh \
+    -o BatchMode=yes \
+    -o ConnectTimeout=10 \
+    -o StrictHostKeyChecking=accept-new \
+    -i "${EMME_1_SSH_KEY:-${OCI_SSH_PRIVATE_KEY}}" \
+    "${OCI_SSH_USER}@${EMME_1_SSH_HOST}" \
+    "set -e; rm -rf '$remote_build_dir'; mkdir -p '$remote_build_dir'; gzip -d | tar -xf - -C '$remote_build_dir'; docker build --platform linux/arm64 -t '$image' '$remote_build_dir'; rm -rf '$remote_build_dir'"
   ansible_command "$(deploy_repo_root)/deployment/ansible/site.yml" \
     --tags common,app,verify --limit app \
-    -e "app_image_archive=$archive" \
+    -e "app_image_preloaded=true" \
     -e "app_image=$image" "$@"
-  rm -f "$archive"
 fi
