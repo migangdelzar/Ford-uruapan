@@ -25,3 +25,46 @@ test("collector contract includes OTLP, protection, redaction, and Langfuse expo
   assert.match(source, /attributes\/redaction/);
   assert.match(source, /langfuse/);
 });
+
+test("cloud collector profile dual-exports redacted traces to Tempo and Langfuse", async () => {
+  const source = await read("deployment/observability/otel-collector/cloud-tempo-config.yaml");
+  assert.match(source, /basicauth\/langfuse/);
+  assert.match(source, /LANGFUSE_PUBLIC_KEY/);
+  assert.match(source, /LANGFUSE_SECRET_KEY/);
+  assert.match(source, /LANGFUSE_OTLP_ENDPOINT/);
+  assert.match(source, /otlphttp\/tempo/);
+  assert.match(source, /otlphttp\/langfuse/);
+  assert.match(source, /exporters: \[otlphttp\/tempo, otlphttp\/langfuse\]/);
+  assert.match(source, /attributes\/redaction/);
+  assert.match(source, /gen_ai\.prompt/);
+  assert.match(source, /gen_ai\.completion/);
+});
+
+test("application Compose exposes the cloud collector profile without embedding credentials", async () => {
+  const source = await read("ford-ai-service/docker-compose.yml");
+  assert.match(source, /OTEL_COLLECTOR_CONFIG:-tempo-config\.yaml/);
+  assert.match(source, /LANGFUSE_OTLP_ENDPOINT/);
+  assert.match(source, /LANGFUSE_PUBLIC_KEY/);
+  assert.match(source, /LANGFUSE_SECRET_KEY/);
+  assert.doesNotMatch(source, /sk-lf-|pk-lf-/);
+});
+
+test("Mise exposes a complete cloud telemetry lifecycle", async () => {
+  const taskPaths = [
+    "start",
+    "stop",
+    "restart",
+    "status",
+    "check",
+  ];
+
+  for (const task of taskPaths) {
+    await read(`ford-ai-service/.mise/tasks/telemetry/cloud/${task}`);
+  }
+
+  const start = await read("ford-ai-service/.mise/tasks/telemetry/cloud/start");
+  const composeLibrary = await read("ford-ai-service/.mise/lib/compose.sh");
+  assert.match(start, /OTEL_COLLECTOR_CONFIG=cloud-tempo-config\.yaml/);
+  assert.match(composeLibrary, /LANGFUSE_PUBLIC_KEY/);
+  assert.match(composeLibrary, /LANGFUSE_SECRET_KEY/);
+});

@@ -61,4 +61,6 @@ test("observability workflow validates Compose and collector configuration", asy
   assert.match(source, /docker compose/);
   assert.match(source, /otel\/opentelemetry-collector-contrib:0\.161\.0/);
   assert.match(source, /validate --config/);
+  assert.match(source, /cloud-tempo-config\.yaml/);
+  assert.match(source, /LANGFUSE_PUBLIC_KEY/);
 });
