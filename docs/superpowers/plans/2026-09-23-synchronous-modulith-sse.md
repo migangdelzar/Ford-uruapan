@@ -93,7 +93,7 @@ Run both realtime and channel event tests; expected result is `BUILD SUCCESSFUL`
 - Test: `ford-ai-service/src/test/java/com/ford/service/realtime/RealtimeEventStreamControllerTest.java`
 
 **Interfaces:**
-- `GET /api/operator/events/stream?tenantId={uuid}` returns `text/event-stream`.
+- `GET /api/v1/operator/events/stream?tenantId={uuid}` returns `text/event-stream`.
 - Each event uses its envelope ID as SSE `id`, envelope type as SSE `event`, and the envelope as JSON `data`.
 - Client disconnect or send failure removes its registration.
 
@@ -112,7 +112,7 @@ Register an emitter with the hub, send an initial `connected` event, and registe
 
 - [ ] **Step 4: Secure the endpoint**
 
-Require `ROLE_OPERATOR` for `/api/operator/events/**` while leaving webhook and actuator rules unchanged.
+Require `ROLE_OPERATOR` for `/api/v1/operator/events/**` while leaving webhook and actuator rules unchanged.
 
 - [ ] **Step 5: Run focused MVC tests and verify they pass**
 

@@ -15,7 +15,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 @RestController
-@RequestMapping("/api/operator/events")
+@RequestMapping("/api/v1/operator/events")
 public final class RealtimeEventStreamController {
 
     private static final long EMITTER_TIMEOUT_MILLIS = 30 * 60 * 1000L;

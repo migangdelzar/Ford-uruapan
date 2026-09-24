@@ -4,6 +4,7 @@ import com.ford.service.realtime.adapter.in.web.RealtimeEventStreamController;
 import com.ford.service.realtime.application.RealtimeEventHub;
 import com.ford.service.realtime.domain.FrontendEvent;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.time.Instant;
 import java.util.Map;
@@ -18,6 +19,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RealtimeEventStreamControllerTest {
+
+    @Test
+    void exposesVersionedOperatorEventsRoute() {
+        assertThat(RealtimeEventStreamController.class.getAnnotation(RequestMapping.class).value())
+                .containsExactly("/api/v1/operator/events");
+    }
 
     @Test
     void registersSseClientForRequestedTenant() {

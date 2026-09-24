@@ -62,7 +62,7 @@ class ToolAndWebhookSecurityTest {
 
     @Test
     void rejectsAnonymousRealtimeStreamRequest() throws Exception {
-        mockMvc.perform(get("/api/operator/events/stream")
+        mockMvc.perform(get("/api/v1/operator/events/stream")
                         .queryParam("tenantId", UUID.randomUUID().toString()))
                 .andExpect(status().isUnauthorized());
     }

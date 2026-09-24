@@ -26,7 +26,7 @@ Internal events are typed records and are not exposed directly to the browser. F
 
 ## Security and operations
 
-The stream endpoint is under `/api/operator/events/stream`, matching the existing operator security boundary. Tenant identity is supplied by the current operator request convention until the application's authenticated tenant claim/context is introduced; the event hub still enforces tenant equality for every subscription. Heartbeats are not added in this first slice; they can be added when deployment proxy timeout values are known.
+The stream endpoint is under `/api/v1/operator/events/stream`, matching the existing operator security boundary. Tenant identity is supplied by the current operator request convention until the application's authenticated tenant claim/context is introduced; the event hub still enforces tenant equality for every subscription. Heartbeats are not added in this first slice; they can be added when deployment proxy timeout values are known.
 
 ## Verification
 
