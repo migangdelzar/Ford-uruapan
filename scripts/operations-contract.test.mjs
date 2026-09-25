@@ -148,6 +148,7 @@ test("one Mise task collects and protects deployment secrets before propagation"
     "FORD_OPERATOR_PASSWORD",
     "FORD_META_APP_SECRET",
     "FORD_META_VERIFY_TOKEN",
+    "GHCR_USERNAME",
     "GRAFANA_CLOUD_API_TOKEN",
     "LANGFUSE_SECRET_KEY"
   ]) {
@@ -170,6 +171,8 @@ test("deployment config preserves externally supplied secret values", async () =
 
   assert.match(remote, /preserved_meta_app_secret/);
   assert.match(remote, /export FORD_META_APP_SECRET=/);
+  assert.match(remote, /preserved_ghcr_username/);
+  assert.match(remote, /export GHCR_USERNAME=/);
   assert.match(remote, /adopt_environment_secret/);
   assert.match(secretsTask, /adopt_environment_secret/);
   assert.match(secretsTask, /FORD_META_APP_SECRET/);
