@@ -11,9 +11,9 @@ Give each Ford sales lead a durable, useful sense of progress across messages wi
 
 - `LeadStage` represents the broad CRM lifecycle (`NEW`, `QUALIFYING`, `QUALIFIED`, `CONVERTED`, `LOST`); it is not a sales-journey step.
 - `LeadQualificationPolicy` infers broad lifecycle/temperature from lexical signals in the current message and recent memory. It must not become the source of truth for detailed sales progress.
-- `conversation` and `lead` are tenant-scoped PostgreSQL records, with one lead currently linked to a conversation. `LeadProfile` is a domain value but does not itself provide durable journey state.
+- `conversation` and `lead` are tenant-scoped PostgreSQL records, but inbound chat does not currently create a CRM `lead` row. `LeadProfile` is a domain value but does not itself provide durable journey state.
 - `ConversationWorkflow` loads transcript memory and invokes the assistant. Conversation memory is for dialogue continuity; it is not a reliable workflow checkpoint.
-- Spring AI 2.0.1 and the existing `ChatClient`, MCP/tool authorization, Ford tools, conversation memory, and outbox are the project baseline. Spring AI's tool-calling loop is an advisor-chain capability; this design does not require a second agent framework.
+- Spring AI 2.0.1 and the existing `ChatClient`, MCP/tool authorization, Ford tools, conversation memory, and outbox are the project baseline. The final assistant result should carry both customer-facing text and a bounded structured journey proposal from the same tool-enabled `ChatClient` call; do not add a separate model round trip. Spring AI's tool-calling loop is an advisor-chain capability; this design does not require a second agent framework.
 
 ## Core design
 
@@ -22,7 +22,7 @@ Model the journey as **durable milestones plus a current user goal**, not a sing
 Keep three concerns separate:
 
 1. **Conversation memory:** recent turns and compact dialogue context for resolving references and avoiding repeated answers.
-2. **Lead journey:** tenant-scoped confirmed facts, completed milestones, current goal, and any unresolved question/action.
+2. **Lead journey:** tenant/conversation-scoped confirmed facts, completed milestones, current goal, and any unresolved question/action; link the CRM `lead` when one exists.
 3. **CRM lifecycle/qualification:** existing lead status, score, and temperature; these remain business reporting signals and do not drive a forced conversation script.
 
 ### Journey milestones
@@ -51,9 +51,9 @@ Replies should sound natural and concise, answer first, and usually end with no 
 
 ### Durable state contract
 
-Persist one bounded journey snapshot in a focused `lead_journey` table, keyed by the existing lead and tenant. Keep it separate from the `lead` CRM profile so conversational progress does not become CRM lifecycle or an unbounded profile document. Validate the JSON snapshot's allowed keys and maximum size in the domain boundary. The logical snapshot contains:
+Persist one bounded journey snapshot in a focused `lead_journey` table, keyed by tenant and conversation, with an optional link to the CRM `lead`. A conversation is the available durable identity for an unqualified prospect; do not require creation of a CRM lead just to remember chat progress. Keep the table separate from the `lead` CRM profile so conversational progress does not become CRM lifecycle or an unbounded profile document. Validate the JSON snapshot's allowed keys and maximum size in the domain boundary. The logical snapshot contains:
 
-- tenant, lead, and conversation identifiers;
+- tenant and conversation identifiers, plus nullable lead identifier;
 - current goal (nullable), paused goal keys, and independently completed milestones;
 - confirmed facts as typed keys/values with provenance (`USER`, `FORD_SOURCE`, or `OPERATOR`), reference identifier, and observation time;
 - the last unresolved question/action key and retry count, so the agent can avoid repeating the same unresolved question on consecutive turns and can offer a skip/alternative;
@@ -61,11 +61,12 @@ Persist one bounded journey snapshot in a focused `lead_journey` table, keyed by
 
 Do not copy raw transcript text, credentials, payment-card data, government IDs, or detailed bank/credit data into this snapshot. Existing transcript storage remains the conversation history. Use only the minimum sales facts needed for continuity.
 
-All reads and writes are scoped by tenant and lead/conversation. A conversation must never load another lead's journey. Concurrent updates use optimistic locking; a stale update must not overwrite newer confirmed facts. Reuse the existing durable inbound/outbound idempotency boundary; if it does not cover journey writes, add a unique per-lead/per-provider-message receipt rather than relying only on a single `last_processed_message_id` field.
+All reads and writes are scoped by tenant and conversation; when linked, verify the lead belongs to the same tenant and conversation. A conversation must never load another tenant's journey. Concurrent updates use optimistic locking; a stale update must not overwrite newer confirmed facts. Reuse the existing durable inbound/outbound idempotency boundary; if it does not cover journey writes, add a unique per-conversation/per-provider-message receipt rather than relying only on a single `last_processed_message_id` field. Cross-channel identity matching and merging multiple conversations into one person/lead are out of scope.
 
 ## Agent and guardrail boundary
 
 - The model is responsible for understanding free-form messages, handling interruptions naturally, composing a response, and proposing one next step.
+- The model returns a typed result containing the reply and optional journey proposal. The application validates and applies the proposal only after the response is accepted. If structured conversion fails, use existing safe provider recovery and leave journey state unchanged.
 - Existing Ford MCP/RAG tools remain the source of business facts. Existing tool authorization remains the gate on which tool families can run.
 - Deterministic code is retained for security, tenant isolation, consent, input validation, tool authorization, supported state transitions, idempotency, source freshness checks, and appointment/financial disclaimers.
 - Remove keyword-derived detailed journey progression from the design. Do not add phrase-specific normal-sales routing or a fixed stage-by-stage scripted response system.
@@ -89,7 +90,7 @@ All reads and writes are scoped by tenant and lead/conversation. A conversation 
 
 The feature is acceptable when:
 
-- The same lead can ask a vehicle question, return later about a promotion, then ask about financing without re-answering completed discovery questions.
+- The same conversation can ask a vehicle question, return later about a promotion, then ask about financing without re-answering completed discovery questions; the state survives process restart even when no CRM lead row exists.
 - A promotion question is answered before any unrelated qualification question, and only from a fixture/live authorized source result; a missing/stale source never produces fabricated details.
 - A lead may jump directly to financing or a test drive, interrupt the journey, correct a fact, decline a question, and resume later without losing unrelated progress.
 - Known facts and the unresolved question are loaded on a new turn and survive process restart.
@@ -100,7 +101,7 @@ The feature is acceptable when:
 
 ## Scope and non-goals
 
-- Backend conversation behavior and durable per-lead journey state only; no new operator UI/API is required for the first slice unless implementation discovery proves one is necessary for safe operation.
+- Backend conversation behavior and durable per-conversation journey state, optionally linked to a CRM lead; no new operator UI/API or cross-channel identity matching is required for the first slice unless implementation discovery proves one is necessary for safe operation.
 - No proactive campaign/follow-up scheduler, CRM replacement, lender approval, automated vehicle reservation, or unverified appointment booking.
 - No reactivation of human handoff as part of this design; the current deployment has human handoff disabled.
 - No new model provider, RAG system, or write-capable MCP tool.
@@ -109,8 +110,7 @@ The feature is acceptable when:
 ## Open implementation decisions
 
 1. Trace the actual turn transaction and durable inbound/outbound idempotency boundary. Add only the smallest missing receipt/recovery state needed to make journey writes safe; do not introduce an independent retry mechanism.
-2. Define the structured assistant result for journey patches using the project's supported Spring AI 2.0.1 APIs; validate proposed facts against current-user evidence and tool outcomes before persistence.
-3. Verify which Ford MCP/RAG capabilities are actually available for promotion, inventory, finance estimates, and appointment lookup; unsupported actions remain informational-only.
+2. Verify which Ford MCP/RAG capabilities are actually available for promotion, inventory, finance estimates, and appointment lookup; unsupported actions remain informational-only.
 
 ## References
 
