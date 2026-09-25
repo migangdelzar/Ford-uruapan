@@ -13,6 +13,7 @@ import com.ford.service.ai.application.SensitiveDataLevel;
 import com.ford.service.ai.application.ToolFamily;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
 import com.ford.service.ai.application.ToolContext;
+import com.ford.service.ai.application.SystemPromptService;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.tool.ToolCallback;
@@ -89,6 +90,39 @@ class SpringAiChatCompletionAdapterTest {
                 .isLessThan(system.getValue().indexOf("Hola"));
         assertThat(system.getValue().indexOf("Hola"))
                 .isLessThan(system.getValue().indexOf("azul"));
+    }
+
+    @Test
+    void appendsDynamicDecisionAndMemoryContextToTheConfiguredSystemPrompt() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        var promptService = mock(SystemPromptService.class);
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        when(promptService.currentContent()).thenReturn("CUSTOM FORD PROMPT");
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("Respuesta contextual.");
+
+        var decision = new ConversationDecision(ConversationIntent.OFFERS, LeadTemperature.WARM,
+                LeadStage.QUALIFYING, HandoffRecommendation.NONE, ToolFamily.OFFERS,
+                SensitiveDataLevel.NONE, List.of());
+        var adapter = new SpringAiChatCompletionAdapter(client, "openrouter",
+                new ToolAuthorizationPolicy(), new DecisionPolicy(), promptService);
+
+        adapter.complete(new AssistantRequest(tenantId, conversationId, "¿Qué promociones hay?",
+                        "BOT_ACTIVE", "Resumen: ya preguntó por Ranger", false, decision),
+                new ToolContext(tenantId, conversationId));
+
+        var system = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(requestSpec).system(system.capture());
+        assertThat(system.getValue()).contains("CUSTOM FORD PROMPT")
+                .contains("intent=offers")
+                .contains("ya preguntó por Ranger");
     }
 
     @Test

@@ -91,6 +91,24 @@ class ConversationWorkflowTest {
     }
 
     @Test
+    void usesTheAcceptedEventTextInsteadOfAStaleConversationSnapshot() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var repository = new RecordingConversationRepository(snapshot(
+                tenantId, conversationId, ConversationState.BOT_ACTIVE, 4));
+        var assistant = new RecordingAssistant(new AssistantReply("Respuesta actual", false));
+
+        new ConversationWorkflow(repository, assistant, new RecordingPublisher(),
+                new HumanHandoffPolicy(false), memoryService()).on(new InboundMessageAccepted(
+                UUID.randomUUID(), tenantId, conversationId, Channel.WHATSAPP,
+                "wamid.latest", Instant.now(), "customer-1", "¿Qué promociones hay?"));
+
+        assertThat(assistant.requests).singleElement()
+                .extracting(ConversationTurnRequest::message)
+                .isEqualTo("¿Qué promociones hay?");
+    }
+
+    @Test
     void humanActiveConversationDoesNotInvokeAssistantOrPublishReply() {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();

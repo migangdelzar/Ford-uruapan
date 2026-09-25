@@ -45,6 +45,15 @@ class DecisionPolicyTest {
     }
 
     @Test
+    void exposesAllAvailableReadOnlyToolsWhenTheIntentIsUncertain() {
+        var decision = decision(ToolFamily.NONE);
+
+        assertThat(policy.allowedToolNames(decision,
+                Set.of("search_vehicles", "list_promotions", "approved_knowledge_search")))
+                .containsExactlyInAnyOrder("search_vehicles", "list_promotions", "approved_knowledge_search");
+    }
+
+    @Test
     void exposesOnlyMcpVehicleToolsForVehicleInformation() {
         var decision = decision(ToolFamily.VEHICLE_DETAILS);
 

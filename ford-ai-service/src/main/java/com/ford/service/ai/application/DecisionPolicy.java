@@ -21,8 +21,14 @@ public final class DecisionPolicy {
     }
 
     public Set<String> allowedToolNames(ConversationDecision decision, Set<String> availableTools) {
-        if (decision == null || availableTools == null || decision.toolFamily() == ToolFamily.NONE) {
+        if (availableTools == null) {
             return Set.of();
+        }
+        if (decision == null || decision.toolFamily() == ToolFamily.NONE) {
+            // A rules/low-confidence classifier may not know the exact family yet.
+            // Keep the model fail-safe (read-only tools only), but let it search the
+            // Ford catalog, offers, and approved knowledge before answering.
+            return Set.copyOf(availableTools);
         }
         var allowed = TOOL_NAMES.getOrDefault(decision.toolFamily(), Set.of());
         return availableTools.stream()

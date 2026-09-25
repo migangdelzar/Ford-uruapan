@@ -29,6 +29,12 @@ class IntentRouterTest {
     }
 
     @Test
+    void routesFordLoboToVehicleCatalog() {
+        assertThat(router.route("Me interesa una Ford Lobo"))
+                .isEqualTo(Intent.CATALOG);
+    }
+
+    @Test
     void routesExplicitHumanPurchaseRequestToLeadHandoff() {
         assertThat(router.route("Quiero comprarla este mes, que me llame un asesor"))
                 .isEqualTo(Intent.LEAD_HANDOFF);

@@ -24,7 +24,8 @@ public final class IntentRouter {
         if (containsAny(normalized, "garantía", "garantia", "especificación", "especificaciones", "motor")) {
             return Intent.KNOWLEDGE;
         }
-        if (containsAny(normalized, "precio", "modelo", "version", "versión", "ranger", "bronco", "maverick")) {
+        if (containsAny(normalized, "precio", "modelo", "version", "versión", "ranger", "bronco", "maverick",
+                "lobo", "pickup", "pick-up", "camioneta", "f-150")) {
             return Intent.CATALOG;
         }
         return Intent.GENERAL;

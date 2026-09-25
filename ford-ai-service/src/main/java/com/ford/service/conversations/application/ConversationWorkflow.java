@@ -100,14 +100,19 @@ public class ConversationWorkflow {
             return;
         }
 
+        // The event is the authoritative turn. The conversation row can already
+        // contain a newer message when webhooks are processed concurrently.
+        var currentMessage = event.text() == null || event.text().isBlank()
+                ? snapshot.inboundText() : event.text();
+
         var memoryKey = new ConversationMemoryKey(snapshot.tenantId(), snapshot.channel(),
                 snapshot.providerAccountId(), snapshot.recipientId(), snapshot.conversationId());
-        memoryService.recordInbound(memoryKey, event.receiptId(), event.providerMessageId(), event.text(),
+        memoryService.recordInbound(memoryKey, event.receiptId(), event.providerMessageId(), currentMessage,
                 event.acceptedAt());
-        var memory = memoryService.load(new MemoryQuery(memoryKey, snapshot.inboundText(),
+        var memory = memoryService.load(new MemoryQuery(memoryKey, currentMessage,
                 snapshot.providerMessageId()));
         var reply = assistant.respond(new ConversationTurnRequest(
-                snapshot.tenantId(), snapshot.conversationId(), snapshot.inboundText(), snapshot.state(), memory));
+                snapshot.tenantId(), snapshot.conversationId(), currentMessage, snapshot.state(), memory));
         try {
             decisionRepository.save(snapshot.conversationId(), event.providerMessageId(), reply.decision());
         } catch (RuntimeException exception) {
