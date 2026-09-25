@@ -87,6 +87,12 @@ class ConversationWorkflowTest {
         assertThat(memoryPort.inbound).isNotNull();
         assertThat(memoryPort.inbound.providerMessageId()).isEqualTo("wamid.memory");
         assertThat(memoryPort.inbound.content()).isEqualTo("¿Hay Ranger?");
+        assertThat(memoryPort.outbound).isNotNull();
+        assertThat(memoryPort.outbound.direction()).isEqualTo(ConversationMessage.Direction.OUTBOUND);
+        assertThat(memoryPort.outbound.content()).isEqualTo("Respuesta");
+        assertThat(memoryPort.outbound.providerMessageId())
+                .startsWith("assistant:")
+                .hasSize(46);
         assertThat(memoryPort.invalidated).isEqualTo(conversationId);
     }
 
@@ -278,6 +284,7 @@ class ConversationWorkflowTest {
 
     private static final class RecordingMemoryPort implements ConversationMemoryPort {
         private ConversationMessage inbound;
+        private ConversationMessage outbound;
         private UUID invalidated;
 
         @Override
@@ -292,6 +299,7 @@ class ConversationWorkflowTest {
 
         @Override
         public void recordOutbound(ConversationMemoryKey key, ConversationMessage message) {
+            outbound = message;
         }
 
         @Override
