@@ -148,11 +148,13 @@ test("Ansible accepts the source Ford MCP configuration names", async () => {
   const remote = await read("ford-ai-service/.mise/lib/remote.sh");
   const secrets = await read("ford-ai-service/.mise/tasks/deploy/secrets");
 
-  for (const variable of ["FORD_MCP_URL", "FORD_MCP_ENDPOINT", "FORD_MCP_API_TOKEN"]) {
+  for (const variable of ["FORD_MCP_URL", "FORD_MCP_ENDPOINT", "FORD_MCP_TOKEN"]) {
     assert.match(example, new RegExp(`^${variable}=`, "m"), `${variable} must be documented`);
     assert.match(remote, new RegExp(variable), `${variable} must reach the inventory`);
   }
+  assert.match(remote, /FORD_MCP_API_TOKEN/);
   assert.match(secrets, /FORD_MCP_API_TOKEN/);
+  assert.match(secrets, /FORD_MCP_TOKEN/);
 });
 
 test("app deployment transfers local images and checks the webhook route", async () => {
