@@ -68,3 +68,71 @@ test("OCI backup identity is declarative and reproducible", async () => {
   assert.match(deployBackupTask, /backup\.yml/);
   assert.match(backupPlaybook, /roles:\n\s+- backup/);
 });
+
+test("Ansible propagates the complete Meta webhook configuration", async () => {
+  const example = await read("deployment/config/oci.env.example");
+  const remote = await read("ford-ai-service/.mise/lib/remote.sh");
+  const template = await read("deployment/ansible/roles/app/templates/app.env.j2");
+
+  for (const variable of [
+    "FORD_META_APP_SECRET",
+    "FORD_META_VERIFY_TOKEN",
+    "FORD_META_AUTO_BINDING_ENABLED",
+    "FORD_META_PROVIDER_ACCOUNT_ID",
+    "FORD_TENANT_ID"
+  ]) {
+    assert.match(example, new RegExp(`^${variable}=`, "m"), `${variable} must be documented`);
+  }
+
+  assert.match(remote, /FORD_META_APP_SECRET/);
+  assert.match(remote, /FORD_META_VERIFY_TOKEN/);
+  assert.match(remote, /FORD_META_AUTO_BINDING_ENABLED/);
+  assert.match(remote, /FORD_META_PROVIDER_ACCOUNT_ID/);
+  assert.match(remote, /FORD_TENANT_ID/);
+  assert.match(remote, /ford_meta_auto_binding_enabled/);
+  assert.match(remote, /ford_meta_provider_account_id/);
+  assert.match(remote, /ford_tenant_id/);
+
+  for (const variable of [
+    "FORD_META_APP_SECRET",
+    "FORD_META_VERIFY_TOKEN",
+    "FORD_META_AUTO_BINDING_ENABLED",
+    "FORD_META_PROVIDER_ACCOUNT_ID",
+    "FORD_TENANT_ID"
+  ]) {
+    assert.match(template, new RegExp(`^${variable}=`, "m"), `${variable} must reach app.env.j2`);
+  }
+});
+
+test("app deployment transfers local images and checks the webhook route", async () => {
+  const appTask = await read("ford-ai-service/.mise/tasks/deploy/app");
+  const appRole = await read("deployment/ansible/roles/app/tasks/main.yml");
+  const playbook = await read("deployment/ansible/site.yml");
+
+  assert.match(appTask, /docker save/);
+  assert.match(appTask, /app_image_archive/);
+  assert.match(appTask, /app_image_preloaded=true/);
+  assert.match(appTask, /app_image_preloaded=false|unset|archive/);
+  assert.match(appTask, /ghcr\.io\/\*/);
+  assert.match(appRole, /docker pull/);
+  assert.match(appRole, /ghcr\.io/);
+  assert.match(playbook, /webhooks\/meta\/whatsapp/);
+  assert.match(playbook, /status_code: 400/);
+});
+
+test("GHCR publication is exposed through a Mise task", async () => {
+  const task = "ford-ai-service/.mise/tasks/release/publish";
+  const source = await read(task);
+  assert.match(source, /docker buildx build/);
+  assert.match(source, /docker push/);
+  assert.match(source, /ghcr\.io/);
+  assert.match(source, /MISE_PROJECT_ROOT/);
+});
+
+test("remote image rollback archive is exposed through a Mise task", async () => {
+  const source = await read("ford-ai-service/.mise/tasks/deploy/image-backup");
+  assert.match(source, /ssh/);
+  assert.match(source, /docker save/);
+  assert.match(source, /gzip/);
+  assert.match(source, /deploy_state_dir/);
+});

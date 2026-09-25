@@ -44,3 +44,10 @@
         status_code: 200
         return_content: false
         timeout: 10
+    - name: Check Meta webhook route is reachable
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/webhooks/meta/whatsapp
+        method: GET
+        status_code: 400
+        return_content: false
+        timeout: 10

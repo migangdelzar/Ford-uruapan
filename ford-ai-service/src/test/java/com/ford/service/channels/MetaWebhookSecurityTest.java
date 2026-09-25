@@ -34,6 +34,14 @@ class MetaWebhookSecurityTest {
     }
 
     @Test
+    void rejectsBlankAppSecretAsAnInvalidWebhook() {
+        assertThatThrownBy(() -> new MetaSignatureVerifier().verify(
+                "{\"ok\":true}", "sha256=signature", ""))
+                .isInstanceOf(SecurityException.class)
+                .hasMessage("Invalid Meta signature");
+    }
+
+    @Test
     void routesWhatsAppByPhoneNumberIdInsteadOfBusinessAccountId() {
         var body = """
                 {"entry":[{"id":"waba-1","changes":[{"value":{"metadata":{"phone_number_id":"phone-42"}}}]}]}

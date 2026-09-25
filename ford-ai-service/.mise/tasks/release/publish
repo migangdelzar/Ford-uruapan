@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+#MISE description="Build or publish an ARM64 image to GHCR"
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+require_command docker
+
+tag="${1:-sha-$(git rev-parse HEAD)}"
+[[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || {
+  echo "Invalid image tag: $tag" >&2
+  exit 2
+}
+
+repository="${GHCR_IMAGE_REPOSITORY:-ghcr.io/migangdelzar/ford-uruapan}"
+[[ "$repository" == ghcr.io/* ]] || {
+  echo "GHCR_IMAGE_REPOSITORY must start with ghcr.io/" >&2
+  exit 2
+}
+
+image="$repository:$tag"
+source_image="${RELEASE_SOURCE_IMAGE:-ford-service:webhook-propagation}"
+
+if [[ -n "${GHCR_TOKEN:-}" ]]; then
+  [[ -n "${GHCR_USERNAME:-}" ]] || {
+    echo "GHCR_USERNAME is required when GHCR_TOKEN is set." >&2
+    exit 2
+  }
+  printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin >/dev/null
+fi
+
+if docker image inspect "$source_image" >/dev/null 2>&1; then
+  docker tag "$source_image" "$image"
+  docker push "$image"
+else
+  docker buildx build \
+    --platform linux/arm64 \
+    --tag "$image" \
+    --push \
+    "$MISE_PROJECT_ROOT"
+fi
+
+echo "Published $image"

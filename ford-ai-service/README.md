@@ -210,6 +210,19 @@ classic PAT in `GHCR_TOKEN`. The app deploy authenticates and pulls the image
 on `emme-1`; if those values are absent, the local ARM64 build-and-transfer
 fallback remains available.
 
+The local ARM64 publication and rollback flow is Mise-driven:
+
+```bash
+mise run release:publish -- <immutable-tag>
+mise run deploy:image-backup -- ford-service:deployment
+mise run deploy:app
+```
+
+Meta webhook deployment requires `FORD_META_APP_SECRET` and
+`FORD_META_VERIFY_TOKEN`. Automatic WhatsApp binding additionally uses
+`FORD_META_PROVIDER_ACCOUNT_ID` and `FORD_TENANT_ID`; the current tenant value
+is preserved in the example configuration.
+
 PostgreSQL and Redis bind only to `emme-2`'s private address in the remote
 Compose configuration. The public application endpoint remains behind the
 existing Cloudflare Tunnel/reverse proxy; no database or Redis port should be

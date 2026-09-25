@@ -27,7 +27,7 @@
     cmd: docker pull "{{ app_image }}"
   register: image_pull
   changed_when: true
-  when: ghcr_token | default('') | length > 0 and not (app_image_preloaded | default(false) | bool)
+  when: app_image is match('^ghcr[.]io/') and not (app_image_preloaded | default(false) | bool)
 
 - name: Copy application image archive for local fallback
   ansible.builtin.copy:
@@ -36,20 +36,20 @@
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: "0600"
-  when: ghcr_token | default('') | length == 0 and not (app_image_preloaded | default(false) | bool)
+  when: app_image is not match('^ghcr[.]io/') and not (app_image_preloaded | default(false) | bool)
 
 - name: Load local application image archive
   ansible.builtin.command:
     cmd: docker load --input "{{ remote_root }}/app/app-image.tar"
   register: image_load
   changed_when: true
-  when: ghcr_token | default('') | length == 0 and not (app_image_preloaded | default(false) | bool)
+  when: app_image is not match('^ghcr[.]io/') and not (app_image_preloaded | default(false) | bool)
 
 - name: Remove transferred image archive
   ansible.builtin.file:
     path: "{{ remote_root }}/app/app-image.tar"
     state: absent
-  when: ghcr_token | default('') | length == 0 and not (app_image_preloaded | default(false) | bool)
+  when: app_image is not match('^ghcr[.]io/') and not (app_image_preloaded | default(false) | bool)
 
 - name: Render application environment
   ansible.builtin.template:

@@ -36,6 +36,7 @@ require_deploy_config() {
     EMME_2_SSH_HOST EMME_1_PRIVATE_IP EMME_2_PRIVATE_IP EMME_REMOTE_ROOT \
     EMME_DATA_VOLUME_MOUNT POSTGRES_PASSWORD REDIS_PASSWORD \
     FORD_OPERATOR_USERNAME FORD_OPERATOR_PASSWORD \
+    FORD_META_APP_SECRET FORD_META_VERIFY_TOKEN \
     GRAFANA_CLOUD_OTLP_ENDPOINT GRAFANA_CLOUD_INSTANCE_ID GRAFANA_CLOUD_API_TOKEN \
     LANGFUSE_PUBLIC_KEY LANGFUSE_SECRET_KEY; do
     [[ -n "${!name:-}" ]] || missing+=("$name")
@@ -45,6 +46,12 @@ require_deploy_config() {
   [[ -r "${EMME_2_SSH_KEY:-${OCI_SSH_PRIVATE_KEY:-}}" ]] || missing+=("readable:EMME_2_SSH_KEY")
   if [[ "${EMME_APP_IMAGE:-}" == ghcr.io/* && -n "${GHCR_TOKEN:-}" && -z "${GHCR_USERNAME:-}" ]]; then
     missing+=("GHCR_USERNAME")
+  fi
+  if [[ "${FORD_META_AUTO_BINDING_ENABLED:-false}" == "true" ]]; then
+    [[ -n "${FORD_META_PROVIDER_ACCOUNT_ID:-${FORD_META_PHONE_ID:-}}" ]] || missing+=("FORD_META_PROVIDER_ACCOUNT_ID")
+    [[ -n "${FORD_TENANT_ID:-00000000-0000-0000-0000-000000000001}" ]] || missing+=("FORD_TENANT_ID")
+    [[ "${FORD_META_PROVIDER_ACCOUNT_ID:-${FORD_META_PHONE_ID:-}}" =~ ^[0-9]+$ ]] || missing+=("numeric:FORD_META_PROVIDER_ACCOUNT_ID")
+    [[ "${FORD_TENANT_ID:-00000000-0000-0000-0000-000000000001}" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] || missing+=("uuid:FORD_TENANT_ID")
   fi
   if (( ${#missing[@]} > 0 )); then
     printf 'Missing deployment configuration: %s\n' "${missing[*]}" >&2
@@ -127,6 +134,7 @@ render_deploy_inventory() {
   local meta_secret_yaml verify_token_yaml openai_key_yaml app_image_yaml ghcr_username_yaml ghcr_token_yaml
   local backup_bucket_yaml backup_namespace_yaml backup_prefix_yaml backup_region_yaml
   local grafana_endpoint_yaml grafana_instance_yaml grafana_token_yaml langfuse_endpoint_yaml langfuse_public_yaml langfuse_secret_yaml
+  local ford_meta_auto_binding_enabled_yaml ford_meta_provider_account_id_yaml ford_tenant_id_yaml
   local ford_mcp_enabled_yaml ford_mcp_url_yaml ford_mcp_endpoint_yaml mcp_token_yaml
   ansible_user_yaml="$(yaml_quote "$OCI_SSH_USER")"
   ansible_host_1_yaml="$(yaml_quote "$EMME_1_SSH_HOST")"
@@ -144,6 +152,9 @@ render_deploy_inventory() {
   operator_password_yaml="$(yaml_quote "$FORD_OPERATOR_PASSWORD")"
   meta_secret_yaml="$(yaml_quote "${FORD_META_APP_SECRET:-}")"
   verify_token_yaml="$(yaml_quote "${FORD_META_VERIFY_TOKEN:-}")"
+  ford_meta_auto_binding_enabled_yaml="$(yaml_quote "${FORD_META_AUTO_BINDING_ENABLED:-false}")"
+  ford_meta_provider_account_id_yaml="$(yaml_quote "${FORD_META_PROVIDER_ACCOUNT_ID:-${FORD_META_PHONE_ID:-}}")"
+  ford_tenant_id_yaml="$(yaml_quote "${FORD_TENANT_ID:-00000000-0000-0000-0000-000000000001}")"
   openai_key_yaml="$(yaml_quote "${OPENAI_API_KEY:-}")"
   app_image_yaml="$(yaml_quote "${EMME_APP_IMAGE:-ford-service:deployment}")"
   ghcr_username_yaml="$(yaml_quote "${GHCR_USERNAME:-}")"
@@ -179,6 +190,9 @@ all:
     ford_operator_password: ${operator_password_yaml}
     ford_meta_app_secret: ${meta_secret_yaml}
     ford_meta_verify_token: ${verify_token_yaml}
+    ford_meta_auto_binding_enabled: ${ford_meta_auto_binding_enabled_yaml}
+    ford_meta_provider_account_id: ${ford_meta_provider_account_id_yaml}
+    ford_tenant_id: ${ford_tenant_id_yaml}
     openai_api_key: ${openai_key_yaml}
     app_image: ${app_image_yaml}
     ghcr_username: ${ghcr_username_yaml}

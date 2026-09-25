@@ -8,7 +8,8 @@ import java.security.MessageDigest;
 public final class MetaSignatureVerifier {
 
     public void verify(String body, String signature, String appSecret) {
-        if (body == null || signature == null || appSecret == null || !signature.startsWith("sha256=")) {
+        if (body == null || signature == null || appSecret == null || appSecret.isBlank()
+                || !signature.startsWith("sha256=")) {
             throw new SecurityException("Invalid Meta signature");
         }
         try {

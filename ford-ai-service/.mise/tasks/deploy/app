@@ -9,23 +9,26 @@ render_deploy_inventory
 
 ensure_deploy_state_dir
 image="${EMME_APP_IMAGE:-ford-service:deployment}"
-if [[ "$image" == ghcr.io/* && -n "${GHCR_TOKEN:-}" ]]; then
+if [[ "$image" == ghcr.io/* ]]; then
   ansible_command "$(deploy_repo_root)/deployment/ansible/site.yml" \
     --tags common,app,verify --limit app \
     -e "app_image=$image" "$@"
 else
   local_docker_available=0
+  local_image_ready=0
   if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     local_docker_available=1
   fi
 
   if (( local_docker_available == 1 )) && docker buildx version >/dev/null 2>&1; then
     docker buildx build --platform linux/arm64 --load -t "$image" "$MISE_PROJECT_ROOT"
+    local_image_ready=1
   elif (( local_docker_available == 1 )); then
     docker_architecture="$(docker info --format '{{.Architecture}}')"
     case "$docker_architecture" in
       aarch64|arm64)
         docker build --platform linux/arm64 -t "$image" "$MISE_PROJECT_ROOT"
+        local_image_ready=1
         ;;
       *)
         echo "Local Docker is available but not ARM64 ($docker_architecture); using the emme-1 remote ARM64 build."
@@ -33,11 +36,18 @@ else
     esac
   fi
 
-  if (( local_docker_available == 0 )) || ! docker image inspect "$image" >/dev/null 2>&1; then
+  app_image_preloaded=false
+  app_image_archive=""
+  if (( local_image_ready == 1 )); then
+    app_image_archive="$(deploy_state_dir)/app-image.tar"
+    umask 077
+    docker save --output "$app_image_archive" "$image"
+  else
     require_command ssh
     require_command tar
     echo "Building the ARM64 application image directly on emme-1."
-  remote_build_dir="/tmp/ford-service-build-$$"
+    app_image_preloaded=true
+    remote_build_dir="/tmp/ford-service-build-$$"
     COPYFILE_DISABLE=1 tar \
     --exclude=.git \
     --exclude=.gradle \
@@ -54,8 +64,16 @@ else
     "${OCI_SSH_USER}@${EMME_1_SSH_HOST}" \
       "set -euo pipefail; cleanup() { rm -rf '$remote_build_dir'; }; trap cleanup EXIT; mkdir -p '$remote_build_dir'; gzip -d | tar -xf - -C '$remote_build_dir'; docker build --platform linux/arm64 -t '$image' '$remote_build_dir'"
   fi
-  ansible_command "$(deploy_repo_root)/deployment/ansible/site.yml" \
-    --tags common,app,verify --limit app \
-    -e "app_image_preloaded=true" \
-    -e "app_image=$image" "$@"
+  ansible_args=(
+    "$(deploy_repo_root)/deployment/ansible/site.yml"
+    --tags common,app,verify
+    --limit app
+    -e "app_image=$image"
+  )
+  if [[ "$app_image_preloaded" == true ]]; then
+    ansible_args+=(-e "app_image_preloaded=true")
+  else
+    ansible_args+=(-e "app_image_archive=$app_image_archive")
+  fi
+  ansible_command "${ansible_args[@]}" "$@"
 fi
