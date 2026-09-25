@@ -30,6 +30,15 @@ public class JdbcConversationRepository implements ConversationRepository {
 
     @Override
     public Optional<ConversationSnapshot> find(UUID conversationId) {
+        return findScoped(null, conversationId);
+    }
+
+    @Override
+    public Optional<ConversationSnapshot> find(UUID tenantId, UUID conversationId) {
+        return findScoped(tenantId, conversationId);
+    }
+
+    private Optional<ConversationSnapshot> findScoped(UUID tenantId, UUID conversationId) {
         return jdbc.sql("""
                 select c.id, c.tenant_id, c.channel, c.provider_conversation_id,
                        c.provider_account_id,
@@ -44,8 +53,10 @@ public class JdbcConversationRepository implements ConversationRepository {
                     limit 1
                 ) m on true
                 where c.id = :conversationId
+                  and (cast(:tenantId as uuid) is null or c.tenant_id = :tenantId)
                 """)
                 .param("conversationId", conversationId)
+                .param("tenantId", tenantId)
                 .query((rs, rowNum) -> new ConversationSnapshot(
                         rs.getObject("tenant_id", UUID.class),
                         rs.getObject("id", UUID.class),
@@ -62,14 +73,29 @@ public class JdbcConversationRepository implements ConversationRepository {
     @Override
     @Transactional
     public boolean completeBotTurn(UUID conversationId, long expectedVersion, ConversationTurn turn) {
+        var snapshot = find(conversationId).orElse(null);
+        return snapshot != null && completeBotTurn(snapshot.tenantId(), conversationId, expectedVersion,
+                UUID.randomUUID().toString(), turn);
+    }
+
+    @Override
+    @Transactional
+    public boolean completeBotTurn(UUID tenantId, UUID conversationId, long expectedVersion,
+                                   String inboundProviderMessageId, ConversationTurn turn) {
+        var responseProviderMessageId = assistantMessageId(tenantId, conversationId, inboundProviderMessageId);
         var updated = jdbc.sql("""
                 update conversation
                 set version = version + 1, updated_at = :updatedAt
-                where id = :conversationId and version = :expectedVersion
+                where id = :conversationId and tenant_id = :tenantId and version = :expectedVersion
                   and state in ('BOT_ACTIVE', 'LEAD_CAPTURE')
+                  and not exists (select 1 from conversation_message
+                                  where conversation_id = :conversationId
+                                    and provider_message_id = :responseProviderMessageId)
                 """)
                 .param("conversationId", conversationId)
+                .param("tenantId", tenantId)
                 .param("expectedVersion", expectedVersion)
+                .param("responseProviderMessageId", responseProviderMessageId)
                 .param("updatedAt", Timestamp.from(Instant.now()))
                 .update();
         if (updated != 1) {
@@ -79,15 +105,16 @@ public class JdbcConversationRepository implements ConversationRepository {
         var delivery = jdbc.sql("""
                 select tenant_id, channel, provider_conversation_id
                 from conversation
-                where id = :conversationId
+                where id = :conversationId and tenant_id = :tenantId
                 """)
                 .param("conversationId", conversationId)
+                .param("tenantId", tenantId)
                 .query((rs, rowNum) -> new DeliveryTarget(
                         rs.getObject("tenant_id", UUID.class),
                         rs.getString("channel"),
                         rs.getString("provider_conversation_id")))
                 .single();
-        var messageId = "assistant:" + UUID.randomUUID();
+        var messageId = responseProviderMessageId;
         jdbc.sql("""
                 insert into conversation_message
                     (id, conversation_id, direction, provider_message_id, content, received_at)
@@ -110,7 +137,7 @@ public class JdbcConversationRepository implements ConversationRepository {
                 .param("tenantId", delivery.tenantId())
                 .param("aggregateId", conversationId)
                 .param("payload", payload(delivery, conversationId, turn.text()))
-                .param("idempotencyKey", delivery.tenantId() + ":conversation:" + conversationId + ":" + messageId)
+                .param("idempotencyKey", "conversation-turn:" + responseProviderMessageId)
                 .param("availableAt", Timestamp.from(Instant.now()))
                 .update();
         return true;
@@ -119,13 +146,31 @@ public class JdbcConversationRepository implements ConversationRepository {
     @Override
     @Transactional
     public boolean requestHumanHandoff(UUID conversationId, long expectedVersion, HandoffDecision decision) {
+        var snapshot = find(conversationId).orElse(null);
+        return snapshot != null && requestHumanHandoff(snapshot.tenantId(), conversationId,
+                expectedVersion, decision);
+    }
+
+    @Override
+    @Transactional
+    public boolean requestHumanHandoff(UUID tenantId, UUID conversationId, long expectedVersion,
+                                       HandoffDecision decision) {
+        return requestHumanHandoff(tenantId, conversationId, expectedVersion, null, decision, null);
+    }
+
+    @Override
+    @Transactional
+    public boolean requestHumanHandoff(UUID tenantId, UUID conversationId, long expectedVersion,
+                                       String inboundProviderMessageId, HandoffDecision decision,
+                                       ConversationTurn confirmation) {
         var updated = jdbc.sql("""
                 update conversation
                 set state = 'HUMAN_PENDING', version = version + 1, updated_at = :updatedAt
-                where id = :conversationId and version = :expectedVersion
+                where id = :conversationId and tenant_id = :tenantId and version = :expectedVersion
                   and state in ('BOT_ACTIVE', 'LEAD_CAPTURE')
                 """)
                 .param("conversationId", conversationId)
+                .param("tenantId", tenantId)
                 .param("expectedVersion", expectedVersion)
                 .param("updatedAt", Timestamp.from(Instant.now()))
                 .update();
@@ -133,21 +178,47 @@ public class JdbcConversationRepository implements ConversationRepository {
             return false;
         }
 
-        var tenantId = jdbc.sql("select tenant_id from conversation where id = :conversationId")
-                .param("conversationId", conversationId)
-                .query(UUID.class)
-                .single();
         jdbc.sql("""
                 insert into handoff_ticket
-                    (id, tenant_id, conversation_id, status, reason, version, created_at)
-                values (:id, :tenantId, :conversationId, 'HUMAN_PENDING', :reason, 0, :createdAt)
+                    (id, tenant_id, conversation_id, status, priority, reason, idempotency_key, version, created_at)
+                values (:id, :tenantId, :conversationId, 'HUMAN_PENDING', :priority, :reason,
+                        :idempotencyKey, 0, :createdAt)
                 """)
                 .param("id", UUID.randomUUID())
                 .param("tenantId", tenantId)
                 .param("conversationId", conversationId)
+                .param("priority", decision.priority())
                 .param("reason", decision.reason())
+                .param("idempotencyKey", decision.idempotencyKey())
                 .param("createdAt", Timestamp.from(Instant.now()))
                 .update();
+        if (confirmation != null && inboundProviderMessageId != null) {
+            var responseProviderMessageId = assistantMessageId(tenantId, conversationId, inboundProviderMessageId);
+            jdbc.sql("""
+                    insert into conversation_message
+                        (id, conversation_id, direction, provider_message_id, content, received_at)
+                    values (:id, :conversationId, 'OUTBOUND', :providerMessageId, :content, :receivedAt)
+                    """)
+                    .param("id", UUID.randomUUID()).param("conversationId", conversationId)
+                    .param("providerMessageId", responseProviderMessageId).param("content", confirmation.text())
+                    .param("receivedAt", Timestamp.from(Instant.now())).update();
+            var target = jdbc.sql("select tenant_id, channel, provider_conversation_id from conversation " +
+                            "where id = :conversationId and tenant_id = :tenantId")
+                    .param("conversationId", conversationId).param("tenantId", tenantId)
+                    .query((rs, rowNum) -> new DeliveryTarget(rs.getObject("tenant_id", UUID.class),
+                            rs.getString("channel"), rs.getString("provider_conversation_id"))).single();
+            jdbc.sql("""
+                    insert into outbox_event
+                        (id, tenant_id, aggregate_type, aggregate_id, event_type, payload, status,
+                         attempts, available_at, idempotency_key)
+                    values (:id, :tenantId, 'conversation', :aggregateId, 'OUTBOUND_DELIVERY_REQUESTED',
+                            cast(:payload as jsonb), 'PENDING', 0, :availableAt, :idempotencyKey)
+                    """)
+                    .param("id", UUID.randomUUID()).param("tenantId", tenantId)
+                    .param("aggregateId", conversationId).param("payload", payload(target, conversationId, confirmation.text()))
+                    .param("availableAt", Timestamp.from(Instant.now()))
+                    .param("idempotencyKey", "conversation-turn:" + responseProviderMessageId).update();
+        }
         return true;
     }
 
@@ -168,6 +239,36 @@ public class JdbcConversationRepository implements ConversationRepository {
                 .param("providerMessageId", providerMessageId)
                 .query(Integer.class)
                 .single() == 0;
+    }
+
+    @Override
+    public boolean turnAlreadyCompleted(UUID tenantId, UUID conversationId, String inboundProviderMessageId) {
+        var responseProviderMessageId = assistantMessageId(tenantId, conversationId, inboundProviderMessageId);
+        return jdbc.sql("""
+                select exists (
+                    select 1 from conversation_message message
+                    join conversation owner on owner.id = message.conversation_id
+                    where message.conversation_id = :conversationId
+                      and owner.tenant_id = :tenantId
+                      and message.provider_message_id = :responseProviderMessageId
+                )
+                """)
+                .param("conversationId", conversationId)
+                .param("tenantId", tenantId)
+                .param("responseProviderMessageId", responseProviderMessageId)
+                .query(Boolean.class)
+                .single();
+    }
+
+    private static String assistantMessageId(UUID tenantId, UUID conversationId, String providerMessageId) {
+        try {
+            var digest = java.security.MessageDigest.getInstance("SHA-256").digest(
+                    (tenantId + ":" + conversationId + ":" + providerMessageId)
+                            .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return "assistant:inbound:" + java.util.HexFormat.of().formatHex(digest);
+        } catch (java.security.NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
     }
 
     @Override

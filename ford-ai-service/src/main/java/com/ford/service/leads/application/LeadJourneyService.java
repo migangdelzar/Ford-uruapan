@@ -35,6 +35,9 @@ public class LeadJourneyService {
         if (updated == expectedSnapshot || updated == null) {
             return false;
         }
-        return repository.update(tenantId, conversationId, expectedSnapshot.version(), updated, providerMessageId);
+        if (!repository.update(tenantId, conversationId, expectedSnapshot.version(), updated, providerMessageId)) {
+            throw new IllegalStateException("Lead journey update lost its version race");
+        }
+        return true;
     }
 }

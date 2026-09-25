@@ -17,7 +17,7 @@ import static org.mockito.Mockito.when;
 class HandoffNotificationListenerTest {
 
     @Test
-    void recordsTheDurableSystemNotificationAgainstTheTicket() {
+    void recordsTheDurableQueueEntryWithoutClaimingANotificationWasSent() {
         var conversationId = UUID.randomUUID();
         var eventId = UUID.randomUUID();
         var tenantId = UUID.randomUUID();
@@ -33,6 +33,6 @@ class HandoffNotificationListenerTest {
         listener.on(event);
 
         verify(repository).recordSystemAudit(
-                "HANDOFF_NOTIFICATION_REQUESTED", ticket, eventId, event.occurredAt());
+                "HANDOFF_QUEUE_ITEM_CREATED", ticket, eventId, event.occurredAt());
     }
 }

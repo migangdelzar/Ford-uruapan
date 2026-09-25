@@ -8,6 +8,9 @@ import com.ford.service.conversations.adapter.out.RedisCachedConversationMemoryP
 import com.ford.service.conversations.adapter.out.RedisConversationMemoryCache;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
+import com.ford.service.conversations.application.graph.ConversationGraphRunner;
+import com.ford.service.conversations.application.graph.ConversationTurnProcessor;
+import com.ford.service.conversations.application.graph.FordPostgresSaverV2;
 import com.ford.service.shared.HumanHandoffPolicy;
 import com.ford.service.observability.AiObservationService;
 import com.ford.service.observability.DefaultAiObservationService;
@@ -18,9 +21,9 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Primary;
 
@@ -75,16 +78,36 @@ public class ConversationConfiguration {
     }
 
     @Bean
-    ConversationWorkflow conversationWorkflow(ConversationRepository repository,
-                                               ConversationAssistant assistant,
-                                               ApplicationEventPublisher eventPublisher,
-                                               HumanHandoffPolicy handoffPolicy,
-                                               ConversationMemoryService memoryService,
-                                               ConversationDecisionRepository decisionRepository,
+    @ConditionalOnProperty(prefix = "ford.conversations.workflow", name = "graph-enabled", havingValue = "true")
+    ConversationGraphRunner conversationGraphRunner(ConversationTurnProcessor turnProcessor,
+                                                     ObjectProvider<FordPostgresSaverV2> checkpointSavers) {
+        var checkpointSaver = checkpointSavers.getIfAvailable();
+        return checkpointSaver == null ? new ConversationGraphRunner(turnProcessor)
+                : new ConversationGraphRunner(turnProcessor, checkpointSaver);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ford.conversations.workflow", name = "graph-enabled", havingValue = "true")
+    ConversationWorkflow conversationWorkflow(ConversationGraphRunner graphRunner,
                                                ObjectProvider<AiObservationService> observationServices) {
         var observations = observationServices.getIfAvailable(
                 () -> new DefaultAiObservationService(ObservationRegistry.NOOP));
-        return new ConversationWorkflow(repository, assistant, eventPublisher, handoffPolicy, memoryService,
-                decisionRepository, observations);
+        return new ConversationWorkflow(graphRunner, observations);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ford.conversations.workflow", name = "graph-enabled", havingValue = "false", matchIfMissing = true)
+    ConversationWorkflow legacyConversationWorkflow(ConversationRepository repository,
+                                                     ConversationAssistant assistant,
+                                                     ApplicationEventPublisher publisher,
+                                                     ObjectProvider<HumanHandoffPolicy> handoffPolicies,
+                                                     ConversationMemoryService memoryService,
+                                                     ConversationDecisionRepository decisions,
+                                                     ObjectProvider<AiObservationService> observationServices) {
+        var observations = observationServices.getIfAvailable(
+                () -> new DefaultAiObservationService(ObservationRegistry.NOOP));
+        var handoffPolicy = handoffPolicies.getIfAvailable(() -> new HumanHandoffPolicy(true));
+        return new ConversationWorkflow(repository, assistant, publisher, handoffPolicy, memoryService,
+                decisions, observations);
     }
 }

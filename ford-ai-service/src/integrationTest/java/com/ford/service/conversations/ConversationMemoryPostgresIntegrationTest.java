@@ -12,6 +12,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
@@ -29,12 +30,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(properties = "spring.modulith.runtime.verification-enabled=false")
 @ActiveProfiles("test")
 class ConversationMemoryPostgresIntegrationTest {
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("pgvector/pgvector:pg16");
+    static final PostgreSQLContainer<?> POSTGRES = new com.ford.service.database.FordPostgresContainer();
 
     private static final UUID TENANT_ID = UUID.randomUUID();
     private static final UUID CONVERSATION_ID = UUID.randomUUID();

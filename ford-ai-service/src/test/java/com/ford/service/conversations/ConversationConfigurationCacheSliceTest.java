@@ -5,6 +5,7 @@ import com.ford.service.ai.application.AssistantService;
 import com.ford.service.conversations.adapter.out.JdbcConversationMemoryRepository;
 import com.ford.service.conversations.adapter.out.RedisCachedConversationMemoryPort;
 import com.ford.service.conversations.application.ConversationConfiguration;
+import com.ford.service.conversations.application.graph.ConversationTurnProcessor;
 import com.ford.service.conversations.application.ConversationDecisionRepository;
 import com.ford.service.conversations.application.ConversationMemoryPort;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
@@ -39,6 +40,9 @@ class ConversationConfigurationCacheSliceTest {
 
     @MockitoBean
     ConversationDecisionRepository conversationDecisionRepository;
+
+    @MockitoBean
+    ConversationTurnProcessor conversationTurnProcessor;
 
     @MockitoBean
     JdbcConversationMemoryRepository durableMemory;

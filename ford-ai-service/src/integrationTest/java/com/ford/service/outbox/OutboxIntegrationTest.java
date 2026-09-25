@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class OutboxIntegrationTest {
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("pgvector/pgvector:pg16");
+    static final PostgreSQLContainer<?> POSTGRES = new com.ford.service.database.FordPostgresContainer();
     static JdbcOutboxStore store;
 
     @BeforeAll

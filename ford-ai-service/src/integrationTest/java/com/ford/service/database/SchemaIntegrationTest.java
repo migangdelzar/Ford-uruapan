@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SchemaIntegrationTest {
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("pgvector/pgvector:pg16");
+    static final PostgreSQLContainer<?> POSTGRES = new com.ford.service.database.FordPostgresContainer();
 
     @Test
     void liquibaseCreatesCanonicalFordTables() throws Exception {

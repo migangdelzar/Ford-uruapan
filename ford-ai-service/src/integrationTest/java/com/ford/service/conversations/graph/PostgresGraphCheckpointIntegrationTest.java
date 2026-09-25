@@ -38,7 +38,7 @@ class PostgresGraphCheckpointIntegrationTest {
     private static final String PRIVATE_TEXT_MARKER = "customer-message-must-not-be-checkpointed";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("pgvector/pgvector:pg16");
+    static final PostgreSQLContainer<?> POSTGRES = new com.ford.service.database.FordPostgresContainer();
 
     private final List<HikariDataSource> dataSources = new ArrayList<>();
 

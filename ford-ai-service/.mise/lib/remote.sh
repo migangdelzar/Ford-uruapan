@@ -11,7 +11,7 @@ require_command() {
 }
 
 deploy_repo_root() { printf '%s\n' "$(cd "$MISE_PROJECT_ROOT/.." && pwd -P)"; }
-deploy_config_file() { printf '%s\n' "$(deploy_repo_root)/deployment/config/oci.env"; }
+deploy_config_file() { printf '%s\n' "${FORD_DEPLOY_CONFIG_FILE:-$(deploy_repo_root)/deployment/config/oci.env}"; }
 deploy_state_dir() { printf '%s\n' "$MISE_PROJECT_ROOT/.mise/state/deploy"; }
 deploy_inventory_file() { printf '%s\n' "$(deploy_state_dir)/inventory.yml"; }
 backup_inventory_file() { printf '%s\n' "$(deploy_state_dir)/backup-inventory.yml"; }
@@ -27,6 +27,7 @@ load_deploy_config() {
   local preserved_meta_verify_token="${FORD_META_VERIFY_TOKEN:-}"
   local preserved_ghcr_username="${GHCR_USERNAME:-}"
   local preserved_ghcr_token="${GHCR_TOKEN:-}"
+  local preserved_oci_namespace="${OCI_OBJECT_STORAGE_NAMESPACE:-}"
   local preserved_openai_api_key="${OPENAI_API_KEY:-}"
   local preserved_ford_mcp_token="${FORD_MCP_TOKEN:-}"
   local preserved_ford_mcp_api_token="${FORD_MCP_API_TOKEN:-}"
@@ -48,6 +49,7 @@ load_deploy_config() {
   [[ -n "$preserved_meta_verify_token" ]] && export FORD_META_VERIFY_TOKEN="$preserved_meta_verify_token"
   [[ -n "$preserved_ghcr_username" ]] && export GHCR_USERNAME="$preserved_ghcr_username"
   [[ -n "$preserved_ghcr_token" ]] && export GHCR_TOKEN="$preserved_ghcr_token"
+  [[ -n "$preserved_oci_namespace" ]] && export OCI_OBJECT_STORAGE_NAMESPACE="$preserved_oci_namespace"
   [[ -n "$preserved_openai_api_key" ]] && export OPENAI_API_KEY="$preserved_openai_api_key"
   [[ -n "$preserved_ford_mcp_token" ]] && export FORD_MCP_TOKEN="$preserved_ford_mcp_token"
   [[ -n "$preserved_ford_mcp_api_token" ]] && export FORD_MCP_API_TOKEN="$preserved_ford_mcp_api_token"
@@ -241,6 +243,7 @@ render_deploy_inventory() {
   local ford_meta_auto_binding_enabled_yaml ford_meta_provider_account_id_yaml ford_tenant_id_yaml
   local ford_meta_delivery_enabled_yaml ford_meta_whatsapp_endpoint_yaml ford_meta_whatsapp_access_token_yaml
   local ford_human_handoff_enabled_yaml
+  local ford_conversation_graph_enabled_yaml
   local ford_outbox_enabled_yaml
   local ford_ai_chat_provider_yaml ford_ai_cloud_provider_yaml ford_ai_cloud_enabled_yaml ford_ai_local_enabled_yaml
   local ford_ai_cloud_base_url_yaml ford_ai_cloud_model_version_yaml
@@ -268,6 +271,7 @@ render_deploy_inventory() {
   ford_meta_whatsapp_endpoint_yaml="$(yaml_quote "${FORD_META_WHATSAPP_DELIVERY_ENDPOINT:-}")"
   ford_meta_whatsapp_access_token_yaml="$(yaml_quote "${FORD_META_WHATSAPP_ACCESS_TOKEN:-}")"
   ford_human_handoff_enabled_yaml="$(yaml_quote "${FORD_HUMAN_HANDOFF_ENABLED:-true}")"
+  ford_conversation_graph_enabled_yaml="$(yaml_quote "${FORD_CONVERSATION_GRAPH_ENABLED:-false}")"
   ford_outbox_enabled_yaml="$(yaml_quote "${FORD_OUTBOX_ENABLED:-false}")"
   ford_ai_chat_provider_yaml="$(yaml_quote "${FORD_AI_CHAT_PROVIDER:-openai}")"
   ford_ai_cloud_provider_yaml="$(yaml_quote "${FORD_AI_CLOUD_PROVIDER:-openai}")"
@@ -317,6 +321,7 @@ all:
     ford_meta_whatsapp_delivery_endpoint: ${ford_meta_whatsapp_endpoint_yaml}
     ford_meta_whatsapp_access_token: ${ford_meta_whatsapp_access_token_yaml}
     ford_human_handoff_enabled: ${ford_human_handoff_enabled_yaml}
+    ford_conversation_graph_enabled: ${ford_conversation_graph_enabled_yaml}
     ford_outbox_enabled: ${ford_outbox_enabled_yaml}
     ford_ai_chat_provider: ${ford_ai_chat_provider_yaml}
     ford_ai_cloud_provider: ${ford_ai_cloud_provider_yaml}

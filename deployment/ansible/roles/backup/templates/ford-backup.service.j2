@@ -6,6 +6,7 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
+Environment=PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin
 ExecStart={{ remote_root }}/backup/backup-databases.sh
 StandardOutput=journal
 StandardError=journal

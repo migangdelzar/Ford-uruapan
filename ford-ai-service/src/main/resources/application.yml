@@ -124,6 +124,8 @@ ford:
       issuer-uri: ${FORD_SECURITY_ISSUER_URI:}
       audience: ${FORD_SECURITY_AUDIENCE:ford-ai-service}
   conversations:
+    workflow:
+      graph-enabled: ${FORD_CONVERSATION_GRAPH_ENABLED:false}
     human-handoff:
       enabled: ${FORD_HUMAN_HANDOFF_ENABLED:true}
   memory:

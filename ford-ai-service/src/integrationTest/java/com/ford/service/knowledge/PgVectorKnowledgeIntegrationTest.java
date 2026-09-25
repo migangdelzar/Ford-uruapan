@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PgVectorKnowledgeIntegrationTest {
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("pgvector/pgvector:pg16");
+    static final PostgreSQLContainer<?> POSTGRES = new com.ford.service.database.FordPostgresContainer();
 
     private KnowledgeRetrievalService retrievalService;
 

@@ -83,6 +83,44 @@ events. The workflow persists the deterministic bot fallback and publishes the
 normal outbound delivery request instead. Set it back to `true` to restore
 human escalation behavior.
 
+## Conversation graph and sales escalation
+
+`FORD_CONVERSATION_GRAPH_ENABLED` selects the bounded LangGraph4j inbound
+workflow. It defaults to `false` for rollback compatibility. The graph runs one
+accepted inbound turn at a time and invokes the existing Spring AI assistant
+once; the model, authorized Ford MCP/RAG tools, conversation transcript, lead
+journey, and outbox remain owned by their existing application services and
+PostgreSQL tables. Graph checkpoints live in the separate `ford_graph` schema
+and contain only tenant, conversation, and receipt identifiers plus route
+metadata. They are execution checkpoints, not conversation memory or the
+system of record. Disable the flag and redeploy to return to the legacy
+workflow; do not drop checkpoint or business tables as part of rollback.
+
+With `FORD_HUMAN_HANDOFF_ENABLED=true`, direct requests for a person and HOT
+leads enter the high-priority `/api/v1/handoffs` queue. A queued ticket means
+the request is waiting; only a successful operator claim means an advisor has
+taken the conversation, at which point automated replies pause. Operators need
+`operator:read` to list tickets and `handoff:manage` to claim, pause, resume, or
+hand back a conversation. Claims are tenant-scoped and version-checked.
+
+For WARM leads, the assistant may offer an optional advisor follow-up. A
+follow-up is queued only after an unambiguous customer acceptance; declining
+suppresses another offer for that conversation. WARM follow-ups are listed at
+`GET /api/v1/follow-ups` and claimed at
+`POST /api/v1/follow-ups/{followUpId}/claim?tenantId=...`. Claiming a WARM
+follow-up does not pause the bot or claim that an advisor has joined the live
+conversation.
+
+For the OCI rollout, use `mise run deploy:flags -- FORD_CONVERSATION_GRAPH_ENABLED
+true FORD_HUMAN_HANDOFF_ENABLED true` to set only these allowlisted booleans in
+the private deployment config, then deploy through `mise run deploy:app`.
+Before a release, inspect both hosts and logs, run `mise run backup:run` and
+`mise run backup:verify`, and save the current app image with
+`mise run deploy:image-backup -- <current-image>`. Publish and deploy an
+immutable GHCR tag. If startup, migration, or health checks fail, deploy the
+previous immutable tag through the same app task. Migrations 013 and 014 are
+additive; never reset the production database or tenant data for rollback.
+
 Conversation memory is enabled by default and is persisted in PostgreSQL. The
 session scope is tenant, channel, provider account, and participant, so the
 same person on two provider numbers cannot share memory accidentally. The

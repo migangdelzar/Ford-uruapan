@@ -62,3 +62,4 @@ docker-compose.override.yaml
 # Local mise environment overrides
 mise.local.toml
 mise.*.local.toml
+**/.mise/state/

@@ -9,6 +9,14 @@ render_deploy_inventory
 
 ensure_deploy_state_dir
 image="${EMME_APP_IMAGE:-ford-service:deployment}"
+if [[ "${1:-}" == ghcr.io/* ]]; then
+  image="$1"
+  shift
+fi
+if [[ "$image" == ghcr.io/* && ! "$image" =~ ^ghcr\.io/[A-Za-z0-9._/-]+(@sha256:[a-f0-9]{64}|:[A-Za-z0-9._-]+)$ ]]; then
+  echo "Invalid GHCR image reference." >&2
+  exit 2
+fi
 if [[ "$image" == ghcr.io/* ]]; then
   ansible_command "$(deploy_repo_root)/deployment/ansible/site.yml" \
     --tags common,app,verify --limit app \

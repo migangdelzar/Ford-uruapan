@@ -8,6 +8,8 @@ ford:
     jwt:
       enabled: ${FORD_SECURITY_JWT_ENABLED:true}
   conversations:
+    workflow:
+      graph-enabled: ${FORD_CONVERSATION_GRAPH_ENABLED:false}
     human-handoff:
       enabled: ${FORD_HUMAN_HANDOFF_ENABLED:true}
   ai:

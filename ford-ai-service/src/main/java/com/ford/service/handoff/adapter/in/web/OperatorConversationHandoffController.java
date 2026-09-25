@@ -41,7 +41,8 @@ public class OperatorConversationHandoffController {
         var created = service.request(new HandoffRequest(selectedTenant, conversationId, null,
                 request == null || request.reason() == null || request.reason().isBlank()
                         ? "operator_takeover" : request.reason()), principal);
-        return service.claim(created.id(), 0, principal);
+        return created.status() == HandoffStatus.HUMAN_PENDING
+                ? service.claim(created.id(), created.version(), principal) : created;
     }
 
     @PostMapping("/conversations/{conversationId}/handback")
@@ -61,7 +62,8 @@ public class OperatorConversationHandoffController {
             throw new IllegalArgumentException("page size must be between 1 and 100");
         }
         var items = service.list(principal(authentication)).stream()
-                .filter(ticket -> status == null || ticket.status() == status)
+                .filter(ticket -> status == null
+                        ? ticket.status() != HandoffStatus.CLOSED : ticket.status() == status)
                 .limit(pageSize)
                 .toList();
         return new HandoffPage(items, items.size(), false);

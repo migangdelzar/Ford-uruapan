@@ -46,6 +46,8 @@ test("OCI backup identity is declarative and reproducible", async () => {
   const backupPlaybook = await read("deployment/ansible/backup.yml");
   const backupTasks = await read("deployment/ansible/roles/backup/tasks/main.yml");
   const backupScript = await read("deployment/ansible/roles/backup/templates/backup-databases.sh.j2");
+  const backupService = await read("deployment/ansible/roles/backup/templates/ford-backup.service.j2");
+  const deploySecretsTask = await read("ford-ai-service/.mise/tasks/deploy/secrets");
 
   assert.match(storage, /oci_identity_dynamic_group/);
   assert.match(storage, /oci_identity_policy/);
@@ -62,8 +64,15 @@ test("OCI backup identity is declarative and reproducible", async () => {
   assert.match(backupScript, /instance_principal/);
   assert.match(backupScript, /redis/);
   assert.match(backupScript, /ford\/backups/);
-  assert.match(backupListTask, /oci os object list/);
-  assert.match(backupVerifyTask, /oci os object head/);
+  assert.match(backupService, /Environment=.*PATH=.*\/usr\/local\/bin/);
+  assert.match(deploySecretsTask, /OCI_OBJECT_STORAGE_NAMESPACE/);
+  assert.match(deploySecretsTask, /adopt_environment_secret \"\$name\"/);
+  assert.match(backupListTask, /ssh/);
+  assert.match(backupListTask, /find/);
+  assert.match(backupVerifyTask, /ssh/);
+  assert.match(backupVerifyTask, /find/);
+  assert.match(backupVerifyTask, /instance_principal/);
+  assert.match(backupVerifyTask, /remote_oci os object head/);
   assert.match(backupRunTask, /ford-backup\.service/);
   assert.match(deployBackupTask, /backup\.yml/);
   assert.match(backupPlaybook, /roles:\n\s+- backup/);
@@ -236,6 +245,8 @@ test("deployment config preserves externally supplied secret values", async () =
   assert.match(remote, /export FORD_META_APP_SECRET=/);
   assert.match(remote, /preserved_ghcr_username/);
   assert.match(remote, /export GHCR_USERNAME=/);
+  assert.match(remote, /preserved_oci_namespace/);
+  assert.match(remote, /export OCI_OBJECT_STORAGE_NAMESPACE=/);
   assert.match(remote, /is_valid_tenant_id/);
   assert.match(remote, /00000000-0000-0000-0000-000000000001/);
   assert.match(remote, /adopt_environment_secret/);

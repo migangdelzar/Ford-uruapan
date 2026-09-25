@@ -24,6 +24,10 @@ databaseChangeLog:
   - include:
       file: db/changelog/changes/012-lead-journey.yaml
   - include:
+      file: db/changelog/changes/013-handoff-priority.yaml
+  - include:
+      file: db/changelog/changes/014-lead-follow-up.yaml
+  - include:
       file: db/changelog/langgraph/db.changelog.yaml
   - include:
       file: db/changelog/changes/004-modulith-events.yaml

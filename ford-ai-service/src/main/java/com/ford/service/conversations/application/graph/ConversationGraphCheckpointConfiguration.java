@@ -7,11 +7,22 @@ import org.springframework.boot.jdbc.autoconfigure.DataSourceProperties;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @Configuration(proxyBeanMethods = false)
 class ConversationGraphCheckpointConfiguration {
 
     private static final String CHECKPOINT_SCHEMA = "ford_graph";
+
+    @Bean(name = "dataSource", destroyMethod = "close")
+    @Primary
+    @ConfigurationProperties("spring.datasource.hikari")
+    HikariDataSource applicationDataSource(DataSourceProperties properties) {
+        return properties.initializeDataSourceBuilder()
+                .type(HikariDataSource.class)
+                .build();
+    }
 
     @Bean(name = "conversationGraphCheckpointDataSource", destroyMethod = "close")
     HikariDataSource conversationGraphCheckpointDataSource(DataSourceProperties properties) {

@@ -4,25 +4,44 @@ set -euo pipefail
 cd "$MISE_PROJECT_ROOT"
 source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
 load_deploy_config
-require_command oci
-bucket="${OCI_BACKUP_BUCKET:-emme-business}"
-namespace="${OCI_OBJECT_STORAGE_NAMESPACE:?OCI_OBJECT_STORAGE_NAMESPACE is required}"
-prefix="${OCI_BACKUP_PREFIX:-ford/backups}"
-manifest="$(OCI_CLI_PROFILE="${OCI_CONFIG_PROFILE:-DEFAULT}" oci os object list \
-  --region "$OCI_REGION" \
-  --namespace-name "$namespace" \
-  --bucket-name "$bucket" \
-  --prefix "$prefix/manifests/" \
-  --all \
-  --query 'data[-1].name' \
-  --raw-output)"
-[[ -n "$manifest" && "$manifest" != "None" ]] || {
-  echo 'No remote backup manifest found.' >&2
+require_command ssh
+
+missing=()
+for name in OCI_REGION OCI_OBJECT_STORAGE_NAMESPACE OCI_SSH_USER EMME_2_SSH_HOST EMME_REMOTE_ROOT; do
+  [[ -n "${!name:-}" ]] || missing+=("$name")
+done
+[[ -r "${EMME_2_SSH_KEY:-${OCI_SSH_PRIVATE_KEY:-}}" ]] || missing+=("readable:EMME_2_SSH_KEY")
+(( ${#missing[@]} == 0 )) || {
+  printf 'Missing backup verification configuration: %s\n' "${missing[*]}" >&2
   exit 1
 }
-OCI_CLI_PROFILE="${OCI_CONFIG_PROFILE:-DEFAULT}" oci os object head \
+
+namespace="$OCI_OBJECT_STORAGE_NAMESPACE"
+prefix="${OCI_BACKUP_PREFIX:-ford/backups}"
+remote_key="${EMME_2_SSH_KEY:-${OCI_SSH_PRIVATE_KEY}}"
+remote_host="${OCI_SSH_USER}@${EMME_2_SSH_HOST}"
+remote_archive="${EMME_REMOTE_ROOT}/backup/archive"
+remote_find=(sudo find "$remote_archive" -maxdepth 1 -type f -name 'manifest_*.json' -printf '%f\n')
+printf -v find_command '%q ' "${remote_find[@]}"
+manifests="$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$remote_key" \
+  "$remote_host" "$find_command")"
+manifest="$(printf '%s\n' "$manifests" | sort | tail -n 1)"
+[[ -n "$manifest" ]] || {
+  echo 'No completed backup manifest is retained on emme-2.' >&2
+  exit 1
+}
+
+remote_oci() {
+  local remote_command
+  local -a command=(sudo /usr/local/bin/oci "$@")
+  printf -v remote_command '%q ' "${command[@]}"
+  ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$remote_key" "$remote_host" "$remote_command"
+}
+
+remote_oci os object head \
+  --auth instance_principal \
   --region "$OCI_REGION" \
   --namespace-name "$namespace" \
-  --bucket-name "$bucket" \
-  --name "$manifest" >/dev/null
-echo "verified_remote_manifest=$manifest"
+  --bucket-name "${OCI_BACKUP_BUCKET:-emme-business}" \
+  --name "$prefix/manifests/$manifest" >/dev/null
+echo "verified_remote_manifest=$prefix/manifests/$manifest"

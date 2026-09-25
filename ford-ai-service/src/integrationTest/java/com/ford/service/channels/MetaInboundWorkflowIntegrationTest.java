@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.test.context.ActiveProfiles;
@@ -31,14 +32,18 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Testcontainers
-@SpringBootTest(properties = "spring.modulith.runtime.verification-enabled=false")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@SpringBootTest(properties = {
+        "spring.modulith.runtime.verification-enabled=false",
+        "ford.conversations.workflow.graph-enabled=true"
+})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Import(MetaInboundWorkflowIntegrationTest.PublicationProbe.class)
 class MetaInboundWorkflowIntegrationTest {
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("pgvector/pgvector:pg16");
+    static final PostgreSQLContainer<?> POSTGRES = new com.ford.service.database.FordPostgresContainer();
 
     @org.junit.jupiter.api.BeforeAll
     static void prepareSchema() throws Exception {

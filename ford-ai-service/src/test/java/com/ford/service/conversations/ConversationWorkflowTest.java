@@ -12,6 +12,10 @@ import com.ford.service.ai.application.LeadTemperature;
 import com.ford.service.ai.application.SensitiveDataLevel;
 import com.ford.service.ai.application.ToolFamily;
 import com.ford.service.conversations.application.ConversationWorkflow;
+import com.ford.service.conversations.application.graph.ConversationGraphRunner;
+import com.ford.service.conversations.application.graph.ConversationGraphRoute;
+import com.ford.service.conversations.application.graph.ConversationTurnOutcome;
+import com.ford.service.conversations.application.graph.ConversationTurnReference;
 import com.ford.service.conversations.application.ConversationDecisionRepository;
 import com.ford.service.conversations.application.ConversationMemoryPort;
 import com.ford.service.conversations.application.ConversationMemoryService;
@@ -50,6 +54,24 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 class ConversationWorkflowTest {
+
+    @Test
+    void productionWorkflowDelegatesInboundIdsToTheBoundedGraph() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var receiptId = UUID.randomUUID();
+        var processorCalls = new ArrayList<ConversationTurnReference>();
+        var graph = new ConversationGraphRunner(reference -> {
+            processorCalls.add(reference);
+            return new ConversationTurnOutcome(ConversationGraphRoute.IGNORED);
+        });
+        var workflow = new ConversationWorkflow(graph, mock(AiObservationService.class));
+
+        workflow.on(new InboundMessageAccepted(receiptId, tenantId, conversationId, Channel.WHATSAPP,
+                "wamid.graph", Instant.now(), "customer-private", "texto privado"));
+
+        assertThat(processorCalls).containsExactly(new ConversationTurnReference(tenantId, conversationId, receiptId));
+    }
 
     @Test
     void activeBotTurnPersistsReplyAndPublishesDeliveryRequest() {

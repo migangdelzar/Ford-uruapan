@@ -16,6 +16,8 @@ import com.ford.service.conversations.domain.MemoryQuery;
 import com.ford.service.conversations.domain.HandoffDecision;
 import com.ford.service.conversations.domain.MemoryProjectionUpdate;
 import com.ford.service.conversations.domain.MemoryUpdateResult;
+import com.ford.service.conversations.application.graph.ConversationGraphRunner;
+import com.ford.service.conversations.application.graph.ConversationTurnReference;
 import com.ford.service.shared.HumanHandoffPolicy;
 import com.ford.service.observability.AiObservationService;
 import com.ford.service.observability.DefaultAiObservationService;
@@ -40,6 +42,7 @@ public class ConversationWorkflow {
     private final ConversationMemoryService memoryService;
     private final ConversationDecisionRepository decisionRepository;
     private final AiObservationService observations;
+    private final ConversationGraphRunner graphRunner;
 
     /**
      * Compatibility constructor for lightweight callers that do not provide
@@ -84,6 +87,18 @@ public class ConversationWorkflow {
         this.memoryService = Objects.requireNonNull(memoryService);
         this.decisionRepository = Objects.requireNonNull(decisionRepository);
         this.observations = Objects.requireNonNull(observations);
+        this.graphRunner = null;
+    }
+
+    public ConversationWorkflow(ConversationGraphRunner graphRunner, AiObservationService observations) {
+        this.repository = null;
+        this.assistant = null;
+        this.eventPublisher = null;
+        this.handoffPolicy = null;
+        this.memoryService = null;
+        this.decisionRepository = null;
+        this.observations = Objects.requireNonNull(observations);
+        this.graphRunner = Objects.requireNonNull(graphRunner);
     }
 
     private static ConversationMemoryService noOpMemoryService() {
@@ -109,7 +124,12 @@ public class ConversationWorkflow {
     @ApplicationModuleListener
     public void on(InboundMessageAccepted event) {
         try {
-            handle(event);
+            if (graphRunner == null) {
+                handle(event);
+            } else {
+                graphRunner.run(new ConversationTurnReference(
+                        event.tenantId(), event.conversationId(), event.receiptId()));
+            }
             observations.event("ford.conversation.inbound", java.util.Map.of(
                     "channel", event.channel().name(), "outcome", "success"));
         } catch (RuntimeException exception) {
