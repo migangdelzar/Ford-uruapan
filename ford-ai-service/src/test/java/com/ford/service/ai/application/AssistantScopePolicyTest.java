@@ -59,4 +59,9 @@ class AssistantScopePolicyTest {
     void allowsShortEnglishGreetingsToReachTheAssistant() {
         assertThat(policy.allows("Hi", null)).isTrue();
     }
+
+    @Test
+    void allowsAClarifyingQuestionWithoutAutomotiveKeywords() {
+        assertThat(policy.allows("¿Me puedes explicar eso mejor?", null)).isTrue();
+    }
 }

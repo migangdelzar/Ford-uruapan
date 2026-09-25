@@ -118,6 +118,23 @@ class SpringAiAssistantServiceTest {
     }
 
     @Test
+    void sendsNeutralClarifyingQuestionsToTheAssistantInsteadOfUsingTheScopeGuard() {
+        var orchestrator = mock(AssistantOrchestrator.class);
+        when(orchestrator.respond(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AssistantResponse("Claro, te lo explico con más detalle.", false,
+                        "openai", List.of()));
+        var service = new SpringAiAssistantService(orchestrator,
+                new HumanHandoffPolicy(false), new DefaultModelProviderPolicy(List.of()));
+
+        var turn = service.respond(new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID()),
+                "¿Me puedes explicar eso mejor?");
+
+        assertThat(turn.text()).isEqualTo("Claro, te lo explico con más detalle.");
+        assertThat(turn.provider()).isEqualTo("openai");
+        verify(orchestrator).respond(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void routesAConfirmedTransactionalIntentToTheAdvisorBeforeGeneration() {
         var orchestrator = mock(AssistantOrchestrator.class);
         var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS, LeadTemperature.UNKNOWN,

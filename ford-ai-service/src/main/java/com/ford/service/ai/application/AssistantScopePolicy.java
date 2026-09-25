@@ -41,12 +41,13 @@ public final class AssistantScopePolicy {
             return false;
         }
         var normalized = userText.toLowerCase(Locale.ROOT);
-        if (containsAny(normalized, CLEARLY_UNRELATED_TERMS)) {
+        var hasFordContext = containsAny(normalized, ALLOWED_TERMS)
+                || intentRouter.route(userText) != Intent.GENERAL
+                || hasFordContext(memoryContext);
+        if (containsAny(normalized, CLEARLY_UNRELATED_TERMS) && !hasFordContext) {
             return false;
         }
-        return containsAny(normalized, ALLOWED_TERMS) || containsAny(normalized, GREETING_TERMS)
-                || intentRouter.route(userText) != Intent.GENERAL
-                || isContextualFollowUp(normalized, memoryContext);
+        return true;
     }
 
     public String scopeResponse() {
@@ -58,13 +59,9 @@ public final class AssistantScopePolicy {
         return terms.stream().anyMatch(value::contains);
     }
 
-    private static boolean isContextualFollowUp(String normalizedMessage, String memoryContext) {
-        if (memoryContext == null || memoryContext.isBlank()
-                || !containsAny(memoryContext.toLowerCase(Locale.ROOT),
-                List.of("ford", "ranger", "lobo", "raptor", "bronco", "maverick", "territory", "explorer", "vehículo", "vehiculo"))) {
-            return false;
-        }
-        return normalizedMessage.contains("?") || normalizedMessage.contains("¿")
-                || containsAny(normalizedMessage, List.of("ayúdame", "ayudame", "dime", "dame", "más", "mas", "detalles", "información", "informacion"));
+    private static boolean hasFordContext(String memoryContext) {
+        return memoryContext != null && !memoryContext.isBlank()
+                && containsAny(memoryContext.toLowerCase(Locale.ROOT),
+                List.of("ford", "ranger", "lobo", "raptor", "bronco", "maverick", "territory", "explorer", "vehículo", "vehiculo"));
     }
 }
