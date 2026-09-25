@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Restart the Grafana Cloud telemetry profile"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+mise run telemetry:grafana-cloud:stop
+mise run telemetry:grafana-cloud:start

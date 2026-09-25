@@ -1,0 +1,74 @@
+databaseChangeLog:
+  - changeSet:
+      id: 007-conversation-memory
+      author: ford-service
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              alter table conversation add column if not exists provider_account_id varchar(200);
+              alter table conversation add column if not exists participant_id varchar(200);
+
+              update conversation c
+                 set participant_id = coalesce(c.participant_id, c.provider_conversation_id),
+                     provider_account_id = coalesce(
+                         c.provider_account_id,
+                         (
+                           select cb.provider_account_id
+                             from channel_message cm
+                             join channel_binding cb on cb.id = cm.binding_id
+                            where cm.conversation_id = c.id
+                            order by cm.received_at desc
+                            limit 1
+                         ),
+                         'legacy');
+
+              alter table conversation alter column provider_account_id set not null;
+              alter table conversation alter column participant_id set not null;
+              alter table conversation drop constraint if exists conversation_tenant_id_channel_provider_conversation_id_key;
+              create unique index if not exists uq_conversation_session_identity
+                  on conversation(tenant_id, channel, provider_account_id, participant_id);
+
+              create table if not exists conversation_memory (
+                  conversation_id uuid primary key references conversation(id) on delete cascade,
+                  tenant_id uuid not null,
+                  channel varchar(30) not null,
+                  provider_account_id varchar(200) not null,
+                  participant_id varchar(200) not null,
+                  summary text not null default '',
+                  facts_json jsonb not null default '[]'::jsonb,
+                  memory_version bigint not null default 0,
+                  source_message_id uuid,
+                  updated_at timestamptz not null,
+                  unique (tenant_id, channel, provider_account_id, participant_id)
+              );
+
+              create table if not exists conversation_memory_item (
+                  id uuid primary key,
+                  conversation_id uuid not null references conversation(id) on delete cascade,
+                  tenant_id uuid not null,
+                  channel varchar(30) not null,
+                  kind varchar(60) not null,
+                  content text not null,
+                  embedding vector not null,
+                  source_message_id uuid,
+                  active boolean not null default true,
+                  created_at timestamptz not null,
+                  updated_at timestamptz not null
+              );
+
+              create index if not exists idx_conversation_memory_tenant_conversation
+                  on conversation_memory(tenant_id, conversation_id);
+              create index if not exists idx_conversation_memory_item_scope
+                  on conversation_memory_item(tenant_id, conversation_id, channel, active);
+              create unique index if not exists uq_conversation_memory_item_fact
+                  on conversation_memory_item(conversation_id, kind, content);
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              drop table if exists conversation_memory_item;
+              drop table if exists conversation_memory;
+              alter table conversation drop column if exists provider_account_id;
+              alter table conversation drop column if exists participant_id;

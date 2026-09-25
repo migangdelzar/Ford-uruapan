@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
+import java.util.UUID;
 
 @Repository
 public class JdbcInboundMessageDeduplicationAdapter implements InboundMessageDeduplicationPort {
@@ -17,11 +18,22 @@ public class JdbcInboundMessageDeduplicationAdapter implements InboundMessageDed
 
     @Override
     public boolean recordIfNew(InboundMessage message) {
+        return recordIfNew(message, UUID.randomUUID());
+    }
+
+    @Override
+    public boolean recordIfNew(InboundMessage message, UUID receiptId) {
         return jdbc.sql("""
-                insert into channel_delivery (tenant_id, channel, provider_message_id, received_at, raw_payload_reference)
-                values (:tenantId, :channel, :providerMessageId, :receivedAt, :rawPayloadReference)
+                insert into channel_delivery
+                    (receipt_id, binding_id, conversation_id, tenant_id, channel,
+                     provider_message_id, received_at, raw_payload_reference)
+                values (:receiptId, :bindingId, :conversationId, :tenantId, :channel,
+                        :providerMessageId, :receivedAt, :rawPayloadReference)
                 on conflict (tenant_id, channel, provider_message_id) do nothing
                 """)
+                .param("receiptId", receiptId)
+                .param("bindingId", message.bindingId())
+                .param("conversationId", message.conversationId())
                 .param("tenantId", message.tenantId())
                 .param("channel", message.channel().name())
                 .param("providerMessageId", message.providerMessageId())

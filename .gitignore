@@ -1,5 +1,64 @@
+# Git worktrees
 .worktrees/
+
+# Gradle and generated build output
 **/.gradle/
 **/build/
-**/.env
-**/.mise/state/
+**/bin/
+**/out/
+**/.kotlin/
+
+# IDE/editor metadata
+.idea/
+**/.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+**/.vscode/
+*.swp
+*.swo
+*~
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.template
+!.env.prod.example
+application-local.yml
+application-local.yaml
+application-secrets.yml
+application-secrets.yaml
+**/secrets/
+**/*.pem
+**/*.key
+**/*.p12
+**/*.jks
+
+# Local logs, reports, coverage, and test artifacts
+*.log
+**/logs/
+**/reports/
+**/coverage/
+*.exec
+*.hprof
+
+# Local database/cache files
+*.db
+*.sqlite
+*.sqlite3
+**/.data/
+**/tmp/
+
+# Docker/local tooling overrides
+docker-compose.override.yml
+docker-compose.override.yaml
+
+# Local mise environment overrides
+mise.local.toml
+mise.*.local.toml

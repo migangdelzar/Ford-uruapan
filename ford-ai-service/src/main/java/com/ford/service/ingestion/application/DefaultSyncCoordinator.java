@@ -4,6 +4,7 @@ import com.ford.service.ingestion.application.port.out.AuthorizedScraperSource;
 import com.ford.service.ingestion.application.port.out.FordCatalogSource;
 import com.ford.service.ingestion.application.port.out.FordInventorySource;
 import com.ford.service.ingestion.application.port.out.ManualImportSource;
+import com.ford.service.ingestion.application.port.out.CanonicalDataWriter;
 import com.ford.service.ingestion.application.port.out.SyncRunRepository;
 import com.ford.service.ingestion.domain.SourceNormalization;
 import com.ford.service.ingestion.domain.SourceSnapshot;
@@ -12,6 +13,8 @@ import com.ford.service.ingestion.domain.SyncResult;
 import com.ford.service.observability.AiObservationService;
 import com.ford.service.observability.DefaultAiObservationService;
 import com.ford.service.shared.SourceCandidate;
+import com.ford.service.shared.DefaultSourcePrecedencePolicy;
+import com.ford.service.shared.SourcePrecedencePolicy;
 import io.micrometer.observation.ObservationRegistry;
 
 import java.time.Duration;
@@ -36,6 +39,8 @@ public final class DefaultSyncCoordinator implements SyncCoordinator {
     private final SourceNormalization normalization;
     private final int maxAttempts;
     private final AiObservationService observations;
+    private final CanonicalDataWriter canonicalDataWriter;
+    private final SourcePrecedencePolicy sourcePrecedencePolicy;
 
     public DefaultSyncCoordinator(FordCatalogSource catalogSource,
                                   FordInventorySource inventorySource,
@@ -45,7 +50,8 @@ public final class DefaultSyncCoordinator implements SyncCoordinator {
                                   SourceNormalization normalization,
                                   int maxAttempts) {
         this(catalogSource, inventorySource, scraperSource, manualSource, syncRunRepository,
-                normalization, maxAttempts, new DefaultAiObservationService(ObservationRegistry.NOOP));
+                normalization, maxAttempts, new DefaultAiObservationService(ObservationRegistry.NOOP),
+                (tenantId, syncRunId, candidates) -> candidates.size(), new DefaultSourcePrecedencePolicy());
     }
 
     public DefaultSyncCoordinator(FordCatalogSource catalogSource,
@@ -56,6 +62,34 @@ public final class DefaultSyncCoordinator implements SyncCoordinator {
                                   SourceNormalization normalization,
                                   int maxAttempts,
                                   AiObservationService observations) {
+        this(catalogSource, inventorySource, scraperSource, manualSource, syncRunRepository,
+                normalization, maxAttempts, observations, (tenantId, syncRunId, candidates) -> candidates.size(),
+                new DefaultSourcePrecedencePolicy());
+    }
+
+    public DefaultSyncCoordinator(FordCatalogSource catalogSource,
+                                  FordInventorySource inventorySource,
+                                  AuthorizedScraperSource scraperSource,
+                                  ManualImportSource manualSource,
+                                  SyncRunRepository syncRunRepository,
+                                  SourceNormalization normalization,
+                                  int maxAttempts,
+                                  AiObservationService observations,
+                                  CanonicalDataWriter canonicalDataWriter) {
+        this(catalogSource, inventorySource, scraperSource, manualSource, syncRunRepository, normalization,
+                maxAttempts, observations, canonicalDataWriter, new DefaultSourcePrecedencePolicy());
+    }
+
+    public DefaultSyncCoordinator(FordCatalogSource catalogSource,
+                                  FordInventorySource inventorySource,
+                                  AuthorizedScraperSource scraperSource,
+                                  ManualImportSource manualSource,
+                                  SyncRunRepository syncRunRepository,
+                                  SourceNormalization normalization,
+                                  int maxAttempts,
+                                  AiObservationService observations,
+                                  CanonicalDataWriter canonicalDataWriter,
+                                  SourcePrecedencePolicy sourcePrecedencePolicy) {
         if (maxAttempts < 1) {
             throw new IllegalArgumentException("maxAttempts must be positive");
         }
@@ -67,6 +101,8 @@ public final class DefaultSyncCoordinator implements SyncCoordinator {
         this.normalization = java.util.Objects.requireNonNull(normalization);
         this.maxAttempts = maxAttempts;
         this.observations = java.util.Objects.requireNonNull(observations);
+        this.canonicalDataWriter = java.util.Objects.requireNonNull(canonicalDataWriter);
+        this.sourcePrecedencePolicy = java.util.Objects.requireNonNull(sourcePrecedencePolicy);
     }
 
     @Override
@@ -93,19 +129,34 @@ public final class DefaultSyncCoordinator implements SyncCoordinator {
             return new SyncResult(syncRunId, SyncResult.Status.FAILED, 0, 0, 0, false, safeMessage(exception));
         }
 
-        var unique = new LinkedHashMap<String, SourceCandidate>();
+        var bySourceRecord = new LinkedHashMap<String, List<SourceCandidate>>();
         var quarantined = 0;
         var stale = false;
         for (var snapshot : snapshots) {
             var result = normalization.normalize(snapshot, request.requestedAt());
             quarantined += result.quarantined().size();
             for (var candidate : result.accepted()) {
-                unique.putIfAbsent(candidate.metadata().sourceSystem() + ":" + candidate.metadata().sourceRecordId(), candidate);
-                stale |= candidate.metadata().freshnessStatus().name().equals("STALE");
+                bySourceRecord.computeIfAbsent(candidate.metadata().sourceRecordId(), ignored -> new ArrayList<>())
+                        .add(candidate);
             }
         }
+        var unique = new LinkedHashMap<String, SourceCandidate>();
+        for (var entry : bySourceRecord.entrySet()) {
+            var selection = sourcePrecedencePolicy.choose(entry.getValue(), request.requestedAt());
+            var selected = new SourceCandidate(selection.sourceKind(), selection.payload(), selection.metadata());
+            unique.put(entry.getKey(), selected);
+            stale |= selected.metadata().freshnessStatus().name().equals("STALE");
+        }
+        int recordsApplied;
+        try {
+            recordsApplied = canonicalDataWriter.write(request.tenantId(), syncRunId, List.copyOf(unique.values()));
+        } catch (RuntimeException exception) {
+            syncRunRepository.fail(syncRunId, safeMessage(exception));
+            return new SyncResult(syncRunId, SyncResult.Status.FAILED,
+                    unique.size() + quarantined, 0, quarantined, stale, safeMessage(exception));
+        }
         var syncResult = new SyncResult(syncRunId, SyncResult.Status.COMPLETED,
-                unique.size() + quarantined, unique.size(), quarantined, stale, null);
+                unique.size() + quarantined, recordsApplied, quarantined, stale, null);
         syncRunRepository.complete(syncRunId, syncResult);
         log.info("Catalog synchronization completed outcome=success recordsSeen={} recordsApplied={} recordsQuarantined={} staleData={} durationMs={}",
                 syncResult.recordsSeen(), syncResult.recordsApplied(), syncResult.recordsQuarantined(),

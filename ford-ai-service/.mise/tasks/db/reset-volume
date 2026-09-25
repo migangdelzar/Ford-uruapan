@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#MISE description="Delete local PostgreSQL volumes and recreate dependency containers"
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+
+if [[ $# -ne 1 || "$1" != "--confirm" ]]; then
+  echo "Refusing to delete Docker volumes. Usage: mise run db:reset-volume -- --confirm" >&2
+  exit 2
+fi
+
+ford_compose down --volumes --remove-orphans
+ford_compose up -d postgres redis
+for attempt in {1..30}; do
+  if ford_compose exec -T postgres pg_isready -U ford -d ford_service >/dev/null 2>&1; then
+    break
+  fi
+  if [[ "$attempt" -eq 30 ]]; then
+    echo "PostgreSQL did not become ready within 30 seconds." >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+echo "PostgreSQL volume deleted and fresh PostgreSQL/Redis containers started."
+echo "Start the application to let Liquibase recreate the schema: mise run app:run"

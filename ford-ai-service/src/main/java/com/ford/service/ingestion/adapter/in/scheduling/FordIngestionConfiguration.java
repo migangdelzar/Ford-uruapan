@@ -11,10 +11,13 @@ import com.ford.service.ingestion.application.port.out.AuthorizedScraperSource;
 import com.ford.service.ingestion.application.port.out.FordCatalogSource;
 import com.ford.service.ingestion.application.port.out.FordInventorySource;
 import com.ford.service.ingestion.application.port.out.ManualImportSource;
+import com.ford.service.ingestion.application.port.out.CanonicalDataWriter;
 import com.ford.service.ingestion.application.port.out.SyncRunRepository;
 import com.ford.service.ingestion.domain.SourceNormalization;
 import com.ford.service.ingestion.domain.SourceSnapshot;
 import com.ford.service.observability.AiObservationService;
+import com.ford.service.shared.DefaultSourcePrecedencePolicy;
+import com.ford.service.shared.SourcePrecedencePolicy;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -27,6 +30,11 @@ import java.util.UUID;
 @Configuration
 @ConditionalOnProperty(name = "ford.ingestion.enabled", havingValue = "true")
 public class FordIngestionConfiguration {
+
+    @Bean
+    SourcePrecedencePolicy sourcePrecedencePolicy() {
+        return new DefaultSourcePrecedencePolicy();
+    }
 
     @Bean
     RestClient fordIngestionRestClient() { return RestClient.builder().build(); }
@@ -62,9 +70,16 @@ public class FordIngestionConfiguration {
     SyncCoordinator syncCoordinator(FordCatalogSource catalog, FordInventorySource inventory,
                                     AuthorizedScraperSource scraper, ManualImportSource manual,
                                     SyncRunRepository repository, SourceNormalization normalization,
-                                    FordSyncProperties properties, AiObservationService observations) {
+                                    FordSyncProperties properties, AiObservationService observations,
+                                    CanonicalDataWriter canonicalDataWriter,
+                                    SourcePrecedencePolicy sourcePrecedencePolicy) {
         return new DefaultSyncCoordinator(catalog, inventory, scraper, manual, repository,
-                normalization, properties.maxAttempts(), observations);
+                normalization, properties.maxAttempts(), observations, canonicalDataWriter, sourcePrecedencePolicy);
+    }
+
+    @Bean
+    FordSyncJob fordSyncJob(SyncCoordinator coordinator, FordSyncProperties properties) {
+        return new FordSyncJob(coordinator, properties);
     }
 
     private static SourceSnapshot emptySnapshot() {

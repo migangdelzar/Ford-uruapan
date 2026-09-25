@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Restart local telemetry with the Langfuse Cloud profile"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+mise run telemetry:cloud:stop
+mise run telemetry:cloud:start

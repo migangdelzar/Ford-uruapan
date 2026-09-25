@@ -9,7 +9,7 @@ public class MetaWebhookProperties {
 
     private String appSecret = "";
     private String verifyToken = "";
-    private UUID tenantId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+    private final AutoBinding autoBinding = new AutoBinding();
 
     public String getAppSecret() {
         return appSecret;
@@ -27,11 +27,46 @@ public class MetaWebhookProperties {
         this.verifyToken = verifyToken;
     }
 
+    public AutoBinding getAutoBinding() {
+        return autoBinding;
+    }
+
     public UUID getTenantId() {
-        return tenantId;
+        return autoBinding.getTenantId();
     }
 
     public void setTenantId(UUID tenantId) {
-        this.tenantId = tenantId;
+        autoBinding.setTenantId(tenantId);
+    }
+
+    public static class AutoBinding {
+
+        private boolean enabled;
+        private String providerAccountId = "";
+        private UUID tenantId;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getProviderAccountId() {
+            return providerAccountId;
+        }
+
+        public void setProviderAccountId(String providerAccountId) {
+            this.providerAccountId = providerAccountId;
+        }
+
+        public UUID getTenantId() {
+            return tenantId;
+        }
+
+        public void setTenantId(UUID tenantId) {
+            this.tenantId = tenantId;
+        }
     }
 }

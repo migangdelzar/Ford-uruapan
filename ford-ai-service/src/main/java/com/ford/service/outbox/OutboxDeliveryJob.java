@@ -4,7 +4,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 
 import java.time.Instant;
 
-public final class OutboxDeliveryJob {
+public class OutboxDeliveryJob {
     private final OutboxPublisher publisher;
 
     public OutboxDeliveryJob(OutboxPublisher publisher) {

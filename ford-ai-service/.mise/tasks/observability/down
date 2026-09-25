@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Stop the local Langfuse and OTel stack"
+set -euo pipefail
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ford_observability_env
+cd "$MISE_PROJECT_ROOT/../deployment/observability/langfuse"
+ford_compose down

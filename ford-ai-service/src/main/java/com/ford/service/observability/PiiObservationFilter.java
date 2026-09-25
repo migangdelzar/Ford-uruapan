@@ -3,11 +3,14 @@ package com.ford.service.observability;
 import io.micrometer.common.KeyValue;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationFilter;
+import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.stereotype.Component;
+import org.springframework.context.annotation.Role;
 
 import java.util.Locale;
 
 @Component
+@Role(BeanDefinition.ROLE_INFRASTRUCTURE)
 public final class PiiObservationFilter implements ObservationFilter {
 
     private static final String[] SENSITIVE_FRAGMENTS = {

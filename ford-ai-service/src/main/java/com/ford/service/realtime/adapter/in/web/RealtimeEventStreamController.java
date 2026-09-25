@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 @RestController
 @RequestMapping("/api/v1/operator/events")
-public final class RealtimeEventStreamController {
+public class RealtimeEventStreamController {
 
     private static final long EMITTER_TIMEOUT_MILLIS = 30 * 60 * 1000L;
     private static final Logger log = LoggerFactory.getLogger(RealtimeEventStreamController.class);
@@ -35,7 +35,7 @@ public final class RealtimeEventStreamController {
     @Autowired
     public RealtimeEventStreamController(RealtimeEventHub hub, MetaWebhookProperties properties) {
         this.hub = hub;
-        this.defaultTenantId = properties.getTenantId();
+        this.defaultTenantId = properties.getAutoBinding().getTenantId();
     }
 
     public SseEmitter stream() {
@@ -69,10 +69,11 @@ public final class RealtimeEventStreamController {
 
     private static void sendConnected(SseEmitter emitter, UUID tenantId, Runnable cleanup) {
         try {
+            var data = tenantId == null ? Map.of() : Map.of("tenantId", tenantId);
             emitter.send(SseEmitter.event()
                     .id(UUID.randomUUID().toString())
                     .name("connected")
-                    .data(Map.of("tenantId", tenantId)));
+                    .data(data));
         } catch (IOException exception) {
             log.warn("Operator event stream closed outcome=send_failure errorType={}",
                     exception.getClass().getSimpleName());

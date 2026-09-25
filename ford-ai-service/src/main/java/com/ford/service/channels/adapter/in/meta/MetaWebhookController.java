@@ -1,10 +1,8 @@
 package com.ford.service.channels.adapter.in.meta;
 
-import com.ford.service.channels.application.ChannelMessageService;
+import com.ford.service.channels.application.InboundWebhookService;
 import com.ford.service.channels.application.port.in.ChannelAdapter;
 import com.ford.service.channels.domain.Channel;
-import com.ford.service.channels.domain.RawWebhook;
-import com.ford.service.channels.domain.WebhookRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,25 +18,22 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/webhooks/meta")
-public final class MetaWebhookController {
+public class MetaWebhookController {
 
     private static final Logger log = LoggerFactory.getLogger(MetaWebhookController.class);
 
     private final List<ChannelAdapter> adapters;
-    private final ChannelMessageService messageService;
+    private final InboundWebhookService inboundWebhookService;
     private final MetaWebhookProperties properties;
 
     public MetaWebhookController(List<ChannelAdapter> adapters,
-                                 ChannelMessageService messageService,
+                                 InboundWebhookService inboundWebhookService,
                                  MetaWebhookProperties properties) {
         this.adapters = List.copyOf(adapters);
-        this.messageService = messageService;
+        this.inboundWebhookService = inboundWebhookService;
         this.properties = properties;
     }
 
@@ -52,10 +47,10 @@ public final class MetaWebhookController {
                 && properties.getVerifyToken().equals(verifyToken)
                 && challenge != null
                 && adapterFor(channel) != null) {
-            log.info("Meta webhook verification succeeded channel={}", channel);
+            log.info("Meta webhook verification accepted: channel={}", channel);
             return ResponseEntity.ok(challenge);
         }
-        log.warn("Meta webhook verification rejected channel={}", channel);
+        log.warn("Meta webhook verification rejected: channel={} reason=invalid verification request", channel);
         return ResponseEntity.badRequest().build();
     }
 
@@ -63,36 +58,36 @@ public final class MetaWebhookController {
     public ResponseEntity<Void> receive(
             @PathVariable String channel,
             @RequestHeader(name = "X-Hub-Signature-256", required = false) String signature,
+            @RequestHeader(name = "X-Tenant-Id", required = false) String tenantHeader,
             @RequestBody String body) {
         var started = System.nanoTime();
         try {
+            if (tenantHeader != null) {
+                log.warn("Meta webhook rejected: channel={} status=400 reason=tenant header is not accepted", channel);
+                return ResponseEntity.badRequest().build();
+            }
             var adapter = adapterFor(channel);
             if (adapter == null) {
-                log.warn("Meta webhook rejected channel={} outcome=unknown_channel durationMs={}",
-                        channel, elapsedMs(started));
+                log.warn("Meta webhook rejected: channel={} status=404 reason=unsupported channel", channel);
                 return ResponseEntity.notFound().build();
             }
-            var headers = new HashMap<String, String>();
-            if (signature != null) {
-                headers.put("X-Hub-Signature-256", signature);
-            }
-            adapter.validateWebhook(new WebhookRequest(body, headers));
-            messageService.accept(new RawWebhook(properties.getTenantId(), body,
-                    "meta:" + channel.toLowerCase(Locale.ROOT) + ":" + UUID.randomUUID()), adapter);
+            inboundWebhookService.accept(Channel.valueOf(channel.toUpperCase(Locale.ROOT)),
+                    signature, body, adapter, properties.getAppSecret());
+            log.info("Meta webhook accepted: channel={}", channel);
             return ResponseEntity.accepted().build();
         } catch (SecurityException exception) {
-            log.warn("Meta webhook rejected channel={} outcome=invalid_signature durationMs={}",
-                    channel, elapsedMs(started));
+            log.warn("Meta webhook rejected: channel={} status=403 reason={}", channel,
+                    safeReason(exception));
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         } catch (IllegalArgumentException exception) {
-            log.warn("Meta webhook rejected channel={} outcome=invalid_payload durationMs={}",
-                    channel, elapsedMs(started));
+            log.warn("Meta webhook rejected: channel={} status=400 reason=invalid webhook payload", channel);
             return ResponseEntity.badRequest().build();
         }
     }
 
-    private static long elapsedMs(long started) {
-        return (System.nanoTime() - started) / 1_000_000L;
+    private static String safeReason(SecurityException exception) {
+        var message = exception.getMessage();
+        return message == null || message.isBlank() ? "security validation failed" : message;
     }
 
     private ChannelAdapter adapterFor(String channel) {

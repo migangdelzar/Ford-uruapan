@@ -1,6 +1,6 @@
 databaseChangeLog:
   - changeSet:
-      id: 005-ai-system-prompt
+      id: 013-ai-system-prompt
       author: ford-service
       changes:
         - sql:

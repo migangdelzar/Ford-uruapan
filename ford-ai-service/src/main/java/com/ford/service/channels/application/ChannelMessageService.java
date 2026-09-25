@@ -1,13 +1,14 @@
 package com.ford.service.channels.application;
 
+import com.ford.service.channels.api.InboundMessageAccepted;
 import com.ford.service.channels.application.port.in.ChannelAdapter;
 import com.ford.service.channels.application.port.out.InboundMessageDeduplicationPort;
 import com.ford.service.channels.application.port.out.InboundMessagePersistencePort;
 import com.ford.service.channels.domain.InboundMessage;
-import com.ford.service.channels.domain.InboundMessageAccepted;
 import com.ford.service.channels.domain.RawWebhook;
 
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -24,23 +25,34 @@ public class ChannelMessageService {
     private final Set<String> processedMessageIds = ConcurrentHashMap.newKeySet();
     private final InboundMessageDeduplicationPort deduplication;
     private final InboundMessagePersistencePort persistence;
-    private final ApplicationEventPublisher events;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ChannelMessageService() {
-        this(null, null, event -> { });
+        this.deduplication = null;
+        this.persistence = null;
+        this.eventPublisher = null;
     }
 
-    public ChannelMessageService(ApplicationEventPublisher events) {
-        this(null, null, events);
+    public ChannelMessageService(ApplicationEventPublisher eventPublisher) {
+        this.deduplication = null;
+        this.persistence = null;
+        this.eventPublisher = eventPublisher;
     }
 
     @Autowired
     public ChannelMessageService(InboundMessageDeduplicationPort deduplication,
                                  InboundMessagePersistencePort persistence,
-                                 ApplicationEventPublisher events) {
+                                 ApplicationEventPublisher eventPublisher) {
         this.deduplication = deduplication;
         this.persistence = persistence;
-        this.events = events;
+        this.eventPublisher = eventPublisher;
+    }
+
+    public ChannelMessageService(InboundMessageDeduplicationPort deduplication,
+                                 InboundMessagePersistencePort persistence) {
+        this.deduplication = deduplication;
+        this.persistence = persistence;
+        this.eventPublisher = null;
     }
 
     @Transactional
@@ -48,16 +60,25 @@ public class ChannelMessageService {
         var started = System.nanoTime();
         var message = adapter.parseInbound(webhook);
         var key = message.tenantId() + ":" + message.channel() + ":" + message.providerMessageId();
-        var firstDelivery = deduplication == null ? processedMessageIds.add(key) : deduplication.recordIfNew(message);
+        var receiptId = UUID.randomUUID();
+        var firstDelivery = deduplication == null
+                ? processedMessageIds.add(key)
+                : deduplication.recordIfNew(message, receiptId);
         if (!firstDelivery) {
             log.info("Inbound message ignored channel={} outcome=duplicate durationMs={}",
                     message.channel(), elapsedMs(started));
             return null;
         }
+        var conversationId = message.conversationId();
         if (persistence != null) {
-            persistence.persist(message);
+            conversationId = persistence.persist(message, receiptId);
         }
-        events.publishEvent(new InboundMessageAccepted(message));
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(new InboundMessageAccepted(
+                    receiptId, message.tenantId(), conversationId, message.channel(),
+                    message.providerMessageId(), message.receivedAt(),
+                    message.participantId(), message.text()));
+        }
         log.info("Inbound message accepted channel={} outcome=accepted durationMs={}",
                 message.channel(), elapsedMs(started));
         return message;

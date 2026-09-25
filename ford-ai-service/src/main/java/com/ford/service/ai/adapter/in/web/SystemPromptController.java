@@ -16,7 +16,7 @@ import java.security.Principal;
 
 @RestController
 @RequestMapping("/api/v1/operator/ai/system-prompt")
-public final class SystemPromptController {
+public class SystemPromptController {
 
     private final SystemPromptService service;
 

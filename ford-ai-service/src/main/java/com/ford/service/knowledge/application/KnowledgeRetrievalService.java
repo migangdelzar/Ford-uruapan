@@ -1,6 +1,6 @@
 package com.ford.service.knowledge.application;
 
-import com.ford.service.ai.application.port.out.KnowledgeRetriever;
+import com.ford.service.knowledge.application.port.out.KnowledgeRetriever;
 import com.ford.service.knowledge.domain.KnowledgeChunk;
 import com.ford.service.knowledge.domain.KnowledgeQuery;
 
@@ -8,7 +8,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 
-public final class KnowledgeRetrievalService {
+public final class KnowledgeRetrievalService implements KnowledgeRetrieval {
 
     private final KnowledgeRetriever retriever;
 
@@ -16,6 +16,7 @@ public final class KnowledgeRetrievalService {
         this.retriever = Objects.requireNonNull(retriever);
     }
 
+    @Override
     public List<KnowledgeChunk> retrieve(KnowledgeQuery query) {
         Objects.requireNonNull(query);
         if (query.tenantId() == null || query.text() == null || query.text().isBlank()) {

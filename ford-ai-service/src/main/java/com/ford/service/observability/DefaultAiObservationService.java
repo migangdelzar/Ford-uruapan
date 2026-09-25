@@ -11,7 +11,7 @@ import java.util.Set;
 import java.util.function.Supplier;
 
 @Component
-public final class DefaultAiObservationService implements AiObservationService {
+public class DefaultAiObservationService implements AiObservationService {
 
     private static final Set<String> ALLOWED_KEYS = Set.of(
             "channel", "provider", "model", "tool", "outcome", "lead_band", "operation");

@@ -59,6 +59,8 @@ jobs:
         uses: ./.github/actions/setup-java-gradle
       - name: Run integration tests
         working-directory: ford-ai-service
+        env:
+          TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE: /var/run/docker.sock
         run: ./gradlew integrationTest --no-daemon --no-configuration-cache --stacktrace
       - name: Upload integration reports
         if: always()

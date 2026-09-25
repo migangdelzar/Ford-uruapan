@@ -1,22 +1,41 @@
 #!/usr/bin/env bash
-#MISE description="Delete and recreate only the local PostgreSQL volume"
-
+#MISE description="Reset the local PostgreSQL schema without deleting its volume"
 set -euo pipefail
 
 cd "$MISE_PROJECT_ROOT"
 source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
 
 if [[ $# -ne 1 || "$1" != "--confirm" ]]; then
-  echo "Refusing to delete the PostgreSQL volume. Usage: mise run db:reset -- --confirm" >&2
+  echo "Refusing to reset the database. Usage: mise run db:reset -- --confirm" >&2
   exit 2
 fi
 
-require_command docker
-ford_compose stop postgres >/dev/null 2>&1 || true
-if docker volume inspect ford-postgres >/dev/null 2>&1; then
-  docker volume rm ford-postgres
+if [[ -n "$(ford_compose ps -q ford-service 2>/dev/null)" ]]; then
+  echo "Stop the ford-service container before resetting the database." >&2
+  echo "Run: mise run docker:down" >&2
+  exit 1
 fi
-ford_compose up -d postgres
 
-echo "PostgreSQL volume deleted and a fresh PostgreSQL container started."
-echo "Run 'mise run app:start' to let Liquibase recreate the schema."
+ford_compose up -d postgres
+for attempt in {1..30}; do
+  if ford_compose exec -T postgres pg_isready -U ford -d ford_service >/dev/null 2>&1; then
+    break
+  fi
+  if [[ "$attempt" -eq 30 ]]; then
+    echo "PostgreSQL did not become ready within 30 seconds." >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+ford_compose exec -T postgres psql -U ford -d ford_service -v ON_ERROR_STOP=1 -c '
+  drop extension if exists vector cascade;
+  drop schema public cascade;
+  create schema public;
+  create extension vector;
+  grant all on schema public to ford;
+  grant all on schema public to public;
+'
+
+echo "Database schema reset. All application data, including channel bindings, was deleted."
+echo "Start the application to let Liquibase recreate the schema: mise run app:run"

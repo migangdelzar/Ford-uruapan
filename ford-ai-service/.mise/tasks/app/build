@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Build the Spring Boot jar"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+exec ./gradlew bootJar --no-daemon

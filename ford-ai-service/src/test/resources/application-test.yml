@@ -19,3 +19,9 @@ ford:
   ai:
     cloud-enabled: false
     local-enabled: false
+  channels:
+    meta:
+      delivery:
+        enabled: false
+  outbox:
+    enabled: false

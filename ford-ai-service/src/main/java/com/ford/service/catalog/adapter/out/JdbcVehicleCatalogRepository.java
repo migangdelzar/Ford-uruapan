@@ -30,23 +30,7 @@ public class JdbcVehicleCatalogRepository implements VehicleCatalogRepository {
 
     @Override
     public List<VehicleSummary> search(CatalogQuery query) {
-        return jdbc.sql("""
-                select v.id, vm.name model_name, v.name variant_name, vm.model_year,
-                       coalesce(p.amount, 0) price, coalesce(p.freshness_status, 'UNKNOWN') freshness_status
-                from vehicle_variant v
-                join vehicle_model vm on vm.id = v.model_id
-                left join lateral (
-                    select amount, freshness_status from vehicle_price p
-                    where p.variant_id = v.id and p.tenant_id = :tenantId
-                      and p.effective_from <= current_timestamp
-                      and (p.effective_to is null or p.effective_to > current_timestamp)
-                    order by p.observed_at desc limit 1
-                ) p on true
-                where v.tenant_id = :tenantId
-                  and (:text is null or lower(vm.name || ' ' || v.name) like lower('%' || :text || '%'))
-                  and (:modelYear is null or vm.model_year = :modelYear)
-                order by vm.name, v.name
-                """)
+        return jdbc.sql(searchSql())
                 .param("tenantId", query.tenantId())
                 .param("text", query.text())
                 .param("modelYear", query.modelYear())
@@ -59,6 +43,28 @@ public class JdbcVehicleCatalogRepository implements VehicleCatalogRepository {
                         new Money(rs.getBigDecimal("price").setScale(2), MXN),
                         FreshnessStatus.valueOf(rs.getString("freshness_status"))))
                 .list();
+    }
+
+    static String searchSql() {
+        return """
+                select v.id, vm.name model_name, v.name variant_name, vm.model_year,
+                       coalesce(p.amount, 0) price, coalesce(p.freshness_status, 'UNKNOWN') freshness_status
+                from vehicle_variant v
+                join vehicle_model vm on vm.id = v.model_id
+                left join lateral (
+                    select amount, freshness_status from vehicle_price p
+                    where p.variant_id = v.id and p.tenant_id = :tenantId
+                      and p.effective_from <= current_timestamp
+                      and (p.effective_to is null or p.effective_to > current_timestamp)
+                    order by p.observed_at desc limit 1
+                ) p on true
+                where v.tenant_id = :tenantId
+                  and (cast(:text as text) is null
+                       or lower(vm.name || ' ' || v.name) like lower('%' || cast(:text as text) || '%'))
+                  and (cast(:modelYear as integer) is null
+                       or vm.model_year = cast(:modelYear as integer))
+                order by vm.name, v.name
+                """;
     }
 
     @Override

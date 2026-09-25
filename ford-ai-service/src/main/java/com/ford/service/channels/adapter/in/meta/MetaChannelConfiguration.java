@@ -1,32 +1,34 @@
 package com.ford.service.channels.adapter.in.meta;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ford.service.channels.application.port.in.ChannelAdapter;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.simple.JdbcClient;
 
 @Configuration
 @EnableConfigurationProperties(MetaWebhookProperties.class)
 public class MetaChannelConfiguration {
 
     @Bean
-    ObjectMapper objectMapper() {
-        return new ObjectMapper().findAndRegisterModules();
+    ChannelAdapter whatsAppChannelAdapter(com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
+        return new WhatsAppChannelAdapter(objectMapper);
     }
 
     @Bean
-    ChannelAdapter whatsAppChannelAdapter(ObjectMapper objectMapper, MetaWebhookProperties properties) {
-        return new WhatsAppChannelAdapter(objectMapper, properties.getAppSecret());
+    ChannelAdapter messengerChannelAdapter(com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
+        return new MessengerChannelAdapter(objectMapper);
     }
 
     @Bean
-    ChannelAdapter messengerChannelAdapter(ObjectMapper objectMapper, MetaWebhookProperties properties) {
-        return new MessengerChannelAdapter(objectMapper, properties.getAppSecret());
+    ChannelAdapter instagramChannelAdapter(com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
+        return new InstagramChannelAdapter(objectMapper);
     }
 
     @Bean
-    ChannelAdapter instagramChannelAdapter(ObjectMapper objectMapper, MetaWebhookProperties properties) {
-        return new InstagramChannelAdapter(objectMapper, properties.getAppSecret());
+    MetaBindingStartupInitializer metaBindingStartupInitializer(
+            ObjectProvider<JdbcClient> jdbcClients, MetaWebhookProperties properties) {
+        return new MetaBindingStartupInitializer(jdbcClients, properties);
     }
 }

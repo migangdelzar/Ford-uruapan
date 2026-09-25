@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#MISE description="List environment variable names and presence only"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+
+names=(
+  FORD_DATABASE_URL
+  FORD_DATABASE_USERNAME
+  FORD_DATABASE_PASSWORD
+  FORD_AI_CHAT_PROVIDER
+  FORD_AI_CLOUD_ENABLED
+  FORD_AI_LOCAL_ENABLED
+  OPENAI_API_KEY
+  FORD_META_APP_SECRET
+  FORD_META_VERIFY_TOKEN
+  FORD_INGESTION_ENABLED
+  FORD_OUTBOX_ENABLED
+  FORD_OTEL_TRACES_ENDPOINT
+)
+
+for name in "${names[@]}"; do
+  status=missing
+  [[ -n "${!name:-}" ]] && status=set
+  printf '%-40s %s\n' "$name" "$status"
+done

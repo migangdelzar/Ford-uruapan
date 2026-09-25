@@ -1,10 +1,10 @@
 # Observability
 
 Ford Service exposes Actuator health/metrics endpoints and exports traces
-through Spring Boot's supported OpenTelemetry starter. The application Compose
-stack includes Prometheus, Loki, Grafana Alloy, Tempo, and an OpenTelemetry
-Collector. Grafana is an optional UI profile. The application-to-collector
-protocol is OTLP over HTTP; container stdout is the log source for Alloy.
+through Spring Boot's supported OpenTelemetry starter. The self-hosted
+Langfuse and OpenTelemetry Collector deployment support lives under
+`deployment/observability/`, alongside the repository-level runtime
+configuration. The application-to-collector protocol is OTLP over HTTP.
 
 ## Local or OCI observability stack
 
@@ -42,6 +42,46 @@ the application with `FORD_OTEL_TRACES_ENDPOINT=http://localhost:4318/v1/traces`
 file or a secret manager. The Compose stack pins every image and persists
 PostgreSQL, ClickHouse, Redis, and MinIO data in named volumes.
 
+## Langfuse Cloud profile
+
+For the OCI Always Free deployment, use Langfuse Cloud instead of running the
+heavy self-hosted Langfuse services on `emme-1` or `emme-2`. The collector is a
+separate process from the Ford JVM and can dual-export redacted traces to local
+Tempo and Langfuse Cloud:
+
+```bash
+export LANGFUSE_BASE_URL=https://us.cloud.langfuse.com
+export LANGFUSE_PUBLIC_KEY='<project-public-key>'
+export LANGFUSE_SECRET_KEY='<project-secret-key>'
+
+mise run telemetry:cloud:start
+mise run telemetry:cloud:check
+```
+
+The task derives the OTLP endpoint as
+`https://us.cloud.langfuse.com/api/public/otel` unless
+`LANGFUSE_OTLP_ENDPOINT` is explicitly supplied. Credentials are injected only
+into the collector container through the environment and are never written to
+the repository or sent to the frontend. The cloud profile uses a dedicated
+collector configuration with bounded queueing, PII redaction, and fail-open
+export behavior. Stop or restart it with the matching `telemetry:cloud:*`
+tasks.
+
+The deployment boundary is:
+
+```text
+Ford JVM → OpenTelemetry Collector → Tempo
+                                  ↘ Langfuse Cloud
+Ford logs → Alloy → Loki
+Ford metrics → Prometheus
+```
+
+The Ford JVM does not contain Langfuse client code, and Langfuse Cloud is not a
+database, Redis, or application dependency. On the small OCI footprint, keep
+this profile off the production VMs until the resource budget for Tempo, Loki,
+Prometheus, and Alloy is intentionally allocated; use it locally or on a
+separate observability host.
+
 ## Telemetry policy
 
 Spring AI native observations cover ChatClient, model, embedding, vector-store,
@@ -58,6 +98,16 @@ identifiers. Conversation, tenant, lead, and provider IDs must not be added as
 metric labels. Trace export is fail-open: a Tempo, Langfuse, or collector outage
 must not fail the business request. Loki receives only application/container
 logs; payloads, prompts, and customer content are not logged.
+
+Spring Modulith persists transactional internal-listener publications in
+PostgreSQL. The protected `GET /actuator/modulith` resource exposes the module
+topology for operators; event-publication staleness and recovery signals are
+kept separate from the external `outbox_event` delivery queue. Monitor both
+publication lag and outbox pending/dead-letter counts during incidents.
+
+The PII redaction and observation-filter tests are part of the Java verification
+suite. They assert that prompt, completion, raw payload, provider identifiers,
+contact, financial, and identity attributes cannot become observation tags.
 
 ## Dashboard and incident signals
 

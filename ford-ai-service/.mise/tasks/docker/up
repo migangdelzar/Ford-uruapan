@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Build and start the local Ford Service Compose stack"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ford_compose up --build -d

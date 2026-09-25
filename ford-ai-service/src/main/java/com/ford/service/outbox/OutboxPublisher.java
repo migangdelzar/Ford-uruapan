@@ -6,31 +6,54 @@ import io.micrometer.observation.ObservationRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 
-public final class OutboxPublisher {
-
-    private static final Logger log = LoggerFactory.getLogger(OutboxPublisher.class);
+public class OutboxPublisher {
     private final OutboxStore store;
-    private final NotificationPort notificationPort;
+    private final OutboxDeliveryRouter deliveryRouter;
     private final int maxAttempts;
     private final AiObservationService observations;
+    private final Duration lease;
+    private final Duration backoffBase;
+    private final Duration backoffMax;
 
-    public OutboxPublisher(OutboxStore store, NotificationPort notificationPort, int maxAttempts) {
-        this(store, notificationPort, maxAttempts,
+    public OutboxPublisher(OutboxStore store, OutboxDeliveryRouter deliveryRouter, int maxAttempts) {
+        this(store, deliveryRouter, maxAttempts,
+                Duration.ofSeconds(30), Duration.ofSeconds(1), Duration.ofMinutes(1),
                 new DefaultAiObservationService(ObservationRegistry.NOOP));
     }
 
-    public OutboxPublisher(OutboxStore store, NotificationPort notificationPort, int maxAttempts,
+    public OutboxPublisher(OutboxStore store, OutboxDeliveryRouter deliveryRouter, int maxAttempts,
+                           AiObservationService observations) {
+        this(store, deliveryRouter, maxAttempts,
+                Duration.ofSeconds(30), Duration.ofSeconds(1), Duration.ofMinutes(1), observations);
+    }
+
+    public OutboxPublisher(OutboxStore store, OutboxDeliveryRouter deliveryRouter, int maxAttempts,
+                           Duration lease, Duration backoffBase, Duration backoffMax) {
+        this(store, deliveryRouter, maxAttempts, lease, backoffBase, backoffMax,
+                new DefaultAiObservationService(ObservationRegistry.NOOP));
+    }
+
+    public OutboxPublisher(OutboxStore store, OutboxDeliveryRouter deliveryRouter, int maxAttempts,
+                           Duration lease, Duration backoffBase, Duration backoffMax,
                            AiObservationService observations) {
         if (maxAttempts < 1) {
             throw new IllegalArgumentException("maxAttempts must be positive");
         }
+        if (lease.isNegative() || lease.isZero() || backoffBase.isNegative() || backoffBase.isZero()
+                || backoffMax.isNegative() || backoffMax.isZero() || backoffMax.compareTo(backoffBase) < 0) {
+            throw new IllegalArgumentException("lease and retry durations must be positive and ordered");
+        }
         this.store = Objects.requireNonNull(store);
-        this.notificationPort = Objects.requireNonNull(notificationPort);
+        this.deliveryRouter = Objects.requireNonNull(deliveryRouter);
         this.maxAttempts = maxAttempts;
+        this.lease = Objects.requireNonNull(lease);
+        this.backoffBase = Objects.requireNonNull(backoffBase);
+        this.backoffMax = Objects.requireNonNull(backoffMax);
         this.observations = Objects.requireNonNull(observations);
     }
 
@@ -42,39 +65,49 @@ public final class OutboxPublisher {
     }
 
     public boolean deliverOne(Instant now) {
-        var started = System.nanoTime();
-        var claimed = store.claimNext(now);
+        store.reclaimExpired(now);
+        var claimed = store.claimNext(now, lease);
         if (claimed.isEmpty()) {
             return false;
         }
         var event = claimed.get();
         try {
-            var result = notificationPort.notify(new Notification(event.tenantId(), event.eventType(), event.payload()));
+            var result = deliveryRouter.deliver(event);
             if (result.accepted()) {
-                store.markDelivered(event.id(), result.providerMessageId());
-                log.info("Outbox delivery completed eventType={} outcome=delivered attempts={} durationMs={}",
-                        event.eventType(), event.attempts(), elapsedMs(started));
+                store.markDelivered(event.id(), result.providerMessageId(), now, event.leaseUntil());
+            } else if (result.permanent() || event.attempts() >= maxAttempts) {
+                store.moveToDeadLetter(event.id(), result.permanent() ? "permanent" : "transient",
+                        safeMessage(result.error()), event.leaseUntil());
             } else {
-                store.markFailed(event.id(), result.error(), event.attempts() >= maxAttempts);
-                log.warn("Outbox delivery rejected eventType={} outcome={} attempts={} durationMs={}",
-                        event.eventType(), event.attempts() >= maxAttempts ? "dead_letter" : "retrying",
-                        event.attempts(), elapsedMs(started));
+                store.markRetry(event.id(), "transient", now.plus(retryDelay(event.attempts())),
+                        safeMessage(result.error()), event.leaseUntil());
             }
         } catch (RuntimeException exception) {
-            store.markFailed(event.id(), safeMessage(exception), event.attempts() >= maxAttempts);
-            log.error("Outbox delivery failed eventType={} outcome={} attempts={} durationMs={} errorType={}",
-                    event.eventType(), event.attempts() >= maxAttempts ? "dead_letter" : "retrying",
-                    event.attempts(), elapsedMs(started), exception.getClass().getSimpleName());
-            log.debug("Outbox delivery failure details eventType={}", event.eventType(), exception);
+            if (event.attempts() >= maxAttempts) {
+                store.moveToDeadLetter(event.id(), "transient", safeMessage(exception), event.leaseUntil());
+            } else {
+                store.markRetry(event.id(), "transient", now.plus(retryDelay(event.attempts())),
+                        safeMessage(exception), event.leaseUntil());
+            }
         }
         return true;
     }
 
-    private static long elapsedMs(long started) {
-        return (System.nanoTime() - started) / 1_000_000L;
+    private Duration retryDelay(int attempts) {
+        try {
+            var multiplier = 1L << Math.min(attempts, 30);
+            var candidate = backoffBase.multipliedBy(multiplier);
+            return candidate.compareTo(backoffMax) > 0 ? backoffMax : candidate;
+        } catch (ArithmeticException exception) {
+            return backoffMax;
+        }
     }
 
     private static String safeMessage(RuntimeException exception) {
         return exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage();
+    }
+
+    private static String safeMessage(String message) {
+        return message == null || message.isBlank() ? "Notification delivery rejected" : message;
     }
 }

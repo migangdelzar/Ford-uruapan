@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 import java.util.Set;
 
 @Component
-public final class MicrometerAiMetrics implements AiMetrics {
+public class MicrometerAiMetrics implements AiMetrics {
     private static final Set<String> PROVIDERS = Set.of("openai", "ollama");
     private static final Set<String> TOOLS = Set.of("catalog", "finance", "knowledge");
     private final MeterRegistry registry;

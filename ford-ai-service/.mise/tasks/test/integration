@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Run Testcontainers integration tests"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/../scripts/setup/runtime.sh"
+ford_runtime_export
+exec ./gradlew integrationTest --no-daemon --no-configuration-cache

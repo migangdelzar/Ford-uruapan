@@ -1,0 +1,19 @@
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+ford:
+  security:
+    jwt:
+      enabled: ${FORD_SECURITY_JWT_ENABLED:true}
+  conversations:
+    human-handoff:
+      enabled: ${FORD_HUMAN_HANDOFF_ENABLED:true}
+  ai:
+    classification:
+      enabled: ${FORD_AI_CLASSIFICATION_ENABLED:true}
+  channels:
+    meta:
+      auto-binding:
+        enabled: ${FORD_META_AUTO_BINDING_ENABLED:false}

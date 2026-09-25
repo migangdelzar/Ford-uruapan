@@ -4,9 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ford.service.channels.domain.Channel;
 
-public final class InstagramChannelAdapter extends AbstractMetaChannelAdapter {
+public class InstagramChannelAdapter extends AbstractMetaChannelAdapter {
     public InstagramChannelAdapter(ObjectMapper objectMapper) { super(objectMapper); }
-    public InstagramChannelAdapter(ObjectMapper objectMapper, String appSecret) { super(objectMapper, appSecret); }
     @Override public Channel channel() { return Channel.INSTAGRAM; }
     @Override protected JsonNode messageNode(JsonNode root) { return root.at("/entry/0/messaging/0/message"); }
     @Override protected String messageIdPath() { return "/mid"; }

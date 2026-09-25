@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+#MISE description="Verify the newest remote PostgreSQL backup archive"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+require_command oci
+bucket="${OCI_BACKUP_BUCKET:-emme-business}"
+namespace="${OCI_OBJECT_STORAGE_NAMESPACE:?OCI_OBJECT_STORAGE_NAMESPACE is required}"
+prefix="${OCI_BACKUP_PREFIX:-ford/backups}"
+manifest="$(OCI_CLI_PROFILE="${OCI_CONFIG_PROFILE:-DEFAULT}" oci os object list \
+  --region "$OCI_REGION" \
+  --namespace-name "$namespace" \
+  --bucket-name "$bucket" \
+  --prefix "$prefix/manifests/" \
+  --all \
+  --query 'data[-1].name' \
+  --raw-output)"
+[[ -n "$manifest" && "$manifest" != "None" ]] || {
+  echo 'No remote backup manifest found.' >&2
+  exit 1
+}
+OCI_CLI_PROFILE="${OCI_CONFIG_PROFILE:-DEFAULT}" oci os object head \
+  --region "$OCI_REGION" \
+  --namespace-name "$namespace" \
+  --bucket-name "$bucket" \
+  --name "$manifest" >/dev/null
+echo "verified_remote_manifest=$manifest"

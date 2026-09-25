@@ -2,7 +2,7 @@ package com.ford.service.channels;
 
 import com.ford.service.channels.adapter.in.meta.MetaWebhookController;
 import com.ford.service.channels.adapter.in.meta.MetaWebhookProperties;
-import com.ford.service.channels.application.ChannelMessageService;
+import com.ford.service.channels.application.InboundWebhookService;
 import com.ford.service.channels.application.port.in.ChannelAdapter;
 import com.ford.service.channels.domain.Channel;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,8 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-
-import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
@@ -33,7 +31,7 @@ class MetaWebhookIntegrationTest {
     ChannelAdapter adapter;
 
     @MockitoBean
-    ChannelMessageService messageService;
+    InboundWebhookService inboundWebhookService;
 
     @MockitoBean
     MetaWebhookProperties properties;
@@ -42,13 +40,12 @@ class MetaWebhookIntegrationTest {
     void setUp() {
         when(adapter.channel()).thenReturn(Channel.WHATSAPP);
         when(properties.getVerifyToken()).thenReturn("verify-token");
-        doNothing().when(adapter).validateWebhook(any());
+        doNothing().when(inboundWebhookService)
+                .accept(any(), any(), any(), any(), any());
     }
 
     @Test
     void verifiesMetaSubscriptionAndAcceptsSignedWebhook() throws Exception {
-        var tenantId = UUID.randomUUID();
-        when(properties.getTenantId()).thenReturn(tenantId);
         mockMvc.perform(get("/webhooks/meta/whatsapp")
                         .queryParam("hub.mode", "subscribe")
                         .queryParam("hub.verify_token", "verify-token")
@@ -64,7 +61,8 @@ class MetaWebhookIntegrationTest {
 
     @Test
     void rejectsInvalidSignature() throws Exception {
-        doThrow(new SecurityException("invalid")).when(adapter).validateWebhook(any());
+        doThrow(new SecurityException("invalid")).when(inboundWebhookService)
+                .accept(any(), any(), any(), any(), any());
 
         mockMvc.perform(post("/webhooks/meta/whatsapp")
                         .header("X-Hub-Signature-256", "sha256=invalid")

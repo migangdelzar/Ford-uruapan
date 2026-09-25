@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#MISE description="Restore a selected remote PostgreSQL backup after explicit confirmation"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+require_deploy_config
+[[ "${1:-}" == "--confirm" && "${2:-}" == "RESTORE-DATABASE" && -n "${3:-}" ]] || {
+  echo 'Usage: mise run backup:restore -- --confirm RESTORE-DATABASE archive.dump.gz' >&2
+  exit 2
+}
+archive="$3"
+[[ "$archive" =~ ^[A-Za-z0-9._-]+\.dump\.gz$ ]] || { echo 'Invalid archive name.' >&2; exit 2; }
+[[ -s "$MISE_PROJECT_ROOT/.mise/state/backup/last-success" ]] || {
+  echo 'Run and verify a fresh backup before restoring.' >&2
+  exit 1
+}
+render_deploy_inventory
+ANSIBLE_CONFIG="$(deploy_repo_root)/deployment/ansible/ansible.cfg" ansible data -b \
+  -i "$(deploy_inventory_file)" -m shell \
+  -a "${EMME_REMOTE_ROOT}/backup/restore-database.sh '$archive'"

@@ -16,7 +16,7 @@ class MessengerAdapterContractTest {
     void normalizesTextMessage() {
         var message = new MessengerChannelAdapter(new ObjectMapper()).parseInbound(new RawWebhook(
                 UUID.randomUUID(), """
-                        {"entry":[{"messaging":[{"sender":{"id":"psid-1"},"message":{"mid":"mid.1","text":"Precio de Bronco"}}]}]}
+                        {"entry":[{"id":"page-1","messaging":[{"sender":{"id":"psid-1"},"message":{"mid":"mid.1","text":"Precio de Bronco"}}]}]}
                         """, "{}"));
         assertThat(message).extracting(InboundMessage::channel, InboundMessage::providerMessageId, InboundMessage::text)
                 .containsExactly(Channel.MESSENGER, "mid.1", "Precio de Bronco");

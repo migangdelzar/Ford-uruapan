@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+#MISE description="Create a private local .env from .env.example"
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+if (($# > 0)); then
+  printf 'setup:env does not accept arguments: %s\n' "$*" >&2
+  exit 2
+fi
+target="$MISE_PROJECT_ROOT/.env"
+example="$MISE_PROJECT_ROOT/.env.example"
+
+[[ -e "$target" ]] && {
+  printf '%s already exists; refusing to overwrite it.\n' "$target" >&2
+  exit 1
+}
+[[ -f "$example" ]] || {
+  printf 'Missing environment template: %s\n' "$example" >&2
+  exit 1
+}
+
+umask 077
+temporary_file="$(mktemp "$MISE_PROJECT_ROOT/.env.setup.XXXXXX")"
+cleanup() {
+  rm -f "$temporary_file"
+}
+trap cleanup EXIT
+
+cp "$example" "$temporary_file"
+chmod 600 "$temporary_file"
+if ! ln "$temporary_file" "$target" 2>/dev/null; then
+  printf '%s appeared while setup was running; refusing to overwrite it.\n' "$target" >&2
+  exit 1
+fi
+rm -f "$temporary_file"
+trap - EXIT
+printf 'Created private local environment file: %s\n' "$target"

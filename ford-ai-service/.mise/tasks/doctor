@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Check the local Ford Service toolchain"
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+exec "$MISE_PROJECT_ROOT/.mise/tasks/setup/check" "$@"

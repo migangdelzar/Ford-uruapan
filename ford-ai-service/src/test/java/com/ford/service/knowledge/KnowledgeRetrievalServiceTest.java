@@ -1,6 +1,6 @@
 package com.ford.service.knowledge;
 
-import com.ford.service.ai.application.port.out.KnowledgeRetriever;
+import com.ford.service.knowledge.application.port.out.KnowledgeRetriever;
 import com.ford.service.knowledge.application.KnowledgeRetrievalService;
 import com.ford.service.knowledge.domain.KnowledgeChunk;
 import com.ford.service.knowledge.domain.KnowledgeQuery;

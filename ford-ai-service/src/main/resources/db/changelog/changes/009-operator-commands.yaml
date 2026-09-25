@@ -1,0 +1,26 @@
+databaseChangeLog:
+  - changeSet:
+      id: 009-operator-commands
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              create table if not exists operator_idempotency (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  actor_id varchar(160) not null,
+                  operation varchar(160) not null,
+                  idempotency_key varchar(240) not null,
+                  request_hash varchar(128) not null,
+                  response_json jsonb,
+                  created_at timestamptz not null,
+                  completed_at timestamptz,
+                  unique (tenant_id, actor_id, operation, idempotency_key)
+              );
+              create index if not exists idx_operator_idempotency_created
+                  on operator_idempotency(tenant_id, created_at);
+      rollback:
+        - sql:
+            sql: |
+              drop index if exists idx_operator_idempotency_created;
+              drop table if exists operator_idempotency;

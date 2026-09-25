@@ -1,0 +1,2324 @@
+openapi: 3.1.0
+info:
+  title: Ford AI Operator API
+  version: 1.0.0
+  description: |
+    Contract-first API for the Ford operator application.
+
+    This document contains the canonical `/api/v1` frontend contract and the
+    provider-only Meta webhook routes. Operations marked with
+    `x-implementation-status: planned` are not available until their backend
+    implementation is released.
+    Authentication is provided by the deployment's external OIDC provider;
+    this backend is a resource server and does not issue login tokens.
+  contact:
+    name: Ford AI Service
+servers:
+  - url: https://ford.emme.business
+    description: Production public origin
+  - url: http://localhost:8080
+    description: Local backend origin
+x-authentication:
+  providerType: oidc
+  discoveryUrl: ${FORD_SECURITY_ISSUER_URI}/.well-known/openid-configuration
+  audience: ${FORD_SECURITY_AUDIENCE}
+  browserFlow: authorization_code_pkce
+  recommendedDeployment: bff
+  requiredJwtClaims:
+    - iss
+    - aud
+    - sub
+    - exp
+    - nbf
+    - roles
+    - tenant_id_or_tenant_ids
+  roleValues: [OPERATOR, MANAGER, ADMIN]
+  currentScopes: [openid, profile, email, 'operator:read', 'operator:write', 'handoff:manage']
+  tokenHandling: |
+    The frontend or BFF obtains the access token from the OIDC provider.
+    It sends only the short-lived access token to this API as a Bearer token.
+    Refresh tokens and client secrets must stay in the BFF or identity
+    provider; they must never be embedded in frontend JavaScript.
+tags:
+  - name: Health
+  - name: AI
+  - name: Conversations
+  - name: Messages
+  - name: Handoffs
+  - name: Leads
+  - name: Vehicles
+  - name: Finance
+  - name: Appointments
+  - name: Advisors
+  - name: Metrics
+  - name: Bot configuration
+  - name: Events
+  - name: Test lab
+  - name: Meta webhooks
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/health:
+    get:
+      tags: [Health]
+      summary: Check service availability
+      description: Public liveness response. It does not reveal provider secrets or API-key readiness.
+      operationId: getHealth
+      x-implementation-status: implemented
+      security: []
+      responses:
+        '200':
+          description: Service is available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+  /api/v1/ai/respond:
+    post:
+      tags: [AI]
+      summary: Generate a display-safe assistant response
+      description: Runs the configured assistant and returns display-safe classification and handoff information.
+      operationId: respondWithAi
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiRespondRequest'
+      responses:
+        '200':
+          description: Assistant response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiRespondResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /api/v1/conversations:
+    get:
+      tags: [Conversations]
+      summary: List conversations
+      description: Returns conversations visible to the authenticated operator's tenant claims.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/TenantId'
+        - name: state
+          in: query
+          schema:
+            $ref: '#/components/schemas/ConversationState'
+        - name: channel
+          in: query
+          schema:
+            $ref: '#/components/schemas/Channel'
+        - name: search
+          in: query
+          description: Search by participant, phone number, or latest message text.
+          schema:
+            type: string
+            maxLength: 200
+        - name: assignedOperatorId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Conversation page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/conversations/{conversationId}:
+    parameters:
+      - $ref: '#/components/parameters/ConversationId'
+    get:
+      tags: [Conversations]
+      summary: Get a conversation
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/conversations/{conversationId}/messages:
+    parameters:
+      - $ref: '#/components/parameters/ConversationId'
+    get:
+      tags: [Messages]
+      summary: List conversation messages
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Message page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagePage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Messages]
+      summary: Send an operator message
+      description: Sends a message through the channel adapter and returns its initial delivery state.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '202':
+          description: Message accepted for delivery
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandReceipt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Conversation is locked by another operator or the provider window is closed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /api/v1/conversations/{conversationId}/takeover:
+    post:
+      tags: [Handoffs]
+      summary: Take over a conversation
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TakeoverRequest'
+      responses:
+        '200':
+          description: Active handoff
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HandoffTicket'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/conversations/{conversationId}/handback:
+    post:
+      tags: [Handoffs]
+      summary: Return a conversation to the bot
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HandbackRequest'
+      responses:
+        '200':
+          description: Closed handoff
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HandoffTicket'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/conversations/{conversationId}/window:
+    get:
+      tags: [Messages]
+      summary: Get the Meta customer service window
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Customer service window state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerWindow'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/conversations/{conversationId}/hsm:
+    post:
+      tags: [Messages]
+      summary: Send an approved Meta template message
+      description: Requires an approved template adapter and returns 503 when template delivery is not configured.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateMessageCommand'
+      responses:
+        '202':
+          description: Template accepted for delivery
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateMessageReceipt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /api/v1/handoffs:
+    get:
+      tags: [Handoffs]
+      summary: List handoff tickets
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/HandoffStatus'
+      responses:
+        '200':
+          description: Handoff page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HandoffPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Handoffs]
+      summary: Request a human handoff
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HandoffRequest'
+      responses:
+        '201':
+          description: Handoff created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HandoffTicket'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/handoffs/{handoffId}/claim:
+    post:
+      tags: [Handoffs]
+      summary: Claim a pending handoff
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/HandoffId'
+        - $ref: '#/components/parameters/ExpectedVersion'
+      responses:
+        '200':
+          description: Claimed handoff
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HandoffTicket'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/handoffs/{handoffId}/pause:
+    post:
+      tags: [Handoffs]
+      summary: Pause bot processing for a handoff
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/HandoffId'
+        - $ref: '#/components/parameters/ExpectedVersion'
+      responses:
+        '200':
+          description: Paused handoff
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HandoffTicket'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/handoffs/{handoffId}/resume:
+    post:
+      tags: [Handoffs]
+      summary: Resume bot processing for a handoff
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/HandoffId'
+        - $ref: '#/components/parameters/ExpectedVersion'
+      responses:
+        '200':
+          description: Resumed handoff
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HandoffTicket'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/metrics/overview:
+    get:
+      tags: [Metrics]
+      operationId: getMetricsOverview
+      summary: Get tenant-scoped operational overview metrics
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/MetricFrom'
+        - $ref: '#/components/parameters/MetricTo'
+        - $ref: '#/components/parameters/MetricTimezone'
+      responses:
+        '200':
+          description: Operational overview
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MetricsOverview' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/metrics/bot:
+    get:
+      tags: [Metrics]
+      operationId: getBotMetrics
+      summary: Get AI classification and provider metrics
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/MetricFrom'
+        - $ref: '#/components/parameters/MetricTo'
+        - $ref: '#/components/parameters/MetricTimezone'
+      responses:
+        '200':
+          description: Bot metrics
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BotMetrics' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/metrics/leads:
+    get:
+      tags: [Metrics]
+      operationId: getLeadMetrics
+      summary: Get lead temperature metrics
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/MetricFrom'
+        - $ref: '#/components/parameters/MetricTo'
+        - $ref: '#/components/parameters/MetricTimezone'
+      responses:
+        '200':
+          description: Lead metrics
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeadMetrics' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/metrics/conversations:
+    get:
+      tags: [Metrics]
+      operationId: getConversationMetrics
+      summary: Get conversation state metrics
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/MetricFrom'
+        - $ref: '#/components/parameters/MetricTo'
+      responses:
+        '200':
+          description: Conversation metrics
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationMetrics' }
+
+  /api/v1/metrics/channels:
+    get:
+      tags: [Metrics]
+      operationId: getChannelMetrics
+      summary: Get channel volume metrics
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/MetricFrom'
+        - $ref: '#/components/parameters/MetricTo'
+      responses:
+        '200':
+          description: Channel metrics
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChannelMetrics' }
+
+  /api/v1/metrics/advisors:
+    get:
+      tags: [Metrics]
+      operationId: getAdvisorMetrics
+      summary: Get advisor handoff metrics
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/MetricFrom'
+        - $ref: '#/components/parameters/MetricTo'
+      responses:
+        '200':
+          description: Advisor metrics
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdvisorMetrics' }
+
+  /api/v1/metrics/funnel:
+    get:
+      tags: [Metrics]
+      operationId: getFunnelMetrics
+      summary: Get lead funnel metrics
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/MetricFrom'
+        - $ref: '#/components/parameters/MetricTo'
+      responses:
+        '200':
+          description: Funnel metrics
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FunnelMetrics' }
+
+  /api/v1/metrics/timeseries:
+    get:
+      tags: [Metrics]
+      operationId: getMetricsTimeSeries
+      summary: Get metrics time series
+      x-implementation-status: implemented
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/MetricFrom'
+        - $ref: '#/components/parameters/MetricTo'
+        - $ref: '#/components/parameters/MetricTimezone'
+        - $ref: '#/components/parameters/MetricGroupBy'
+      responses:
+        '200':
+          description: Metrics time series
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimeSeriesMetrics' }
+
+  /api/v1/leads:
+    get:
+      tags: [Leads]
+      summary: List leads
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+        - name: temperature
+          in: query
+          schema:
+            $ref: '#/components/schemas/LeadTemperature'
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 200
+      responses:
+        '200':
+          description: Lead page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/leads/{leadId}:
+    parameters:
+      - $ref: '#/components/parameters/LeadId'
+    get:
+      tags: [Leads]
+      summary: Get a lead
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lead
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lead'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Leads]
+      summary: Update lead qualification
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/LeadPatch'
+      responses:
+        '200':
+          description: Updated lead
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lead'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/leads/{leadId}/sync:
+    post:
+      tags: [Leads]
+      summary: Synchronize a lead with the dealership CRM
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/LeadId'
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '202':
+          description: Lead synchronization accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncReceipt'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /api/v1/inventory:
+    get:
+      tags: [Vehicles]
+      summary: Search available inventory
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: model
+          in: query
+          schema:
+            type: string
+        - name: year
+          in: query
+          schema:
+            type: integer
+            minimum: 1900
+            maximum: 2200
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [available, reserved, sold]
+        - name: branchId
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Vehicle inventory page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehiclePage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /api/v1/vehicles/{vin}:
+    get:
+      tags: [Vehicles]
+      summary: Get vehicle details
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Vin'
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Vehicle details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /api/v1/finance/quote:
+    post:
+      tags: [Finance]
+      summary: Calculate a non-binding finance estimate
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinanceQuoteRequest'
+      responses:
+        '200':
+          description: Non-binding finance estimate in MXN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceQuote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /api/v1/appointments/available-slots:
+    get:
+      tags: [Appointments]
+      summary: List available test-drive slots
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: branchId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: vin
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Available slots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AppointmentSlot'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /api/v1/appointments/book:
+    post:
+      tags: [Appointments]
+      summary: Book a test drive
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppointmentBookingRequest'
+      responses:
+        '201':
+          description: Appointment booked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /api/v1/branches/on-duty:
+    get:
+      tags: [Advisors]
+      summary: List branches and advisors currently on duty
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: On-duty branches and advisors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BranchOnDuty'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /api/v1/team/advisors:
+    get:
+      tags: [Advisors]
+      summary: List tenant-scoped operator workload
+      description: Returns authoritative operator IDs and handoff workload. Directory profile fields are null until a directory adapter is configured.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Advisor workload list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Advisor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/bot/config:
+    get:
+      tags: [Bot configuration]
+      summary: Get bot configuration
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Bot configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BotConfigView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    patch:
+      tags: [Bot configuration]
+      summary: Update bot configuration
+      x-implementation-status: planned
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/BotConfigPatch'
+      responses:
+        '200':
+          description: Updated bot configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BotConfig'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/events:
+    get:
+      tags: [Events]
+      summary: List audit events
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/TenantId'
+        - name: severity
+          in: query
+          schema:
+            $ref: '#/components/schemas/EventSeverity'
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Audit event page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/events/stream:
+    get:
+      tags: [Events]
+      summary: Stream audit events
+      description: Server-sent event stream for operator dashboards.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/test-lab/faults:
+    get:
+      tags: [Test lab]
+      summary: Get active fault injection settings
+      x-implementation-status: implemented
+      x-environment: development-only
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Fault settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FaultSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    put:
+      tags: [Test lab]
+      summary: Replace fault injection settings
+      x-implementation-status: implemented
+      x-environment: development-only
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FaultSettings'
+      responses:
+        '200':
+          description: Fault settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FaultSettings'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/test-lab/scenarios/run:
+    post:
+      tags: [Test lab]
+      summary: Run an automated scenario suite
+      x-implementation-status: planned
+      x-environment: development-only
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScenarioRunRequest'
+      responses:
+        '202':
+          description: Scenario suite accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScenarioRun'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /webhooks/meta/{channel}:
+    get:
+      tags: [Meta webhooks]
+      summary: Verify a Meta webhook subscription
+      description: Provider callback. This route is not a frontend browser API.
+      x-implementation-status: implemented
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/MetaChannel'
+        - name: hub.mode
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [subscribe]
+        - name: hub.verify_token
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: hub.challenge
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Challenge echoed as plain text
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Invalid verification request
+    post:
+      tags: [Meta webhooks]
+      summary: Receive a Meta webhook delivery
+      description: Provider callback authenticated by X-Hub-Signature-256. Do not call from the browser.
+      x-implementation-status: implemented
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/MetaChannel'
+        - name: X-Hub-Signature-256
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: '^sha256=[a-f0-9]{64}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '202':
+          description: Webhook accepted for processing
+        '400':
+          description: Invalid payload or unsupported channel
+        '403':
+          description: Invalid signature or channel binding
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT must contain the configured audience, tenant_id or tenant_ids,
+        a role such as OPERATOR/MANAGER/ADMIN, and the operation scope needed
+        by the endpoint.
+    oidcAuthorizationCode:
+      type: oauth2
+      description: |
+        Browser login flow. Use Authorization Code with PKCE. Replace the
+        example identity URLs with the configured issuer's discovery metadata.
+        The API itself does not expose an /auth/token endpoint.
+      flows:
+        authorizationCode:
+          authorizationUrl: https://identity.example.invalid/oauth2/authorize
+          tokenUrl: https://identity.example.invalid/oauth2/token
+          scopes:
+            openid: Authenticate the user through OpenID Connect
+            profile: Read the basic operator profile
+            email: Read the operator email claim
+            operator:read: Read operator inbox and handoff resources
+            handoff:manage: Create and manage handoffs
+            operator:write: Send operator messages and update operational resources
+            leads:read: Read lead records
+            leads:write: Update and synchronize lead records
+            inventory:read: Read vehicle inventory
+            finance:quote: Calculate finance estimates
+            appointments:read: Read available appointment slots
+            appointments:write: Book appointments
+            bot:manage: Read and update bot configuration
+            events:read: Read and stream audit events
+            testlab:run: Run development-only scenarios
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque cursor returned by the previous page.
+      schema:
+        type: string
+    PageSize:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+    TenantId:
+      name: tenantId
+      in: query
+      required: false
+      description: Tenant selected from the authenticated JWT tenant membership.
+      schema:
+        type: string
+        format: uuid
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 240
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: Strong conversation version validator, for example `"v7"`.
+      schema:
+        type: string
+        pattern: '^"?v[0-9]+"?$'
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 120
+    MetricFrom:
+      name: from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    MetricTo:
+      name: to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    MetricTimezone:
+      name: timezone
+      in: query
+      required: false
+      schema:
+        type: string
+        default: UTC
+    MetricGroupBy:
+      name: groupBy
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [day, week, month]
+        default: day
+    ExpectedVersion:
+      name: expectedVersion
+      in: query
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    ConversationId:
+      name: conversationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    HandoffId:
+      name: handoffId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TicketId:
+      name: ticketId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    LeadId:
+      name: leadId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Vin:
+      name: vin
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 11
+        maxLength: 17
+    MetaChannel:
+      name: channel
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/MetaChannel'
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Forbidden:
+      description: Authenticated identity lacks the required role, scope, or tenant access
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Conflict:
+      description: State conflict or stale version
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    UpstreamUnavailable:
+      description: Required upstream adapter is not configured or available
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+  schemas:
+    HealthStatus:
+      type: object
+      required: [status, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        timestamp:
+          type: string
+          format: date-time
+    AiRespondRequest:
+      type: object
+      required: [messages]
+      properties:
+        conversationId:
+          type: string
+          format: uuid
+          nullable: true
+        containsSensitiveData:
+          type: boolean
+          default: false
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/AiMessage'
+    AiMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, customer, assistant, model, system]
+        content:
+          type: string
+          minLength: 1
+          maxLength: 10000
+    AiRespondResponse:
+      type: object
+      required: [replyText, suggestedTemperature, handoffSuggested,
+                 handoffReason, intent, leadStage, toolFamily, sourceDocumentIds]
+      properties:
+        replyText:
+          type: string
+        suggestedTemperature:
+          type: string
+          enum: [UNKNOWN, COLD, WARM, HOT]
+        handoffSuggested:
+          type: boolean
+        handoffReason:
+          type: string
+        intent:
+          type: string
+        leadStage:
+          type: string
+        toolFamily:
+          type: string
+        sourceDocumentIds:
+          type: array
+          items:
+            type: string
+    ProblemDetail:
+      type: object
+      required: [type, title, status, detail]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          example: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+        path:
+          type: string
+        traceId:
+          type: string
+    CustomerWindow:
+      type: object
+      required: [open, channel]
+      properties:
+        open:
+          type: boolean
+        lastInboundAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        channel:
+          $ref: '#/components/schemas/Channel'
+    TemplateMessageCommand:
+      type: object
+      required: [templateName, language]
+      properties:
+        templateName:
+          type: string
+          pattern: '^[a-z0-9_]{1,120}$'
+        language:
+          type: string
+          pattern: '^[a-z]{2}_[A-Z]{2}$'
+        parameters:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 1024
+    TemplateMessageReceipt:
+      type: object
+      required: [accepted]
+      properties:
+        providerMessageId:
+          type: string
+          nullable: true
+        accepted:
+          type: boolean
+    Channel:
+      type: string
+      enum: [WHATSAPP, MESSENGER, INSTAGRAM]
+    MetaChannel:
+      type: string
+      enum: [whatsapp, messenger, instagram]
+    ConversationState:
+      type: string
+      enum: [BOT_ACTIVE, LEAD_CAPTURE, HUMAN_PENDING, HUMAN_ACTIVE, CLOSED]
+    HandoffStatus:
+      type: string
+      enum: [HUMAN_PENDING, HUMAN_ACTIVE, CLOSED]
+    MessageDirection:
+      type: string
+      enum: [INBOUND, OUTBOUND]
+    DeliveryStatus:
+      type: string
+      enum: [QUEUED, SENT, DELIVERED, READ, FAILED]
+    Conversation:
+      type: object
+      required: [id, tenantId, channel, state, version, participant, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        channel:
+          $ref: '#/components/schemas/Channel'
+        state:
+          $ref: '#/components/schemas/ConversationState'
+        version:
+          type: integer
+          format: int64
+        participant:
+          $ref: '#/components/schemas/Participant'
+        assignedOperatorId:
+          type: string
+          format: uuid
+          nullable: true
+        leadId:
+          type: string
+          format: uuid
+          nullable: true
+        latestMessage:
+          $ref: '#/components/schemas/ConversationMessage'
+        updatedAt:
+          type: string
+          format: date-time
+    ConversationMessage:
+      type: object
+      required: [id, conversationId, direction, content, receivedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        providerMessageId:
+          type: string
+          nullable: true
+        direction:
+          $ref: '#/components/schemas/MessageDirection'
+        content:
+          type: string
+        deliveryStatus:
+          $ref: '#/components/schemas/DeliveryStatus'
+        sender:
+          $ref: '#/components/schemas/Participant'
+        receivedAt:
+          type: string
+          format: date-time
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+    Participant:
+      type: object
+      required: [providerId]
+      properties:
+        providerId:
+          type: string
+        displayName:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+    ConversationPage:
+      type: object
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Conversation'
+        page:
+          $ref: '#/components/schemas/PageInfo'
+    MessagePage:
+      type: object
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConversationMessage'
+        page:
+          $ref: '#/components/schemas/PageInfo'
+    PageInfo:
+      type: object
+      required: [pageSize, hasNext]
+      properties:
+        pageSize:
+          type: integer
+        nextCursor:
+          type: string
+          nullable: true
+        hasNext:
+          type: boolean
+    SendMessageRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        clientMessageId:
+          type: string
+          maxLength: 120
+        internalNote:
+          type: boolean
+          default: false
+    CommandReceipt:
+      type: object
+      required: [messageId, conversationId, accepted, deliveryStatus, conversationVersion, internalNote, acceptedAt]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        accepted:
+          type: boolean
+        deliveryStatus:
+          type: string
+          enum: [QUEUED, INTERNAL]
+        conversationVersion:
+          type: integer
+          format: int64
+        internalNote:
+          type: boolean
+        acceptedAt:
+          type: string
+          format: date-time
+    MetricPeriod:
+      type: object
+      required: [from, to, timezone]
+      properties:
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        timezone: { type: string }
+    MetricsOverview:
+      type: object
+      required: [period, totalConversations, activeConversations, inboundMessages, outboundMessages, handoffs, failedDeliveries]
+      properties:
+        period: { $ref: '#/components/schemas/MetricPeriod' }
+        totalConversations: { type: integer, format: int64 }
+        activeConversations: { type: integer, format: int64 }
+        inboundMessages: { type: integer, format: int64 }
+        outboundMessages: { type: integer, format: int64 }
+        handoffs: { type: integer, format: int64 }
+        failedDeliveries: { type: integer, format: int64 }
+    BotMetrics:
+      type: object
+      required: [period, classifiedDecisions, fallbackDecisions, handoffRecommendations, averageLatencyMs, successfulProviderCalls, failedProviderCalls]
+      properties:
+        period: { $ref: '#/components/schemas/MetricPeriod' }
+        classifiedDecisions: { type: integer, format: int64 }
+        fallbackDecisions: { type: integer, format: int64 }
+        handoffRecommendations: { type: integer, format: int64 }
+        averageLatencyMs: { type: number, format: double }
+        successfulProviderCalls: { type: integer, format: int64 }
+        failedProviderCalls: { type: integer, format: int64 }
+    LeadMetrics:
+      type: object
+      required: [period, totalLeads, hot, warm, cold, unknown]
+      properties:
+        period: { $ref: '#/components/schemas/MetricPeriod' }
+        totalLeads: { type: integer, format: int64 }
+        hot: { type: integer, format: int64 }
+        warm: { type: integer, format: int64 }
+        cold: { type: integer, format: int64 }
+        unknown: { type: integer, format: int64 }
+    ConversationMetrics:
+      type: object
+      required: [period, byState]
+      properties:
+        period: { $ref: '#/components/schemas/MetricPeriod' }
+        byState: { type: object, additionalProperties: { type: integer, format: int64 } }
+    ChannelMetrics:
+      type: object
+      required: [period, byChannel]
+      properties:
+        period: { $ref: '#/components/schemas/MetricPeriod' }
+        byChannel: { type: object, additionalProperties: { type: integer, format: int64 } }
+    AdvisorMetrics:
+      type: object
+      required: [period, advisors]
+      properties:
+        period: { $ref: '#/components/schemas/MetricPeriod' }
+        advisors:
+          type: array
+          items:
+            type: object
+            required: [advisorId, activeHandoffs, closedHandoffs]
+            properties:
+              advisorId: { type: string, format: uuid }
+              activeHandoffs: { type: integer, format: int64 }
+              closedHandoffs: { type: integer, format: int64 }
+    FunnelMetrics:
+      type: object
+      required: [period, conversations, leads, hotLeads, handoffs, appointments]
+      properties:
+        period: { $ref: '#/components/schemas/MetricPeriod' }
+        conversations: { type: integer, format: int64 }
+        leads: { type: integer, format: int64 }
+        hotLeads: { type: integer, format: int64 }
+        handoffs: { type: integer, format: int64 }
+        appointments: { type: integer, format: int64 }
+    TimeSeriesMetrics:
+      type: object
+      required: [period, groupBy, points]
+      properties:
+        period: { $ref: '#/components/schemas/MetricPeriod' }
+        groupBy: { type: string, enum: [day, week, month] }
+        points:
+          type: array
+          items:
+            type: object
+            required: [bucket, conversations, inboundMessages, outboundMessages, handoffs, failedDeliveries]
+            properties:
+              bucket: { type: string, format: date-time }
+              conversations: { type: integer, format: int64 }
+              inboundMessages: { type: integer, format: int64 }
+              outboundMessages: { type: integer, format: int64 }
+              handoffs: { type: integer, format: int64 }
+              failedDeliveries: { type: integer, format: int64 }
+    TakeoverRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+    HandbackRequest:
+      type: object
+      properties:
+        summary:
+          type: string
+          maxLength: 4000
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+    HandoffRequest:
+      type: object
+      required: [tenantId, conversationId, reason]
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        leadId:
+          type: string
+          format: uuid
+          nullable: true
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    HandoffTicket:
+      type: object
+      required: [id, tenantId, conversationId, status, reason, version, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        leadId:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          $ref: '#/components/schemas/HandoffStatus'
+        assignedOperatorId:
+          type: string
+          format: uuid
+          nullable: true
+        reason:
+          type: string
+        version:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        claimedAt:
+          type: string
+          format: date-time
+          nullable: true
+        closedAt:
+          type: string
+          format: date-time
+          nullable: true
+    HandoffPage:
+      type: object
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/HandoffTicket'
+        page:
+          $ref: '#/components/schemas/PageInfo'
+    LeadTemperature:
+      type: string
+      enum: [COLD, WARM, HOT]
+    Lead:
+      type: object
+      required: [id, tenantId, temperature, updatedAt, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        temperature:
+          $ref: '#/components/schemas/LeadTemperature'
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+        interestVin:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+    LeadPatch:
+      type: object
+      properties:
+        name:
+          type: string
+          nullable: true
+        temperature:
+          $ref: '#/components/schemas/LeadTemperature'
+        temperatureSource:
+          type: string
+          enum: [AI, HUMAN]
+        email:
+          type: string
+          format: email
+          nullable: true
+        preferredVehicle:
+          type: string
+          nullable: true
+        budgetRange:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        interestVin:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+    LeadPage:
+      type: object
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Lead'
+        page:
+          $ref: '#/components/schemas/PageInfo'
+    SyncReceipt:
+      type: object
+      required: [syncId, status]
+      properties:
+        syncId:
+          type: string
+        status:
+          type: string
+          enum: [synced, pending, failed]
+        submittedAt:
+          type: string
+          format: date-time
+    VehicleSummary:
+      type: object
+      required: [vehicleId, vin, model, year, status]
+      properties:
+        vehicleId:
+          type: string
+          format: uuid
+        vin:
+          type: string
+        model:
+          type: string
+        year:
+          type: integer
+        trim:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [available, reserved, sold]
+        branchId:
+          type: string
+        branchName:
+          type: string
+          nullable: true
+        priceMxn:
+          type: number
+          format: double
+          minimum: 0
+    VehicleDetails:
+      allOf:
+        - $ref: '#/components/schemas/VehicleSummary'
+        - type: object
+          properties:
+            specifications:
+              type: object
+              additionalProperties: true
+            promotionalDiscountMxn:
+              type: number
+              format: double
+              minimum: 0
+            photos:
+              type: array
+              items:
+                type: string
+                format: uri
+    VehiclePage:
+      type: object
+      required: [items, hasNext]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/VehicleSummary'
+        nextCursor:
+          type: string
+          nullable: true
+        hasNext:
+          type: boolean
+    FinanceQuoteRequest:
+      type: object
+      required: [vin, downPayment, termMonths, creditScoreTier]
+      properties:
+        vin:
+          type: string
+        downPayment:
+          type: number
+          format: double
+          minimum: 0
+        termMonths:
+          type: integer
+          enum: [12, 24, 36, 48, 60, 72]
+        creditScoreTier:
+          type: string
+          enum: [UNKNOWN, LOW, MEDIUM, HIGH]
+    FinanceQuote:
+      type: object
+      required: [vin, currency, monthlyPayment, apr, termMonths, disclaimer]
+      properties:
+        vin:
+          type: string
+        currency:
+          type: string
+          enum: [MXN]
+        monthlyPayment:
+          type: number
+          format: double
+        apr:
+          type: number
+          format: double
+        termMonths:
+          type: integer
+        insuranceIncluded:
+          type: boolean
+        disclaimer:
+          type: string
+    AppointmentSlot:
+      type: object
+      required: [slotId, branchId, startsAt, endsAt]
+      properties:
+        slotId:
+          type: string
+        branchId:
+          type: string
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        advisorId:
+          type: string
+          nullable: true
+    AppointmentBookingRequest:
+      type: object
+      required: [vin, customerPhone, branchId, slotId]
+      properties:
+        vin:
+          type: string
+        customerPhone:
+          type: string
+        branchId:
+          type: string
+        slotId:
+          type: string
+        advisorId:
+          type: string
+          nullable: true
+    Appointment:
+      allOf:
+        - $ref: '#/components/schemas/AppointmentBookingRequest'
+        - type: object
+          required: [appointmentId, status]
+          properties:
+            appointmentId:
+              type: string
+            status:
+              type: string
+              enum: [confirmed, pending, cancelled]
+            calendarInvitationUrl:
+              type: string
+              format: uri
+              nullable: true
+    Advisor:
+      type: object
+      required: [advisorId, role, status, assignedCount]
+      properties:
+        advisorId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+        role:
+          type: string
+        branch:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [available, in_meeting, away]
+        assignedCount:
+          type: integer
+        phone:
+          type: string
+          nullable: true
+    BranchOnDuty:
+      type: object
+      required: [branchId, name, advisors]
+      properties:
+        branchId:
+          type: string
+        name:
+          type: string
+        advisors:
+          type: array
+          items:
+            $ref: '#/components/schemas/Advisor'
+    BotConfig:
+      type: object
+      required: [enabled, humanHandoffEnabled, model, updatedAt]
+      properties:
+        enabled:
+          type: boolean
+        humanHandoffEnabled:
+          type: boolean
+        model:
+          type: string
+        systemPrompt:
+          type: string
+          maxLength: 20000
+        updatedAt:
+          type: string
+          format: date-time
+    BotConfigView:
+      type: object
+      required: [enabled, humanHandoffEnabled, model, cloudProvider, cloudEnabled, localEnabled,
+                 classificationEnabled, classificationMode, classificationProvider, jevEnabled,
+                 memoryEnabled, semanticMemoryEnabled, recentMessageLimit, updatedAt]
+      properties:
+        enabled:
+          type: boolean
+        humanHandoffEnabled:
+          type: boolean
+        model:
+          type: string
+        cloudProvider:
+          type: string
+        cloudEnabled:
+          type: boolean
+        localEnabled:
+          type: boolean
+        classificationEnabled:
+          type: boolean
+        classificationMode:
+          type: string
+          enum: [active, shadow, disabled]
+        classificationProvider:
+          type: string
+        jevEnabled:
+          type: boolean
+        memoryEnabled:
+          type: boolean
+        semanticMemoryEnabled:
+          type: boolean
+        recentMessageLimit:
+          type: integer
+          minimum: 0
+        systemPrompt:
+          type: [string, 'null']
+          description: Always redacted by the operator API.
+        updatedAt:
+          type: string
+          format: date-time
+    BotConfigPatch:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        humanHandoffEnabled:
+          type: boolean
+        model:
+          type: string
+        systemPrompt:
+          type: string
+          maxLength: 20000
+    EventSeverity:
+      type: string
+      enum: [DEBUG, INFO, WARN, ERROR]
+    AuditEvent:
+      type: object
+      required: [id, type, severity, occurredAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+        severity:
+          $ref: '#/components/schemas/EventSeverity'
+        occurredAt:
+          type: string
+          format: date-time
+        actorId:
+          type: string
+          nullable: true
+        conversationId:
+          type: string
+          format: uuid
+          nullable: true
+        payload:
+          type: object
+          additionalProperties: true
+    EventPage:
+      type: object
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+        page:
+          $ref: '#/components/schemas/PageInfo'
+    FaultSettings:
+      type: object
+      required: [aiTimeout, aiError500, rateLimit429, malformedOutput, channelSendFailure, duplicateWebhook, outOfOrder, offline]
+      properties:
+        aiTimeout:
+          type: boolean
+        aiError500:
+          type: boolean
+        rateLimit429:
+          type: boolean
+        malformedOutput:
+          type: boolean
+        channelSendFailure:
+          type: boolean
+        duplicateWebhook:
+          type: boolean
+        outOfOrder:
+          type: boolean
+        offline:
+          type: boolean
+    ScenarioRunRequest:
+      type: object
+      required: [scenarioIds]
+      properties:
+        scenarioIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        stopOnFailure:
+          type: boolean
+          default: false
+    ScenarioRun:
+      type: object
+      required: [runId, status]
+      properties:
+        runId:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, passed, failed]
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioResult'
+    ScenarioResult:
+      type: object
+      required: [scenarioId, passed]
+      properties:
+        scenarioId:
+          type: string
+        passed:
+          type: boolean
+        detail:
+          type: string
+          nullable: true

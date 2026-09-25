@@ -16,7 +16,7 @@ class InstagramAdapterContractTest {
     void normalizesTextMessage() {
         var message = new InstagramChannelAdapter(new ObjectMapper()).parseInbound(new RawWebhook(
                 UUID.randomUUID(), """
-                        {"entry":[{"messaging":[{"sender":{"id":"ig-user-1"},"message":{"mid":"igmid.1","text":"Colores disponibles"}}]}]}
+                        {"entry":[{"id":"ig-account-1","messaging":[{"sender":{"id":"ig-user-1"},"message":{"mid":"igmid.1","text":"Colores disponibles"}}]}]}
                         """, "{}"));
         assertThat(message).extracting(InboundMessage::channel, InboundMessage::providerMessageId, InboundMessage::text)
                 .containsExactly(Channel.INSTAGRAM, "igmid.1", "Colores disponibles");

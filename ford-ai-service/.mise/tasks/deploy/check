@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#MISE description="Validate deployment tooling and local configuration"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+require_deploy_config
+require_command ansible-playbook
+require_command ansible-inventory
+require_command ansible-galaxy
+require_command rsync
+render_deploy_inventory
+ansible_inventory_command --graph
+echo "Deployment tooling is ready."

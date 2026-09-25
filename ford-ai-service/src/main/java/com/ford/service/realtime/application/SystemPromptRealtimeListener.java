@@ -3,7 +3,8 @@ package com.ford.service.realtime.application;
 import com.ford.service.ai.domain.SystemPromptChanged;
 import com.ford.service.channels.adapter.in.meta.MetaWebhookProperties;
 import com.ford.service.realtime.domain.FrontendEvent;
-import org.springframework.modulith.events.ApplicationModuleListener;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -18,10 +19,10 @@ public class SystemPromptRealtimeListener {
 
     public SystemPromptRealtimeListener(RealtimeEventHub hub, MetaWebhookProperties properties) {
         this.hub = hub;
-        this.defaultTenantId = properties.getTenantId();
+        this.defaultTenantId = properties.getAutoBinding().getTenantId();
     }
 
-    @ApplicationModuleListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(SystemPromptChanged changed) {
         hub.publish(new FrontendEvent(
                 UUID.randomUUID(),

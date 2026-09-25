@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Show Terraform outputs and state"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+require_command terraform
+terraform -chdir="$(deploy_repo_root)/deployment/terraform" output

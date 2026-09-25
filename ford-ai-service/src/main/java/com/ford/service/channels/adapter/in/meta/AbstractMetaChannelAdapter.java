@@ -3,6 +3,7 @@ package com.ford.service.channels.adapter.in.meta;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ford.service.channels.application.port.in.ChannelAdapter;
+import com.ford.service.channels.domain.Channel;
 import com.ford.service.channels.domain.InboundMessage;
 import com.ford.service.channels.domain.RawWebhook;
 import com.ford.service.channels.domain.WebhookRequest;
@@ -15,15 +16,9 @@ abstract class AbstractMetaChannelAdapter implements ChannelAdapter {
 
     protected final ObjectMapper objectMapper;
     private final MetaSignatureVerifier signatureVerifier = new MetaSignatureVerifier();
-    private final String appSecret;
 
     AbstractMetaChannelAdapter(ObjectMapper objectMapper) {
-        this(objectMapper, null);
-    }
-
-    AbstractMetaChannelAdapter(ObjectMapper objectMapper, String appSecret) {
         this.objectMapper = objectMapper;
-        this.appSecret = appSecret;
     }
 
     @Override
@@ -34,12 +29,14 @@ abstract class AbstractMetaChannelAdapter implements ChannelAdapter {
             var providerMessageId = text(message, messageIdPath());
             var participantId = text(message, participantPath());
             var text = text(message, textPath());
+            var providerAccountId = providerAccountId(payload.body());
             if (providerMessageId == null || participantId == null || text == null || text.isBlank()) {
                 throw new IllegalArgumentException("Unsupported or non-text Meta message");
             }
             return new InboundMessage(
-                    payload.tenantId(), channel(), providerMessageId, participantId, text,
-                    List.of(), Instant.now(), payload.rawPayloadReference());
+                    payload.tenantId(), channel(), providerAccountId, providerMessageId, participantId, text,
+                    List.of(), Instant.now(), payload.rawPayloadReference(), payload.bindingId(),
+                    conversationId(payload.tenantId(), channel(), providerAccountId, participantId));
         } catch (IllegalArgumentException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -50,12 +47,14 @@ abstract class AbstractMetaChannelAdapter implements ChannelAdapter {
     protected InboundMessage normalize(RawWebhook payload, JsonNode message, String participantId) {
         var providerMessageId = text(message, messageIdPath());
         var text = text(message, textPath());
+        var providerAccountId = providerAccountId(payload.body());
         if (providerMessageId == null || participantId == null || text == null || text.isBlank()) {
             throw new IllegalArgumentException("Unsupported or non-text Meta message");
         }
         return new InboundMessage(
-                payload.tenantId(), channel(), providerMessageId, participantId, text,
-                List.of(), Instant.now(), payload.rawPayloadReference());
+                payload.tenantId(), channel(), providerAccountId, providerMessageId, participantId, text,
+                List.of(), Instant.now(), payload.rawPayloadReference(), payload.bindingId(),
+                conversationId(payload.tenantId(), channel(), providerAccountId, participantId));
     }
 
     protected JsonNode readTree(String body) {
@@ -68,11 +67,23 @@ abstract class AbstractMetaChannelAdapter implements ChannelAdapter {
 
     @Override
     public void validateWebhook(WebhookRequest request) {
-        if (appSecret == null || appSecret.isBlank()) {
-            throw new SecurityException("Meta app secret is not configured");
-        }
+        throw new SecurityException("Meta binding secret is required");
+    }
+
+    @Override
+    public void validateWebhook(WebhookRequest request, String secretReference) {
         var signature = request.headers().getOrDefault("X-Hub-Signature-256", request.headers().get("x-hub-signature-256"));
-        signatureVerifier.verify(request.body(), signature, appSecret);
+        signatureVerifier.verify(request.body(), signature, secretReference);
+    }
+
+    @Override
+    public String providerAccountId(String body) {
+        var root = readTree(body);
+        var accountId = root.at("/entry/0/id").asText(null);
+        if (accountId == null || accountId.isBlank()) {
+            throw new IllegalArgumentException("Meta provider account is missing");
+        }
+        return accountId;
     }
 
     protected abstract JsonNode messageNode(JsonNode root);
@@ -83,5 +94,12 @@ abstract class AbstractMetaChannelAdapter implements ChannelAdapter {
     private static String text(JsonNode node, String pointer) {
         var value = node.at(pointer);
         return value.isMissingNode() || value.isNull() ? null : value.asText();
+    }
+
+    private static java.util.UUID conversationId(java.util.UUID tenantId, Channel channel,
+                                                String providerAccountId, String participantId) {
+        return java.util.UUID.nameUUIDFromBytes((tenantId + ":" + channel + ":"
+                + providerAccountId + ":" + participantId)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 }

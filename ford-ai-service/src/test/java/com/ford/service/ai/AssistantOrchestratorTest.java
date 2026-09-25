@@ -47,4 +47,5 @@ class AssistantOrchestratorTest {
 
         assertThat(response.content()).contains("disponibilidad");
     }
+
 }

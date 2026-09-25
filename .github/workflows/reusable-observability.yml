@@ -31,7 +31,7 @@ jobs:
           CLICKHOUSE_PASSWORD: clickhouse
           REDIS_AUTH: redis
           MINIO_ROOT_PASSWORD: miniosecret
-        run: docker compose -f deployment/observability/langfuse/docker-compose.yml config --quiet
+        run: docker compose -f ford-ai-service/deployment/observability/langfuse/docker-compose.yml config --quiet
       - name: Validate collector configuration
         env:
           LANGFUSE_OTLP_ENDPOINT: http://langfuse-web:3000/api/public/otel
@@ -40,6 +40,19 @@ jobs:
           docker run --rm
           -e LANGFUSE_OTLP_ENDPOINT
           -e LANGFUSE_AUTH_HEADER
-          -v "$GITHUB_WORKSPACE/deployment/observability/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro"
+          -v "$GITHUB_WORKSPACE/ford-ai-service/deployment/observability/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro"
+          otel/opentelemetry-collector-contrib:0.161.0
+          validate --config=/etc/otelcol-contrib/config.yaml
+      - name: Validate cloud Tempo and Langfuse collector configuration
+        env:
+          LANGFUSE_OTLP_ENDPOINT: https://us.cloud.langfuse.com/api/public/otel
+          LANGFUSE_PUBLIC_KEY: pk-test
+          LANGFUSE_SECRET_KEY: sk-test
+        run: >-
+          docker run --rm
+          -e LANGFUSE_OTLP_ENDPOINT
+          -e LANGFUSE_PUBLIC_KEY
+          -e LANGFUSE_SECRET_KEY
+          -v "$GITHUB_WORKSPACE/deployment/observability/otel-collector/cloud-tempo-config.yaml:/etc/otelcol-contrib/config.yaml:ro"
           otel/opentelemetry-collector-contrib:0.161.0
           validate --config=/etc/otelcol-contrib/config.yaml

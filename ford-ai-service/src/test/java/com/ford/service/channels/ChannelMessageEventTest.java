@@ -3,7 +3,7 @@ package com.ford.service.channels;
 import com.ford.service.channels.adapter.in.meta.WhatsAppChannelAdapter;
 import com.ford.service.channels.application.ChannelMessageService;
 import com.ford.service.channels.domain.RawWebhook;
-import com.ford.service.channels.domain.InboundMessageAccepted;
+import com.ford.service.channels.api.InboundMessageAccepted;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
@@ -29,7 +29,7 @@ class ChannelMessageEventTest {
         assertThat(service.accept(webhook, adapter)).isNull();
         assertThat(published).hasSize(1);
         assertThat(published.getFirst()).isInstanceOf(InboundMessageAccepted.class);
-        assertThat(((InboundMessageAccepted) published.getFirst()).message().text())
+        assertThat(((InboundMessageAccepted) published.getFirst()).text())
                 .isEqualTo("Hola");
     }
 }

@@ -14,6 +14,18 @@ public interface ChannelAdapter {
 
     void validateWebhook(WebhookRequest request);
 
+    default void validateWebhook(WebhookRequest request, String secretReference) {
+        validateWebhook(request);
+    }
+
+    default String providerAccountId(String body) {
+        throw new UnsupportedOperationException("Provider account validation is not implemented");
+    }
+
+    default boolean isStatusCallback(String body) {
+        return false;
+    }
+
     default DeliveryResult sendReply(OutboundMessage message) {
         throw new UnsupportedOperationException("Outbound delivery is provided by a channel delivery port");
     }

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#MISE description="Plan the OCI backup bucket and emme-2 identity"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+[[ "${OCI_MANAGE_BACKUP_BUCKET:-false}" == "true" ]] || {
+  echo 'Set OCI_MANAGE_BACKUP_BUCKET=true before planning backup infrastructure.' >&2
+  exit 2
+}
+[[ -n "${EMME_2_INSTANCE_OCID:-}" ]] || {
+  echo 'EMME_2_INSTANCE_OCID is required before planning backup infrastructure.' >&2
+  exit 2
+}
+mise run infra:plan

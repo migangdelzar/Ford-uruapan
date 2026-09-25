@@ -1,6 +1,6 @@
 databaseChangeLog:
   - changeSet:
-      id: 004-modulith-events
+      id: 012-modulith-events
       author: ford-service
       changes:
         - sql:
