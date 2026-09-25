@@ -90,6 +90,37 @@ class ConversationMemoryPostgresIntegrationTest {
         assertThat(context.durableFacts()).containsExactly(fact);
     }
 
+    @Test
+    void doesNotLoadTranscriptForMismatchedConversationIdentity() {
+        insertConversation();
+        jdbc.sql("""
+                insert into conversation_message (id, conversation_id, direction, provider_message_id, content, received_at)
+                values (:id, :conversationId, 'INBOUND', 'message-1', 'private transcript', :receivedAt)
+                """)
+                .param("id", UUID.randomUUID())
+                .param("conversationId", CONVERSATION_ID)
+                .param("receivedAt", Timestamp.from(Instant.now()))
+                .update();
+
+        var mismatches = List.of(
+                new ConversationMemoryKey(UUID.randomUUID(), MEMORY_KEY.channel(), MEMORY_KEY.providerAccountId(),
+                        MEMORY_KEY.participantId(), CONVERSATION_ID),
+                new ConversationMemoryKey(MEMORY_KEY.tenantId(), Channel.MESSENGER,
+                        MEMORY_KEY.providerAccountId(), MEMORY_KEY.participantId(), CONVERSATION_ID),
+                new ConversationMemoryKey(MEMORY_KEY.tenantId(), MEMORY_KEY.channel(), "another-phone",
+                        MEMORY_KEY.participantId(), CONVERSATION_ID),
+                new ConversationMemoryKey(MEMORY_KEY.tenantId(), MEMORY_KEY.channel(), MEMORY_KEY.providerAccountId(),
+                        "another-customer", CONVERSATION_ID));
+
+        for (var mismatch : mismatches) {
+            var context = repository.load(new MemoryQuery(mismatch, null, 5, 5));
+
+            assertThat(context.summary()).isEmpty();
+            assertThat(context.durableFacts()).isEmpty();
+            assertThat(context.recentMessages()).isEmpty();
+        }
+    }
+
     private void insertConversation() {
         var now = Instant.now();
         jdbc.sql("""

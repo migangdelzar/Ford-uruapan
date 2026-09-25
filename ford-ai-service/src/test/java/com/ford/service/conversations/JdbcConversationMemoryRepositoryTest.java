@@ -112,6 +112,27 @@ class JdbcConversationMemoryRepositoryTest {
     }
 
     @Test
+    void rejectsTranscriptAndProjectionWhenAnyConversationIdentityComponentDiffers() {
+        var mismatches = List.of(
+                new ConversationMemoryKey(UUID.randomUUID(), key.channel(), key.providerAccountId(),
+                        key.participantId(), key.conversationId()),
+                new ConversationMemoryKey(key.tenantId(), com.ford.service.channels.domain.Channel.MESSENGER,
+                        key.providerAccountId(), key.participantId(), key.conversationId()),
+                new ConversationMemoryKey(key.tenantId(), key.channel(), "another-phone",
+                        key.participantId(), key.conversationId()),
+                new ConversationMemoryKey(key.tenantId(), key.channel(), key.providerAccountId(),
+                        "another-customer", key.conversationId()));
+
+        for (var mismatch : mismatches) {
+            var context = repository.load(new MemoryQuery(mismatch, null, 5, 5));
+
+            assertThat(context.summary()).isEmpty();
+            assertThat(context.durableFacts()).isEmpty();
+            assertThat(context.recentMessages()).as("mismatch %s", mismatch).isEmpty();
+        }
+    }
+
+    @Test
     void rejectsAStaleProjectionVersion() {
         var update = new MemoryProjectionUpdate("Nuevo resumen", List.of(), null);
 

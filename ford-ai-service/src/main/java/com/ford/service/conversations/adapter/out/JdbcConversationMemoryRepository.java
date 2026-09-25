@@ -68,6 +68,14 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
                            row_number() over (order by received_at desc, id desc) as row_number
                     from conversation_message
                     where conversation_id = :conversationId
+                      and exists (
+                          select 1 from conversation owner
+                          where owner.id = conversation_message.conversation_id
+                            and owner.tenant_id = :tenantId
+                            and owner.channel = :channel
+                            and owner.provider_account_id = :providerAccountId
+                            and owner.participant_id = :participantId
+                      )
                       and (cast(:currentProviderMessageId as varchar) is null
                            or provider_message_id <> :currentProviderMessageId)
                 ) recent
@@ -75,6 +83,10 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
                 order by received_at asc, id asc
                 """)
                 .param("conversationId", query.key().conversationId())
+                .param("tenantId", query.key().tenantId())
+                .param("channel", query.key().channel().name())
+                .param("providerAccountId", query.key().providerAccountId())
+                .param("participantId", query.key().participantId())
                 .param("currentProviderMessageId", query.currentProviderMessageId())
                 .param("recentMessageLimit", query.recentMessageLimit())
                 .query((rs, rowNum) -> new ConversationMessage(
