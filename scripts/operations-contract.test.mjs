@@ -173,6 +173,8 @@ test("deployment config preserves externally supplied secret values", async () =
   assert.match(remote, /export FORD_META_APP_SECRET=/);
   assert.match(remote, /preserved_ghcr_username/);
   assert.match(remote, /export GHCR_USERNAME=/);
+  assert.match(remote, /is_valid_tenant_id/);
+  assert.match(remote, /00000000-0000-0000-0000-000000000001/);
   assert.match(remote, /adopt_environment_secret/);
   assert.match(secretsTask, /adopt_environment_secret/);
   assert.match(secretsTask, /FORD_META_APP_SECRET/);

@@ -52,6 +52,12 @@ load_deploy_config() {
   [[ -n "$preserved_langfuse_secret" ]] && export LANGFUSE_SECRET_KEY="$preserved_langfuse_secret"
 }
 
+is_valid_tenant_id() {
+  local tenant_id="$1"
+  [[ "$tenant_id" == "00000000-0000-0000-0000-000000000001" \
+    || "$tenant_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]]
+}
+
 require_deploy_config() {
   local missing=() name
   for name in OCI_REGION OCI_SSH_USER OCI_SSH_PRIVATE_KEY EMME_1_SSH_HOST \
@@ -73,7 +79,7 @@ require_deploy_config() {
     [[ -n "${FORD_META_PROVIDER_ACCOUNT_ID:-${FORD_META_PHONE_ID:-}}" ]] || missing+=("FORD_META_PROVIDER_ACCOUNT_ID")
     [[ -n "${FORD_TENANT_ID:-00000000-0000-0000-0000-000000000001}" ]] || missing+=("FORD_TENANT_ID")
     [[ "${FORD_META_PROVIDER_ACCOUNT_ID:-${FORD_META_PHONE_ID:-}}" =~ ^[0-9]+$ ]] || missing+=("numeric:FORD_META_PROVIDER_ACCOUNT_ID")
-    [[ "${FORD_TENANT_ID:-00000000-0000-0000-0000-000000000001}" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] || missing+=("uuid:FORD_TENANT_ID")
+    is_valid_tenant_id "${FORD_TENANT_ID:-00000000-0000-0000-0000-000000000001}" || missing+=("uuid:FORD_TENANT_ID")
   fi
   if (( ${#missing[@]} > 0 )); then
     printf 'Missing deployment configuration: %s\n' "${missing[*]}" >&2
