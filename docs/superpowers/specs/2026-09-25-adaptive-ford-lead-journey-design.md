@@ -17,24 +17,24 @@ Give each Ford sales lead a durable, useful sense of progress across messages wi
 
 ## Core design
 
-Model the journey as **durable milestones plus a current user goal**, not a single mandatory stage number. The journey may move forward, pause, skip, or revisit topics. The model handles natural-language understanding and proposes the next useful step; application/domain rules validate facts, tool access, state updates, consent, and side effects.
+Model the journey as **a current topic plus durable visited/paused topics and confirmed facts**, not a single mandatory stage number or a claim that a sales step is complete. The journey may move forward, pause, skip, or revisit topics. The model handles natural-language understanding and proposes the next useful step; application/domain rules validate facts, tool access, state updates, consent, and side effects.
 
 Keep three concerns separate:
 
 1. **Conversation memory:** recent turns and compact dialogue context for resolving references and avoiding repeated answers.
-2. **Lead journey:** tenant/conversation-scoped confirmed facts, completed milestones, current goal, and any unresolved question/action; link the CRM `lead` when one exists.
+2. **Lead journey:** tenant/conversation-scoped confirmed facts, current topic, visited/paused topics, and any unresolved question/action; link the CRM `lead` when one exists.
 3. **CRM lifecycle/qualification:** existing lead status, score, and temperature; these remain business reporting signals and do not drive a forced conversation script.
 
-### Journey milestones
+### Journey topics
 
-The default Ford sales journey contains these independently completable milestones:
+The default Ford sales journey covers these topics, but does not require the lead to complete them in order:
 
 1. **Vehicle discovery:** desired model/use, new or used preference when relevant, key constraints, approximate budget or timing only when useful.
-2. **Vehicle match and current offer:** compare suitable vehicles and answer price/promotion/availability questions from an authorized, current source. This is a supporting milestone, not a gate before a lead may ask about an offer.
+2. **Vehicle match and current offer:** compare suitable vehicles and answer price/promotion/availability questions from an authorized, current source. This is a supporting topic, not a gate before a lead may ask about an offer.
 3. **Financing or trade-in:** enter only when the lead asks or signals interest; explain estimates as non-binding and distinguish an estimate from lender approval or a trade-in appraisal.
 4. **Test drive or appointment:** offer only when relevant; confirm only a real slot from an authorized scheduling source and obtain the required consent before creating it.
 
-The assistant may also record that a lead has paused, declined a topic, completed a requested action, or asked for a person. Those are outcomes/intent markers, not extra required sales stages. No proactive nurture message is sent by this feature.
+The assistant records which topic is active, which topics were visited or paused, and which facts are known. Topic history is not proof that an offer was verified, financing was approved, a trade-in was appraised, or an appointment was booked. Only an application-confirmed outcome may represent a completed external action. A declined topic can be recorded to avoid pressure. No proactive nurture message is sent by this feature.
 
 ### Per-message behavior
 
@@ -43,18 +43,18 @@ For each accepted inbound message:
 1. Load the tenant-scoped lead journey and relevant conversation memory.
 2. Identify the current message's intent, including a new topic, correction, direct question, explicit action request, or request to stop/escalate. The current message wins over an inferred old goal.
 3. Answer the direct request first. For current Ford facts, call the appropriate authorized Ford/MCP/RAG source. If the source is unavailable, stale, or inconclusive, say that confirmation is unavailable and offer a practical next step; do not invent an offer, price, stock state, or appointment.
-4. Merge only confirmed facts and successful tool/action outcomes into the durable journey. A model-proposed inference without direct evidence stays unconfirmed and cannot mark a milestone complete.
+4. Merge only confirmed user facts into the durable journey. Record the accepted topic transition; a model-proposed inference without direct evidence stays unconfirmed. Tool results stay in the transcript/turn context unless a later approved integration explicitly persists a verified outcome.
 5. Select at most one relevant next question or action. Skip facts already known; do not ask the same unresolved question again immediately. Let the lead skip, change direction, or return later without losing progress.
-6. Persist the accepted assistant turn, its outbound intent, and its journey update with tenant scoping and optimistic version checks. Derive a stable assistant-turn idempotency key from the inbound provider message ID so redelivery cannot create a second reply, journey transition, or outbound action. A model/tool failure must not mark a milestone or external action successful. Confirmed user facts may be captured only through the same durable, idempotent turn boundary.
+6. Persist the accepted assistant turn, its outbound intent, and its journey update with tenant scoping and optimistic version checks. Derive a stable assistant-turn idempotency key from the inbound provider message ID so redelivery cannot create a second reply, journey transition, or outbound action. A failed model/tool call must not advance the journey. Confirmed user facts may be captured only through the same durable, idempotent turn boundary.
 
-Replies should sound natural and concise, answer first, and usually end with no more than one useful question. The assistant must not recite stages or expose internal workflow state.
+Replies should sound natural and concise, answer first, and usually end with no more than one useful question. The assistant must not recite stages/topics or expose internal workflow state.
 
 ### Durable state contract
 
 Persist one bounded journey snapshot in a focused `lead_journey` table, keyed by tenant and conversation, with an optional link to the CRM `lead`. A conversation is the available durable identity for an unqualified prospect; do not require creation of a CRM lead just to remember chat progress. Keep the table separate from the `lead` CRM profile so conversational progress does not become CRM lifecycle or an unbounded profile document. Validate the JSON snapshot's allowed keys and maximum size in the domain boundary. The logical snapshot contains:
 
 - tenant and conversation identifiers, plus nullable lead identifier;
-- current goal (nullable), paused goal keys, and independently completed milestones;
+- current topic (nullable), visited topic keys, and paused topic keys;
 - confirmed facts as typed keys/values with provenance (`USER`, `FORD_SOURCE`, or `OPERATOR`), reference identifier, and observation time;
 - the last unresolved question/action key and retry count, so the agent can avoid repeating the same unresolved question on consecutive turns and can offer a skip/alternative;
 - optimistic version, last processed inbound message ID, and update time.
@@ -69,7 +69,7 @@ All reads and writes are scoped by tenant and conversation; when linked, verify 
 - The model returns a typed result containing the reply and optional journey proposal. The application validates and applies the proposal only after the response is accepted. If structured conversion fails, use existing safe provider recovery and leave journey state unchanged.
 - Existing Ford MCP/RAG tools remain the source of business facts. Existing tool authorization remains the gate on which tool families can run.
 - Deterministic code is retained for security, tenant isolation, consent, input validation, tool authorization, supported state transitions, idempotency, source freshness checks, and appointment/financial disclaimers.
-- Remove keyword-derived detailed journey progression from the design. Do not add phrase-specific normal-sales routing or a fixed stage-by-stage scripted response system.
+- Remove keyword-derived detailed journey progression from the design. Do not add phrase-specific normal-sales routing or a fixed topic-by-topic scripted response system.
 - Keep tool loops bounded within the current turn. Persisted journey state enables continuation across future messages; it is not a request to replay or rewind tool steps.
 - Do not add LangGraph4j for this first version. Reconsider a graph/checkpoint framework only if measured needs require long-running parallel branches, durable human interrupts, or multi-step work that must resume independently of a customer message.
 
@@ -78,9 +78,9 @@ All reads and writes are scoped by tenant and conversation; when linked, verify 
 | Condition | Required behavior |
 |---|---|
 | Provider unavailable/rate-limited | Follow the existing bounded provider recovery policy. Do not mutate journey progress unless a reply is successfully accepted. Preserve enough turn state for safe recovery; never create duplicate outbound delivery. |
-| Ford source unavailable or stale | Do not claim current price, promotion, or stock. Explain the limitation and offer a check/alternative. Do not mark the offer lookup complete without evidence. |
-| User corrects a known fact | Replace the prior value with the new explicit value, retain provenance/time, and reconsider affected milestones without restarting unrelated parts of the journey. |
-| User changes topic | Answer the new request; preserve the previous goal as paused rather than deleting it. |
+| Ford source unavailable or stale | Do not claim current price, promotion, or stock. Explain the limitation and offer a check/alternative. Do not claim the source verified an offer. |
+| User corrects a known fact | Replace the prior value with the new explicit value, retain provenance/time, and reconsider the relevant topic without restarting unrelated parts of the journey. |
+| User changes topic | Answer the new request; preserve the previous topic as paused rather than deleting it. |
 | User declines a question/action | Record the decline only as needed to avoid asking again; continue help without pressure. |
 | Appointment/finance operation fails | Explain that it was not completed; do not record success or promise an outcome. |
 | Concurrent or duplicate message | Use idempotency and version checks; preserve the winning state and suppress duplicate side effects. |
@@ -90,11 +90,11 @@ All reads and writes are scoped by tenant and conversation; when linked, verify 
 
 The feature is acceptable when:
 
-- The same conversation can ask a vehicle question, return later about a promotion, then ask about financing without re-answering completed discovery questions; the state survives process restart even when no CRM lead row exists.
+- The same conversation can ask a vehicle question, return later about a promotion, then ask about financing without re-asking facts already captured; the state survives process restart even when no CRM lead row exists.
 - A promotion question is answered before any unrelated qualification question, and only from a fixture/live authorized source result; a missing/stale source never produces fabricated details.
 - A lead may jump directly to financing or a test drive, interrupt the journey, correct a fact, decline a question, and resume later without losing unrelated progress.
 - Known facts and the unresolved question are loaded on a new turn and survive process restart.
-- Provider/tool/persistence failures do not mark milestones complete or cause duplicate outbound messages/actions.
+- Provider/tool/persistence failures do not advance journey state or cause duplicate outbound messages/actions.
 - Tenant isolation, optimistic concurrency, and duplicate event processing are covered with PostgreSQL integration tests where DB behavior is involved.
 - Evaluations include Spanish (es-MX) multi-turn examples for topic change, short contextual replies, repeated-question suppression, direct promotion lookup, missing RAG evidence, correction, and appointment request.
 - Logs/metrics reveal journey load/update/conflict outcomes and source-use outcomes without logging message bodies, contact details, or model/tool payloads.
