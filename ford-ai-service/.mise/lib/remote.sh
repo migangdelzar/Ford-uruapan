@@ -81,6 +81,10 @@ require_deploy_config() {
     [[ "${FORD_META_PROVIDER_ACCOUNT_ID:-${FORD_META_PHONE_ID:-}}" =~ ^[0-9]+$ ]] || missing+=("numeric:FORD_META_PROVIDER_ACCOUNT_ID")
     is_valid_tenant_id "${FORD_TENANT_ID:-00000000-0000-0000-0000-000000000001}" || missing+=("uuid:FORD_TENANT_ID")
   fi
+  if [[ "${FORD_META_DELIVERY_ENABLED:-false}" == "true" ]]; then
+    [[ -n "${FORD_META_WHATSAPP_DELIVERY_ENDPOINT:-}" ]] || missing+=("FORD_META_WHATSAPP_DELIVERY_ENDPOINT")
+    [[ -n "${FORD_META_WHATSAPP_ACCESS_TOKEN:-}" ]] || missing+=("FORD_META_WHATSAPP_ACCESS_TOKEN")
+  fi
   if (( ${#missing[@]} > 0 )); then
     printf 'Missing deployment configuration: %s\n' "${missing[*]}" >&2
     return 1
@@ -224,6 +228,8 @@ render_deploy_inventory() {
   local backup_bucket_yaml backup_namespace_yaml backup_prefix_yaml backup_region_yaml
   local grafana_endpoint_yaml grafana_instance_yaml grafana_token_yaml langfuse_endpoint_yaml langfuse_public_yaml langfuse_secret_yaml
   local ford_meta_auto_binding_enabled_yaml ford_meta_provider_account_id_yaml ford_tenant_id_yaml
+  local ford_meta_delivery_enabled_yaml ford_meta_whatsapp_endpoint_yaml ford_meta_whatsapp_access_token_yaml
+  local ford_outbox_enabled_yaml
   local ford_ai_chat_provider_yaml ford_ai_cloud_provider_yaml ford_ai_cloud_enabled_yaml ford_ai_local_enabled_yaml
   local ford_ai_cloud_base_url_yaml ford_ai_cloud_model_version_yaml
   local ford_mcp_enabled_yaml ford_mcp_url_yaml ford_mcp_endpoint_yaml mcp_token_yaml
@@ -246,6 +252,10 @@ render_deploy_inventory() {
   ford_meta_auto_binding_enabled_yaml="$(yaml_quote "${FORD_META_AUTO_BINDING_ENABLED:-false}")"
   ford_meta_provider_account_id_yaml="$(yaml_quote "${FORD_META_PROVIDER_ACCOUNT_ID:-${FORD_META_PHONE_ID:-}}")"
   ford_tenant_id_yaml="$(yaml_quote "${FORD_TENANT_ID:-00000000-0000-0000-0000-000000000001}")"
+  ford_meta_delivery_enabled_yaml="$(yaml_quote "${FORD_META_DELIVERY_ENABLED:-false}")"
+  ford_meta_whatsapp_endpoint_yaml="$(yaml_quote "${FORD_META_WHATSAPP_DELIVERY_ENDPOINT:-}")"
+  ford_meta_whatsapp_access_token_yaml="$(yaml_quote "${FORD_META_WHATSAPP_ACCESS_TOKEN:-}")"
+  ford_outbox_enabled_yaml="$(yaml_quote "${FORD_OUTBOX_ENABLED:-false}")"
   ford_ai_chat_provider_yaml="$(yaml_quote "${FORD_AI_CHAT_PROVIDER:-openai}")"
   ford_ai_cloud_provider_yaml="$(yaml_quote "${FORD_AI_CLOUD_PROVIDER:-openai}")"
   ford_ai_cloud_enabled_yaml="$(yaml_quote "${FORD_AI_CLOUD_ENABLED:-true}")"
@@ -290,6 +300,10 @@ all:
     ford_meta_auto_binding_enabled: ${ford_meta_auto_binding_enabled_yaml}
     ford_meta_provider_account_id: ${ford_meta_provider_account_id_yaml}
     ford_tenant_id: ${ford_tenant_id_yaml}
+    ford_meta_delivery_enabled: ${ford_meta_delivery_enabled_yaml}
+    ford_meta_whatsapp_delivery_endpoint: ${ford_meta_whatsapp_endpoint_yaml}
+    ford_meta_whatsapp_access_token: ${ford_meta_whatsapp_access_token_yaml}
+    ford_outbox_enabled: ${ford_outbox_enabled_yaml}
     ford_ai_chat_provider: ${ford_ai_chat_provider_yaml}
     ford_ai_cloud_provider: ${ford_ai_cloud_provider_yaml}
     ford_ai_cloud_enabled: ${ford_ai_cloud_enabled_yaml}

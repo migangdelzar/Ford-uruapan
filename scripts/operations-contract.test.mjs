@@ -123,6 +123,26 @@ test("Ansible propagates the configured cloud AI provider", async () => {
   }
 });
 
+test("Ansible propagates Meta delivery and outbox runtime settings", async () => {
+  const example = await read("deployment/config/oci.env.example");
+  const remote = await read("ford-ai-service/.mise/lib/remote.sh");
+  const template = await read("deployment/ansible/roles/app/templates/app.env.j2");
+  const secrets = await read("ford-ai-service/.mise/tasks/deploy/secrets");
+
+  for (const variable of [
+    "FORD_META_DELIVERY_ENABLED",
+    "FORD_META_WHATSAPP_DELIVERY_ENDPOINT",
+    "FORD_META_WHATSAPP_ACCESS_TOKEN",
+    "FORD_OUTBOX_ENABLED"
+  ]) {
+    assert.match(example, new RegExp(`^${variable}=`, "m"), `${variable} must be documented`);
+    assert.match(remote, new RegExp(variable), `${variable} must reach the inventory`);
+    assert.match(template, new RegExp(`^${variable}=`, "m"), `${variable} must reach app.env.j2`);
+  }
+
+  assert.match(secrets, /FORD_META_WHATSAPP_ACCESS_TOKEN/);
+});
+
 test("app deployment transfers local images and checks the webhook route", async () => {
   const appTask = await read("ford-ai-service/.mise/tasks/deploy/app");
   const appRole = await read("deployment/ansible/roles/app/tasks/main.yml");
