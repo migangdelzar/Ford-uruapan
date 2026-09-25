@@ -1,0 +1,63 @@
+[
+  {
+    "id": "greeting-and-discovery",
+    "turns": [
+      { "role": "user", "content": "Hola, quiero conocer la Lobo Raptor." }
+    ],
+    "requiredTools": ["search_vehicles"],
+    "requiredText": ["Raptor"],
+    "forbiddenText": ["search_vehicles", "get_vehicle", "{\"query\""],
+    "maxRepeatedResponses": 0
+  },
+  {
+    "id": "contextual-fuel-follow-up",
+    "turns": [
+      { "role": "user", "content": "Estoy interesado en la Lobo Raptor 2026." },
+      { "role": "user", "content": "¿Cuántos kilómetros por litro da?" }
+    ],
+    "requiredTools": ["search_vehicles", "get_vehicle"],
+    "requiredText": ["km/l"],
+    "forbiddenText": ["search_vehicles", "get_vehicle", "{\"query\""],
+    "maxRepeatedResponses": 0
+  },
+  {
+    "id": "promotions",
+    "turns": [
+      { "role": "user", "content": "¿Qué promociones hay para la Ranger?" }
+    ],
+    "requiredTools": ["list_promotions"],
+    "requiredText": ["Ranger"],
+    "forbiddenText": ["list_promotions", "search_offers", "{\"query\""],
+    "maxRepeatedResponses": 0
+  },
+  {
+    "id": "comparison",
+    "turns": [
+      { "role": "user", "content": "¿Cuál conviene más para trabajo, Ranger o Lobo Raptor?" }
+    ],
+    "requiredTools": ["compare_vehicles"],
+    "requiredText": ["Ranger", "Raptor"],
+    "forbiddenText": ["compare_vehicles", "{\"query\""],
+    "maxRepeatedResponses": 0
+  },
+  {
+    "id": "agency-knowledge",
+    "turns": [
+      { "role": "user", "content": "¿Cuál es el horario de Ford Uruapan?" }
+    ],
+    "requiredTools": ["approved_knowledge_search"],
+    "requiredText": ["sábado"],
+    "forbiddenText": ["approved_knowledge_search", "{\"query\""],
+    "maxRepeatedResponses": 0
+  },
+  {
+    "id": "source-failure",
+    "sourceFailureTools": ["get_vehicle"],
+    "turns": [
+      { "role": "user", "content": "¿Qué rendimiento tiene la Lobo Raptor?" }
+    ],
+    "requiredTools": ["get_vehicle"],
+    "forbiddenText": ["7.1", "get_vehicle", "{\""],
+    "maxRepeatedResponses": 0
+  }
+]

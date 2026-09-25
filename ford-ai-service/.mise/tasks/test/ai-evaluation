@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
-#MISE description="Run deterministic AI evaluation tests"
+#MISE description="Run deterministic AI evaluation tests (or --live for OpenRouter)"
 set -euo pipefail
 cd "$MISE_PROJECT_ROOT"
+
+if [[ "${1:-}" == "--live" ]]; then
+  shift
+  exec node "$MISE_PROJECT_ROOT/../scripts/ai/openrouter-chat-eval.mjs" "$@"
+fi
+
 source "$MISE_PROJECT_ROOT/../scripts/setup/runtime.sh"
 ford_runtime_export
 exec ./gradlew test --tests '*AiRegressionEvaluationTest' --no-daemon --no-configuration-cache
