@@ -277,6 +277,68 @@ raw webhook bodies, phone numbers, email addresses and financial details must
 not be placed in logs or metric labels. Use `DefaultPiiRedactor` before any
 diagnostic payload is exported.
 
+### Chat failure triage and release gate
+
+Run these gates from `ford-ai-service` before publishing an application image:
+
+```bash
+mise run test:unit
+mise run test:integration
+mise run test:ai-evaluation
+mise run test:check
+```
+
+The integration gate requires Docker/Testcontainers. The AI evaluation task
+runs deterministic Java and Node fixture tests without contacting OpenRouter;
+`mise run test:ai-evaluation --live` is a separate, opt-in model call and must
+not use customer conversation data. A `202` response from a webhook means the
+inbound event was accepted, not that an assistant reply was delivered.
+
+Use the durable stores to distinguish internal memory refresh from external
+delivery. These aggregate queries deliberately omit event payloads, transcript
+content, tenant identifiers, and serialized Modulith events:
+
+```sql
+select event_type, count(*) as outstanding,
+       min(publication_date) as oldest_publication
+from event_publication
+where completion_date is null
+group by event_type
+order by oldest_publication;
+
+select status, attempts, count(*) as events,
+       min(available_at) as oldest_available
+from outbox_event
+where status in ('PENDING', 'PROCESSING', 'DEAD_LETTER')
+group by status, attempts
+order by status, attempts;
+```
+
+An outstanding `ConversationMemoryProjectionRefreshRequested` publication
+means the derived memory projection needs retry; the accepted transcript and
+outbound event are committed independently. A growing `outbox_event` retry
+count means customer delivery is delayed; `DEAD_LETTER` needs operator review
+before any replay. Never replay an outbound message solely because a projection
+failed.
+
+During an incident, check `/actuator/health`, then the bounded observations and
+the two aggregate queries. Provider `rate_limited`/`provider_unavailable`
+events retry at most once per eligible provider before policy-approved fallback;
+repeated failures indicate upstream/provider capacity or configuration, not a
+reason to increase retry loops. Projection `persistence` failures are recoverable
+through Modulith publications. Outbox `retry` followed by `dead_letter` indicates
+delivery exhaustion; inspect the redacted error category and provider health.
+Review `mise run deploy:logs` through approved redacted filters only. Do not
+paste raw logs, SQL payload columns, prompts, tool results, phone numbers, tokens,
+or provider response bodies into incident notes.
+
+For a production release, additionally validate `mise run deploy:check` and
+`mise run deploy:status`, record the immutable current app image for rollback,
+then publish/deploy only after explicit release approval. The app deploy targets
+`emme-1`; database and Redis services remain on `emme-2`. Verify health and
+redacted startup/provider/MCP summaries after rollout. Do not reset data volumes
+or send a customer test message as part of release verification.
+
 ## Provider and safety controls
 
 Cloud/local model choice is policy-driven and never silently falls back across

@@ -121,3 +121,33 @@ When traces disappear, check the Collector queue/exporter first, then Tempo.
 When logs disappear, check Alloy's Docker socket access and Loki readiness.
 When AI errors rise, compare the AI error panel with provider health and the
 deterministic evaluation artifact from the CI run.
+
+## Chat lifecycle observations
+
+Ford emits bounded low-cardinality observations at the application boundaries:
+
+| Observation | Bounded dimensions | How to interpret it |
+| --- | --- | --- |
+| `ford.conversation.inbound` | `channel`, `outcome` (`success`, `failure`) | Accepted inbound processing completed or threw an error. |
+| `ford.ai.provider.attempt` | `provider`, `outcome` (`success`, `failure`, `retry`), `failure_category` | Shows provider attempts, transient retries, and classified failures such as `rate_limited`, `network`, or `authentication`. |
+| `ford.conversation.memory_projection` | `outcome` (`success`, `skipped`, `failure`), `failure_category` | `persistence` failures leave the Modulith publication incomplete for retry. |
+| `ford.outbox.publish` | `outcome` (`success`, `failure`), `failure_category` | Tracks durable delivery-event enqueueing. |
+| `ford.outbox.delivery` | `outcome` (`success`, `retry`, `dead_letter`), `failure_category` | Separates successful delivery, scheduled retry, and exhausted delivery. |
+
+Providers are normalized to `openrouter`, `openai`, `ollama`, `deterministic`,
+`none`, or `other`; failure categories and outcomes are allow-listed. Unknown
+operation names and tags are discarded or mapped to `other`. These observations
+never include tenant/conversation/message IDs, user text, phone numbers, secrets,
+exception messages, or tool payloads. Inspect their corresponding meters through
+`GET /actuator/prometheus` and correlate them with the aggregate Modulith and
+outbox queries in [operations.md](../ford-ai-service/docs/operations.md). Avoid
+turning the bounded operational notes into dashboards with customer-identity
+labels.
+
+Failure interpretation: `rate_limited` should produce no more than one bounded
+same-provider retry before eligible fallback; a rising `authentication` count
+indicates credentials/configuration and is not retryable. `memory_projection`
+with `persistence` is derived-state lag, not a failed customer turn. Repeated
+outbox `retry` followed by `dead_letter` indicates exhausted customer delivery;
+inspect provider health and redacted error categories before an idempotency-safe
+replay.

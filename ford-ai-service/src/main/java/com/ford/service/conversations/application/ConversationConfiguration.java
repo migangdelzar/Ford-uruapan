@@ -9,6 +9,9 @@ import com.ford.service.conversations.adapter.out.RedisConversationMemoryCache;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
 import com.ford.service.shared.HumanHandoffPolicy;
+import com.ford.service.observability.AiObservationService;
+import com.ford.service.observability.DefaultAiObservationService;
+import io.micrometer.observation.ObservationRegistry;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -77,8 +80,11 @@ public class ConversationConfiguration {
                                                ApplicationEventPublisher eventPublisher,
                                                HumanHandoffPolicy handoffPolicy,
                                                ConversationMemoryService memoryService,
-                                               ConversationDecisionRepository decisionRepository) {
+                                               ConversationDecisionRepository decisionRepository,
+                                               ObjectProvider<AiObservationService> observationServices) {
+        var observations = observationServices.getIfAvailable(
+                () -> new DefaultAiObservationService(ObservationRegistry.NOOP));
         return new ConversationWorkflow(repository, assistant, eventPublisher, handoffPolicy, memoryService,
-                decisionRepository);
+                decisionRepository, observations);
     }
 }

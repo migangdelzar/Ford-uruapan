@@ -26,6 +26,9 @@ import com.ford.service.ai.application.port.out.ProviderChatCompletionPort;
 import com.ford.service.ai.application.port.out.ProviderRoutingChatCompletionPort;
 import com.ford.service.ai.application.ModelProviderPolicy;
 import com.ford.service.shared.HumanHandoffPolicy;
+import com.ford.service.observability.AiObservationService;
+import com.ford.service.observability.DefaultAiObservationService;
+import io.micrometer.observation.ObservationRegistry;
 import com.ford.service.catalog.application.VehicleCatalog;
 import com.ford.service.finance.application.FinanceOperations;
 import com.ford.service.finance.application.port.out.FinanceTermsRepository;
@@ -184,9 +187,10 @@ public class SpringAiConfiguration {
     ChatCompletionPort chatCompletionPort(ObjectProvider<OpenAiChatModel> cloudModel,
                                            ObjectProvider<OllamaChatModel> localModel,
                                          AiProperties properties,
-                                         ToolAuthorizationPolicy toolPolicy,
-                                         ModelProviderPolicy providerPolicy,
-                                         ProviderRetryDelay retryDelay,
+                                           ToolAuthorizationPolicy toolPolicy,
+                                           ModelProviderPolicy providerPolicy,
+                                           ProviderRetryDelay retryDelay,
+                                           ObjectProvider<AiObservationService> observationServices,
                                          DecisionPolicy decisionPolicy,
                                          AssistantScopePolicy scopePolicy,
                                          ObjectProvider<SystemPromptService> systemPromptServices,
@@ -212,10 +216,13 @@ public class SpringAiConfiguration {
                             typeSafeConfigured ? typeSafeClient : null, scopePolicy),
                     properties.localChatProvider(), toolPolicy, decisionPolicy, systemPromptService));
         }
+        var observations = observationServices.getIfAvailable(
+                () -> new DefaultAiObservationService(ObservationRegistry.NOOP));
         return providers.isEmpty()
                 ? new UnavailableChatCompletionPort()
                 : new ProviderRoutingChatCompletionPort(providers, providerPolicy,
-                        properties.providerMaxAttempts(), properties.providerMaxRetryAfter(), retryDelay);
+                        properties.providerMaxAttempts(), properties.providerMaxRetryAfter(), retryDelay,
+                        observations);
     }
 
     private static ChatClient chatClient(ChatModel model,

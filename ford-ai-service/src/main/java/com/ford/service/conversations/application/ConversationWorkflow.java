@@ -17,6 +17,9 @@ import com.ford.service.conversations.domain.HandoffDecision;
 import com.ford.service.conversations.domain.MemoryProjectionUpdate;
 import com.ford.service.conversations.domain.MemoryUpdateResult;
 import com.ford.service.shared.HumanHandoffPolicy;
+import com.ford.service.observability.AiObservationService;
+import com.ford.service.observability.DefaultAiObservationService;
+import io.micrometer.observation.ObservationRegistry;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.slf4j.Logger;
@@ -36,6 +39,7 @@ public class ConversationWorkflow {
     private final HumanHandoffPolicy handoffPolicy;
     private final ConversationMemoryService memoryService;
     private final ConversationDecisionRepository decisionRepository;
+    private final AiObservationService observations;
 
     /**
      * Compatibility constructor for lightweight callers that do not provide
@@ -62,12 +66,24 @@ public class ConversationWorkflow {
                                 HumanHandoffPolicy handoffPolicy,
                                 ConversationMemoryService memoryService,
                                 ConversationDecisionRepository decisionRepository) {
+        this(repository, assistant, eventPublisher, handoffPolicy, memoryService, decisionRepository,
+                new DefaultAiObservationService(ObservationRegistry.NOOP));
+    }
+
+    public ConversationWorkflow(ConversationRepository repository,
+                                ConversationAssistant assistant,
+                                ApplicationEventPublisher eventPublisher,
+                                HumanHandoffPolicy handoffPolicy,
+                                ConversationMemoryService memoryService,
+                                ConversationDecisionRepository decisionRepository,
+                                AiObservationService observations) {
         this.repository = Objects.requireNonNull(repository);
         this.assistant = Objects.requireNonNull(assistant);
         this.eventPublisher = Objects.requireNonNull(eventPublisher);
         this.handoffPolicy = Objects.requireNonNull(handoffPolicy);
         this.memoryService = Objects.requireNonNull(memoryService);
         this.decisionRepository = Objects.requireNonNull(decisionRepository);
+        this.observations = Objects.requireNonNull(observations);
     }
 
     private static ConversationMemoryService noOpMemoryService() {
@@ -92,6 +108,18 @@ public class ConversationWorkflow {
 
     @ApplicationModuleListener
     public void on(InboundMessageAccepted event) {
+        try {
+            handle(event);
+            observations.event("ford.conversation.inbound", java.util.Map.of(
+                    "channel", event.channel().name(), "outcome", "success"));
+        } catch (RuntimeException exception) {
+            observations.event("ford.conversation.inbound", java.util.Map.of(
+                    "channel", event.channel().name(), "outcome", "failure"));
+            throw exception;
+        }
+    }
+
+    private void handle(InboundMessageAccepted event) {
         var snapshot = repository.find(event.conversationId()).orElse(null);
         if (snapshot == null || !canUseAssistant(snapshot.state())) {
             return;

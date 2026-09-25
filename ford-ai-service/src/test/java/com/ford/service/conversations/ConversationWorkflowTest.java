@@ -34,6 +34,7 @@ import com.ford.service.conversations.domain.MemoryProjectionUpdate;
 import com.ford.service.conversations.domain.MemoryQuery;
 import com.ford.service.conversations.domain.MemoryUpdateResult;
 import com.ford.service.conversations.api.OutboundDeliveryRequested;
+import com.ford.service.observability.AiObservationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 
@@ -42,8 +43,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class ConversationWorkflowTest {
 
@@ -75,6 +79,25 @@ class ConversationWorkflowTest {
                         }));
         assertThat(publisher.events).anySatisfy(event ->
                 assertThat(event).isInstanceOf(OutboundDeliveryRequested.class));
+    }
+
+    @Test
+    void recordsOnlyBoundedChannelAndOutcomeForInboundProcessing() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var observations = mock(AiObservationService.class);
+        var workflow = new ConversationWorkflow(
+                new RecordingConversationRepository(snapshot(tenantId, conversationId,
+                        ConversationState.BOT_ACTIVE, 1)),
+                new RecordingAssistant(new AssistantReply("Respuesta útil.", false)),
+                new RecordingPublisher(), new HumanHandoffPolicy(false), memoryService(),
+                (id, messageId, decision) -> { }, observations);
+
+        workflow.on(new InboundMessageAccepted(UUID.randomUUID(), tenantId, conversationId, Channel.WHATSAPP,
+                "wamid.private", Instant.now(), "customer-private", "texto privado"));
+
+        verify(observations).event("ford.conversation.inbound", Map.of(
+                "channel", "WHATSAPP", "outcome", "success"));
     }
 
     @Test

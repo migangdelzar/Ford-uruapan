@@ -13,6 +13,7 @@ import com.ford.service.ai.application.port.out.ProviderChatCompletionPort;
 import com.ford.service.ai.application.port.out.ProviderRoutingChatCompletionPort;
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantResponse;
+import com.ford.service.observability.AiObservationService;
 import com.openai.core.http.Headers;
 import com.openai.errors.OpenAIServiceException;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 class ProviderRoutingChatCompletionPortTest {
 
@@ -96,15 +98,19 @@ class ProviderRoutingChatCompletionPortTest {
     void retriesTransientFailureOnceAndHonorsRetryAfterWithinTheConfiguredBudget() {
         var cloud = provider("openai", true);
         var delays = new java.util.ArrayList<Duration>();
+        var observations = mock(AiObservationService.class);
         var primary = new SequencedPort(cloud.id(), List.of(openAiFailure(429, "2")), "cloud-recovered");
         var port = new ProviderRoutingChatCompletionPort(List.of(primary),
-                new DefaultModelProviderPolicy(List.of(cloud)), 2, Duration.ofSeconds(3), delays::add);
+                new DefaultModelProviderPolicy(List.of(cloud)), 2, Duration.ofSeconds(3), delays::add,
+                observations);
 
         var response = port.complete(request(false), new ToolContext(UUID.randomUUID(), UUID.randomUUID()));
 
         assertThat(response.content()).isEqualTo("cloud-recovered");
         assertThat(primary.calls).isEqualTo(2);
         assertThat(delays).containsExactly(Duration.ofSeconds(2));
+        verify(observations).event("ford.ai.provider.attempt", java.util.Map.of(
+                "provider", "openai", "outcome", "retry", "failure_category", "rate_limited"));
     }
 
     @Test

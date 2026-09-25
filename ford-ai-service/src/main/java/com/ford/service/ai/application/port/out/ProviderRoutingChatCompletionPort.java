@@ -8,6 +8,9 @@ import com.ford.service.ai.application.ProviderFailure;
 import com.ford.service.ai.application.ProviderRetryDelay;
 import com.ford.service.ai.application.ThreadBasedProviderRetryDelay;
 import com.ford.service.ai.application.ToolContext;
+import com.ford.service.observability.AiObservationService;
+import com.ford.service.observability.DefaultAiObservationService;
+import io.micrometer.observation.ObservationRegistry;
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantResponse;
 
@@ -26,10 +29,12 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
     private final int maxAttempts;
     private final Duration maxRetryAfter;
     private final ProviderRetryDelay retryDelay;
+    private final AiObservationService observations;
 
     public ProviderRoutingChatCompletionPort(List<? extends ProviderChatCompletionPort> ports,
                                              ModelProviderPolicy policy) {
-        this(ports, policy, 2, Duration.ofSeconds(3), new ThreadBasedProviderRetryDelay());
+        this(ports, policy, 2, Duration.ofSeconds(3), new ThreadBasedProviderRetryDelay(),
+                new DefaultAiObservationService(ObservationRegistry.NOOP));
     }
 
     public ProviderRoutingChatCompletionPort(List<? extends ProviderChatCompletionPort> ports,
@@ -37,6 +42,16 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
                                              int maxAttempts,
                                              Duration maxRetryAfter,
                                              ProviderRetryDelay retryDelay) {
+        this(ports, policy, maxAttempts, maxRetryAfter, retryDelay,
+                new DefaultAiObservationService(ObservationRegistry.NOOP));
+    }
+
+    public ProviderRoutingChatCompletionPort(List<? extends ProviderChatCompletionPort> ports,
+                                             ModelProviderPolicy policy,
+                                             int maxAttempts,
+                                             Duration maxRetryAfter,
+                                             ProviderRetryDelay retryDelay,
+                                             AiObservationService observations) {
         Objects.requireNonNull(ports, "ports must not be null");
         this.ports = ports.stream().collect(Collectors.toUnmodifiableMap(
                 ProviderChatCompletionPort::providerId, Function.identity(), (left, right) -> left));
@@ -50,6 +65,7 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
             throw new IllegalArgumentException("maxRetryAfter must not be negative");
         }
         this.retryDelay = Objects.requireNonNull(retryDelay, "retryDelay must not be null");
+        this.observations = Objects.requireNonNull(observations, "observations must not be null");
         if (this.ports.isEmpty()) {
             throw new IllegalArgumentException("At least one provider port is required");
         }
@@ -73,20 +89,35 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
             }
             for (var attempt = 1; attempt <= maxAttempts; attempt++) {
                 try {
-                    return port.complete(request, context);
+                    var response = port.complete(request, context);
+                    observations.event("ford.ai.provider.attempt", Map.of(
+                            "provider", candidate.id(), "outcome", "success"));
+                    return response;
                 } catch (RuntimeException failure) {
                     lastFailure = failure;
                     var classified = AiProviderFailureDiagnostics.classify(failure);
                     if (!isRetryable(classified)) {
+                        observations.event("ford.ai.provider.attempt", Map.of(
+                                "provider", candidate.id(), "outcome", "failure",
+                                "failure_category", classified.category()));
                         throw failure;
                     }
                     if (attempt == maxAttempts) {
+                        observations.event("ford.ai.provider.attempt", Map.of(
+                                "provider", candidate.id(), "outcome", "failure",
+                                "failure_category", classified.category()));
                         break;
                     }
                     var delay = retryDelay(classified, attempt);
                     if (delay.compareTo(maxRetryAfter) > 0) {
+                        observations.event("ford.ai.provider.attempt", Map.of(
+                                "provider", candidate.id(), "outcome", "failure",
+                                "failure_category", classified.category()));
                         break;
                     }
+                    observations.event("ford.ai.provider.attempt", Map.of(
+                            "provider", candidate.id(), "outcome", "retry",
+                            "failure_category", classified.category()));
                     if (!delay.isZero()) {
                         retryDelay.delay(delay);
                     }

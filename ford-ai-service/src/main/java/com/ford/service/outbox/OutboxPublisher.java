@@ -58,10 +58,14 @@ public class OutboxPublisher {
     }
 
     public void publish(OutboxEvent event) {
-        observations.observe("ford.outbox.publish", Map.of("outcome", "success"), () -> {
+        try {
             store.append(event);
-            return null;
-        });
+            observations.event("ford.outbox.publish", Map.of("outcome", "success"));
+        } catch (RuntimeException exception) {
+            observations.event("ford.outbox.publish", Map.of(
+                    "outcome", "failure", "failure_category", "persistence"));
+            throw exception;
+        }
     }
 
     public boolean deliverOne(Instant now) {
@@ -75,19 +79,28 @@ public class OutboxPublisher {
             var result = deliveryRouter.deliver(event);
             if (result.accepted()) {
                 store.markDelivered(event.id(), result.providerMessageId(), now, event.leaseUntil());
+                observations.event("ford.outbox.delivery", Map.of("outcome", "success"));
             } else if (result.permanent() || event.attempts() >= maxAttempts) {
                 store.moveToDeadLetter(event.id(), result.permanent() ? "permanent" : "transient",
                         safeMessage(result.error()), event.leaseUntil());
+                observations.event("ford.outbox.delivery", Map.of(
+                        "outcome", "dead_letter", "failure_category", "delivery_error"));
             } else {
                 store.markRetry(event.id(), "transient", now.plus(retryDelay(event.attempts())),
                         safeMessage(result.error()), event.leaseUntil());
+                observations.event("ford.outbox.delivery", Map.of(
+                        "outcome", "retry", "failure_category", "delivery_error"));
             }
         } catch (RuntimeException exception) {
             if (event.attempts() >= maxAttempts) {
                 store.moveToDeadLetter(event.id(), "transient", safeMessage(exception), event.leaseUntil());
+                observations.event("ford.outbox.delivery", Map.of(
+                        "outcome", "dead_letter", "failure_category", "delivery_error"));
             } else {
                 store.markRetry(event.id(), "transient", now.plus(retryDelay(event.attempts())),
                         safeMessage(exception), event.leaseUntil());
+                observations.event("ford.outbox.delivery", Map.of(
+                        "outcome", "retry", "failure_category", "delivery_error"));
             }
         }
         return true;
