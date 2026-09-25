@@ -1,6 +1,8 @@
 package com.ford.service.conversations.application.graph;
 
 import org.bsc.langgraph4j.StateGraph;
+import org.bsc.langgraph4j.CompileConfig;
+import org.bsc.langgraph4j.checkpoint.BaseCheckpointSaver;
 
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -34,5 +36,14 @@ final class ConversationGraphConfiguration {
             graph.addEdge(route.terminalNode(), StateGraph.END);
         }
         return graph;
+    }
+
+    static org.bsc.langgraph4j.CompiledGraph<ConversationGraphState> compile(
+            ConversationTurnProcessor processor, BaseCheckpointSaver checkpointSaver) throws Exception {
+        var graph = create(processor);
+        return graph.compile(CompileConfig.builder()
+                .checkpointSaver(checkpointSaver)
+                .releaseThread(false)
+                .build());
     }
 }

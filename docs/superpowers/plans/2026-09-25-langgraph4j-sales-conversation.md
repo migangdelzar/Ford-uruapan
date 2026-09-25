@@ -69,7 +69,7 @@
 4. Re-run focused tests; require all routes to terminate once, no provider failure to create a successful route, and no unauthorized tool access to reach the assistant callback.
 5. Commit as `feat(conversations): add bounded LangGraph4j workflow`.
 
-## Task 3: Add safe, tenant-scoped PostgreSQL checkpoints
+## Task 3: Add safe, tenant-scoped PostgreSQL checkpoints `[DONE]`
 
 **Files:** create/update graph checkpoint configuration and serializer in `conversations/application/graph/`; add isolated saver DDL through a separate versioned schema/changelog path; create `src/integrationTest/java/com/ford/service/conversations/graph/PostgresGraphCheckpointIntegrationTest.java`.
 
