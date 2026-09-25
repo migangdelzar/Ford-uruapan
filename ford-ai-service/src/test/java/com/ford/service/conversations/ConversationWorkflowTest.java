@@ -69,6 +69,28 @@ class ConversationWorkflowTest {
     }
 
     @Test
+    void recordsInboundMemoryBeforeTheTurnAndInvalidatesAfterTheReply() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var repository = new RecordingConversationRepository(snapshot(
+                tenantId, conversationId, ConversationState.BOT_ACTIVE, 4));
+        var memoryPort = new RecordingMemoryPort();
+        var assistant = new RecordingAssistant(new AssistantReply("Respuesta", false));
+
+        new ConversationWorkflow(repository, assistant, new RecordingPublisher(),
+                new HumanHandoffPolicy(true), new ConversationMemoryService(memoryPort, new MemoryProperties()))
+                .on(new InboundMessageAccepted(
+                        UUID.randomUUID(), tenantId, conversationId, Channel.WHATSAPP,
+                        "wamid.memory", Instant.parse("2026-09-19T12:00:00Z"),
+                        "customer-1", "¿Hay Ranger?"));
+
+        assertThat(memoryPort.inbound).isNotNull();
+        assertThat(memoryPort.inbound.providerMessageId()).isEqualTo("wamid.memory");
+        assertThat(memoryPort.inbound.content()).isEqualTo("¿Hay Ranger?");
+        assertThat(memoryPort.invalidated).isEqualTo(conversationId);
+    }
+
+    @Test
     void humanActiveConversationDoesNotInvokeAssistantOrPublishReply() {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
@@ -233,6 +255,37 @@ class ConversationWorkflowTest {
         @Override
         public void publishEvent(Object event) {
             events.add(event);
+        }
+    }
+
+    private static final class RecordingMemoryPort implements ConversationMemoryPort {
+        private ConversationMessage inbound;
+        private UUID invalidated;
+
+        @Override
+        public ConversationMemoryContext load(MemoryQuery query) {
+            return ConversationMemoryContext.empty(query.key());
+        }
+
+        @Override
+        public void recordInbound(ConversationMemoryKey key, ConversationMessage message) {
+            inbound = message;
+        }
+
+        @Override
+        public void recordOutbound(ConversationMemoryKey key, ConversationMessage message) {
+        }
+
+        @Override
+        public void invalidate(ConversationMemoryKey key) {
+            invalidated = key.conversationId();
+        }
+
+        @Override
+        public MemoryUpdateResult updateProjection(ConversationMemoryKey key,
+                                                    MemoryProjectionUpdate update,
+                                                    long expectedVersion) {
+            return new MemoryUpdateResult(false, expectedVersion);
         }
     }
 

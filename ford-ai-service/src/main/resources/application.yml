@@ -108,6 +108,7 @@ ford:
     semantic-enabled: ${FORD_MEMORY_SEMANTIC_ENABLED:false}
     semantic-limit: ${FORD_MEMORY_SEMANTIC_LIMIT:5}
     cache-enabled: ${FORD_MEMORY_CACHE_ENABLED:false}
+    cache-ttl: ${FORD_MEMORY_CACHE_TTL:PT24H}
   ingestion:
     enabled: ${FORD_INGESTION_ENABLED:false}
     tenant-id: ${FORD_TENANT_ID:00000000-0000-0000-0000-000000000001}

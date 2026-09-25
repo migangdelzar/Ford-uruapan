@@ -2,6 +2,8 @@ package com.ford.service.conversations.application;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.time.Duration;
+
 @ConfigurationProperties(prefix = "ford.memory")
 public class MemoryProperties {
 
@@ -13,6 +15,7 @@ public class MemoryProperties {
     private boolean semanticEnabled;
     private int semanticLimit = 5;
     private boolean cacheEnabled;
+    private Duration cacheTtl = Duration.ofHours(24);
 
     public boolean enabled() { return enabled; }
     public int recentMessageLimit() { return recentMessageLimit; }
@@ -22,6 +25,7 @@ public class MemoryProperties {
     public boolean semanticEnabled() { return semanticEnabled; }
     public int semanticLimit() { return semanticLimit; }
     public boolean cacheEnabled() { return cacheEnabled; }
+    public Duration cacheTtl() { return cacheTtl; }
 
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
     public void setRecentMessageLimit(int value) { recentMessageLimit = positive(value, "recentMessageLimit"); }
@@ -31,6 +35,12 @@ public class MemoryProperties {
     public void setSemanticEnabled(boolean value) { semanticEnabled = value; }
     public void setSemanticLimit(int value) { semanticLimit = positive(value, "semanticLimit"); }
     public void setCacheEnabled(boolean value) { cacheEnabled = value; }
+    public void setCacheTtl(Duration value) {
+        if (value == null || value.isZero() || value.isNegative()) {
+            throw new IllegalArgumentException("cacheTtl must be positive");
+        }
+        cacheTtl = value;
+    }
 
     private static int positive(int value, String name) {
         if (value < 1) {
