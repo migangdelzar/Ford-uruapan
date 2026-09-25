@@ -7,11 +7,13 @@ import com.ford.service.conversations.api.ConversationTurnRequest;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.domain.ConversationMemoryContext;
 import com.ford.service.conversations.domain.ConversationMessage;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Objects;
 import java.util.function.Supplier;
 
-public final class ConversationAssistantAdapter implements ConversationAssistant {
+public class ConversationAssistantAdapter implements ConversationAssistant {
 
     private static final String FALLBACK_TEXT = "En este momento te comunicaré con un asesor humano.";
 
@@ -26,6 +28,7 @@ public final class ConversationAssistantAdapter implements ConversationAssistant
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public AssistantReply respond(ConversationTurnRequest request) {
         var assistant = assistantProvider.get();
         if (assistant == null) {

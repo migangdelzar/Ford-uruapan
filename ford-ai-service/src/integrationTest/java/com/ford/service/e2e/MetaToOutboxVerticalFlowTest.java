@@ -16,6 +16,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -26,6 +27,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -41,6 +43,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @Import(MetaToOutboxVerticalFlowTest.TestBeans.class)
 class MetaToOutboxVerticalFlowTest {
+
+    private static final AtomicReference<Boolean> ASSISTANT_TRANSACTION_ACTIVE = new AtomicReference<>();
 
     private static final String APP_SECRET = "vertical-meta-app-secret";
     private static final String PROVIDER_ACCOUNT_ID = "vertical-phone-number-1";
@@ -86,6 +90,7 @@ class MetaToOutboxVerticalFlowTest {
     @Test
     void signedMetaQuestionProducesOneGroundedSpanishOutboundAndReplayDoesNotDuplicate() throws Exception {
         var tenantId = UUID.randomUUID();
+        ASSISTANT_TRANSACTION_ACTIVE.set(null);
         insertBinding(tenantId);
 
         postWebhook()
@@ -94,6 +99,7 @@ class MetaToOutboxVerticalFlowTest {
         awaitCount("select count(*) from outbox_event where event_type = 'OUTBOUND_DELIVERY_REQUESTED'", 1);
         awaitCount("select count(*) from event_publication where listener_id like '%ConversationWorkflow.on%' "
                 + "and completion_date is not null", 1);
+        assertThat(ASSISTANT_TRANSACTION_ACTIVE.get()).isFalse();
 
         var conversationId = jdbc.sql("select id from conversation where tenant_id = :tenantId")
                 .param("tenantId", tenantId)
@@ -180,10 +186,13 @@ class MetaToOutboxVerticalFlowTest {
         @Bean
         @Primary
         AssistantService assistantService() {
-            return (context, userText) -> new AssistantTurn(
-                    "La Ford Ranger 2026 tiene precio vigente desde $589,000 MXN. "
-                            + "Fuente: catalog:ranger-2026; vigencia: 2026-09-19. Confirma inventario con la agencia.",
-                    Intent.CATALOG, false, java.util.List.of("catalog:ranger-2026"), "test", "fixture-1");
+            return (context, userText) -> {
+                ASSISTANT_TRANSACTION_ACTIVE.set(TransactionSynchronizationManager.isActualTransactionActive());
+                return new AssistantTurn(
+                        "La Ford Ranger 2026 tiene precio vigente desde $589,000 MXN. "
+                                + "Fuente: catalog:ranger-2026; vigencia: 2026-09-19. Confirma inventario con la agencia.",
+                        Intent.CATALOG, false, java.util.List.of("catalog:ranger-2026"), "test", "fixture-1");
+            };
         }
 
     }
