@@ -50,7 +50,7 @@ import java.util.List;
 
 /** Composition root marker for Spring AI adapters and read-only tool wiring. */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({ClassificationProperties.class, TypeSafeProperties.class})
+@EnableConfigurationProperties({ClassificationProperties.class, TypeSafeProperties.class, McpProperties.class})
 public class SpringAiConfiguration {
 
     @Bean
