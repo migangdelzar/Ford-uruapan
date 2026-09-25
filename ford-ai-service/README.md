@@ -182,6 +182,16 @@ mise run deploy:bootstrap
 mise run deploy:all
 ```
 
+`mise run deploy:secrets` is the single secret-entry task. It generates
+missing database and operator credentials, then securely prompts for missing
+Meta, Grafana Cloud, and Langfuse credentials without echoing them. The task
+stores them only in the ignored `deployment/config/oci.env`; `mise run
+deploy:app` loads that file and propagates the values through Ansible into
+emme-1's mode-0600 application environment. Non-empty secret environment
+variables are adopted into the ignored file before prompting, so CI or a
+secret manager can provide them without placing values on a command line. It
+never accepts secret values as command-line arguments.
+
 Read-only Terraform checks are `mise run infra:check` and
 `mise run infra:plan`. Remote lifecycle tasks include
 `deploy:status`, `deploy:logs`, `deploy:restart`, and `deploy:stop`; these

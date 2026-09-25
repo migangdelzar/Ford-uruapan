@@ -20,6 +20,16 @@ infra_vars_file() { printf '%s\n' "$(infra_state_dir)/terraform.tfvars"; }
 
 load_deploy_config() {
   local config_file="$(deploy_config_file)"
+  local preserved_postgres_password="${POSTGRES_PASSWORD:-}"
+  local preserved_redis_password="${REDIS_PASSWORD:-}"
+  local preserved_operator_password="${FORD_OPERATOR_PASSWORD:-}"
+  local preserved_meta_app_secret="${FORD_META_APP_SECRET:-}"
+  local preserved_meta_verify_token="${FORD_META_VERIFY_TOKEN:-}"
+  local preserved_ghcr_token="${GHCR_TOKEN:-}"
+  local preserved_openai_api_key="${OPENAI_API_KEY:-}"
+  local preserved_mcp_token="${MCP_HTTP_BEARER_TOKEN:-}"
+  local preserved_grafana_token="${GRAFANA_CLOUD_API_TOKEN:-}"
+  local preserved_langfuse_secret="${LANGFUSE_SECRET_KEY:-}"
   if [[ ! -f "$config_file" ]]; then
     echo "Missing $config_file; copy deployment/config/oci.env.example first." >&2
     return 1
@@ -28,6 +38,16 @@ load_deploy_config() {
   # shellcheck disable=SC1090
   source "$config_file"
   set +a
+  [[ -n "$preserved_postgres_password" ]] && export POSTGRES_PASSWORD="$preserved_postgres_password"
+  [[ -n "$preserved_redis_password" ]] && export REDIS_PASSWORD="$preserved_redis_password"
+  [[ -n "$preserved_operator_password" ]] && export FORD_OPERATOR_PASSWORD="$preserved_operator_password"
+  [[ -n "$preserved_meta_app_secret" ]] && export FORD_META_APP_SECRET="$preserved_meta_app_secret"
+  [[ -n "$preserved_meta_verify_token" ]] && export FORD_META_VERIFY_TOKEN="$preserved_meta_verify_token"
+  [[ -n "$preserved_ghcr_token" ]] && export GHCR_TOKEN="$preserved_ghcr_token"
+  [[ -n "$preserved_openai_api_key" ]] && export OPENAI_API_KEY="$preserved_openai_api_key"
+  [[ -n "$preserved_mcp_token" ]] && export MCP_HTTP_BEARER_TOKEN="$preserved_mcp_token"
+  [[ -n "$preserved_grafana_token" ]] && export GRAFANA_CLOUD_API_TOKEN="$preserved_grafana_token"
+  [[ -n "$preserved_langfuse_secret" ]] && export LANGFUSE_SECRET_KEY="$preserved_langfuse_secret"
 }
 
 require_deploy_config() {
@@ -59,20 +79,81 @@ require_deploy_config() {
   fi
 }
 
-ensure_deploy_secret() {
-  local config_file="$(deploy_config_file)" name="$1" current value temp
-  current="$(sed -n "s/^${name}=//p" "$config_file" | head -n 1)"
-  [[ -n "$current" ]] && return
-  require_command openssl
-  value="$(openssl rand -hex 32)"
+set_deploy_secret() {
+  local config_file="$(deploy_config_file)" name="$1" value="$2" temp value_file
+  [[ "$name" =~ ^[A-Z0-9_]+$ ]] || {
+    printf 'Invalid deployment secret name: %s\n' "$name" >&2
+    return 1
+  }
+  [[ -n "$value" ]] || {
+    printf 'Refusing to store an empty deployment secret: %s\n' "$name" >&2
+    return 1
+  }
+
   temp="$(mktemp "${config_file}.XXXXXX")"
-  awk -v name="$name" -v value="$value" '
+  value_file="$(mktemp "${config_file}.value.XXXXXX")"
+  chmod 600 "$temp" "$value_file"
+  cleanup_secret_files() {
+    rm -f "$temp" "$value_file"
+  }
+  trap cleanup_secret_files RETURN
+  printf '%s' "$value" > "$value_file"
+  awk -v name="$name" -v value_file="$value_file" '
+    BEGIN {
+      if ((getline value < value_file) < 0) exit 1
+      close(value_file)
+    }
     index($0, name "=") == 1 { print name "=" value; found = 1; next }
     { print }
     END { if (!found) print name "=" value }
   ' "$config_file" > "$temp"
   chmod 600 "$temp"
   mv "$temp" "$config_file"
+  rm -f "$value_file"
+  trap - RETURN
+}
+
+adopt_environment_secret() {
+  local config_file="$(deploy_config_file)" name="$1" current value
+  current="$(sed -n "s/^${name}=//p" "$config_file" | head -n 1)"
+  [[ -n "$current" ]] && return
+  value="${!name:-}"
+  [[ -n "$value" ]] || return 0
+  set_deploy_secret "$name" "$value"
+  unset value
+}
+
+ensure_deploy_secret() {
+  local config_file="$(deploy_config_file)" name="$1" current value
+  current="$(sed -n "s/^${name}=//p" "$config_file" | head -n 1)"
+  [[ -n "$current" ]] && return
+  require_command openssl
+  value="$(openssl rand -hex 32)"
+  set_deploy_secret "$name" "$value"
+  unset value
+}
+
+prompt_deploy_secret() {
+  local config_file="$(deploy_config_file)" name="$1" label="$2" current value
+  current="$(sed -n "s/^${name}=//p" "$config_file" | head -n 1)"
+  [[ -n "$current" ]] && return
+  if [[ ! -t 0 ]]; then
+    printf 'Missing %s; run mise run deploy:secrets interactively to provide it.\n' "$name" >&2
+    return 1
+  fi
+  printf '%s: ' "$label" >&2
+  IFS= read -r -s value || {
+    printf '\n' >&2
+    return 1
+  }
+  printf '\n' >&2
+  if [[ -z "$value" ]]; then
+    printf '%s cannot be empty.\n' "$name" >&2
+    unset value
+    return 1
+  fi
+  set_deploy_secret "$name" "$value"
+  unset value
 }
 
 ensure_deploy_state_dir() { mkdir -p "$(deploy_state_dir)"; chmod 700 "$(deploy_state_dir)"; }

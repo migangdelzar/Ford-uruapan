@@ -30,6 +30,12 @@ it to `emme-1`.
   remote-build fallback remains preloaded.
 - The signature verifier treats a blank app secret as an invalid webhook
   rather than an internal state error.
+- `deploy:secrets` is the single local secret-entry task: it generates missing
+  deployment-only credentials and securely prompts for missing externally
+  issued Meta, Grafana, and Langfuse credentials.
+- `deploy:app` remains the only propagation step. It loads the completed
+  ignored config, renders secrets into private Ansible inventory, and writes
+  the remote application environment with mode `0600`.
 - Ansible verifies application health and private database/Redis connectivity;
   a signed webhook smoke check is run only after real Meta values are present.
 
@@ -39,6 +45,13 @@ Secrets remain in the ignored `deployment/config/oci.env` and private
 `.mise/state` files. No secret values are logged, committed, or embedded in
 the image. Database volumes are not reset and the data role is not run during
 an app-only deployment.
+
+The secret task never accepts secrets as command-line arguments. Missing
+values are read without echo, written atomically to the ignored config, and
+the task fails in non-interactive execution when a required externally issued
+value is absent. Non-empty secret environment variables take precedence over
+blank values in the ignored config, allowing CI or a secret manager to supply
+them without command-line arguments.
 
 ## Verification
 

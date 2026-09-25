@@ -61,3 +61,20 @@
 - [x] Save the current remote app image to the private local deployment state directory for rollback.
 - [ ] Run `mise run deploy:check` and `mise run deploy:app`; preflight safely stops at the missing Meta values.
 - [ ] Verify remote app environment key presence/lengths, application health, webhook verification, signed POST acceptance, and one enabled WhatsApp binding after credentials are supplied.
+
+### Task 5: Centralize secret entry and propagation
+
+**Files:**
+- Modify: `ford-ai-service/.mise/lib/remote.sh`
+- Modify: `ford-ai-service/.mise/tasks/deploy/secrets`
+- Modify: `scripts/operations-contract.test.mjs`
+- Modify: `ford-ai-service/README.md`
+- Modify: `deployment/config/oci.env.example`
+
+- [x] Add a contract test requiring the secret task to generate local-only credentials, read missing external credentials without echo, and retain mode `0600` handling.
+- [x] Run the contract test and confirm it fails because the task does not yet handle Meta, Grafana, and Langfuse credentials.
+- [x] Add an atomic config setter and masked prompt helper that never accepts secret values as command-line arguments and fails when required values are missing in non-interactive execution.
+- [x] Extend `deploy:secrets` to manage generated database/operator credentials plus required Meta, Grafana, and Langfuse credentials from one Mise task.
+- [x] Preserve non-empty secret environment variables over blank local config assignments and adopt them into the ignored config through `deploy:secrets`.
+- [ ] Document that `deploy:secrets` populates the ignored operator file and `deploy:app` propagates it through Ansible to emme-1.
+- [ ] Run contract tests, shell syntax checks, and the secret task in non-interactive mode to verify it reports missing values without mutating remote services.

@@ -136,3 +136,42 @@ test("remote image rollback archive is exposed through a Mise task", async () =>
   assert.match(source, /gzip/);
   assert.match(source, /deploy_state_dir/);
 });
+
+test("one Mise task collects and protects deployment secrets before propagation", async () => {
+  const task = await read("ford-ai-service/.mise/tasks/deploy/secrets");
+  const remote = await read("ford-ai-service/.mise/lib/remote.sh");
+  const appTask = await read("ford-ai-service/.mise/tasks/deploy/app");
+
+  for (const variable of [
+    "POSTGRES_PASSWORD",
+    "REDIS_PASSWORD",
+    "FORD_OPERATOR_PASSWORD",
+    "FORD_META_APP_SECRET",
+    "FORD_META_VERIFY_TOKEN",
+    "GRAFANA_CLOUD_API_TOKEN",
+    "LANGFUSE_SECRET_KEY"
+  ]) {
+    assert.match(task, new RegExp(variable), `${variable} must be managed by deploy:secrets`);
+  }
+
+  assert.match(remote, /read -r -s/);
+  assert.match(remote, /chmod 600/);
+  assert.match(remote, /mktemp/);
+  assert.match(task, /prompt_deploy_secret/);
+  assert.match(task, /ensure_deploy_secret/);
+  assert.doesNotMatch(task, /printf.*\$value|echo.*\$value/);
+  assert.match(appTask, /load_deploy_config/);
+  assert.match(appTask, /ansible_command/);
+});
+
+test("deployment config preserves externally supplied secret values", async () => {
+  const remote = await read("ford-ai-service/.mise/lib/remote.sh");
+  const secretsTask = await read("ford-ai-service/.mise/tasks/deploy/secrets");
+
+  assert.match(remote, /preserved_meta_app_secret/);
+  assert.match(remote, /export FORD_META_APP_SECRET=/);
+  assert.match(remote, /adopt_environment_secret/);
+  assert.match(secretsTask, /adopt_environment_secret/);
+  assert.match(secretsTask, /FORD_META_APP_SECRET/);
+  assert.match(secretsTask, /FORD_META_VERIFY_TOKEN/);
+});
