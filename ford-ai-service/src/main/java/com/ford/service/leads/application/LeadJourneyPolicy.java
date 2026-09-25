@@ -6,6 +6,7 @@ import com.ford.service.leads.domain.LeadJourneyProposal;
 import com.ford.service.leads.domain.LeadJourneySnapshot;
 import com.ford.service.leads.domain.LeadJourneyTopic;
 import com.ford.service.leads.domain.ProposedLeadJourneyFact;
+import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.EnumSet;
@@ -13,7 +14,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
 
-public final class LeadJourneyPolicy {
+@Component
+public class LeadJourneyPolicy {
 
     private static final int MAX_FACT_LENGTH = 160;
     private static final int MAX_EVIDENCE_LENGTH = 300;
