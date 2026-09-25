@@ -29,22 +29,20 @@ Upstream LangGraph4j documentation distinguishes reusable `spring-ai-core` adapt
 
 ## Graph contract and turn flow
 
-Each graph state is an execution envelope, not a new business database. It contains the tenant/conversation scope, inbound event identity, current user message for this invocation, loaded bounded conversation context, loaded lead-journey snapshot/version, extracted current-turn intent/evidence, authorized tool results needed for this turn, response candidate, qualification decision/reasons, selected route, and commit outcome. Do not put credentials, raw MCP secrets, payment data, or government identifiers in checkpoints. Avoid copying the full transcript into graph state; use the existing transcript and bounded memory services.
+Each graph state is an execution envelope, not a new business database. Its serializable state is allowlisted to tenant/conversation/receipt UUIDs, safe node/route/status codes, and schema/version metadata. It never contains the inbound body, bounded memory text, lead/customer PII, provider/tool payloads, response draft, or credentials. The graph calls one injected turn processor that reloads tenant-scoped canonical data, invokes the existing Spring AI assistant once, chooses the route, and commits the result before returning only safe status metadata to graph state. The graph then follows a finite conditional edge to the corresponding terminal node. This placement is deliberate: LangGraph4j checkpoints node state, so data kept in `AgentState` cannot be treated as transient.
 
-The current user message, response draft, and tool payloads are invocation-only data and must be excluded from serialized checkpoints. Persist only stable tenant/conversation/inbound references and safe node/route/version metadata; nodes reload the current inbound body from its tenant-scoped canonical transcript record when resuming. If a checkpoint cannot be resumed without storing message content, restart that idempotent graph invocation from the safe beginning rather than persisting raw content.
+The current user message, response draft, memory text, and tool payloads remain local variables inside the turn-processor call and are excluded from graph state entirely. Every graph invocation is keyed by tenant + conversation + receipt UUID so a retry can load that exact inbound body from the tenant-scoped canonical transcript without accidentally reusing another turn's execution state. If an interrupted invocation cannot resume safely, restart that idempotent invocation from the beginning; do not persist generated content to make resume easier.
 
 The normal graph is:
 
 ```text
 accepted inbound event
-  → load scoped transcript context + lead journey + checkpoint
-  → understand current request / explicit human request / consent
-  → retrieve authorized Ford facts when needed (MCP/RAG)
-  → compose and validate one customer response with Spring AI
-  → assess fit and buying intent; produce explainable route and evidence
-  → prepare bounded journey/handoff/follow-up changes
-  → atomically commit idempotent assistant turn + business state + outbox
-  → finish, leaving checkpoint only for resumable execution state
+  → graph input: tenant/conversation/receipt UUIDs only
+  → one turn processor loads scoped transcript + bounded memory + lead journey
+  → Spring AI performs one response/tool cycle; qualification and consent policies decide route
+  → atomically commit accepted response + business state + outbox (or safe pending state)
+  → return only safe route/status codes to graph state
+  → conditional edge to a terminal route node; no backward model/tool edge
 ```
 
 The latest message takes precedence over inferred prior goals. Promotion, price, availability, financing, and vehicle facts must use the appropriate current authorized Ford source. A missing, stale, or inconclusive source yields a clear limitation, not a fabricated fact. The graph asks at most one relevant next question and does not repeat a previously answered question merely to satisfy a stage. Current journey topics remain optional and interruptible: vehicle discovery, offers/pricing, financing/trade-in, and test drive/appointment.

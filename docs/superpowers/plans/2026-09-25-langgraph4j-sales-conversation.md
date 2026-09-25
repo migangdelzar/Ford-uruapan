@@ -59,23 +59,23 @@
 4. Re-run the focused test and `env -u DOCKER_HOST ./gradlew dependencyInsight --dependency langgraph4j --configuration runtimeClasspath`; require `BUILD SUCCESSFUL`, no Spring AI version override, and a passing graph invocation. If any candidate conflicts, remove only the incompatible optional adapter and repeat using core plus the existing Spring AI port.
 5. Commit `build.gradle.kts`, version catalog, and test as `build(ai): verify LangGraph4j compatibility`.
 
-## Task 2: Define graph state, node boundaries, and finite route
+## Task 2: Define graph state, node boundaries, and finite route `[DONE]`
 
 **Files:** create `conversations/application/graph/ConversationGraphState.java`, `ConversationGraphConfiguration.java`, `ConversationGraphRunner.java`, and focused node classes; create unit tests under `src/test/java/com/ford/service/conversations/graph/`.
 
-1. Write tests for a normal answer path, a current-message topic change, one authorized tool-required answer, a warm decision, a hot decision, explicit human request, and provider failure. Each test asserts node sequence, one assistant invocation maximum, and one terminal route.
+1. Write tests for a normal answer, WARM, HOT/direct-human, and processor failure. Each asserts a single processor invocation maximum, no backward edge, and one terminal route. Assert the graph input/state contains only tenant/conversation/receipt UUIDs and safe outcome codes.
 2. Run `env -u DOCKER_HOST ./gradlew test --tests '*ConversationGraph*Test'`; verify the new graph contract is absent and tests fail for that reason.
-3. Implement typed state carrying tenant/conversation/inbound references, loaded journey version, reply/proposal, reason codes, route, and commit result. Keep raw message and model/tool contents transient and outside serialized checkpoint state. Add explicit nodes `load`, `respond`, `route`, and `commit`, with conditional edges that end rather than loop absent an explicit bounded retry.
-4. Re-run focused tests; require all normal and branch paths to terminate once, and assert unauthorized tool access never reaches the assistant callback.
+3. Implement typed state with only tenant/conversation/receipt UUID references plus allowlisted route/status/schema metadata. A single injected turn processor reloads canonical user text and business context, calls Spring AI once, applies policy, and commits before returning safe metadata. Conditional graph edges select terminal route nodes; no response, memory, model, or tool content enters `AgentState`.
+4. Re-run focused tests; require all routes to terminate once, no provider failure to create a successful route, and no unauthorized tool access to reach the assistant callback.
 5. Commit as `feat(conversations): add bounded LangGraph4j workflow`.
 
 ## Task 3: Add safe, tenant-scoped PostgreSQL checkpoints
 
 **Files:** create/update graph checkpoint configuration and serializer in `conversations/application/graph/`; add isolated saver DDL through a separate versioned schema/changelog path; create `src/integrationTest/java/com/ford/service/conversations/graph/PostgresGraphCheckpointIntegrationTest.java`.
 
-1. Write PostgreSQL-backed tests for checkpoint save/load after process-context recreation, tenant/conversation thread-key separation, optimistic/concurrent update behavior, and restart from a safe node boundary. Inspect serialized state and assert no user text, response draft, secret, PII, or MCP/RAG payload appears.
+1. Write PostgreSQL-backed tests for checkpoint save/load after process-context recreation, per-receipt tenant/conversation thread-key separation, optimistic/concurrent update behavior, and restart from a safe node boundary. Inspect serialized state and assert no user text, memory text, response draft, secret, PII, or MCP/RAG payload appears.
 2. Run `env -u DOCKER_HOST ./gradlew integrationTest --tests '*PostgresGraphCheckpointIntegrationTest'`; verify it fails first on missing saver wiring/schema.
-3. Configure the verified LangGraph4j PostgreSQL V2 saver using the existing application `DataSource`. Isolate saver tables/schema from business-table ownership; version and document its creation, upgrade, retention, backup, and rollback in `src/main/resources/db/changelog/langgraph/db.changelog.yaml`. Persist only allowlisted identifiers, node/route state, and version/status metadata; reload turn text from the tenant-scoped canonical transcript by inbound ID.
+3. Configure the verified LangGraph4j PostgreSQL V2 saver using the existing application `DataSource`. Isolate saver tables/schema from business-table ownership; version and document its creation, upgrade, retention, backup, and rollback in `src/main/resources/db/changelog/langgraph/db.changelog.yaml`. Use one thread per accepted receipt to prevent cross-turn state reuse; persist only allowlisted UUID references and route/status/schema metadata. Reload turn text from the tenant-scoped canonical transcript by receipt ID inside the processor.
 4. Re-run the integration test; require clean saver close/reopen and no data leakage. Confirm a missing checkpoint can be rebuilt from transcript + lead journey without losing business state.
 5. Commit as `feat(conversations): persist safe graph checkpoints`.
 
