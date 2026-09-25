@@ -133,7 +133,7 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
         var updated = jdbc.sql("""
                 update conversation_memory
                 set summary = :summary,
-                    facts_json = :factsJson,
+                    facts_json = cast(:factsJson as jsonb),
                     memory_version = memory_version + 1,
                     source_message_id = :sourceMessageId,
                     updated_at = :updatedAt
