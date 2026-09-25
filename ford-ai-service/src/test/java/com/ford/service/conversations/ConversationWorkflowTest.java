@@ -20,6 +20,7 @@ import com.ford.service.shared.HumanHandoffPolicy;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
 import com.ford.service.conversations.api.AssistantReply;
+import com.ford.service.conversations.api.ConversationMemoryProjectionRefreshRequested;
 import com.ford.service.conversations.api.ConversationTurnRequest;
 import com.ford.service.conversations.api.HandoffRequested;
 import com.ford.service.conversations.domain.ConversationSnapshot;
@@ -65,7 +66,15 @@ class ConversationWorkflowTest {
         assertThat(assistant.requests).hasSize(1);
         assertThat(repository.completedTurn).isEqualTo(new ConversationTurn("La Ranger está disponible."));
         assertThat(repository.completedExpectedVersion).isEqualTo(4);
-        assertThat(publisher.events).singleElement().isInstanceOf(OutboundDeliveryRequested.class);
+        assertThat(publisher.events).anySatisfy(event ->
+                assertThat(event).isInstanceOfSatisfying(ConversationMemoryProjectionRefreshRequested.class,
+                        projection -> {
+                            assertThat(projection.key().tenantId()).isEqualTo(tenantId);
+                            assertThat(projection.key().conversationId()).isEqualTo(conversationId);
+                            assertThat(projection.expectedVersion()).isZero();
+                        }));
+        assertThat(publisher.events).anySatisfy(event ->
+                assertThat(event).isInstanceOf(OutboundDeliveryRequested.class));
     }
 
     @Test
@@ -76,8 +85,9 @@ class ConversationWorkflowTest {
                 tenantId, conversationId, ConversationState.BOT_ACTIVE, 4));
         var memoryPort = new RecordingMemoryPort();
         var assistant = new RecordingAssistant(new AssistantReply("Respuesta", false));
+        var publisher = new RecordingPublisher();
 
-        new ConversationWorkflow(repository, assistant, new RecordingPublisher(),
+        new ConversationWorkflow(repository, assistant, publisher,
                 new HumanHandoffPolicy(true), new ConversationMemoryService(memoryPort, new MemoryProperties()))
                 .on(new InboundMessageAccepted(
                         UUID.randomUUID(), tenantId, conversationId, Channel.WHATSAPP,
@@ -87,9 +97,12 @@ class ConversationWorkflowTest {
         assertThat(memoryPort.inbound).isNotNull();
         assertThat(memoryPort.inbound.providerMessageId()).isEqualTo("wamid.memory");
         assertThat(memoryPort.inbound.content()).isEqualTo("¿Hay Ranger?");
-        assertThat(memoryPort.projection).isNotNull();
-        assertThat(memoryPort.projection.summary()).contains("¿Hay Ranger?");
-        assertThat(memoryPort.projectionExpectedVersion).isZero();
+        assertThat(publisher.events).anySatisfy(event ->
+                assertThat(event).isInstanceOfSatisfying(ConversationMemoryProjectionRefreshRequested.class,
+                        projection -> {
+                            assertThat(projection.update().summary()).contains("¿Hay Ranger?");
+                            assertThat(projection.expectedVersion()).isZero();
+                        }));
         assertThat(memoryPort.invalidated).isEqualTo(conversationId);
     }
 
@@ -173,7 +186,8 @@ class ConversationWorkflowTest {
 
         assertThat(repository.handoffDecision).isNull();
         assertThat(repository.completedTurn.text()).contains("No pude generar");
-        assertThat(publisher.events).singleElement().isInstanceOf(OutboundDeliveryRequested.class);
+        assertThat(publisher.events).anySatisfy(event ->
+                assertThat(event).isInstanceOf(OutboundDeliveryRequested.class));
     }
 
     @Test
@@ -277,8 +291,6 @@ class ConversationWorkflowTest {
 
     private static final class RecordingMemoryPort implements ConversationMemoryPort {
         private ConversationMessage inbound;
-        private MemoryProjectionUpdate projection;
-        private long projectionExpectedVersion = -1;
         private UUID invalidated;
 
         @Override
@@ -295,8 +307,6 @@ class ConversationWorkflowTest {
         public MemoryUpdateResult updateProjection(ConversationMemoryKey key,
                                                     MemoryProjectionUpdate update,
                                                     long expectedVersion) {
-            projection = update;
-            projectionExpectedVersion = expectedVersion;
             return new MemoryUpdateResult(true, expectedVersion + 1);
         }
 

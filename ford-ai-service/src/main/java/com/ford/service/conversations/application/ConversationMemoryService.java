@@ -5,7 +5,6 @@ import com.ford.service.conversations.domain.ConversationMemoryKey;
 import com.ford.service.conversations.domain.ConversationMessage;
 import com.ford.service.conversations.domain.MemoryProjectionUpdate;
 import com.ford.service.conversations.domain.MemoryQuery;
-import com.ford.service.conversations.domain.MemoryUpdateResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -86,21 +85,6 @@ public final class ConversationMemoryService {
     public MemoryProjectionUpdate project(ConversationMemoryContext context, String latestUserMessage,
                                           UUID sourceMessageId) {
         return projector.project(context, latestUserMessage, sourceMessageId);
-    }
-
-    public MemoryUpdateResult updateProjection(ConversationMemoryKey key,
-                                                MemoryProjectionUpdate update,
-                                                long expectedVersion) {
-        if (!properties.enabled()) {
-            return new MemoryUpdateResult(false, expectedVersion);
-        }
-        try {
-            return memory.updateProjection(key, update, expectedVersion);
-        } catch (RuntimeException exception) {
-            log.warn("Conversation memory projection update failed: conversationId={} exceptionType={}",
-                    key.conversationId(), exception.getClass().getSimpleName());
-            return new MemoryUpdateResult(false, expectedVersion);
-        }
     }
 
     public void invalidate(ConversationMemoryKey key) {

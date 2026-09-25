@@ -12,6 +12,7 @@ spring:
     runtime:
       verification-enabled: true
     events:
+      republish-outstanding-events-on-restart: true
       completion-mode: update
       staleness:
         published: 10m

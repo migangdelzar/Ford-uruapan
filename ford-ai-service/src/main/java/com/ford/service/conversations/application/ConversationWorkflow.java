@@ -1,6 +1,7 @@
 package com.ford.service.conversations.application;
 
 import com.ford.service.channels.api.InboundMessageAccepted;
+import com.ford.service.conversations.api.ConversationMemoryProjectionRefreshRequested;
 import com.ford.service.conversations.api.ConversationTurnRequest;
 import com.ford.service.conversations.api.HandoffRequested;
 import com.ford.service.conversations.api.OutboundDeliveryRequested;
@@ -131,8 +132,10 @@ public class ConversationWorkflow {
         var accepted = repository.completeBotTurn(snapshot.conversationId(), snapshot.version(),
                 new ConversationTurn(text));
         if (accepted) {
-            memoryService.updateProjection(memoryKey,
-                    memoryService.project(memory, currentMessage, event.receiptId()), memory.memoryVersion());
+            eventPublisher.publishEvent(new ConversationMemoryProjectionRefreshRequested(
+                    memoryKey,
+                    memoryService.project(memory, currentMessage, event.receiptId()),
+                    memory.memoryVersion()));
             memoryService.invalidate(memoryKey);
             eventPublisher.publishEvent(new OutboundDeliveryRequested(
                     snapshot.tenantId(), snapshot.conversationId(), snapshot.channel(),
