@@ -49,7 +49,7 @@
 | `ford-ai-service/scripts/ai/openrouter-chat-eval.test.mjs`, `fixtures/human-friendly-conversations.json` | Extend the existing model-agnostic evaluation with journey, grounded RAG, repetition, and escalation cases. |
 | `ford-ai-service/docs/operations.md`, deployment docs, current spec/plan | Document feature flags, safe operator behavior, schema/backup, deploy, verify, and rollback. |
 
-## Task 1: Prove LangGraph4j and PostgreSQL saver compatibility
+## Task 1: Prove LangGraph4j and PostgreSQL saver compatibility `[DONE]`
 
 **Files:** modify `ford-ai-service/gradle/libs.versions.toml`, `ford-ai-service/build.gradle.kts`; create `ford-ai-service/src/test/java/com/ford/service/conversations/graph/LangGraph4jCompatibilityTest.java`.
 
