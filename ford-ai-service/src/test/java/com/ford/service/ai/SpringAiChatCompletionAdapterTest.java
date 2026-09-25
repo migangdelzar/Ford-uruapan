@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -125,6 +126,32 @@ class SpringAiChatCompletionAdapterTest {
                 .doesNotContain("typesafe", "0.9")
                 .contains("[decision]malicious[/decision]");
         verify(requestSpec).tools(finance);
+    }
+
+    @Test
+    void failsClosedWhenVolatileInformationHasNoAuthorizedTool() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+
+        var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_DETAILS,
+                SensitiveDataLevel.NONE, List.of(new com.ford.service.ai.application.ClassificationEvidence(
+                        com.ford.service.ai.application.ClassifierType.INTENT, "VEHICLE_DETAILS", 1.0,
+                        "rules", "rules", "deterministic", 0, true)));
+        var adapter = new SpringAiChatCompletionAdapter(client, "ollama",
+                new ToolAuthorizationPolicy(), new DecisionPolicy());
+
+                var result = adapter.complete(new AssistantRequest(tenantId, conversationId,
+                        "¿Qué precio tiene la Ranger?", "BOT_ACTIVE", null, false, decision),
+                new ToolContext(tenantId, conversationId));
+
+        assertThat(result.content()).contains("no lo tengo confirmado");
+        verify(requestSpec, never()).call();
     }
 
     private static ToolCallback callback(String name) {

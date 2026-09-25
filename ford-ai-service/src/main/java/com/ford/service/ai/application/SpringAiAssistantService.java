@@ -24,24 +24,28 @@ public final class SpringAiAssistantService implements AssistantService {
     private final boolean logProviderErrors;
     private final ConversationDecisionService decisionService;
     private final DecisionPolicy decisionPolicy;
+    private final AssistantScopePolicy scopePolicy;
+    private final LeadQualificationPolicy leadQualificationPolicy;
 
     public SpringAiAssistantService(AssistantOrchestrator orchestrator,
                                     ModelProviderPolicy providerPolicy) {
         this(orchestrator, new HumanHandoffPolicy(true), providerPolicy, false,
-                defaultDecisionService());
+                defaultDecisionService(), new DecisionPolicy(), new AssistantScopePolicy(new IntentRouter()));
     }
 
     public SpringAiAssistantService(AssistantOrchestrator orchestrator,
                                     HumanHandoffPolicy handoffPolicy,
                                     ModelProviderPolicy providerPolicy) {
-        this(orchestrator, handoffPolicy, providerPolicy, false, defaultDecisionService());
+        this(orchestrator, handoffPolicy, providerPolicy, false, defaultDecisionService(),
+                new DecisionPolicy(), new AssistantScopePolicy(new IntentRouter()));
     }
 
     public SpringAiAssistantService(AssistantOrchestrator orchestrator,
                                     HumanHandoffPolicy handoffPolicy,
                                     ModelProviderPolicy providerPolicy,
                                     boolean logProviderErrors) {
-        this(orchestrator, handoffPolicy, providerPolicy, logProviderErrors, defaultDecisionService());
+        this(orchestrator, handoffPolicy, providerPolicy, logProviderErrors, defaultDecisionService(),
+                new DecisionPolicy(), new AssistantScopePolicy(new IntentRouter()));
     }
 
     public SpringAiAssistantService(AssistantOrchestrator orchestrator,
@@ -49,7 +53,8 @@ public final class SpringAiAssistantService implements AssistantService {
                                     ModelProviderPolicy providerPolicy,
                                     boolean logProviderErrors,
                                     ConversationDecisionService decisionService) {
-        this(orchestrator, handoffPolicy, providerPolicy, logProviderErrors, decisionService, new DecisionPolicy());
+        this(orchestrator, handoffPolicy, providerPolicy, logProviderErrors, decisionService, new DecisionPolicy(),
+                new AssistantScopePolicy(new IntentRouter()));
     }
 
     public SpringAiAssistantService(AssistantOrchestrator orchestrator,
@@ -58,12 +63,37 @@ public final class SpringAiAssistantService implements AssistantService {
                                     boolean logProviderErrors,
                                     ConversationDecisionService decisionService,
                                     DecisionPolicy decisionPolicy) {
+        this(orchestrator, handoffPolicy, providerPolicy, logProviderErrors, decisionService, decisionPolicy,
+                new AssistantScopePolicy(new IntentRouter()));
+    }
+
+    public SpringAiAssistantService(AssistantOrchestrator orchestrator,
+                                    HumanHandoffPolicy handoffPolicy,
+                                    ModelProviderPolicy providerPolicy,
+                                    boolean logProviderErrors,
+                                    ConversationDecisionService decisionService,
+                                    DecisionPolicy decisionPolicy,
+                                    AssistantScopePolicy scopePolicy) {
+        this(orchestrator, handoffPolicy, providerPolicy, logProviderErrors, decisionService, decisionPolicy,
+                scopePolicy, new LeadQualificationPolicy());
+    }
+
+    public SpringAiAssistantService(AssistantOrchestrator orchestrator,
+                                    HumanHandoffPolicy handoffPolicy,
+                                    ModelProviderPolicy providerPolicy,
+                                    boolean logProviderErrors,
+                                    ConversationDecisionService decisionService,
+                                    DecisionPolicy decisionPolicy,
+                                    AssistantScopePolicy scopePolicy,
+                                    LeadQualificationPolicy leadQualificationPolicy) {
         this.orchestrator = Objects.requireNonNull(orchestrator);
         this.handoffPolicy = Objects.requireNonNull(handoffPolicy);
         this.providerPolicy = Objects.requireNonNull(providerPolicy);
         this.logProviderErrors = logProviderErrors;
         this.decisionService = Objects.requireNonNull(decisionService);
         this.decisionPolicy = Objects.requireNonNull(decisionPolicy);
+        this.scopePolicy = Objects.requireNonNull(scopePolicy);
+        this.leadQualificationPolicy = Objects.requireNonNull(leadQualificationPolicy);
     }
 
     @Override
@@ -77,6 +107,20 @@ public final class SpringAiAssistantService implements AssistantService {
         var decision = decisionService.decide(new ClassificationContext(
                 context.tenantId(), conversationId, userText, context.memoryContext(),
                 "BOT_ACTIVE", context.containsSensitiveData()));
+        var leadAssessment = leadQualificationPolicy.assess(userText, context.memoryContext(), decision);
+        decision = leadQualificationPolicy.enrich(decision, leadAssessment);
+        if (leadAssessment.shouldEscalate() && decision.handoffRecommendation() == HandoffRecommendation.NONE) {
+            decision = decision.withHandoffRecommendation(HandoffRecommendation.ASSISTANT_RECOMMENDED);
+        }
+        if (!scopePolicy.allows(userText, decision)) {
+            return new AssistantTurn(scopePolicy.scopeResponse(), decision.toLegacyIntent(), false,
+                    List.of(), "scope-guard", "none", decision);
+        }
+        if (handoffPolicy.enabled()
+                && (leadAssessment.shouldEscalate() || decisionPolicy.mayCreateHandoff(decision, true))) {
+            return new AssistantTurn(handoffPolicy.fallbackText(), decision.toLegacyIntent(), true,
+                    List.of(), "lead-policy", "none", decision);
+        }
         try {
             AssistantResponse response = orchestrator.respond(new AssistantRequest(
                     context.tenantId(), conversationId, userText, "BOT_ACTIVE",

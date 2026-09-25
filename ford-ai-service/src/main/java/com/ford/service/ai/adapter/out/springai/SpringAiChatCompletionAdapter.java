@@ -70,6 +70,12 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         if (!tools.isEmpty()) {
             prompt = prompt.tools(tools.toArray());
         }
+        if (decisionPolicy.requiresVolatileInformation(request.decision()) && tools.isEmpty()) {
+            return new AssistantResponse(
+                    "Fíjese que ese dato no lo tengo confirmado en el catálogo vigente. "
+                            + "Con mucho gusto un asesor puede verificarlo.",
+                    false, provider, List.of());
+        }
         if (context != null && context.tenantId() != null && context.conversationId() != null) {
             prompt = prompt.toolContext(Map.of(
                     "tenantId", context.tenantId().toString(),

@@ -7,15 +7,17 @@ import java.util.Set;
 public final class DecisionPolicy {
 
     private static final Map<ToolFamily, Set<String>> TOOL_NAMES = Map.of(
-            ToolFamily.VEHICLE_SEARCH, Set.of("vehicle_snapshot_search"),
-            ToolFamily.VEHICLE_DETAILS, Set.of("vehicle_snapshot_search"),
+            ToolFamily.VEHICLE_SEARCH, Set.of("search_vehicles", "get_vehicle", "compare_vehicles"),
+            ToolFamily.VEHICLE_DETAILS, Set.of("search_vehicles", "get_vehicle", "compare_vehicles", "get_vehicle_provenance"),
+            ToolFamily.OFFERS, Set.of("search_offers", "list_promotions", "get_catalog_status"),
             ToolFamily.FINANCE_ESTIMATE, Set.of("finance_estimate"),
             ToolFamily.KNOWLEDGE_SEARCH, Set.of("approved_knowledge_search"),
             ToolFamily.APPOINTMENT, Set.of());
 
     public boolean mayCreateHandoff(ConversationDecision decision, boolean handoffEnabled) {
         return handoffEnabled && decision != null
-                && decision.handoffRecommendation() != HandoffRecommendation.NONE;
+                && decision.handoffRecommendation() != HandoffRecommendation.NONE
+                && decision.handoffRecommendation() != HandoffRecommendation.LOW_CONFIDENCE;
     }
 
     public Set<String> allowedToolNames(ConversationDecision decision, Set<String> availableTools) {
@@ -30,5 +32,11 @@ public final class DecisionPolicy {
 
     public boolean shouldUseRestrictedProvider(ConversationDecision decision) {
         return decision != null && decision.sensitiveDataLevel() == SensitiveDataLevel.CONFIRMED;
+    }
+
+    public boolean requiresVolatileInformation(ConversationDecision decision) {
+        return decision != null && (decision.toolFamily() == ToolFamily.VEHICLE_SEARCH
+                || decision.toolFamily() == ToolFamily.VEHICLE_DETAILS
+                || decision.toolFamily() == ToolFamily.OFFERS);
     }
 }

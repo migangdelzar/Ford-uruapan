@@ -62,6 +62,7 @@ public final class RulesConversationDecisionAdapter implements ConversationDecis
         return switch (intent) {
             case INVENTORY -> ToolFamily.VEHICLE_SEARCH;
             case CATALOG -> ToolFamily.VEHICLE_DETAILS;
+            case OFFERS -> ToolFamily.OFFERS;
             case FINANCE -> ToolFamily.FINANCE_ESTIMATE;
             case KNOWLEDGE -> ToolFamily.KNOWLEDGE_SEARCH;
             default -> ToolFamily.NONE;

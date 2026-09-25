@@ -9,7 +9,9 @@ import com.ford.service.ai.adapter.out.typesafe.TypeSafeConversationDecisionAdap
 import com.ford.service.ai.application.AssistantOrchestrator;
 import com.ford.service.ai.application.DefaultAssistantOrchestrator;
 import com.ford.service.ai.application.AssistantService;
+import com.ford.service.ai.application.AssistantScopePolicy;
 import com.ford.service.ai.application.IntentRouter;
+import com.ford.service.ai.application.LeadQualificationPolicy;
 import com.ford.service.ai.application.SpringAiAssistantService;
 import com.ford.service.ai.application.SystemPromptService;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
@@ -28,6 +30,8 @@ import com.ford.service.finance.application.port.out.FinanceTermsRepository;
 import com.ford.service.knowledge.application.KnowledgeRetrieval;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -44,6 +48,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -52,6 +58,8 @@ import java.util.List;
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties({ClassificationProperties.class, TypeSafeProperties.class, McpProperties.class})
 public class SpringAiConfiguration {
+
+    private static final Logger log = LoggerFactory.getLogger(SpringAiConfiguration.class);
 
     @Bean
     @Conditional(TypeSafeApiKeyCondition.class)
@@ -112,13 +120,25 @@ public class SpringAiConfiguration {
     }
 
     @Bean
+    AssistantScopePolicy assistantScopePolicy(IntentRouter intentRouter) {
+        return new AssistantScopePolicy(intentRouter);
+    }
+
+    @Bean
+    LeadQualificationPolicy leadQualificationPolicy() {
+        return new LeadQualificationPolicy();
+    }
+
+    @Bean
     ToolAuthorizationPolicy toolAuthorizationPolicy(ObjectProvider<VehicleCatalog> catalog,
                                                     ObjectProvider<FinanceOperations> finance,
                                                     ObjectProvider<FinanceTermsRepository> terms,
-                                                    ObjectProvider<KnowledgeRetrieval> knowledge) {
+                                                    ObjectProvider<KnowledgeRetrieval> knowledge,
+                                                    ObjectProvider<SyncMcpToolCallbackProvider> mcpProviders,
+                                                    McpProperties mcpProperties) {
         var toolObjects = new ArrayList<Object>();
         var vehicleCatalog = catalog.getIfAvailable();
-        if (vehicleCatalog != null) {
+        if (vehicleCatalog != null && !mcpProperties.requiredForVolatileInformation()) {
             toolObjects.add(new VehicleTools(vehicleCatalog));
         }
         var financeOperations = finance.getIfAvailable();
@@ -130,20 +150,38 @@ public class SpringAiConfiguration {
         if (knowledgeRetrieval != null) {
             toolObjects.add(new KnowledgeTools(knowledgeRetrieval));
         }
-        if (toolObjects.isEmpty()) {
+        var callbacks = new ArrayList<ToolCallback>();
+        if (!toolObjects.isEmpty()) {
+            callbacks.addAll(List.of(ToolCallbacks.from(toolObjects.toArray())));
+        }
+        var mcpProvider = mcpProviders.getIfAvailable();
+        if (mcpProperties.enabled() && mcpProvider != null) {
+            try {
+                callbacks.addAll(List.of(mcpProvider.getToolCallbacks()).stream()
+                        .filter(callback -> mcpProperties.readOnlyToolNames()
+                                .contains(callback.getToolDefinition().name().toLowerCase(java.util.Locale.ROOT)))
+                        .toList());
+            }
+            catch (RuntimeException exception) {
+                log.warn("Ford MCP tools unavailable; volatile information remains fail-closed: exceptionType={}",
+                        exception.getClass().getSimpleName());
+            }
+        }
+        if (callbacks.isEmpty()) {
             return new ToolAuthorizationPolicy();
         }
-        return new ToolAuthorizationPolicy(List.of(ToolCallbacks.from(toolObjects.toArray())));
+        return new ToolAuthorizationPolicy(callbacks);
     }
 
     @Bean
     ChatCompletionPort chatCompletionPort(ObjectProvider<OpenAiChatModel> cloudModel,
                                            ObjectProvider<OllamaChatModel> localModel,
-                                           AiProperties properties,
-                                           ToolAuthorizationPolicy toolPolicy,
-                                           ModelProviderPolicy providerPolicy,
-                                           DecisionPolicy decisionPolicy,
-                                           ObjectProvider<SystemPromptService> systemPromptServices,
+                                         AiProperties properties,
+                                         ToolAuthorizationPolicy toolPolicy,
+                                         ModelProviderPolicy providerPolicy,
+                                         DecisionPolicy decisionPolicy,
+                                         AssistantScopePolicy scopePolicy,
+                                         ObjectProvider<SystemPromptService> systemPromptServices,
                                            ClassificationProperties classificationProperties,
                                            ObjectProvider<TypeSafeClient> typeSafeClients,
                                            ObjectProvider<TypeSafeProperties> typeSafeProperties) {
@@ -156,14 +194,14 @@ public class SpringAiConfiguration {
         if (properties.cloudEnabled() && openAi != null) {
             providers.add(new SpringAiChatCompletionAdapter(
                     chatClient(openAi, classificationProperties,
-                            typeSafeConfigured ? typeSafeClient : null),
+                            typeSafeConfigured ? typeSafeClient : null, scopePolicy),
                     properties.cloudChatProvider(), toolPolicy, decisionPolicy, systemPromptService));
         }
         var ollama = localModel.getIfAvailable();
         if (properties.localEnabled() && ollama != null) {
             providers.add(new SpringAiChatCompletionAdapter(
                     chatClient(ollama, classificationProperties,
-                            typeSafeConfigured ? typeSafeClient : null),
+                            typeSafeConfigured ? typeSafeClient : null, scopePolicy),
                     properties.localChatProvider(), toolPolicy, decisionPolicy, systemPromptService));
         }
         return providers.isEmpty()
@@ -173,8 +211,10 @@ public class SpringAiConfiguration {
 
     private static ChatClient chatClient(ChatModel model,
                                          ClassificationProperties properties,
-                                         TypeSafeClient typeSafeClient) {
+                                         TypeSafeClient typeSafeClient,
+                                         AssistantScopePolicy scopePolicy) {
         var builder = ChatClient.builder(model);
+        builder.defaultAdvisors(new com.ford.service.ai.adapter.out.springai.FordScopeAdvisor(scopePolicy));
         if (typeSafeClient == null) {
             return builder.build();
         }
@@ -230,9 +270,12 @@ public class SpringAiConfiguration {
                                       ObjectProvider<HumanHandoffPolicy> handoffPolicy,
                                       AiProperties properties,
                                       ConversationDecisionService decisionService,
-                                      DecisionPolicy decisionPolicy) {
+                                      DecisionPolicy decisionPolicy,
+                                      AssistantScopePolicy scopePolicy,
+                                      LeadQualificationPolicy leadQualificationPolicy) {
         return new SpringAiAssistantService(orchestrator,
                 handoffPolicy.getIfAvailable(() -> new HumanHandoffPolicy(true)), providerPolicy,
-                properties.logProviderErrors(), decisionService, decisionPolicy);
+                properties.logProviderErrors(), decisionService, decisionPolicy, scopePolicy,
+                leadQualificationPolicy);
     }
 }

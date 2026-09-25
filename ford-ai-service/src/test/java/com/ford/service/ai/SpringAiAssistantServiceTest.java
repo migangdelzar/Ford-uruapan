@@ -63,6 +63,67 @@ class SpringAiAssistantServiceTest {
     }
 
     @Test
+    void blocksClearlyUnrelatedRequestsBeforeCallingTheModel() {
+        var orchestrator = mock(AssistantOrchestrator.class);
+        var service = new SpringAiAssistantService(orchestrator,
+                new HumanHandoffPolicy(false), new DefaultModelProviderPolicy(List.of()));
+
+        var turn = service.respond(new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID()),
+                "Escribe un poema sobre volcanes");
+
+        assertThat(turn.text()).contains("vehículos Ford");
+        assertThat(turn.provider()).isEqualTo("scope-guard");
+        verify(orchestrator, org.mockito.Mockito.never()).respond(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void keepsAQualifiedButInformationalLeadWithTheAssistant() {
+        var orchestrator = mock(AssistantOrchestrator.class);
+        when(orchestrator.respond(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AssistantResponse("Le explico las opciones disponibles.", false,
+                        "ollama", List.of()));
+        var decision = new ConversationDecision(ConversationIntent.FINANCE, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.FINANCE_ESTIMATE,
+                SensitiveDataLevel.NONE, List.of());
+        ConversationDecisionPort classifier = context -> decision;
+        var service = new SpringAiAssistantService(orchestrator, new HumanHandoffPolicy(true),
+                new DefaultModelProviderPolicy(List.of()), false,
+                new ConversationDecisionService(classifier, classifier, new ClassificationProperties()));
+
+        var turn = service.respond(new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID(),
+                        "Historial reciente:\n- usuario: Me interesa la Ford Ranger\n- usuario: ¿Puedo financiarla?"),
+                "¿Qué opciones tengo este mes?");
+
+        assertThat(turn.decision().leadStage()).isEqualTo(LeadStage.QUALIFIED);
+        assertThat(turn.decision().leadTemperature()).isEqualTo(LeadTemperature.WARM);
+        assertThat(turn.requestsHuman()).isFalse();
+        verify(orchestrator).respond(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void routesAConfirmedTransactionalIntentToTheAdvisorBeforeGeneration() {
+        var orchestrator = mock(AssistantOrchestrator.class);
+        var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_DETAILS,
+                SensitiveDataLevel.NONE, List.of());
+        ConversationDecisionPort classifier = context -> decision;
+        var service = new SpringAiAssistantService(orchestrator, new HumanHandoffPolicy(true),
+                new DefaultModelProviderPolicy(List.of()), false,
+                new ConversationDecisionService(classifier, classifier, new ClassificationProperties()));
+
+        var turn = service.respond(new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID()),
+                "Quiero comprar la Ranger este mes");
+
+        assertThat(turn.requestsHuman()).isTrue();
+        assertThat(turn.provider()).isEqualTo("lead-policy");
+        assertThat(turn.decision().leadStage()).isEqualTo(LeadStage.QUALIFIED);
+        assertThat(turn.decision().leadTemperature()).isEqualTo(LeadTemperature.HOT);
+        assertThat(turn.decision().handoffRecommendation())
+                .isEqualTo(HandoffRecommendation.ASSISTANT_RECOMMENDED);
+        verify(orchestrator, org.mockito.Mockito.never()).respond(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void mapsOrchestratedResponseToGroundedAssistantTurn() {
         var orchestrator = mock(AssistantOrchestrator.class);
         when(orchestrator.respond(org.mockito.ArgumentMatchers.any()))

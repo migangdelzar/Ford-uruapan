@@ -28,6 +28,12 @@ class DecisionPolicyTest {
     }
 
     @Test
+    void doesNotEscalateOnlyBecauseClassificationConfidenceIsLow() {
+        assertThat(policy.mayCreateHandoff(decision(HandoffRecommendation.LOW_CONFIDENCE), true))
+                .isFalse();
+    }
+
+    @Test
     void exposesOnlyAvailableToolsForTheClassifiedFamily() {
         var decision = decision(ToolFamily.FINANCE_ESTIMATE);
 
@@ -39,11 +45,37 @@ class DecisionPolicyTest {
     }
 
     @Test
+    void exposesOnlyMcpVehicleToolsForVehicleInformation() {
+        var decision = decision(ToolFamily.VEHICLE_DETAILS);
+
+        assertThat(policy.allowedToolNames(decision, Set.of(
+                "search_vehicles", "get_vehicle", "compare_vehicles", "search_offers", "finance_estimate")))
+                .containsExactlyInAnyOrder("search_vehicles", "get_vehicle", "compare_vehicles");
+    }
+
+    @Test
+    void exposesOnlyMcpOfferToolsForOfferInformation() {
+        var decision = decision(ToolFamily.OFFERS);
+
+        assertThat(policy.allowedToolNames(decision, Set.of(
+                "search_offers", "list_promotions", "get_catalog_status", "send_message")))
+                .containsExactlyInAnyOrder("search_offers", "list_promotions", "get_catalog_status");
+    }
+
+    @Test
     void restrictsProviderForConfirmedSensitiveData() {
         assertThat(policy.shouldUseRestrictedProvider(decision(SensitiveDataLevel.CONFIRMED)))
                 .isTrue();
         assertThat(policy.shouldUseRestrictedProvider(decision(SensitiveDataLevel.POSSIBLE)))
                 .isFalse();
+    }
+
+    @Test
+    void identifiesVolatileVehicleAndOfferInformation() {
+        assertThat(policy.requiresVolatileInformation(decision(ToolFamily.VEHICLE_SEARCH))).isTrue();
+        assertThat(policy.requiresVolatileInformation(decision(ToolFamily.VEHICLE_DETAILS))).isTrue();
+        assertThat(policy.requiresVolatileInformation(decision(ToolFamily.OFFERS))).isTrue();
+        assertThat(policy.requiresVolatileInformation(decision(ToolFamily.FINANCE_ESTIMATE))).isFalse();
     }
 
     private static ConversationDecision decision(HandoffRecommendation recommendation) {

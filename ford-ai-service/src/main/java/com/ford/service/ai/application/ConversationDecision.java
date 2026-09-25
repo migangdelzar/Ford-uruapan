@@ -40,6 +40,24 @@ public record ConversationDecision(
         };
     }
 
+    public ConversationDecision withLeadClassification(LeadStage stage,
+                                                       LeadTemperature temperature,
+                                                       ClassificationEvidence leadEvidence) {
+        var updatedEvidence = new java.util.ArrayList<>(evidence);
+        updatedEvidence.removeIf(evidence -> evidence.classifier() == ClassifierType.LEAD
+                && "deterministic_lead_signal_score".equals(evidence.reasonCode()));
+        if (leadEvidence != null) {
+            updatedEvidence.add(leadEvidence);
+        }
+        return new ConversationDecision(intent, temperature, stage, handoffRecommendation,
+                toolFamily, sensitiveDataLevel, updatedEvidence);
+    }
+
+    public ConversationDecision withHandoffRecommendation(HandoffRecommendation recommendation) {
+        return new ConversationDecision(intent, leadTemperature, leadStage, recommendation,
+                toolFamily, sensitiveDataLevel, evidence);
+    }
+
     public String toPromptContext() {
         return "[DECISION CONTEXT]\n" +
                 "intent=" + lower(intent) + "\n" +

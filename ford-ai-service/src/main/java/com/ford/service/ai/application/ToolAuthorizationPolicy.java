@@ -10,7 +10,9 @@ import java.util.Set;
 public final class ToolAuthorizationPolicy {
 
     private static final List<String> DENIED_TERMS = List.of(
-            "write", "delete", "update", "insert", "sql", "send", "handoff", "score", "ingest");
+            "write", "delete", "update", "insert", "sql", "send", "message", "handoff", "score", "ingest",
+            "book", "purchase", "buy", "pay", "charge", "schedule", "appointment", "create", "cancel", "transfer",
+            "execute");
 
     private final List<ToolCallback> tools;
 

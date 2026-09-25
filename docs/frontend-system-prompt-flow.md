@@ -66,3 +66,17 @@ The mode cards shown in the prototype (“Piloto Automático”, “Copiloto
 Asistido”, and “Atención Manual”) should remain presentation-only until their
 backend policy endpoints exist. The prompt editor can be shipped now because
 its versioned `GET/PUT` contract and SSE refresh event are implemented.
+
+## Ford information tool boundary
+
+The assistant is scoped to Ford vehicle shopping. Current vehicle, offer, and
+catalog-status facts are supplied by the backend's authenticated MCP client;
+the frontend never calls MCP directly and never receives the MCP bearer token.
+The backend exposes only read-only tools such as `search_vehicles`,
+`get_vehicle`, `compare_vehicles`, `search_offers`, `list_promotions`,
+`get_vehicle_provenance`, and `get_catalog_status`.
+
+Financing and appointments may be explained informationally, but purchases,
+payments, bookings, outbound messages, handoffs, and data mutations are not
+agent capabilities. Unrelated requests are stopped by the backend scope guard
+before model execution.

@@ -64,14 +64,21 @@ spring:
       embedding:
         options:
           model: ${FORD_AI_EMBEDDING_MODEL_VERSION:nomic-embed-text}
-  mcp:
-    enabled: ${FORD_MCP_ENABLED:false}
-    url: ${FORD_MCP_URL:http://127.0.0.1:3001}
-    endpoint: ${FORD_MCP_ENDPOINT:/mcp}
-    token: ${FORD_MCP_TOKEN:}
-    request-timeout: ${FORD_MCP_REQUEST_TIMEOUT:30s}
-    required-for-volatile-information: ${FORD_MCP_REQUIRED_FOR_VOLATILE_INFORMATION:true}
-    read-only-tool-names: ${FORD_MCP_READ_ONLY_TOOL_NAMES:search_vehicles,get_vehicle,compare_vehicles,search_offers,list_promotions,get_vehicle_provenance,get_catalog_status}
+    mcp:
+      client:
+        enabled: ${FORD_MCP_ENABLED:false}
+        name: ford-advisor
+        version: 1.0.0
+        initialized: true
+        type: SYNC
+        request-timeout: ${FORD_MCP_REQUEST_TIMEOUT:30s}
+        toolcallback:
+          enabled: true
+        streamable-http:
+          connections:
+            ford-uruapan:
+              url: ${FORD_MCP_URL:http://127.0.0.1:3001}
+              endpoint: ${FORD_MCP_ENDPOINT:/mcp}
   autoconfigure:
     exclude:
       - org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
@@ -99,6 +106,14 @@ logging:
     correlation: "[trace_id=%X{traceId:-},span_id=%X{spanId:-}] "
 
 ford:
+  mcp:
+    enabled: ${FORD_MCP_ENABLED:false}
+    url: ${FORD_MCP_URL:http://127.0.0.1:3001}
+    endpoint: ${FORD_MCP_ENDPOINT:/mcp}
+    token: ${FORD_MCP_TOKEN:}
+    request-timeout: ${FORD_MCP_REQUEST_TIMEOUT:30s}
+    required-for-volatile-information: ${FORD_MCP_REQUIRED_FOR_VOLATILE_INFORMATION:true}
+    read-only-tool-names: ${FORD_MCP_READ_ONLY_TOOL_NAMES:search_vehicles,get_vehicle,compare_vehicles,search_offers,list_promotions,get_vehicle_provenance,get_catalog_status}
   security:
     jwt:
       enabled: ${FORD_SECURITY_JWT_ENABLED:false}

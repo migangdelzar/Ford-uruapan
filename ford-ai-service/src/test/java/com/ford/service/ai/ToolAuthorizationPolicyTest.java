@@ -26,6 +26,17 @@ class ToolAuthorizationPolicyTest {
     }
 
     @Test
+    void rejectsActionToolsEvenWhenTheyLookLikeReadOnlyCallbacks() {
+        var policy = new ToolAuthorizationPolicy(List.of(
+                callback("book_appointment"), callback("purchase_vehicle"),
+                callback("pay_invoice"), callback("send_message"), callback("get_vehicle")));
+
+        assertThat(policy.readOnlyTools(new AiExecutionContext(UUID.randomUUID(), false)))
+                .extracting(tool -> tool.getToolDefinition().name())
+                .containsExactly("get_vehicle");
+    }
+
+    @Test
     void appliesTheClassifiedToolAllowListAfterReadOnlyFiltering() {
         ToolCallback finance = callback("finance_estimate");
         ToolCallback vehicle = callback("vehicle_snapshot_search");

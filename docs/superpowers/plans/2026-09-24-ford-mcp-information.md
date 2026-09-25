@@ -15,6 +15,8 @@
 - `FORD_MCP_URL` is the base URL and `FORD_MCP_ENDPOINT` is `/mcp`.
 - Never log or expose `FORD_MCP_TOKEN`.
 - MCP is authoritative for volatile Ford information; do not silently fall back to PostgreSQL for volatile answers.
+- The assistant scope is Ford vehicle shopping; unrelated requests must not reach the model or tools.
+- Financing and appointments may be explained informationally, but no purchase, payment, booking, messaging, handoff, or mutation action is executable.
 - Preserve the existing Redis hot-memory and PostgreSQL durable-memory flow.
 - Every implementation task must add or update a focused test before production code.
 
@@ -217,17 +219,28 @@ git commit -m "feat(ai): authorize Ford MCP information tools"
 - Modify: `ford-ai-service/src/main/java/com/ford/service/ai/adapter/out/springai/SpringAiChatCompletionAdapter.java`
 - Modify: `ford-ai-service/src/main/java/com/ford/service/ai/application/DefaultAssistantOrchestrator.java`
 - Modify: `ford-ai-service/src/main/java/com/ford/service/ai/application/SpringAiAssistantService.java`
+- Create: `ford-ai-service/src/main/java/com/ford/service/ai/application/AssistantScopePolicy.java`
 - Test: `ford-ai-service/src/test/java/com/ford/service/ai/adapter/out/springai/SpringAiChatCompletionAdapterTest.java`
 - Test: `ford-ai-service/src/test/java/com/ford/service/ai/application/DefaultAssistantOrchestratorTest.java`
+- Test: `ford-ai-service/src/test/java/com/ford/service/ai/application/AssistantScopePolicyTest.java`
 
 **Interfaces:**
 - Volatile MCP failures are represented internally as a bounded source-unavailable outcome.
+- Unrelated user requests return a fixed scope response before model execution.
 - Customer output uses the existing safe fallback/handoff wording and never includes endpoint, token, stack trace, or stale catalog values.
 - Logs contain only provider, source, operation category, exception type, and latency; token and message content remain excluded.
 
 - [ ] **Step 1: Write the failing tests**
 
 Add tests for disabled MCP, connection failure, empty result, and successful tool callback execution. Assert that failure output contains no URL/token and that local PostgreSQL vehicle values are absent from the response path.
+
+Add deterministic scope tests:
+
+```java
+assertThat(policy.allows("¿Qué precio tiene la Ford Ranger?", catalogDecision)).isTrue();
+assertThat(policy.allows("Escribe un poema sobre volcanes", generalDecision)).isFalse();
+assertThat(policy.allows("¿Cuál es el enganche?", financeDecision)).isTrue();
+```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -310,10 +323,52 @@ git add ford-ai-service/src/integrationTest ford-ai-service/src/test/resources \
 git commit -m "test(ops): verify Ford MCP deployment contract"
 ```
 
+### Task 6: Classify lead intent before advisor escalation
+
+**Files:**
+- Create: `ford-ai-service/src/main/java/com/ford/service/ai/application/LeadQualificationPolicy.java`
+- Modify: `ford-ai-service/src/main/java/com/ford/service/ai/application/SpringAiAssistantService.java`
+- Modify: `ford-ai-service/src/main/java/com/ford/service/ai/application/DecisionPolicy.java`
+- Modify: `ford-ai-service/src/main/java/com/ford/service/ai/application/ConversationDecision.java`
+- Modify: `ford-ai-service/src/main/java/com/ford/service/ai/application/HandoffRecommendation.java`
+- Modify: `ford-ai-service/src/main/java/com/ford/service/ai/configuration/SpringAiConfiguration.java`
+- Test: `ford-ai-service/src/test/java/com/ford/service/ai/LeadQualificationPolicyTest.java`
+- Test: `ford-ai-service/src/test/java/com/ford/service/ai/SpringAiAssistantServiceTest.java`
+- Modify: `docs/superpowers/specs/2026-09-24-ford-mcp-information-design.md`
+
+**Behavior:**
+- Informational catalog, offer, and financing questions remain automated.
+- Signals accumulate from the current message and user entries in Redis hot memory.
+- `QUALIFYING`/`WARM` and `QUALIFIED`/`HOT` are classifications, not automatic handoffs.
+- Handoff occurs only for explicit human requests, clear transactional actions, or existing negative/complex recommendations.
+- TypeSafe lead stage/temperature enriches the result but cannot independently trigger a handoff.
+- `LOW_CONFIDENCE` does not trigger a handoff.
+
+- [ ] **Step 1: Write and run failing focused tests**
+
+Run: `./gradlew test --tests com.ford.service.ai.LeadQualificationPolicyTest --tests com.ford.service.ai.SpringAiAssistantServiceTest --tests com.ford.service.ai.DecisionPolicyTest`
+
+- [ ] **Step 2: Implement and run focused tests**
+
+Use a deterministic signal policy over the current text plus user memory entries. Enrich `ConversationDecision`, then evaluate escalation separately. Re-run the focused command until it passes.
+
+- [ ] **Step 3: Run the full suite**
+
+Run: `./gradlew test`.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add ford-ai-service/src/main/java/com/ford/service/ai/application \\
+  ford-ai-service/src/main/java/com/ford/service/ai/configuration/SpringAiConfiguration.java \\
+  ford-ai-service/src/test/java/com/ford/service/ai \\
+  docs/superpowers/specs/2026-09-24-ford-mcp-information-design.md
+git commit -m "feat(ai): classify leads before advisor escalation"
+```
+
 ## Plan Self-Review
 
-- **Spec coverage:** Dependency, property validation, authenticated transport, callback authorization, fail-closed behavior, observability, integration tests, and deployment templates are covered by Tasks 1–5.
+- **Spec coverage:** Dependency, property validation, authenticated transport, callback authorization, fail-closed behavior, observability, integration tests, deployment templates, and lead qualification are covered by Tasks 1–6.
 - **Placeholder scan:** No implementation step relies on an unspecified file, endpoint, secret, or test command.
 - **Type consistency:** The plan uses the existing `ToolCallback`, `ToolAuthorizationPolicy`, `DecisionPolicy`, `ConversationDecision`, and Spring AI 2.0.1 BOM. The exact MCP customizer type is verified during Task 2 compilation because Spring AI 2.0.1 exposes the supported transport extension point.
 - **Scope:** No WebFlux, streaming response, memory, or MCP-server changes are included.
-

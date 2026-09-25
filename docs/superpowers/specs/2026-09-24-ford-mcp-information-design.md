@@ -32,6 +32,32 @@ ChatClient
 
 MCP callbacks are added to the same policy used by local callbacks. This preserves the existing provider routing, classification-based allow list, system prompt, and conversation-memory flow. No WebFlux or Spring AI streaming is introduced.
 
+### Assistant scope guard
+
+The assistant is a Ford vehicle-shopping assistant, not a general-purpose agent. A deterministic scope guard runs after the existing intent decision and before `ChatClient`. It permits greetings, Ford/vehicle/catalog/offer questions, informational financing and appointment questions, agency information, and human-advisor requests. Clearly unrelated requests receive a short scope response and do not reach the model or any tool. The classifier remains useful for semantic intent selection, but the deterministic guard and tool allowlists remain the security boundary.
+
+### Lead qualification and escalation
+
+Lead classification is separate from advisor escalation. The deterministic
+`LeadQualificationPolicy` combines the current message with user messages
+already present in Redis hot memory and records bounded signals such as vehicle
+interest, financing, timing, contact details, and explicit transaction intent.
+The resulting stage and temperature are exposed in the existing
+`ConversationDecision` contract:
+
+```text
+informational question       -> QUALIFYING/COLD, assistant continues
+multiple buying signals      -> QUALIFIED/WARM, assistant continues qualifying
+near-term + transaction      -> QUALIFIED/HOT, advisor recommendation
+explicit human request       -> advisor handoff
+```
+
+`QUALIFYING`, `QUALIFIED`, `WARM`, and `HOT` are classifications, not automatic
+handoffs. TypeSafe classification enriches the stage and temperature but cannot
+alone trigger an escalation. A handoff is created only for an explicit human
+request, a clear transactional action, or the existing negative/complex
+recommendations. Low confidence remains an assistant response path.
+
 ### Configuration boundary
 
 Required runtime properties:
@@ -92,7 +118,11 @@ When MCP is disabled or unavailable, the model must not receive the volatile MCP
    - Detect MCP-disabled/unavailable state for catalog and offer intents.
    - Keep the response grounded and transparent; never substitute a stale local snapshot silently.
 
-6. **Configuration and operations**
+6. **Assistant scope and side-effect prevention**
+   - Add a deterministic scope policy before model execution.
+   - Allow informational finance and appointment conversations, but expose no action capability for payments, purchases, bookings, messaging, handoffs, or data mutation.
+
+7. **Configuration and operations**
    - Add safe examples to `.env.example`, `.env.prod.example`, deployment templates, and relevant documentation.
    - Do not commit tunnel tokens or private MCP credentials.
 
@@ -101,12 +131,15 @@ When MCP is disabled or unavailable, the model must not receive the volatile MCP
 1. Meta or frontend request enters the existing assistant flow.
 2. Durable context is loaded and Redis hot memory is consulted.
 3. The existing decision service classifies intent and allowed tool names.
-4. `SpringAiChatCompletionAdapter` builds the prompt with the runtime system prompt and memory.
-5. For volatile Ford questions, the model receives only the authorized MCP read-only callbacks.
-6. Spring AI calls MCP over Streamable HTTP with the configured bearer token.
-7. MCP returns current Ford data; the model answers using that result.
-8. The assistant response and conversation event are persisted through the existing flow.
-9. If MCP is unavailable, the response is transparent and no stale catalog answer is generated.
+4. Lead signals are accumulated from the current message and user messages in hot memory.
+5. The deterministic scope guard rejects clearly unrelated requests before model execution.
+6. The escalation policy separates lead classification from advisor handoff.
+7. `SpringAiChatCompletionAdapter` builds the prompt with the runtime system prompt and memory.
+8. For volatile Ford questions, the model receives only the authorized MCP read-only callbacks.
+9. Spring AI calls MCP over Streamable HTTP with the configured bearer token.
+10. MCP returns current Ford data; the model answers using that result.
+11. The assistant response and conversation event are persisted through the existing flow.
+12. If MCP is unavailable, the response is transparent and no stale catalog answer is generated.
 
 ## Failure and Security Rules
 
@@ -137,4 +170,3 @@ When MCP is disabled or unavailable, the model must not receive the volatile MCP
 - No MCP server implementation in this repository.
 - No replacement of Redis/PostgreSQL conversation memory.
 - No automatic stale-PostgreSQL fallback for volatile catalog or offer answers.
-
