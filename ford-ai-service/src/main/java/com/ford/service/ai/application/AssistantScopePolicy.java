@@ -24,7 +24,8 @@ public final class AssistantScopePolicy {
 
     private static final List<String> CLEARLY_UNRELATED_TERMS = List.of(
             "poema", "escribe una canción", "escribe una cancion", "receta", "clima", "pronóstico del tiempo",
-            "pronostico del tiempo", "capital de", "código para", "codigo para");
+            "pronostico del tiempo", "capital de", "código para", "codigo para", "write a poem", "poem",
+            "recipe", "weather", "write a song");
 
     private final IntentRouter intentRouter;
 
