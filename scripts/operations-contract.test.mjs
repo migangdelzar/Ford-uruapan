@@ -104,6 +104,25 @@ test("Ansible propagates the complete Meta webhook configuration", async () => {
   }
 });
 
+test("Ansible propagates the configured cloud AI provider", async () => {
+  const example = await read("deployment/config/oci.env.example");
+  const remote = await read("ford-ai-service/.mise/lib/remote.sh");
+  const template = await read("deployment/ansible/roles/app/templates/app.env.j2");
+
+  for (const variable of [
+    "FORD_AI_CHAT_PROVIDER",
+    "FORD_AI_CLOUD_PROVIDER",
+    "FORD_AI_CLOUD_ENABLED",
+    "FORD_AI_LOCAL_ENABLED",
+    "FORD_AI_CLOUD_BASE_URL",
+    "FORD_AI_CLOUD_MODEL_VERSION"
+  ]) {
+    assert.match(example, new RegExp(`^${variable}=`, "m"), `${variable} must be documented`);
+    assert.match(remote, new RegExp(variable), `${variable} must reach the inventory`);
+    assert.match(template, new RegExp(`^${variable}=`, "m"), `${variable} must reach app.env.j2`);
+  }
+});
+
 test("app deployment transfers local images and checks the webhook route", async () => {
   const appTask = await read("ford-ai-service/.mise/tasks/deploy/app");
   const appRole = await read("deployment/ansible/roles/app/tasks/main.yml");
