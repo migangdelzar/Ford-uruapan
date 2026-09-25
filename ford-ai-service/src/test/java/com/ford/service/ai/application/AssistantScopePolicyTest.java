@@ -42,4 +42,21 @@ class AssistantScopePolicyTest {
     void allowsExplicitHumanRequestsToReachTheHandoffPolicy() {
         assertThat(policy.allows("Quiero hablar con una persona", null)).isTrue();
     }
+
+    @Test
+    void allowsAContextualVehicleFollowUpEvenWhenTheCurrentMessageOmitsTheModel() {
+        assertThat(policy.allows("¿Cuántos kilómetros por litro da?", null,
+                "Historial reciente:\n- asistente: Ford Lobo Raptor 2026\n- usuario: Lobo Raptor"))
+                .isTrue();
+    }
+
+    @Test
+    void allowsCommonVehicleTechnicalTermsWithoutRequiringTheBrandAgain() {
+        assertThat(policy.allows("¿Qué rendimiento tiene la Raptor?", null)).isTrue();
+    }
+
+    @Test
+    void allowsShortEnglishGreetingsToReachTheAssistant() {
+        assertThat(policy.allows("Hi", null)).isTrue();
+    }
 }

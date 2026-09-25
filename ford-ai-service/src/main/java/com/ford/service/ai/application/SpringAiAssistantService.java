@@ -112,7 +112,7 @@ public final class SpringAiAssistantService implements AssistantService {
         if (leadAssessment.shouldEscalate() && decision.handoffRecommendation() == HandoffRecommendation.NONE) {
             decision = decision.withHandoffRecommendation(HandoffRecommendation.ASSISTANT_RECOMMENDED);
         }
-        if (!scopePolicy.allows(userText, decision)) {
+        if (!scopePolicy.allows(userText, decision, context.memoryContext())) {
             return new AssistantTurn(scopePolicy.scopeResponse(), decision.toLegacyIntent(), false,
                     List.of(), "scope-guard", "none", decision);
         }

@@ -21,11 +21,13 @@ public final class IntentRouter {
         if (containsAny(normalized, "promoción", "promocion", "oferta", "bono")) {
             return Intent.OFFERS;
         }
-        if (containsAny(normalized, "garantía", "garantia", "especificación", "especificaciones", "motor")) {
+        if (containsAny(normalized, "garantía", "garantia", "especificación", "especificaciones", "motor",
+                "consumo", "kilómetro", "kilometro", "km/l", "rendimiento", "litro", "potencia",
+                "caballos", "equipamiento", "seguridad", "tracción", "traccion", "dimensiones")) {
             return Intent.KNOWLEDGE;
         }
         if (containsAny(normalized, "precio", "modelo", "version", "versión", "ranger", "bronco", "maverick",
-                "lobo", "pickup", "pick-up", "camioneta", "f-150")) {
+                "lobo", "raptor", "pickup", "pick-up", "camioneta", "f-150")) {
             return Intent.CATALOG;
         }
         return Intent.GENERAL;

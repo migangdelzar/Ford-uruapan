@@ -101,6 +101,23 @@ class SpringAiAssistantServiceTest {
     }
 
     @Test
+    void sendsContextualVehicleFollowUpsToTheAssistantInsteadOfRepeatingScopeText() {
+        var orchestrator = mock(AssistantOrchestrator.class);
+        when(orchestrator.respond(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AssistantResponse("Voy a verificar el rendimiento de la Lobo Raptor.", false,
+                        "openai", List.of()));
+        var service = new SpringAiAssistantService(orchestrator,
+                new HumanHandoffPolicy(false), new DefaultModelProviderPolicy(List.of()));
+
+        var turn = service.respond(new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID(),
+                        "Historial reciente:\n- asistente: Ford Lobo Raptor 2026\n- usuario: Lobo Raptor"),
+                "¿Cuántos kilómetros por litro da?");
+
+        assertThat(turn.text()).doesNotContain("¿Qué modelo le interesa revisar?");
+        verify(orchestrator).respond(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void routesAConfirmedTransactionalIntentToTheAdvisorBeforeGeneration() {
         var orchestrator = mock(AssistantOrchestrator.class);
         var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS, LeadTemperature.UNKNOWN,

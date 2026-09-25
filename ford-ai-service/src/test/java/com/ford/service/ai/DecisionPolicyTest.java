@@ -2,6 +2,8 @@ package com.ford.service.ai;
 
 import com.ford.service.ai.application.ConversationDecision;
 import com.ford.service.ai.application.ConversationIntent;
+import com.ford.service.ai.application.ClassificationEvidence;
+import com.ford.service.ai.application.ClassifierType;
 import com.ford.service.ai.application.DecisionPolicy;
 import com.ford.service.ai.application.HandoffRecommendation;
 import com.ford.service.ai.application.LeadStage;
@@ -80,6 +82,32 @@ class DecisionPolicyTest {
     }
 
     @Test
+    void exposesCatalogAndKnowledgeToolsForVehicleTechnicalQuestions() {
+        var decision = decision(ToolFamily.KNOWLEDGE_SEARCH);
+
+        assertThat(policy.allowedToolNames(decision, Set.of(
+                "approved_knowledge_search", "search_vehicles", "get_vehicle",
+                "get_vehicle_provenance", "vehicle_snapshot_search", "send_message")))
+                .containsExactlyInAnyOrder("approved_knowledge_search", "search_vehicles", "get_vehicle",
+                "get_vehicle_provenance", "vehicle_snapshot_search");
+    }
+
+    @Test
+    void treatsRulesFallbackClassificationAsAHintAndKeepsAllAvailableReadOnlyTools() {
+        var decision = new ConversationDecision(ConversationIntent.KNOWLEDGE, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.KNOWLEDGE_SEARCH,
+                SensitiveDataLevel.NONE, List.of(new ClassificationEvidence(
+                        ClassifierType.INTENT, "KNOWLEDGE", 1.0, "rules_intent",
+                        "rules", "deterministic", 0, true)));
+
+        assertThat(policy.allowedToolNames(decision, Set.of(
+                "approved_knowledge_search", "search_vehicles", "get_vehicle",
+                "list_promotions", "vehicle_snapshot_search")))
+                .containsExactlyInAnyOrder("approved_knowledge_search", "search_vehicles",
+                        "get_vehicle", "list_promotions", "vehicle_snapshot_search");
+    }
+
+    @Test
     void restrictsProviderForConfirmedSensitiveData() {
         assertThat(policy.shouldUseRestrictedProvider(decision(SensitiveDataLevel.CONFIRMED)))
                 .isTrue();
@@ -92,6 +120,7 @@ class DecisionPolicyTest {
         assertThat(policy.requiresVolatileInformation(decision(ToolFamily.VEHICLE_SEARCH))).isTrue();
         assertThat(policy.requiresVolatileInformation(decision(ToolFamily.VEHICLE_DETAILS))).isTrue();
         assertThat(policy.requiresVolatileInformation(decision(ToolFamily.OFFERS))).isTrue();
+        assertThat(policy.requiresVolatileInformation(decision(ToolFamily.KNOWLEDGE_SEARCH))).isTrue();
         assertThat(policy.requiresVolatileInformation(decision(ToolFamily.FINANCE_ESTIMATE))).isFalse();
     }
 

@@ -11,7 +11,8 @@ public final class DecisionPolicy {
             ToolFamily.VEHICLE_DETAILS, Set.of("search_vehicles", "get_vehicle", "compare_vehicles", "get_vehicle_provenance", "vehicle_snapshot_search"),
             ToolFamily.OFFERS, Set.of("search_offers", "list_promotions", "get_catalog_status"),
             ToolFamily.FINANCE_ESTIMATE, Set.of("finance_estimate"),
-            ToolFamily.KNOWLEDGE_SEARCH, Set.of("approved_knowledge_search"),
+            ToolFamily.KNOWLEDGE_SEARCH, Set.of("approved_knowledge_search", "search_vehicles", "get_vehicle",
+                    "get_vehicle_provenance", "vehicle_snapshot_search"),
             ToolFamily.APPOINTMENT, Set.of());
 
     public boolean mayCreateHandoff(ConversationDecision decision, boolean handoffEnabled) {
@@ -23,6 +24,10 @@ public final class DecisionPolicy {
     public Set<String> allowedToolNames(ConversationDecision decision, Set<String> availableTools) {
         if (availableTools == null) {
             return Set.of();
+        }
+        if (decision != null && !decision.evidence().isEmpty()
+                && decision.evidence().stream().allMatch(ClassificationEvidence::fallbackUsed)) {
+            return Set.copyOf(availableTools);
         }
         if (decision == null || decision.toolFamily() == ToolFamily.NONE) {
             // A rules/low-confidence classifier may not know the exact family yet.
@@ -43,6 +48,7 @@ public final class DecisionPolicy {
     public boolean requiresVolatileInformation(ConversationDecision decision) {
         return decision != null && (decision.toolFamily() == ToolFamily.VEHICLE_SEARCH
                 || decision.toolFamily() == ToolFamily.VEHICLE_DETAILS
-                || decision.toolFamily() == ToolFamily.OFFERS);
+                || decision.toolFamily() == ToolFamily.OFFERS
+                || decision.toolFamily() == ToolFamily.KNOWLEDGE_SEARCH);
     }
 }

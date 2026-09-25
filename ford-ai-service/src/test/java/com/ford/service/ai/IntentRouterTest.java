@@ -35,6 +35,18 @@ class IntentRouterTest {
     }
 
     @Test
+    void routesRaptorInterestToVehicleCatalog() {
+        assertThat(router.route("Estoy interesado en la Raptor"))
+                .isEqualTo(Intent.CATALOG);
+    }
+
+    @Test
+    void routesFuelEconomyQuestionsToVehicleKnowledge() {
+        assertThat(router.route("¿Cuántos kilómetros por litro da?"))
+                .isEqualTo(Intent.KNOWLEDGE);
+    }
+
+    @Test
     void routesExplicitHumanPurchaseRequestToLeadHandoff() {
         assertThat(router.route("Quiero comprarla este mes, que me llame un asesor"))
                 .isEqualTo(Intent.LEAD_HANDOFF);
