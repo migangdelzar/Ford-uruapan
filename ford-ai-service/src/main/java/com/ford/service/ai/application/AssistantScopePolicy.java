@@ -11,9 +11,11 @@ public final class AssistantScopePolicy {
             "ford", "auto", "autos", "coche", "coches", "carro", "carros", "vehículo", "vehiculo",
             "camioneta", "ranger", "bronco", "maverick", "territory", "explorer", "mustang", "f-150",
             "precio", "oferta", "promoción", "promocion", "bono", "modelo", "versión", "version", "motor",
+            "opciones",
             "garantía", "garantia", "disponible", "inventario", "financiamiento", "financiación", "financiacion",
             "crédito", "credito", "enganche", "mensualidad", "cita", "asesor", "agencia", "sucursal",
-            "horario", "teléfono", "telefono", "comprar", "prueba de manejo");
+            "horario", "teléfono", "telefono", "comprar", "prueba de manejo", "persona", "humano",
+            "que me llame", "que me llamen");
 
     private static final List<String> GREETING_TERMS = List.of(
             "hola", "buenas", "buen día", "buen dia", "buenos días", "buenos dias", "gracias", "adiós", "adios");
@@ -27,9 +29,6 @@ public final class AssistantScopePolicy {
     public boolean allows(String userText, ConversationDecision decision) {
         if (userText == null || userText.isBlank()) {
             return false;
-        }
-        if (decision != null && decision.intent() != ConversationIntent.GENERAL) {
-            return true;
         }
         var normalized = userText.toLowerCase(Locale.ROOT);
         return containsAny(normalized, ALLOWED_TERMS) || containsAny(normalized, GREETING_TERMS)

@@ -16,6 +16,10 @@ import java.util.Objects;
 
 public final class SpringAiChatCompletionAdapter implements ProviderChatCompletionPort {
 
+    private static final String VOLATILE_SOURCE_UNAVAILABLE =
+            "Fíjese que ese dato no lo tengo confirmado en el catálogo vigente. "
+                    + "Con mucho gusto un asesor puede verificarlo.";
+
     private final ChatClient client;
     private final String provider;
     private final ToolAuthorizationPolicy toolPolicy;
@@ -71,10 +75,7 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
             prompt = prompt.tools(tools.toArray());
         }
         if (decisionPolicy.requiresVolatileInformation(request.decision()) && tools.isEmpty()) {
-            return new AssistantResponse(
-                    "Fíjese que ese dato no lo tengo confirmado en el catálogo vigente. "
-                            + "Con mucho gusto un asesor puede verificarlo.",
-                    false, provider, List.of());
+            return new AssistantResponse(VOLATILE_SOURCE_UNAVAILABLE, false, provider, List.of());
         }
         if (context != null && context.tenantId() != null && context.conversationId() != null) {
             prompt = prompt.toolContext(Map.of(
@@ -82,7 +83,15 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                     "conversationId", context.conversationId().toString(),
                     "locale", "es-MX"));
         }
-        var content = prompt.call().content();
+        String content;
+        try {
+            content = prompt.call().content();
+        } catch (RuntimeException exception) {
+            if (decisionPolicy.requiresVolatileInformation(request.decision())) {
+                return new AssistantResponse(VOLATILE_SOURCE_UNAVAILABLE, false, provider, List.of());
+            }
+            throw exception;
+        }
         if (content == null || content.isBlank()) {
             throw new IllegalStateException("AI provider returned an empty response");
         }

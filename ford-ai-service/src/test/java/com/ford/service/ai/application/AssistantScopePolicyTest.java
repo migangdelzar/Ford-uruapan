@@ -27,4 +27,19 @@ class AssistantScopePolicyTest {
     void rejectsClearlyUnrelatedRequests() {
         assertThat(policy.allows("Escribe un poema sobre volcanes", null)).isFalse();
     }
+
+    @Test
+    void doesNotTrustAConflictingModelIntentToExpandTheScope() {
+        var financeDecision = new ConversationDecision(
+                ConversationIntent.FINANCE, LeadTemperature.WARM, LeadStage.QUALIFYING,
+                HandoffRecommendation.NONE, ToolFamily.FINANCE_ESTIMATE,
+                SensitiveDataLevel.NONE, java.util.List.of());
+
+        assertThat(policy.allows("Escribe un poema sobre volcanes", financeDecision)).isFalse();
+    }
+
+    @Test
+    void allowsExplicitHumanRequestsToReachTheHandoffPolicy() {
+        assertThat(policy.allows("Quiero hablar con una persona", null)).isTrue();
+    }
 }

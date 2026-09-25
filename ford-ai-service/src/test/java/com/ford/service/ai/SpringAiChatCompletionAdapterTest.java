@@ -154,6 +154,29 @@ class SpringAiChatCompletionAdapterTest {
         verify(requestSpec, never()).call();
     }
 
+    @Test
+    void returnsAConfirmationGapWhenTheVolatileInformationSourceFails() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenThrow(new IllegalStateException("MCP unavailable"));
+
+        var decision = new ConversationDecision(ConversationIntent.INVENTORY,
+                LeadTemperature.UNKNOWN, LeadStage.NEW, HandoffRecommendation.NONE,
+                ToolFamily.VEHICLE_SEARCH, SensitiveDataLevel.NONE, List.of());
+        var result = new SpringAiChatCompletionAdapter(client, "ollama",
+                new ToolAuthorizationPolicy(List.of(callback("vehicle_snapshot_search"))))
+                .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "¿Qué precio tiene la Ranger?", "BOT_ACTIVE", null, false, decision), null);
+
+        assertThat(result.content()).contains("no lo tengo confirmado");
+    }
+
     private static ToolCallback callback(String name) {
         return new ToolCallback() {
             @Override

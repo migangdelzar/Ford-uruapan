@@ -54,6 +54,14 @@ class DecisionPolicyTest {
     }
 
     @Test
+    void exposesTheLocalVehicleSnapshotToolWhenItIsAvailable() {
+        var decision = decision(ToolFamily.VEHICLE_SEARCH);
+
+        assertThat(policy.allowedToolNames(decision, Set.of("vehicle_snapshot_search")))
+                .containsExactly("vehicle_snapshot_search");
+    }
+
+    @Test
     void exposesOnlyMcpOfferToolsForOfferInformation() {
         var decision = decision(ToolFamily.OFFERS);
 

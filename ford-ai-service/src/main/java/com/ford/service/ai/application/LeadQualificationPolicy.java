@@ -120,11 +120,16 @@ public final class LeadQualificationPolicy {
         if (text.contains("cotizacion formal")) {
             return true;
         }
-        if (containsAny(text, ACTION_VERBS) && containsAny(text, PURCHASE_ACTION_TERMS)) {
+        if (containsAny(text, PURCHASE_ACTION_TERMS)
+                && (containsAny(text, ACTION_VERBS) || text.contains("comprar"))) {
+            return true;
+        }
+        if (text.contains("cita") && containsAny(text, APPOINTMENT_ACTION_TERMS)) {
             return true;
         }
         return text.contains("prueba de manejo")
-                && containsAny(text, APPOINTMENT_ACTION_TERMS);
+                && containsAny(text, APPOINTMENT_ACTION_TERMS)
+                && !containsAny(text, Set.of("requisitos", "informacion", "información", "como funciona"));
     }
 
     private static LeadStage stage(LeadStage existing, int score) {

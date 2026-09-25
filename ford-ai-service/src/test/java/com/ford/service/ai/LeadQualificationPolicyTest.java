@@ -62,6 +62,22 @@ class LeadQualificationPolicyTest {
     }
 
     @Test
+    void escalatesWhenTheCustomerRequestsAnAppointment() {
+        var assessment = policy.assess("Quiero agendar una cita", null, decision());
+
+        assertThat(assessment.shouldEscalate()).isTrue();
+        assertThat(assessment.signals()).contains("explicit_action");
+    }
+
+    @Test
+    void escalatesWhenTheCustomerStatesANearTermPurchaseIntent() {
+        var assessment = policy.assess("Comprar la Ranger este mes", null, decision());
+
+        assertThat(assessment.shouldEscalate()).isTrue();
+        assertThat(assessment.signals()).contains("explicit_action", "near_term");
+    }
+
+    @Test
     void enrichesTheDecisionWithDeterministicLeadEvidence() {
         var assessment = policy.assess("¿Qué precio tiene la Ranger?", null, decision());
 
