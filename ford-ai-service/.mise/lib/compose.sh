@@ -86,6 +86,27 @@ require_langfuse_env() {
   fi
 }
 
+require_grafana_cloud_env() {
+  local missing=()
+
+  for variable_name in GRAFANA_CLOUD_OTLP_ENDPOINT GRAFANA_CLOUD_INSTANCE_ID GRAFANA_CLOUD_API_TOKEN; do
+    if [[ -z "${!variable_name:-}" ]]; then
+      missing+=("$variable_name")
+    fi
+  done
+
+  if (( ${#missing[@]} > 0 )); then
+    echo "Grafana Cloud requires: ${missing[*]}" >&2
+    echo "Export the values in the shell or load them from a secret manager; never commit them." >&2
+    return 1
+  fi
+
+  if [[ "$GRAFANA_CLOUD_API_TOKEN" != glc_* ]]; then
+    echo "GRAFANA_CLOUD_API_TOKEN must be a Grafana Cloud Access Policy token (glc_ prefix) with metrics:write, logs:write, and traces:write; service-account tokens are not valid for telemetry ingestion." >&2
+    return 1
+  fi
+}
+
 export_langfuse_otel_env() {
   local base_url="${LANGFUSE_BASE_URL:-https://us.cloud.langfuse.com}"
   export LANGFUSE_OTLP_ENDPOINT="${LANGFUSE_OTLP_ENDPOINT:-${base_url%/}/api/public/otel}"

@@ -27,3 +27,34 @@ docker run --rm \
 For the Cloud profile, supply `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`,
 and `LANGFUSE_OTLP_ENDPOINT` to the collector container and mount
 `cloud-tempo-config.yaml` instead.
+
+## Grafana Cloud profile
+
+The Grafana Cloud profile receives application traces over OTLP, scrapes the
+Ford Actuator Prometheus endpoint, and reads Docker JSON logs from the Linux
+Docker host. It exports all three signals through Grafana Cloud's OTLP gateway
+and sends redacted traces to Langfuse Cloud:
+
+```text
+Ford JVM ─┐
+Actuator ─┼─> OpenTelemetry Collector ─> Grafana Cloud OTLP
+Docker ───┘                         └─> Langfuse Cloud (traces only)
+```
+
+Supply these values through the shell environment or a secret manager:
+
+```bash
+export GRAFANA_CLOUD_OTLP_ENDPOINT='https://otlp-gateway-.../otlp'
+export GRAFANA_CLOUD_INSTANCE_ID='your-otlp-instance-id'
+export GRAFANA_CLOUD_API_TOKEN='your-cloud-access-policy-token'
+export LANGFUSE_PUBLIC_KEY='your-langfuse-public-key'
+export LANGFUSE_SECRET_KEY='your-langfuse-secret-key'
+```
+
+The Cloud Access Policy needs `metrics:write`, `logs:write`, and
+`traces:write`. The Docker log mount is intended for Linux/OCI hosts and must
+map the host's `/var/lib/docker/containers` directory into the Collector.
+Run `mise run telemetry:grafana-cloud:start` from `ford-ai-service` and use
+`mise run telemetry:grafana-cloud:check` to verify readiness. Grafana Cloud
+stores the three signals in its managed Metrics, Loki, and Tempo-compatible
+backends through the OTLP gateway.

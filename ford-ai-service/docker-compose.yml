@@ -83,13 +83,16 @@ services:
       LANGFUSE_OTLP_ENDPOINT: ${LANGFUSE_OTLP_ENDPOINT:-https://us.cloud.langfuse.com/api/public/otel}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      GRAFANA_CLOUD_OTLP_ENDPOINT: ${GRAFANA_CLOUD_OTLP_ENDPOINT:-}
+      GRAFANA_CLOUD_INSTANCE_ID: ${GRAFANA_CLOUD_INSTANCE_ID:-}
+      GRAFANA_CLOUD_API_TOKEN: ${GRAFANA_CLOUD_API_TOKEN:-}
+      OTEL_DEPLOYMENT_ENVIRONMENT: ${OTEL_DEPLOYMENT_ENVIRONMENT:-local}
     ports:
       - "127.0.0.1:${OTEL_HTTP_PORT:-4318}:4318"
       - "127.0.0.1:${OTEL_HEALTH_PORT:-13133}:13133"
     volumes:
       - ../deployment/observability/otel-collector/${OTEL_COLLECTOR_CONFIG:-tempo-config.yaml}:/etc/otelcol-contrib/config.yaml:ro
-    depends_on:
-      - tempo
+      - ${DOCKER_CONTAINER_LOGS_PATH:-/var/lib/docker/containers}:/var/lib/docker/containers:ro
 
   alloy:
     image: grafana/alloy:v1.8.3

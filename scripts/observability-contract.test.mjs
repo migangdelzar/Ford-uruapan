@@ -40,6 +40,24 @@ test("cloud collector profile dual-exports redacted traces to Tempo and Langfuse
   assert.match(source, /gen_ai\.completion/);
 });
 
+test("Grafana Cloud collector profile exports traces, metrics, and Docker logs", async () => {
+  const source = await read("deployment/observability/otel-collector/grafana-cloud-config.yaml");
+  assert.match(source, /basicauth\/grafana/);
+  assert.match(source, /GRAFANA_CLOUD_INSTANCE_ID/);
+  assert.match(source, /GRAFANA_CLOUD_API_TOKEN/);
+  assert.match(source, /GRAFANA_CLOUD_OTLP_ENDPOINT/);
+  assert.match(source, /file_log\/docker/);
+  assert.match(source, /prometheus:/);
+  assert.match(source, /otlp_http\/grafana/);
+  assert.match(source, /pipelines:/);
+  assert.match(source, /logs:/);
+  assert.match(source, /metrics:/);
+  assert.match(source, /traces:/);
+  assert.match(source, /attributes\/redaction/);
+  assert.doesNotMatch(source, /otlphttp\//, "Grafana Cloud profile must use the current otlp_http exporter name");
+  assert.doesNotMatch(source, /filelog\//, "Grafana Cloud profile must use the current file_log receiver name");
+});
+
 test("application Compose exposes the cloud collector profile without embedding credentials", async () => {
   const source = await read("ford-ai-service/docker-compose.yml");
   assert.match(source, /OTEL_COLLECTOR_CONFIG:-tempo-config\.yaml/);
@@ -47,6 +65,14 @@ test("application Compose exposes the cloud collector profile without embedding 
   assert.match(source, /LANGFUSE_PUBLIC_KEY/);
   assert.match(source, /LANGFUSE_SECRET_KEY/);
   assert.doesNotMatch(source, /sk-lf-|pk-lf-/);
+});
+
+test("application Compose exposes Grafana Cloud credentials only to the collector", async () => {
+  const source = await read("ford-ai-service/docker-compose.yml");
+  assert.match(source, /GRAFANA_CLOUD_OTLP_ENDPOINT/);
+  assert.match(source, /GRAFANA_CLOUD_INSTANCE_ID/);
+  assert.match(source, /GRAFANA_CLOUD_API_TOKEN/);
+  assert.match(source, /DOCKER_CONTAINER_LOGS_PATH/);
 });
 
 test("Mise exposes a complete cloud telemetry lifecycle", async () => {
@@ -67,4 +93,25 @@ test("Mise exposes a complete cloud telemetry lifecycle", async () => {
   assert.match(start, /OTEL_COLLECTOR_CONFIG=cloud-tempo-config\.yaml/);
   assert.match(composeLibrary, /LANGFUSE_PUBLIC_KEY/);
   assert.match(composeLibrary, /LANGFUSE_SECRET_KEY/);
+});
+
+test("Mise exposes a complete Grafana Cloud telemetry lifecycle", async () => {
+  const taskPaths = [
+    "start",
+    "stop",
+    "restart",
+    "status",
+    "check",
+  ];
+
+  for (const task of taskPaths) {
+    await read(`ford-ai-service/.mise/tasks/telemetry/grafana-cloud/${task}`);
+  }
+
+  const start = await read("ford-ai-service/.mise/tasks/telemetry/grafana-cloud/start");
+  const composeLibrary = await read("ford-ai-service/.mise/lib/compose.sh");
+  assert.match(start, /OTEL_COLLECTOR_CONFIG=grafana-cloud-config\.yaml/);
+  assert.match(composeLibrary, /GRAFANA_CLOUD_OTLP_ENDPOINT/);
+  assert.match(composeLibrary, /GRAFANA_CLOUD_INSTANCE_ID/);
+  assert.match(composeLibrary, /GRAFANA_CLOUD_API_TOKEN/);
 });
