@@ -3,7 +3,9 @@ package com.ford.service.conversations.application;
 import com.ford.service.conversations.domain.ConversationMemoryContext;
 import com.ford.service.conversations.domain.ConversationMemoryKey;
 import com.ford.service.conversations.domain.ConversationMessage;
+import com.ford.service.conversations.domain.MemoryProjectionUpdate;
 import com.ford.service.conversations.domain.MemoryQuery;
+import com.ford.service.conversations.domain.MemoryUpdateResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,6 +19,7 @@ public final class ConversationMemoryService {
     private final ConversationMemoryPort memory;
     private final MemoryProperties properties;
     private final ConversationMemorySemanticPort semanticMemory;
+    private final ConversationMemoryProjector projector;
 
     public ConversationMemoryService(ConversationMemoryPort memory, MemoryProperties properties) {
         this(memory, properties, new NoOpConversationMemorySemanticPort());
@@ -28,6 +31,7 @@ public final class ConversationMemoryService {
         this.memory = Objects.requireNonNull(memory);
         this.properties = Objects.requireNonNull(properties);
         this.semanticMemory = Objects.requireNonNull(semanticMemory);
+        this.projector = new ConversationMemoryProjector(properties);
     }
 
     public ConversationMemoryContext load(MemoryQuery query) {
@@ -90,6 +94,26 @@ public final class ConversationMemoryService {
         } catch (RuntimeException exception) {
             log.warn("Outbound conversation memory write failed: conversationId={} exceptionType={}",
                     key.conversationId(), exception.getClass().getSimpleName());
+        }
+    }
+
+    public MemoryProjectionUpdate project(ConversationMemoryContext context, String latestUserMessage,
+                                          UUID sourceMessageId) {
+        return projector.project(context, latestUserMessage, sourceMessageId);
+    }
+
+    public MemoryUpdateResult updateProjection(ConversationMemoryKey key,
+                                                MemoryProjectionUpdate update,
+                                                long expectedVersion) {
+        if (!properties.enabled()) {
+            return new MemoryUpdateResult(false, expectedVersion);
+        }
+        try {
+            return memory.updateProjection(key, update, expectedVersion);
+        } catch (RuntimeException exception) {
+            log.warn("Conversation memory projection update failed: conversationId={} exceptionType={}",
+                    key.conversationId(), exception.getClass().getSimpleName());
+            return new MemoryUpdateResult(false, expectedVersion);
         }
     }
 

@@ -93,6 +93,9 @@ class ConversationWorkflowTest {
         assertThat(memoryPort.outbound.providerMessageId())
                 .startsWith("assistant:")
                 .hasSize(46);
+        assertThat(memoryPort.projection).isNotNull();
+        assertThat(memoryPort.projection.summary()).contains("¿Hay Ranger?");
+        assertThat(memoryPort.projectionExpectedVersion).isZero();
         assertThat(memoryPort.invalidated).isEqualTo(conversationId);
     }
 
@@ -285,6 +288,8 @@ class ConversationWorkflowTest {
     private static final class RecordingMemoryPort implements ConversationMemoryPort {
         private ConversationMessage inbound;
         private ConversationMessage outbound;
+        private MemoryProjectionUpdate projection;
+        private long projectionExpectedVersion = -1;
         private UUID invalidated;
 
         @Override
@@ -303,16 +308,19 @@ class ConversationWorkflowTest {
         }
 
         @Override
+        public MemoryUpdateResult updateProjection(ConversationMemoryKey key,
+                                                    MemoryProjectionUpdate update,
+                                                    long expectedVersion) {
+            projection = update;
+            projectionExpectedVersion = expectedVersion;
+            return new MemoryUpdateResult(true, expectedVersion + 1);
+        }
+
+        @Override
         public void invalidate(ConversationMemoryKey key) {
             invalidated = key.conversationId();
         }
 
-        @Override
-        public MemoryUpdateResult updateProjection(ConversationMemoryKey key,
-                                                    MemoryProjectionUpdate update,
-                                                    long expectedVersion) {
-            return new MemoryUpdateResult(false, expectedVersion);
-        }
     }
 
     private static final class RecordingConversationRepository implements ConversationRepository {

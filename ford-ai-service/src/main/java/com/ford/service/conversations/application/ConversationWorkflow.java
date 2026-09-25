@@ -139,6 +139,8 @@ public class ConversationWorkflow {
             var outboundMessageId = assistantMessageId(snapshot.conversationId(), event.providerMessageId());
             memoryService.recordOutbound(memoryKey, outboundMessageId,
                     "assistant:" + outboundMessageId, text, Instant.now());
+            memoryService.updateProjection(memoryKey,
+                    memoryService.project(memory, currentMessage, event.receiptId()), memory.memoryVersion());
             memoryService.invalidate(memoryKey);
             eventPublisher.publishEvent(new OutboundDeliveryRequested(
                     snapshot.tenantId(), snapshot.conversationId(), snapshot.channel(),
