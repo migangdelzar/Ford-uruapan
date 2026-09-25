@@ -16,7 +16,8 @@ implementation.
 
 The deployment supports two logical machines:
 
-- `emme-1`: Ford application and the existing Cloudflare Tunnel connector.
+- `emme-1`: Ford application, a lightweight OpenTelemetry Collector, and the
+  existing Cloudflare Tunnel connector.
 - `emme-2`: PostgreSQL with pgvector and Redis.
 
 The application connects to `emme-2` through its private OCI IP. Database and
@@ -63,18 +64,21 @@ uses two focused Compose files:
 
 - `deployment/runtime/data/compose.yml`: PostgreSQL/pgvector and Redis with
   persistent volumes and health checks.
-- `deployment/runtime/app/compose.yml`: the prebuilt ARM64 Ford service image,
-  connected to the data VM by private IP, with no local database, Redis, or
-  observability dependency.
+- `deployment/runtime/app/compose.yml`: the prebuilt ARM64 Ford service image
+  and a lightweight OpenTelemetry Collector, connected to the data VM by
+  private IP, with no local database or Redis.
 
 The application production Compose file binds its HTTP port to loopback on
 `emme-1`. Cloudflare Tunnel publishes the API hostname to that local port, so
 the application does not need a public HTTP listener.
 
 Production does not run Prometheus, Loki, Tempo, Alloy, or Grafana on the two
-Always Free VMs. OTEL export is disabled by default for this footprint. The
-observability stack can be added later as an independent capability without
-changing the database or app deployment contracts.
+Always Free VMs. The app emits traces to the local collector; the collector
+scrapes the app's Micrometer Prometheus endpoint and reads Docker JSON logs,
+then sends traces, metrics, and logs to Grafana Cloud. Traces are also sent to
+Langfuse Cloud. The collector receives the cloud credentials in its own
+0600 environment file, so those credentials are not exposed to the app
+container.
 
 The application image is built locally for `linux/arm64`, transferred to
 `emme-1` by an Ansible task using Docker image/archive modules, and started by
@@ -127,8 +131,16 @@ FORD_DATABASE_URL=jdbc:postgresql://${EMME_2_PRIVATE_IP}:5432/ford_service
 FORD_REDIS_HOST=${EMME_2_PRIVATE_IP}
 FORD_REDIS_PORT=6379
 FORD_OTEL_METRICS_EXPORT_ENABLED=false
-FORD_OTEL_SAMPLING_PROBABILITY=0
+FORD_OTEL_TRACES_ENDPOINT=http://otel-collector:4318/v1/traces
+FORD_OTEL_SAMPLING_PROBABILITY=0.1
 ```
+
+The collector environment additionally requires
+`GRAFANA_CLOUD_OTLP_ENDPOINT`, `GRAFANA_CLOUD_INSTANCE_ID`,
+`GRAFANA_CLOUD_API_TOKEN`, `LANGFUSE_PUBLIC_KEY`, and
+`LANGFUSE_SECRET_KEY`. `GRAFANA_CLOUD_API_TOKEN` must be a Grafana Cloud
+Access Policy token with `metrics:write`, `logs:write`, and `traces:write`
+scopes; a Grafana service-account token is not interchangeable with it.
 
 The exact database and AI/Meta secrets are supplied from `.env.deploy`; no
 customer data or prompt content is part of deployment diagnostics.
@@ -158,6 +170,8 @@ Remote checks:
 - SSH and Docker prerequisite checks on both VMs
 - PostgreSQL and Redis health checks on `emme-2`
 - app health check on `emme-1`
+- OpenTelemetry Collector health check on `emme-1`
+- Collector logs checked for authorization or exporter failures
 - private-IP TCP connectivity from app VM to data VM
 - public Cloudflare API health check and Meta webhook signature rejection
 

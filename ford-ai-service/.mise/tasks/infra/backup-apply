@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Apply the reviewed OCI backup bucket and identity plan"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+mise run infra:apply -- --confirm APPLY-INFRA

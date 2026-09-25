@@ -3,6 +3,7 @@ WORKDIR /workspace
 COPY gradle gradle
 COPY gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
 RUN chmod +x gradlew \
+    && sed -i 's/\r$//' gradlew \
     && JAVA_TOOL_OPTIONS="-Xmx1g -XX:MaxMetaspaceSize=256m -Dfile.encoding=UTF-8" \
         ./gradlew --version --no-daemon --max-workers=1 -Dorg.gradle.jvmargs=""
 COPY src src

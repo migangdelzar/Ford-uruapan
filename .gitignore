@@ -3,3 +3,10 @@
 **/build/
 **/.env
 **/.mise/state/
+deployment/config/oci.env
+deployment/config/*.local
+deployment/terraform/.terraform/
+deployment/terraform/*.tfstate
+deployment/terraform/*.tfstate.*
+deployment/terraform/*.tfvars
+!deployment/terraform/*.tfvars.example

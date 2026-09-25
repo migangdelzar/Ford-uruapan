@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#MISE description="Restart remote app or data services"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+require_deploy_config
+render_deploy_inventory
+role="${1:-app}"
+case "$role" in
+  app) limit=app; project='app';;
+  data) limit=data; project='data';;
+  *) echo "Usage: mise run deploy:restart -- app|data" >&2; exit 2;;
+esac
+become_args=()
+[[ "$role" == data ]] && become_args=(-b)
+ANSIBLE_CONFIG="$(deploy_repo_root)/deployment/ansible/ansible.cfg" ansible "$limit" "${become_args[@]}" -i "$(deploy_inventory_file)" -m shell -a "docker compose -f '$EMME_REMOTE_ROOT/$project/compose.yml' restart" "$@"

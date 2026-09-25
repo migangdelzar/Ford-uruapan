@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Deploy data services then the application"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+mise run deploy:config
+mise run deploy:bootstrap
+mise run deploy:data
+mise run deploy:app

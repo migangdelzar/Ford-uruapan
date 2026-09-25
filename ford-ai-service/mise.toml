@@ -1,2 +1,5 @@
 [tools]
 java = "25"
+python = "3.12.13"
+terraform = "1.16.4"
+ansible-core = "2.21.4"

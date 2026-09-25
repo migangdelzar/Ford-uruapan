@@ -89,3 +89,57 @@ API examples and webhook contracts are in [api.md](docs/api.md).
 CI controls and evidence are documented in [ci-cd.md](../docs/ci-cd.md).
 Telemetry, Langfuse and dashboard operations are documented in
 [observability.md](../docs/observability.md).
+
+## OCI deployment
+
+The remote production layout uses direct SSH and two logical roles:
+`emme-1` runs the ARM64 Ford application and `emme-2` runs PostgreSQL/pgvector
+and Redis over their private OCI address. Terraform is for OCI resource
+adoption/replacement, Ansible configures the VMs and Docker Compose, and Mise
+is the only operator-facing interface.
+
+Copy `deployment/config/oci.env.example` to the ignored
+`deployment/config/oci.env`, fill in the runtime credentials and OCI API
+values, then run:
+
+```bash
+mise install
+mise run deploy:secrets
+mise run deploy:setup
+mise run deploy:check
+mise run deploy:bootstrap
+mise run deploy:all
+```
+
+Read-only Terraform checks are `mise run infra:check` and
+`mise run infra:plan`. Remote lifecycle tasks include
+`deploy:status`, `deploy:logs`, `deploy:restart`, and `deploy:stop`; these
+preserve data volumes. Database operations are `backup:run`, `backup:list`,
+`backup:verify`, and the explicitly guarded `backup:restore`.
+
+The OCI backup capability is reproducible with:
+
+```bash
+mise run infra:backup-plan
+mise run infra:backup-apply
+mise run deploy:backup
+mise run backup:identity-check
+mise run backup:run
+```
+
+The first two tasks create the protected `emme-business` bucket, the
+`ford-backup-emme2` dynamic group, and its least-privilege policies. The VM
+uses Instance Principal authentication; no OCI API private key is copied to
+emme-2. Backup objects use the fixed prefixes `ford/backups/postgres/`,
+`ford/backups/redis/`, and `ford/backups/manifests/`.
+
+For production, set `EMME_APP_IMAGE` to the immutable GHCR image reference
+published by CI (preferably `ghcr.io/...@sha256:...`) and provide a read-only
+classic PAT in `GHCR_TOKEN`. The app deploy authenticates and pulls the image
+on `emme-1`; if those values are absent, the local ARM64 build-and-transfer
+fallback remains available.
+
+PostgreSQL and Redis bind only to `emme-2`'s private address in the remote
+Compose configuration. The public application endpoint remains behind the
+existing Cloudflare Tunnel/reverse proxy; no database or Redis port should be
+published publicly in OCI security lists.
