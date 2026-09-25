@@ -45,7 +45,7 @@ For each accepted inbound message:
 3. Answer the direct request first. For current Ford facts, call the appropriate authorized Ford/MCP/RAG source. If the source is unavailable, stale, or inconclusive, say that confirmation is unavailable and offer a practical next step; do not invent an offer, price, stock state, or appointment.
 4. Merge only confirmed facts and successful tool/action outcomes into the durable journey. A model-proposed inference without direct evidence stays unconfirmed and cannot mark a milestone complete.
 5. Select at most one relevant next question or action. Skip facts already known; do not ask the same unresolved question again immediately. Let the lead skip, change direction, or return later without losing progress.
-6. Persist the accepted assistant turn and its journey update with tenant scoping, optimistic version checks, and idempotency keyed to the inbound provider message. A model/tool failure must not mark a milestone or external action successful. Confirmed user facts may be captured only through the same durable, idempotent turn boundary.
+6. Persist the accepted assistant turn, its outbound intent, and its journey update with tenant scoping and optimistic version checks. Derive a stable assistant-turn idempotency key from the inbound provider message ID so redelivery cannot create a second reply, journey transition, or outbound action. A model/tool failure must not mark a milestone or external action successful. Confirmed user facts may be captured only through the same durable, idempotent turn boundary.
 
 Replies should sound natural and concise, answer first, and usually end with no more than one useful question. The assistant must not recite stages or expose internal workflow state.
 
@@ -61,7 +61,7 @@ Persist one bounded journey snapshot in a focused `lead_journey` table, keyed by
 
 Do not copy raw transcript text, credentials, payment-card data, government IDs, or detailed bank/credit data into this snapshot. Existing transcript storage remains the conversation history. Use only the minimum sales facts needed for continuity.
 
-All reads and writes are scoped by tenant and conversation; when linked, verify the lead belongs to the same tenant and conversation. A conversation must never load another tenant's journey. Concurrent updates use optimistic locking; a stale update must not overwrite newer confirmed facts. Reuse the existing durable inbound/outbound idempotency boundary; if it does not cover journey writes, add a unique per-conversation/per-provider-message receipt rather than relying only on a single `last_processed_message_id` field. Cross-channel identity matching and merging multiple conversations into one person/lead are out of scope.
+All reads and writes are scoped by tenant and conversation; when linked, verify the lead belongs to the same tenant and conversation. A conversation must never load another tenant's journey. Concurrent updates use optimistic locking; a stale update must not overwrite newer confirmed facts. Use the stable assistant-turn idempotency boundary for journey updates; add a unique per-conversation/per-provider-message receipt only if integration tests show the existing turn transaction cannot enforce it. Cross-channel identity matching and merging multiple conversations into one person/lead are out of scope.
 
 ## Agent and guardrail boundary
 
@@ -109,7 +109,7 @@ The feature is acceptable when:
 
 ## Open implementation decisions
 
-1. Trace the actual turn transaction and durable inbound/outbound idempotency boundary. Add only the smallest missing receipt/recovery state needed to make journey writes safe; do not introduce an independent retry mechanism.
+1. Trace the actual turn transaction and implement/test a stable inbound-message-derived assistant-turn idempotency key within it. Add only the smallest missing receipt/recovery state needed to make journey writes safe; do not introduce an independent retry mechanism.
 2. Verify which Ford MCP/RAG capabilities are actually available for promotion, inventory, finance estimates, and appointment lookup; unsupported actions remain informational-only.
 
 ## References
