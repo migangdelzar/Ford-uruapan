@@ -93,7 +93,7 @@ class DecisionPolicyTest {
     }
 
     @Test
-    void treatsRulesFallbackClassificationAsAHintAndKeepsAllAvailableReadOnlyTools() {
+    void keepsRulesFallbackClassificationWithinItsReadOnlyToolFamily() {
         var decision = new ConversationDecision(ConversationIntent.KNOWLEDGE, LeadTemperature.UNKNOWN,
                 LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.KNOWLEDGE_SEARCH,
                 SensitiveDataLevel.NONE, List.of(new ClassificationEvidence(
@@ -104,7 +104,20 @@ class DecisionPolicyTest {
                 "approved_knowledge_search", "search_vehicles", "get_vehicle",
                 "list_promotions", "vehicle_snapshot_search")))
                 .containsExactlyInAnyOrder("approved_knowledge_search", "search_vehicles",
-                        "get_vehicle", "list_promotions", "vehicle_snapshot_search");
+                        "get_vehicle", "vehicle_snapshot_search");
+    }
+
+    @Test
+    void keepsRulesClassifiedOfferRequestsInsideTheOfferToolFamily() {
+        var decision = new ConversationDecision(ConversationIntent.OFFERS, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.OFFERS,
+                SensitiveDataLevel.NONE, List.of(new ClassificationEvidence(
+                        ClassifierType.INTENT, "OFFERS", 1.0, "rules_intent",
+                        "rules", "deterministic", 0, true)));
+
+        assertThat(policy.allowedToolNames(decision, Set.of(
+                "search_offers", "list_promotions", "get_catalog_status", "search_vehicles")))
+                .containsExactlyInAnyOrder("search_offers", "list_promotions", "get_catalog_status");
     }
 
     @Test

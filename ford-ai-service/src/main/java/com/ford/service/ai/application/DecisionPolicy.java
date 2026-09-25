@@ -25,10 +25,6 @@ public final class DecisionPolicy {
         if (availableTools == null) {
             return Set.of();
         }
-        if (decision != null && !decision.evidence().isEmpty()
-                && decision.evidence().stream().allMatch(ClassificationEvidence::fallbackUsed)) {
-            return Set.copyOf(availableTools);
-        }
         if (decision == null || decision.toolFamily() == ToolFamily.NONE) {
             // A rules/low-confidence classifier may not know the exact family yet.
             // Keep the model fail-safe (read-only tools only), but let it search the

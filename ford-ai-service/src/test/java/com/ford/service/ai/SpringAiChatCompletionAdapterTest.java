@@ -165,6 +165,37 @@ class SpringAiChatCompletionAdapterTest {
     }
 
     @Test
+    void exposesOnlyOfferCallbacksForRulesClassifiedPromotionRequests() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        var offers = callback("list_promotions");
+        var vehicles = callback("search_vehicles");
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("Revisaré las promociones vigentes.");
+
+        var decision = new ConversationDecision(ConversationIntent.OFFERS, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.OFFERS,
+                SensitiveDataLevel.NONE, List.of(new com.ford.service.ai.application.ClassificationEvidence(
+                        com.ford.service.ai.application.ClassifierType.INTENT, "OFFERS", 1.0,
+                        "rules_intent", "rules", "deterministic", 0, true)));
+        var adapter = new SpringAiChatCompletionAdapter(client, "openrouter",
+                new ToolAuthorizationPolicy(List.of(offers, vehicles)), new DecisionPolicy());
+
+        adapter.complete(new AssistantRequest(tenantId, conversationId, "¿Qué promociones hay?",
+                        "BOT_ACTIVE", null, false, decision),
+                new ToolContext(tenantId, conversationId));
+
+        verify(requestSpec).tools(offers);
+    }
+
+    @Test
     void failsClosedWhenVolatileInformationHasNoAuthorizedTool() {
         var client = mock(ChatClient.class);
         var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
