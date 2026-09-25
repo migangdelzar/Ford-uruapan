@@ -29,6 +29,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 class SpringAiChatCompletionAdapterTest {
 
@@ -112,7 +113,8 @@ class SpringAiChatCompletionAdapterTest {
                 LeadStage.QUALIFYING, HandoffRecommendation.NONE, ToolFamily.OFFERS,
                 SensitiveDataLevel.NONE, List.of());
         var adapter = new SpringAiChatCompletionAdapter(client, "openrouter",
-                new ToolAuthorizationPolicy(), new DecisionPolicy(), promptService);
+                new ToolAuthorizationPolicy(List.of(callback("list_promotions"))),
+                new DecisionPolicy(), promptService);
 
         adapter.complete(new AssistantRequest(tenantId, conversationId, "¿Qué promociones hay?",
                         "BOT_ACTIVE", "Resumen: ya preguntó por Ranger", false, decision),
@@ -209,6 +211,48 @@ class SpringAiChatCompletionAdapterTest {
                         "¿Qué precio tiene la Ranger?", "BOT_ACTIVE", null, false, decision), null);
 
         assertThat(result.content()).contains("no lo tengo confirmado");
+    }
+
+    @Test
+    void repairsAProviderResponseThatLeaksToolPayloads() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn(
+                "{\"query\":\"Ford Lobo\"}",
+                "La Lobo Raptor ofrece el rendimiento disponible en la ficha vigente.");
+
+        var result = new SpringAiChatCompletionAdapter(client, "openrouter")
+                .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "¿Qué rendimiento tiene la Lobo Raptor?", "BOT_ACTIVE", false), null);
+
+        assertThat(result.content()).contains("Lobo Raptor");
+        verify(requestSpec, times(2)).call();
+    }
+
+    @Test
+    void stopsAfterOneRepairWhenTheProviderKeepsReturningInvalidOutput() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn(
+                "{\"query\":\"Ford Lobo\"}",
+                "{\"query\":\"Ford Lobo\"}");
+
+        var result = new SpringAiChatCompletionAdapter(client, "openrouter")
+                .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "¿Qué rendimiento tiene la Lobo Raptor?", "BOT_ACTIVE", false), null);
+
+        assertThat(result.content()).contains("No pude convertir la consulta");
+        verify(requestSpec, times(2)).call();
     }
 
     private static ToolCallback callback(String name) {
