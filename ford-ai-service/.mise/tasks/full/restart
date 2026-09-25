@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Restart the complete local stack"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+mise run full:stop
+mise run full:start

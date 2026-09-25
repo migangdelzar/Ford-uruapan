@@ -98,7 +98,7 @@ class MetaInboundWorkflowIntegrationTest {
                 .query(UUID.class).single()).isEqualTo(tenantId);
         awaitPublication();
         assertThat(PublicationProbe.ACCEPTED.get()).isEqualTo(1);
-        assertThat(publicationCount()).isEqualTo(publicationsBefore + 2);
+        assertThat(publicationCount()).isEqualTo(publicationsBefore + 3);
     }
 
     @Test
@@ -151,7 +151,7 @@ class MetaInboundWorkflowIntegrationTest {
         assertThat(jdbc.sql("select count(*) from channel_message")
                 .query(Integer.class).single()).isEqualTo(1);
         assertThat(PublicationProbe.ACCEPTED.get()).isEqualTo(1);
-        assertThat(publicationCount()).isEqualTo(publicationsBefore + 2);
+        assertThat(publicationCount()).isEqualTo(publicationsBefore + 3);
     }
 
     private org.springframework.test.web.servlet.ResultActions postWebhook(

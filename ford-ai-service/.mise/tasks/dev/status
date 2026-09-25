@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#MISE description="Show background host JVM status"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+pid="$(read_dev_pid 2>/dev/null || true)"
+
+if [[ -n "$pid" ]] && dev_process_running "$pid"; then
+  echo "Development JVM: running (pid=$pid)"
+else
+  clear_stale_dev_pid
+  echo "Development JVM: stopped"
+fi
+
+if [[ -f "$(dev_log_file)" ]]; then
+  echo "Log: $(dev_log_file)"
+fi

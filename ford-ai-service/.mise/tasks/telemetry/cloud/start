@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#MISE description="Start local telemetry with dual export to Tempo and Langfuse Cloud"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ensure_local_env
+require_langfuse_env
+export_langfuse_otel_env
+export OTEL_COLLECTOR_CONFIG=cloud-tempo-config.yaml
+
+ford_compose up -d prometheus loki tempo otel-collector alloy
+echo "Cloud telemetry profile started; AI traces are redacted and exported to Tempo and Langfuse Cloud."

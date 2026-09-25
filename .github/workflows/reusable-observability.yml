@@ -43,3 +43,16 @@ jobs:
           -v "$GITHUB_WORKSPACE/ford-ai-service/deployment/observability/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro"
           otel/opentelemetry-collector-contrib:0.161.0
           validate --config=/etc/otelcol-contrib/config.yaml
+      - name: Validate cloud Tempo and Langfuse collector configuration
+        env:
+          LANGFUSE_OTLP_ENDPOINT: https://us.cloud.langfuse.com/api/public/otel
+          LANGFUSE_PUBLIC_KEY: pk-test
+          LANGFUSE_SECRET_KEY: sk-test
+        run: >-
+          docker run --rm
+          -e LANGFUSE_OTLP_ENDPOINT
+          -e LANGFUSE_PUBLIC_KEY
+          -e LANGFUSE_SECRET_KEY
+          -v "$GITHUB_WORKSPACE/deployment/observability/otel-collector/cloud-tempo-config.yaml:/etc/otelcol-contrib/config.yaml:ro"
+          otel/opentelemetry-collector-contrib:0.161.0
+          validate --config=/etc/otelcol-contrib/config.yaml

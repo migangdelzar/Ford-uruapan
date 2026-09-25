@@ -21,6 +21,8 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.http.HttpStatus;
 
 import java.util.Arrays;
 import java.util.Collection;
@@ -44,7 +46,9 @@ public class SecurityConfiguration {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/webhooks/meta/**", "/api/v1/health", "/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/api/**", "/actuator/**").authenticated()
-                        .anyRequest().denyAll());
+                        .anyRequest().denyAll())
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)));
 
         if (properties.jwt().enabled()) {
             http.oauth2ResourceServer(oauth2 -> oauth2

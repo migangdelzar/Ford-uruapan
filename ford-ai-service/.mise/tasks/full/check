@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#MISE description="Check the complete local stack readiness"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+require_command curl
+mise run deps:check
+require_service_running ford-service
+require_service_running grafana
+wait_for_url "Ford API" "$(ford_service_url)/actuator/health"
+wait_for_url "Grafana" "http://localhost:3000/api/health"
+echo "Full stack is ready."

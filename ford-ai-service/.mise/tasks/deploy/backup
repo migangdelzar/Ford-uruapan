@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#MISE description="Install the emme-2 OCI backup service and timer"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+require_command ansible-playbook
+
+missing=()
+for name in OCI_REGION OCI_SSH_USER EMME_2_SSH_HOST EMME_REMOTE_ROOT OCI_OBJECT_STORAGE_NAMESPACE; do
+  [[ -n "${!name:-}" ]] || missing+=("$name")
+done
+[[ -r "${EMME_2_SSH_KEY:-${OCI_SSH_PRIVATE_KEY:-}}" ]] || missing+=("readable:EMME_2_SSH_KEY")
+(( ${#missing[@]} == 0 )) || {
+  printf 'Missing backup deployment configuration: %s\n' "${missing[*]}" >&2
+  exit 1
+}
+
+render_backup_inventory
+ANSIBLE_CONFIG="$(deploy_repo_root)/deployment/ansible/ansible.cfg" \
+  ansible-playbook -i "$(backup_inventory_file)" "$(deploy_repo_root)/deployment/ansible/backup.yml" "$@"

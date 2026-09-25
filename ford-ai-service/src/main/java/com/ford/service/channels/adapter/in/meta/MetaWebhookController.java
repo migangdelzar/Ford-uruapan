@@ -5,8 +5,6 @@ import com.ford.service.channels.application.port.in.ChannelAdapter;
 import com.ford.service.channels.domain.Channel;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,6 +13,8 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Locale;
@@ -60,6 +60,7 @@ public class MetaWebhookController {
             @RequestHeader(name = "X-Hub-Signature-256", required = false) String signature,
             @RequestHeader(name = "X-Tenant-Id", required = false) String tenantHeader,
             @RequestBody String body) {
+        var started = System.nanoTime();
         try {
             if (tenantHeader != null) {
                 log.warn("Meta webhook rejected: channel={} status=400 reason=tenant header is not accepted", channel);

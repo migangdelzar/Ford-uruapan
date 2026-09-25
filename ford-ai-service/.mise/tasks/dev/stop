@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#MISE description="Stop the background host JVM"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+pid="$(read_dev_pid 2>/dev/null || true)"
+
+if [[ -z "$pid" ]]; then
+  clear_stale_dev_pid
+  echo "Development JVM is not running."
+  exit 0
+fi
+
+stop_dev_process "$pid"
+echo "Development JVM stopped."

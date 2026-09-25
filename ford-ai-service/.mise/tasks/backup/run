@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+#MISE description="Run the remote PostgreSQL backup"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+require_command ssh
+missing=()
+for name in OCI_SSH_USER EMME_2_SSH_HOST; do
+  [[ -n "${!name:-}" ]] || missing+=("$name")
+done
+[[ -r "${EMME_2_SSH_KEY:-${OCI_SSH_PRIVATE_KEY:-}}" ]] || missing+=("readable:EMME_2_SSH_KEY")
+(( ${#missing[@]} == 0 )) || {
+  printf 'Missing backup runtime configuration: %s\n' "${missing[*]}" >&2
+  exit 1
+}
+remote_key="${EMME_2_SSH_KEY:-${OCI_SSH_PRIVATE_KEY}}"
+remote_host="${OCI_SSH_USER}@${EMME_2_SSH_HOST}"
+ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$remote_key" "$remote_host" \
+  'sudo systemctl start --wait ford-backup.service'
+mkdir -p "$MISE_PROJECT_ROOT/.mise/state/backup"
+date -u +%Y-%m-%dT%H:%M:%SZ > "$MISE_PROJECT_ROOT/.mise/state/backup/last-success"

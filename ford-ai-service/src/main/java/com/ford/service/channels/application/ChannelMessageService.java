@@ -10,13 +10,17 @@ import com.ford.service.channels.domain.RawWebhook;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.context.ApplicationEventPublisher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class ChannelMessageService {
+
+    private static final Logger log = LoggerFactory.getLogger(ChannelMessageService.class);
 
     private final Set<String> processedMessageIds = ConcurrentHashMap.newKeySet();
     private final InboundMessageDeduplicationPort deduplication;
@@ -27,6 +31,12 @@ public class ChannelMessageService {
         this.deduplication = null;
         this.persistence = null;
         this.eventPublisher = null;
+    }
+
+    public ChannelMessageService(ApplicationEventPublisher eventPublisher) {
+        this.deduplication = null;
+        this.persistence = null;
+        this.eventPublisher = eventPublisher;
     }
 
     @Autowired
@@ -47,6 +57,7 @@ public class ChannelMessageService {
 
     @Transactional
     public InboundMessage accept(RawWebhook webhook, ChannelAdapter adapter) {
+        var started = System.nanoTime();
         var message = adapter.parseInbound(webhook);
         var key = message.tenantId() + ":" + message.channel() + ":" + message.providerMessageId();
         var receiptId = UUID.randomUUID();
@@ -54,6 +65,8 @@ public class ChannelMessageService {
                 ? processedMessageIds.add(key)
                 : deduplication.recordIfNew(message, receiptId);
         if (!firstDelivery) {
+            log.info("Inbound message ignored channel={} outcome=duplicate durationMs={}",
+                    message.channel(), elapsedMs(started));
             return null;
         }
         var conversationId = message.conversationId();
@@ -63,8 +76,15 @@ public class ChannelMessageService {
         if (eventPublisher != null) {
             eventPublisher.publishEvent(new InboundMessageAccepted(
                     receiptId, message.tenantId(), conversationId, message.channel(),
-                    message.providerMessageId(), message.receivedAt()));
+                    message.providerMessageId(), message.receivedAt(),
+                    message.participantId(), message.text()));
         }
+        log.info("Inbound message accepted channel={} outcome=accepted durationMs={}",
+                message.channel(), elapsedMs(started));
         return message;
+    }
+
+    private static long elapsedMs(long started) {
+        return (System.nanoTime() - started) / 1_000_000L;
     }
 }

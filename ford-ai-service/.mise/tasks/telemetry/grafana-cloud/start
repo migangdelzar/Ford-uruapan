@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+#MISE description="Start the Grafana Cloud telemetry profile"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ensure_local_env
+require_langfuse_env
+require_grafana_cloud_env
+export_langfuse_otel_env
+export OTEL_COLLECTOR_CONFIG=grafana-cloud-config.yaml
+export OTEL_DEPLOYMENT_ENVIRONMENT="${OTEL_DEPLOYMENT_ENVIRONMENT:-local}"
+
+ford_compose up -d otel-collector
+echo "Grafana Cloud telemetry profile started; traces, metrics, and Docker logs are routed through the Collector."

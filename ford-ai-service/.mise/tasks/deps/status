@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Show database, cache, and observability status"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+mise run db:status
+mise run cache:status
+mise run telemetry:status

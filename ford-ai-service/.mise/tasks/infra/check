@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Validate Terraform and OCI infrastructure inputs"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+require_command terraform
+terraform version
+terraform -chdir="$(deploy_repo_root)/deployment/terraform" fmt -check
+terraform -chdir="$(deploy_repo_root)/deployment/terraform" validate
+echo "Terraform tooling is ready."

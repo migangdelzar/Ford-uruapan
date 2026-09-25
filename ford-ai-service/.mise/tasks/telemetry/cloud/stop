@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Stop cloud telemetry services without deleting data"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ford_compose stop prometheus loki tempo otel-collector alloy

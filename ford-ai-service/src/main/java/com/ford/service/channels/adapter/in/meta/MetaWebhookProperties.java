@@ -31,6 +31,14 @@ public class MetaWebhookProperties {
         return autoBinding;
     }
 
+    public UUID getTenantId() {
+        return autoBinding.getTenantId();
+    }
+
+    public void setTenantId(UUID tenantId) {
+        autoBinding.setTenantId(tenantId);
+    }
+
     public static class AutoBinding {
 
         private boolean enabled;

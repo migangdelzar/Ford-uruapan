@@ -1,0 +1,86 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  basicauth/langfuse:
+    client_auth:
+      username: ${env:LANGFUSE_PUBLIC_KEY}
+      password: ${env:LANGFUSE_SECRET_KEY}
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  attributes/redaction:
+    actions:
+      - key: gen_ai.prompt
+        action: delete
+      - key: gen_ai.completion
+        action: delete
+      - key: gen_ai.prompt.0.content
+        action: delete
+      - key: gen_ai.completion.0.content
+        action: delete
+      - key: ford.customer.email
+        action: delete
+      - key: ford.customer.phone
+        action: delete
+      - key: ford.customer.name
+        action: delete
+      - key: ford.customer.curp
+        action: delete
+      - key: ford.finance.amount_mxn
+        action: delete
+      - key: ford.finance.income
+        action: delete
+      - key: provider.id
+        action: delete
+      - key: spring.ai.tool.call.arguments
+        action: delete
+      - key: spring.ai.tool.call.result
+        action: delete
+      - key: http.request.body
+        action: delete
+      - key: http.response.body
+        action: delete
+      - key: ford.raw_payload
+        action: delete
+  batch:
+    timeout: 5s
+    send_batch_size: 256
+
+exporters:
+  otlphttp/tempo:
+    endpoint: http://tempo:4318
+    sending_queue:
+      enabled: true
+      queue_size: 512
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 30s
+  otlphttp/langfuse:
+    endpoint: ${env:LANGFUSE_OTLP_ENDPOINT}
+    auth:
+      authenticator: basicauth/langfuse
+    sending_queue:
+      enabled: true
+      queue_size: 512
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 30s
+
+service:
+  extensions: [health_check, basicauth/langfuse]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/redaction, batch]
+      exporters: [otlphttp/tempo, otlphttp/langfuse]

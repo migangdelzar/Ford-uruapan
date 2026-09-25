@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Start the application container"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ensure_local_env
+ford_compose up -d ford-service

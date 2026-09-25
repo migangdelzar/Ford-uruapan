@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Prepare local Ansible deployment state"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+ensure_deploy_state_dir
+require_command ansible-playbook
+mkdir -p "$(deploy_state_dir)/collections"
+echo "Ansible deployment state is ready; roles use built-in modules and Docker Compose."

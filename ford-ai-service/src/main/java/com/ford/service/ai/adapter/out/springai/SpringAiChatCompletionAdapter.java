@@ -1,6 +1,7 @@
 package com.ford.service.ai.adapter.out.springai;
 
 import com.ford.service.ai.application.ToolContext;
+import com.ford.service.ai.application.SystemPromptService;
 import com.ford.service.ai.application.AiExecutionContext;
 import com.ford.service.ai.application.DecisionPolicy;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
@@ -19,23 +20,32 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
     private final String provider;
     private final ToolAuthorizationPolicy toolPolicy;
     private final DecisionPolicy decisionPolicy;
+    private final SystemPromptService systemPromptService;
 
     public SpringAiChatCompletionAdapter(ChatClient client, String provider) {
-        this(client, provider, new ToolAuthorizationPolicy(), new DecisionPolicy());
+        this(client, provider, new ToolAuthorizationPolicy(), new DecisionPolicy(), null);
     }
 
     public SpringAiChatCompletionAdapter(ChatClient client, String provider,
                                          ToolAuthorizationPolicy toolPolicy) {
-        this(client, provider, toolPolicy, new DecisionPolicy());
+        this(client, provider, toolPolicy, new DecisionPolicy(), null);
     }
 
     public SpringAiChatCompletionAdapter(ChatClient client, String provider,
                                          ToolAuthorizationPolicy toolPolicy,
                                          DecisionPolicy decisionPolicy) {
+        this(client, provider, toolPolicy, decisionPolicy, null);
+    }
+
+    public SpringAiChatCompletionAdapter(ChatClient client, String provider,
+                                         ToolAuthorizationPolicy toolPolicy,
+                                         DecisionPolicy decisionPolicy,
+                                         SystemPromptService systemPromptService) {
         this.client = Objects.requireNonNull(client);
         this.provider = Objects.requireNonNull(provider);
         this.toolPolicy = Objects.requireNonNull(toolPolicy);
         this.decisionPolicy = Objects.requireNonNull(decisionPolicy);
+        this.systemPromptService = systemPromptService;
     }
 
     @Override
@@ -46,7 +56,9 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
     @Override
     public AssistantResponse complete(AssistantRequest request, ToolContext context) {
         var prompt = client.prompt()
-                .system(systemPrompt(request.memoryContext(), request.decision()))
+                .system(systemPromptService == null
+                        ? systemPrompt(request.memoryContext(), request.decision())
+                        : systemPromptService.currentContent())
                 .user(request.message());
         var executionContext = new AiExecutionContext(
                 request.tenantId(), request.containsSensitiveData(), request.conversationId(),

@@ -13,5 +13,12 @@ public record InboundMessageAccepted(
         UUID conversationId,
         Channel channel,
         String providerMessageId,
-        Instant acceptedAt) {
+        Instant acceptedAt,
+        String participantId,
+        String text) {
+
+    public InboundMessageAccepted(UUID receiptId, UUID tenantId, UUID conversationId,
+                                  Channel channel, String providerMessageId, Instant acceptedAt) {
+        this(receiptId, tenantId, conversationId, channel, providerMessageId, acceptedAt, null, null);
+    }
 }

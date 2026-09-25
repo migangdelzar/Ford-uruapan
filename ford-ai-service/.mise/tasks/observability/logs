@@ -3,7 +3,7 @@
 set -euo pipefail
 source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
 ford_observability_env
-cd "$MISE_PROJECT_ROOT/deployment/observability/langfuse"
+cd "$MISE_PROJECT_ROOT/../deployment/observability/langfuse"
 args=(logs --tail="${FORD_DOCKER_LOG_TAIL:-100}" -f)
 if (($# > 0)); then
   args+=("$@")

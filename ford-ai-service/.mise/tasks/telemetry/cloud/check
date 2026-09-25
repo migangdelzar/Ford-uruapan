@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#MISE description="Check the cloud telemetry profile and collector health"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+require_command curl
+require_langfuse_env
+
+for service in prometheus loki tempo otel-collector alloy; do
+  require_service_running "$service"
+done
+
+wait_for_url "Prometheus" "http://localhost:9090/-/ready"
+wait_for_url "Loki" "http://localhost:3100/ready"
+wait_for_url "Tempo" "http://localhost:3200/ready"
+wait_for_url "OpenTelemetry Collector" "http://localhost:${OTEL_HEALTH_PORT:-13133}/"
+echo "Cloud telemetry profile is ready."

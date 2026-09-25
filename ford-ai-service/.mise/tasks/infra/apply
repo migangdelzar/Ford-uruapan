@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Apply the previously reviewed Terraform plan"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+[[ "${1:-}" == "--confirm" && "${2:-}" == "APPLY-INFRA" ]] || { echo 'Usage: mise run infra:apply -- --confirm APPLY-INFRA' >&2; exit 2; }
+[[ -f "$(infra_state_dir)/planned.tfplan" ]] || { echo 'Run mise run infra:plan first.' >&2; exit 1; }
+terraform -chdir="$(deploy_repo_root)/deployment/terraform" apply "$(infra_state_dir)/planned.tfplan"

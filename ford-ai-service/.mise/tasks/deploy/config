@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Render the local EMME Ansible inventory"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+require_deploy_config
+render_deploy_inventory
+deploy_summary

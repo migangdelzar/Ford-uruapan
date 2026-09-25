@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Destroy protected data infrastructure only after confirmation"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+[[ "${1:-}" == "--confirm" && "${2:-}" == "DESTROY-DATA" ]] || { echo 'Usage: mise run infra:destroy-data -- --confirm DESTROY-DATA' >&2; exit 2; }
+marker="$(MISE_PROJECT_ROOT="$MISE_PROJECT_ROOT" printf '%s/.mise/state/backup/last-success' "$MISE_PROJECT_ROOT")"
+[[ -s "$marker" ]] || { echo 'No verified backup marker found; refusing data destruction.' >&2; exit 1; }
+echo 'Protected data destruction requires an explicit reviewed Terraform target plan.' >&2
+echo 'Create and review that plan before adding a target-specific apply.' >&2
+exit 1

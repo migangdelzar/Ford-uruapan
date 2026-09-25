@@ -7,7 +7,7 @@ if (($# > 0)); then
   exit 2
 fi
 
-observability_root="$MISE_PROJECT_ROOT/deployment/observability/langfuse"
+observability_root="$MISE_PROJECT_ROOT/../deployment/observability/langfuse"
 target="$observability_root/.env"
 example="$observability_root/.env.example"
 

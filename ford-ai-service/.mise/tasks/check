@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Check dependencies and application readiness"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+require_command curl
+mise run deps:check
+require_service_running ford-service
+wait_for_url "Ford API" "$(ford_service_url)/actuator/health"
+echo "Application stack is ready."
