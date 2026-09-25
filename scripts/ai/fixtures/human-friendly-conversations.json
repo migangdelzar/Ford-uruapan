@@ -10,14 +10,25 @@
     "maxRepeatedResponses": 0
   },
   {
-    "id": "contextual-fuel-follow-up",
+    "id": "contextual-follow-up-keeps-vehicle-reference",
     "turns": [
-      { "role": "user", "content": "Estoy interesado en la Lobo Raptor 2026." },
-      { "role": "user", "content": "¿Cuántos kilómetros por litro da?" }
+      { "role": "user", "content": "Estoy interesado en la Lobo Raptor 2026.", "requiredTools": ["search_vehicles"], "requiredText": ["Lobo Raptor"] },
+      { "role": "user", "content": "¿Y cuánto rinde?", "requiredTools": ["get_vehicle"], "requiredText": ["km/l"], "forbiddenText": ["¿qué modelo"] }
     ],
     "requiredTools": ["search_vehicles", "get_vehicle"],
     "requiredText": ["km/l"],
     "forbiddenText": ["search_vehicles", "get_vehicle", "{\"query\""],
+    "maxRepeatedResponses": 0
+  },
+  {
+    "id": "topic-change-from-promotions-to-agency-hours",
+    "turns": [
+      { "role": "user", "content": "¿Qué promociones hay para la Ranger?", "requiredTools": ["list_promotions"], "requiredText": ["Ranger"] },
+      { "role": "user", "content": "Cambiando de tema, ¿cuál es el horario?", "requiredTools": ["approved_knowledge_search"], "requiredText": ["sábado"] }
+    ],
+    "requiredTools": ["list_promotions", "approved_knowledge_search"],
+    "requiredText": ["Ranger", "sábado"],
+    "forbiddenText": ["list_promotions", "approved_knowledge_search", "{\"query\""],
     "maxRepeatedResponses": 0
   },
   {
@@ -54,10 +65,20 @@
     "id": "source-failure",
     "sourceFailureTools": ["get_vehicle"],
     "turns": [
-      { "role": "user", "content": "¿Qué rendimiento tiene la Lobo Raptor?" }
+      { "role": "user", "content": "¿Qué rendimiento tiene la Lobo Raptor?", "requiredTools": ["get_vehicle"], "requiredText": ["confirmar"], "forbiddenText": ["7.1", "km/l"] }
     ],
     "requiredTools": ["get_vehicle"],
     "forbiddenText": ["7.1", "get_vehicle", "{\""],
+    "maxRepeatedResponses": 0
+  },
+  {
+    "id": "no-materially-repeated-assistant-turn",
+    "turns": [
+      { "role": "user", "content": "Hola, quiero saber el horario de la agencia.", "requiredTools": ["approved_knowledge_search"], "requiredText": ["sábado"] },
+      { "role": "user", "content": "¿También abren los sábados?", "requiredTools": ["approved_knowledge_search"], "requiredText": ["sábado"] }
+    ],
+    "requiredTools": ["approved_knowledge_search"],
+    "forbiddenText": ["approved_knowledge_search", "{\"query\""],
     "maxRepeatedResponses": 0
   }
 ]

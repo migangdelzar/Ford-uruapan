@@ -57,6 +57,17 @@ class AssistantResponseQualityPolicyTest {
     }
 
     @Test
+    void rejectsAMateriallyRepeatedAnswerWithOnlyMinorWordingChanges() {
+        var memory = "Historial reciente:\n- asistente: La Ranger está disponible en la agencia Ford Uruapan.";
+
+        var verdict = policy.evaluate("¿Sigue disponible?", memory,
+                "La Ranger está disponible en la agencia Ford Uruapan actualmente.");
+
+        assertThat(verdict.accepted()).isFalse();
+        assertThat(verdict.reason()).isEqualTo("repeated_response");
+    }
+
+    @Test
     void rejectsTheGenericScopeReplyWhenTheCustomerAskedARealQuestion() {
         var verdict = policy.evaluate("¿Cuántos kilómetros por litro da la Raptor?", null,
                 "Con mucho gusto le ayudo con vehículos Ford. ¿Qué modelo le interesa revisar?");
