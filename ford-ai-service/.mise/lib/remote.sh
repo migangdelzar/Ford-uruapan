@@ -28,6 +28,7 @@ load_deploy_config() {
   local preserved_ghcr_username="${GHCR_USERNAME:-}"
   local preserved_ghcr_token="${GHCR_TOKEN:-}"
   local preserved_openai_api_key="${OPENAI_API_KEY:-}"
+  local preserved_ford_mcp_api_token="${FORD_MCP_API_TOKEN:-}"
   local preserved_mcp_token="${MCP_HTTP_BEARER_TOKEN:-}"
   local preserved_grafana_token="${GRAFANA_CLOUD_API_TOKEN:-}"
   local preserved_langfuse_secret="${LANGFUSE_SECRET_KEY:-}"
@@ -47,6 +48,7 @@ load_deploy_config() {
   [[ -n "$preserved_ghcr_username" ]] && export GHCR_USERNAME="$preserved_ghcr_username"
   [[ -n "$preserved_ghcr_token" ]] && export GHCR_TOKEN="$preserved_ghcr_token"
   [[ -n "$preserved_openai_api_key" ]] && export OPENAI_API_KEY="$preserved_openai_api_key"
+  [[ -n "$preserved_ford_mcp_api_token" ]] && export FORD_MCP_API_TOKEN="$preserved_ford_mcp_api_token"
   [[ -n "$preserved_mcp_token" ]] && export MCP_HTTP_BEARER_TOKEN="$preserved_mcp_token"
   [[ -n "$preserved_grafana_token" ]] && export GRAFANA_CLOUD_API_TOKEN="$preserved_grafana_token"
   [[ -n "$preserved_langfuse_secret" ]] && export LANGFUSE_SECRET_KEY="$preserved_langfuse_secret"
@@ -84,6 +86,13 @@ require_deploy_config() {
   if [[ "${FORD_META_DELIVERY_ENABLED:-false}" == "true" ]]; then
     [[ -n "${FORD_META_WHATSAPP_DELIVERY_ENDPOINT:-}" ]] || missing+=("FORD_META_WHATSAPP_DELIVERY_ENDPOINT")
     [[ -n "${FORD_META_WHATSAPP_ACCESS_TOKEN:-}" ]] || missing+=("FORD_META_WHATSAPP_ACCESS_TOKEN")
+  fi
+  if [[ "${FORD_MCP_ENABLED:-false}" == "true" ]]; then
+    [[ -n "${FORD_MCP_URL:-}" ]] || missing+=("FORD_MCP_URL")
+    [[ "${FORD_MCP_URL:-}" != "https://your-stable-mcp-domain.example.com" ]] || missing+=("usable:FORD_MCP_URL")
+    [[ "${FORD_MCP_URL:-}" == https://* ]] || missing+=("https:FORD_MCP_URL")
+    [[ -n "${FORD_MCP_ENDPOINT:-}" ]] || missing+=("FORD_MCP_ENDPOINT")
+    [[ -n "${FORD_MCP_API_TOKEN:-${MCP_HTTP_BEARER_TOKEN:-}}" ]] || missing+=("FORD_MCP_API_TOKEN")
   fi
   if (( ${#missing[@]} > 0 )); then
     printf 'Missing deployment configuration: %s\n' "${missing[*]}" >&2
@@ -275,7 +284,7 @@ render_deploy_inventory() {
   ford_mcp_enabled_yaml="$(yaml_quote "${FORD_MCP_ENABLED:-false}")"
   ford_mcp_url_yaml="$(yaml_quote "${FORD_MCP_URL:-https://your-stable-mcp-domain.example.com}")"
   ford_mcp_endpoint_yaml="$(yaml_quote "${FORD_MCP_ENDPOINT:-/mcp}")"
-  mcp_token_yaml="$(yaml_quote "${MCP_HTTP_BEARER_TOKEN:-}")"
+  mcp_token_yaml="$(yaml_quote "${FORD_MCP_API_TOKEN:-${MCP_HTTP_BEARER_TOKEN:-}}")"
   backup_bucket_yaml="$(yaml_quote "${OCI_BACKUP_BUCKET:-emme-business}")"
   backup_namespace_yaml="$(yaml_quote "${OCI_OBJECT_STORAGE_NAMESPACE:-}")"
   backup_prefix_yaml="$(yaml_quote "${OCI_BACKUP_PREFIX:-ford/backups}")"

@@ -143,6 +143,18 @@ test("Ansible propagates Meta delivery and outbox runtime settings", async () =>
   assert.match(secrets, /FORD_META_WHATSAPP_ACCESS_TOKEN/);
 });
 
+test("Ansible accepts the source Ford MCP configuration names", async () => {
+  const example = await read("deployment/config/oci.env.example");
+  const remote = await read("ford-ai-service/.mise/lib/remote.sh");
+  const secrets = await read("ford-ai-service/.mise/tasks/deploy/secrets");
+
+  for (const variable of ["FORD_MCP_URL", "FORD_MCP_ENDPOINT", "FORD_MCP_API_TOKEN"]) {
+    assert.match(example, new RegExp(`^${variable}=`, "m"), `${variable} must be documented`);
+    assert.match(remote, new RegExp(variable), `${variable} must reach the inventory`);
+  }
+  assert.match(secrets, /FORD_MCP_API_TOKEN/);
+});
+
 test("app deployment transfers local images and checks the webhook route", async () => {
   const appTask = await read("ford-ai-service/.mise/tasks/deploy/app");
   const appRole = await read("deployment/ansible/roles/app/tasks/main.yml");
