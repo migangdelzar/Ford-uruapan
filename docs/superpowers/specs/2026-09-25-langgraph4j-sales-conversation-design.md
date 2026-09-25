@@ -1,7 +1,7 @@
 # LangGraph4j-Owned Ford Sales Conversation Design
 
 **Date:** 2026-09-25  
-**Status:** Approved design; written specification awaiting user review  
+**Status:** Approved by user; implementation in progress
 **Supersedes:** The orchestration choice in `2026-09-25-adaptive-ford-lead-journey-design.md`. Its non-linear sales-journey and confirmed-fact requirements remain in force unless explicitly changed below.
 
 ## Objective
@@ -30,6 +30,8 @@ Upstream LangGraph4j documentation distinguishes reusable `spring-ai-core` adapt
 ## Graph contract and turn flow
 
 Each graph state is an execution envelope, not a new business database. It contains the tenant/conversation scope, inbound event identity, current user message for this invocation, loaded bounded conversation context, loaded lead-journey snapshot/version, extracted current-turn intent/evidence, authorized tool results needed for this turn, response candidate, qualification decision/reasons, selected route, and commit outcome. Do not put credentials, raw MCP secrets, payment data, or government identifiers in checkpoints. Avoid copying the full transcript into graph state; use the existing transcript and bounded memory services.
+
+The current user message, response draft, and tool payloads are invocation-only data and must be excluded from serialized checkpoints. Persist only stable tenant/conversation/inbound references and safe node/route/version metadata; nodes reload the current inbound body from its tenant-scoped canonical transcript record when resuming. If a checkpoint cannot be resumed without storing message content, restart that idempotent graph invocation from the safe beginning rather than persisting raw content.
 
 The normal graph is:
 
@@ -115,7 +117,7 @@ Checkpoints and logs must not contain provider/API secrets, raw payment or ident
 2. Add the graph behind a runtime feature flag with the existing workflow available as rollback. Keep `FORD_HUMAN_HANDOFF_ENABLED` as an independent kill switch. Because this approved behavior includes HOT/direct queueing and accepted WARM follow-up, set it to `true` in the managed deployment configuration for this rollout only after operator list/claim is verified; propagate it through the existing secrets task, never an ad-hoc SSH edit.
 3. Verify dependency resolution for Java 25 + Spring Boot 4.1.0 + Spring AI 2.0.1 + the selected LangGraph4j modules. Build the graph and saver with an integration test before enabling it for inbound production traffic.
 4. Back up the emme-2 PostgreSQL data using the existing backup tasks; deploy additive database/saver schema safely; prove rollback keeps prior app and data readable.
-5. Build and deploy the immutable app image to emme-1 using `mise run deploy:app` and the existing Ansible/secret-propagation mechanism. Do not manually SSH, alter secrets outside the existing secret task, or reset production data.
+5. Publish the immutable ARM64 app image to GHCR with `mise run release:publish`, then deploy that exact image reference to emme-1 with `mise run deploy:app` and the existing Ansible/secret-propagation mechanism. Do not manually SSH, alter secrets outside the existing task, or reset production data.
 6. Verify emme-1 readiness, database connectivity/migrations and Redis-backed behavior on emme-2, correct OpenRouter/provider selection, authorized Ford MCP/RAG tool inventory and invocation, inbound webhook acceptance, grounded promotion lookup, multi-turn memory/continuation after process restart, warm offer/decline/acceptance, hot/direct human queue creation, operator list/claim, outbound delivery, duplicate-event idempotency, and privacy-safe logs.
 7. Inspect app, database, outbox, and handoff logs before declaring success. Keep the previous image and documented rollback command. If a required downstream capability (Ford source, advisor queue/alert, credentials, or provider) is absent, identify it specifically and do not claim the whole user flow works.
 
