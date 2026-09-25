@@ -42,7 +42,8 @@ class ModelProviderPolicyTest {
                 provider("ollama", true, true, true, false),
                 provider("openai", true, true, true, true),
                 provider("unhealthy", false, true, true, true),
-                provider("no-tools", true, false, true, true)));
+                provider("no-tools", true, false, true, true),
+                provider("no-structured-output", true, true, false, true)));
 
         var candidates = policy.candidates(new AiExecutionContext(UUID.randomUUID(), false),
                 new ModelRequirements(true, true));

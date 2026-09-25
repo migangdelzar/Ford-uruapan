@@ -4,6 +4,7 @@ import com.ford.service.ai.application.AssistantOrchestrator;
 import com.ford.service.ai.application.AssistantService;
 import com.ford.service.ai.application.ConversationDecisionPort;
 import com.ford.service.ai.application.ConversationDecisionService;
+import com.ford.service.ai.configuration.AiProperties;
 import com.ford.service.ai.adapter.out.rules.RulesConversationDecisionAdapter;
 import com.ford.service.ai.configuration.SpringAiConfiguration;
 import com.ford.service.ai.adapter.out.springai.SpringAiProviderConfiguration;
@@ -22,7 +23,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @org.springframework.test.context.TestPropertySource(properties = {
         "ford.ai.cloud-enabled=false",
         "ford.ai.local-enabled=false",
-        "spring.ai.typesafe.api-key="
+        "spring.ai.typesafe.api-key=",
+        "spring.ai.retry.max-attempts=1",
+        "spring.ai.openai.max-retries=0"
 })
 class SpringAiConfigurationSliceTest {
 
@@ -44,6 +47,16 @@ class SpringAiConfigurationSliceTest {
         assertThat(context.getBean(ConversationDecisionPort.class))
                 .isInstanceOf(RulesConversationDecisionAdapter.class);
         assertThat(context.getBean(ConversationDecisionService.class)).isNotNull();
+    }
+
+    @Test
+    void configuresProviderRetryBudgetAndDisablesNestedSpringAiRetries() {
+        var properties = context.getBean(AiProperties.class);
+
+        assertThat(properties.providerMaxAttempts()).isEqualTo(2);
+        assertThat(properties.providerMaxRetryAfter()).isEqualTo(java.time.Duration.ofSeconds(3));
+        assertThat(context.getEnvironment().getProperty("spring.ai.retry.max-attempts", Integer.class)).isEqualTo(1);
+        assertThat(context.getEnvironment().getProperty("spring.ai.openai.max-retries", Integer.class)).isZero();
     }
 
     @RestController

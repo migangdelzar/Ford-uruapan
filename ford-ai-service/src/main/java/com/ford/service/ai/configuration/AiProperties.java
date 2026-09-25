@@ -1,7 +1,15 @@
 package com.ford.service.ai.configuration;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+import java.time.Duration;
+
+@Validated
 @ConfigurationProperties(prefix = "ford.ai")
 public class AiProperties {
 
@@ -15,6 +23,11 @@ public class AiProperties {
     private boolean cloudEnabled = true;
     private boolean localEnabled = true;
     private boolean logProviderErrors;
+    @Min(1)
+    @Max(2)
+    private int providerMaxAttempts = 2;
+    @NotNull
+    private Duration providerMaxRetryAfter = Duration.ofSeconds(3);
 
     public String chatProvider() {
         return chatProvider;
@@ -94,5 +107,26 @@ public class AiProperties {
 
     public void setLogProviderErrors(boolean value) {
         logProviderErrors = value;
+    }
+
+    public int providerMaxAttempts() {
+        return providerMaxAttempts;
+    }
+
+    public void setProviderMaxAttempts(int value) {
+        providerMaxAttempts = value;
+    }
+
+    public Duration providerMaxRetryAfter() {
+        return providerMaxRetryAfter;
+    }
+
+    public void setProviderMaxRetryAfter(Duration value) {
+        providerMaxRetryAfter = value;
+    }
+
+    @AssertTrue(message = "ford.ai.provider-max-retry-after must not be negative")
+    public boolean isProviderMaxRetryAfterNonNegative() {
+        return providerMaxRetryAfter == null || !providerMaxRetryAfter.isNegative();
     }
 }

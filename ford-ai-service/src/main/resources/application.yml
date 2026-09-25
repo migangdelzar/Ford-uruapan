@@ -38,12 +38,15 @@ spring:
     enabled: true
     change-log: classpath:/db/changelog/db.changelog-master.yaml
   ai:
+    retry:
+      max-attempts: 1
     chat:
       client:
         observations:
           log-prompt: ${FORD_AI_LOG_PROMPT:false}
           log-completion: ${FORD_AI_LOG_COMPLETION:false}
     openai:
+      max-retries: 0
       # Spring AI 2.x passes this value directly to the OpenAI-compatible SDK,
       # which appends /chat/completions. Keep the provider API version here.
       base-url: ${FORD_AI_CLOUD_BASE_URL:https://api.openai.com/v1}
@@ -176,6 +179,8 @@ ford:
     cloud-enabled: ${FORD_AI_CLOUD_ENABLED:false}
     local-enabled: ${FORD_AI_LOCAL_ENABLED:true}
     log-provider-errors: ${FORD_AI_LOG_PROVIDER_ERRORS:false}
+    provider-max-attempts: ${FORD_AI_PROVIDER_MAX_ATTEMPTS:2}
+    provider-max-retry-after: ${FORD_AI_PROVIDER_MAX_RETRY_AFTER:PT3S}
     classification:
       enabled: ${FORD_AI_CLASSIFICATION_ENABLED:true}
       mode: ${FORD_AI_CLASSIFICATION_MODE:active}

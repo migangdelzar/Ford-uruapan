@@ -13,6 +13,8 @@ import com.ford.service.ai.application.AssistantScopePolicy;
 import com.ford.service.ai.application.IntentRouter;
 import com.ford.service.ai.application.LeadQualificationPolicy;
 import com.ford.service.ai.application.SpringAiAssistantService;
+import com.ford.service.ai.application.ProviderRetryDelay;
+import com.ford.service.ai.application.ThreadBasedProviderRetryDelay;
 import com.ford.service.ai.application.SystemPromptService;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
 import com.ford.service.ai.application.DecisionPolicy;
@@ -174,11 +176,17 @@ public class SpringAiConfiguration {
     }
 
     @Bean
+    ProviderRetryDelay providerRetryDelay() {
+        return new ThreadBasedProviderRetryDelay();
+    }
+
+    @Bean
     ChatCompletionPort chatCompletionPort(ObjectProvider<OpenAiChatModel> cloudModel,
                                            ObjectProvider<OllamaChatModel> localModel,
                                          AiProperties properties,
                                          ToolAuthorizationPolicy toolPolicy,
                                          ModelProviderPolicy providerPolicy,
+                                         ProviderRetryDelay retryDelay,
                                          DecisionPolicy decisionPolicy,
                                          AssistantScopePolicy scopePolicy,
                                          ObjectProvider<SystemPromptService> systemPromptServices,
@@ -206,7 +214,8 @@ public class SpringAiConfiguration {
         }
         return providers.isEmpty()
                 ? new UnavailableChatCompletionPort()
-                : new ProviderRoutingChatCompletionPort(providers, providerPolicy);
+                : new ProviderRoutingChatCompletionPort(providers, providerPolicy,
+                        properties.providerMaxAttempts(), properties.providerMaxRetryAfter(), retryDelay);
     }
 
     private static ChatClient chatClient(ChatModel model,
