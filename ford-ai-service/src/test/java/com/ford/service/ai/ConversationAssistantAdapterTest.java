@@ -3,6 +3,11 @@ package com.ford.service.ai;
 import com.ford.service.ai.api.AssistantTurn;
 import com.ford.service.ai.application.AssistantService;
 import com.ford.service.ai.application.Intent;
+import com.ford.service.leads.domain.LeadJourneyFact;
+import com.ford.service.leads.domain.LeadJourneyFactKey;
+import com.ford.service.leads.domain.LeadJourneyProposal;
+import com.ford.service.leads.domain.LeadJourneySnapshot;
+import com.ford.service.leads.domain.LeadJourneyTopic;
 import com.ford.service.conversations.application.ConversationAssistantAdapter;
 import com.ford.service.conversations.api.AssistantReply;
 import com.ford.service.conversations.api.ConversationTurnRequest;
@@ -15,6 +20,8 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -23,6 +30,37 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ConversationAssistantAdapterTest {
+
+    @Test
+    void passesSafeJourneyContextAndMapsTheModelProposalBackToTheConversation() {
+        var ai = mock(AssistantService.class);
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var sourceMessageId = UUID.randomUUID().toString();
+        var proposal = new LeadJourneyProposal(LeadJourneyTopic.PROMOTIONS_PRICING, List.of(), "ask_timing");
+        var snapshot = new LeadJourneySnapshot(tenantId, conversationId, UUID.randomUUID(),
+                LeadJourneyTopic.PROMOTIONS_PRICING, Set.of(LeadJourneyTopic.PROMOTIONS_PRICING), Set.of(),
+                Map.of(LeadJourneyFactKey.VEHICLE_MODEL,
+                                new LeadJourneyFact("Ranger", sourceMessageId, Instant.now()),
+                        LeadJourneyFactKey.BUDGET_RANGE,
+                                new LeadJourneyFact("Mi correo es ana@example.com", sourceMessageId, Instant.now())),
+                null, 0, null, 1, Instant.now());
+        when(ai.respond(any(), any())).thenReturn(new AssistantTurn(
+                "Te comparto las promociones vigentes.", Intent.GENERAL, false, List.of(),
+                "openrouter", "openrouter/free", null, proposal));
+
+        var reply = new ConversationAssistantAdapter(ai).respond(new ConversationTurnRequest(
+                tenantId, conversationId, "¿Qué promociones tienen?", ConversationState.BOT_ACTIVE,
+                null, snapshot));
+
+        assertThat(reply.journeyProposal()).isEqualTo(proposal);
+        var context = org.mockito.ArgumentCaptor.forClass(
+                com.ford.service.ai.application.AiExecutionContext.class);
+        verify(ai).respond(context.capture(), org.mockito.ArgumentMatchers.eq("¿Qué promociones tienen?"));
+        assertThat(context.getValue().leadJourneyContext())
+                .contains("PROMOTIONS_PRICING", "VEHICLE_MODEL: Ranger")
+                .doesNotContain(tenantId.toString(), conversationId.toString(), sourceMessageId, "ana@example.com");
+    }
 
     @Test
     void mapsAiTurnIntoConversationReply() {

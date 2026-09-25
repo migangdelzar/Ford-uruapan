@@ -35,8 +35,9 @@ public class ConversationAssistantAdapter implements ConversationAssistant {
             return new AssistantReply(FALLBACK_TEXT, true);
         }
         var turn = assistant.respond(new AiExecutionContext(
-                request.tenantId(), false, request.conversationId(), memoryPrompt(request.memory())), request.message());
-        return new AssistantReply(turn.text(), turn.requestsHuman(), turn.decision());
+                request.tenantId(), false, request.conversationId(), memoryPrompt(request.memory()), null,
+                new LeadJourneyContextFormatter().format(request.leadJourney())), request.message());
+        return new AssistantReply(turn.text(), turn.requestsHuman(), turn.decision(), turn.journeyProposal());
     }
 
     private static String memoryPrompt(ConversationMemoryContext memory) {

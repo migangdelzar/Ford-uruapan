@@ -125,11 +125,12 @@ public final class SpringAiAssistantService implements AssistantService {
             AssistantResponse response = orchestrator.respond(new AssistantRequest(
                     context.tenantId(), conversationId, userText, "BOT_ACTIVE",
                     context.memoryContext(),
-                    context.containsSensitiveData(), decision));
+                    context.containsSensitiveData(), decision, context.leadJourneyContext()));
             var requestsHuman = response.handoffRequired()
                     || decisionPolicy.mayCreateHandoff(decision, handoffPolicy.enabled());
             return new AssistantTurn(response.content(), decision.toLegacyIntent(), requestsHuman,
-                    response.sourceDocumentIds(), response.provider(), modelVersion(response.provider()), decision);
+                    response.sourceDocumentIds(), response.provider(), modelVersion(response.provider()), decision,
+                    response.journeyProposal());
         } catch (RuntimeException exception) {
             log.warn("AI completion failed: providers={} exceptionType={} {}",
                     providerSummary(), exception.getClass().getSimpleName(),

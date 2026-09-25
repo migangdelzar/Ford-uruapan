@@ -2,6 +2,7 @@ package com.ford.service.ai.api;
 
 import com.ford.service.ai.application.Intent;
 import com.ford.service.ai.application.ConversationDecision;
+import com.ford.service.leads.domain.LeadJourneyProposal;
 
 import java.util.List;
 import java.util.Objects;
@@ -13,7 +14,8 @@ public record AssistantTurn(
         List<String> sourceIds,
         String provider,
         String modelVersion,
-        ConversationDecision decision) {
+        ConversationDecision decision,
+        LeadJourneyProposal journeyProposal) {
 
     public AssistantTurn {
         if (text == null || text.isBlank()) {
@@ -29,6 +31,12 @@ public record AssistantTurn(
     public AssistantTurn(String text, Intent intent, boolean requestsHuman,
                          List<String> sourceIds, String provider, String modelVersion) {
         this(text, intent, requestsHuman, sourceIds, provider, modelVersion,
-                ConversationDecision.deterministicDefault());
+                ConversationDecision.deterministicDefault(), null);
+    }
+
+    public AssistantTurn(String text, Intent intent, boolean requestsHuman,
+                         List<String> sourceIds, String provider, String modelVersion,
+                         ConversationDecision decision) {
+        this(text, intent, requestsHuman, sourceIds, provider, modelVersion, decision, null);
     }
 }
