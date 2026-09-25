@@ -12,8 +12,6 @@ public interface ConversationMemoryPort {
 
     void recordInbound(ConversationMemoryKey key, ConversationMessage message);
 
-    void recordOutbound(ConversationMemoryKey key, ConversationMessage message);
-
     default void invalidate(ConversationMemoryKey key) {
     }
 

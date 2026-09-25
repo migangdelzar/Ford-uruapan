@@ -72,10 +72,6 @@ class ConversationMemoryServiceTest {
         }
 
         @Override
-        public void recordOutbound(ConversationMemoryKey key, ConversationMessage message) {
-        }
-
-        @Override
         public MemoryUpdateResult updateProjection(ConversationMemoryKey key,
                                                     MemoryProjectionUpdate update,
                                                     long expectedVersion) {

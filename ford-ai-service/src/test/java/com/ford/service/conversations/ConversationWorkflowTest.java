@@ -87,12 +87,6 @@ class ConversationWorkflowTest {
         assertThat(memoryPort.inbound).isNotNull();
         assertThat(memoryPort.inbound.providerMessageId()).isEqualTo("wamid.memory");
         assertThat(memoryPort.inbound.content()).isEqualTo("¿Hay Ranger?");
-        assertThat(memoryPort.outbound).isNotNull();
-        assertThat(memoryPort.outbound.direction()).isEqualTo(ConversationMessage.Direction.OUTBOUND);
-        assertThat(memoryPort.outbound.content()).isEqualTo("Respuesta");
-        assertThat(memoryPort.outbound.providerMessageId())
-                .startsWith("assistant:")
-                .hasSize(46);
         assertThat(memoryPort.projection).isNotNull();
         assertThat(memoryPort.projection.summary()).contains("¿Hay Ranger?");
         assertThat(memoryPort.projectionExpectedVersion).isZero();
@@ -249,10 +243,6 @@ class ConversationWorkflowTest {
             }
 
             @Override
-            public void recordOutbound(ConversationMemoryKey key, ConversationMessage message) {
-            }
-
-            @Override
             public MemoryUpdateResult updateProjection(ConversationMemoryKey key,
                                                         MemoryProjectionUpdate update,
                                                         long expectedVersion) {
@@ -287,7 +277,6 @@ class ConversationWorkflowTest {
 
     private static final class RecordingMemoryPort implements ConversationMemoryPort {
         private ConversationMessage inbound;
-        private ConversationMessage outbound;
         private MemoryProjectionUpdate projection;
         private long projectionExpectedVersion = -1;
         private UUID invalidated;
@@ -300,11 +289,6 @@ class ConversationWorkflowTest {
         @Override
         public void recordInbound(ConversationMemoryKey key, ConversationMessage message) {
             inbound = message;
-        }
-
-        @Override
-        public void recordOutbound(ConversationMemoryKey key, ConversationMessage message) {
-            outbound = message;
         }
 
         @Override

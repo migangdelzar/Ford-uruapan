@@ -83,20 +83,6 @@ public final class ConversationMemoryService {
         }
     }
 
-    public void recordOutbound(ConversationMemoryKey key, UUID messageId, String providerMessageId,
-                               String content, java.time.Instant occurredAt) {
-        if (!properties.enabled() || content == null || content.isBlank()) {
-            return;
-        }
-        try {
-            memory.recordOutbound(key, new ConversationMessage(messageId, key.conversationId(),
-                    ConversationMessage.Direction.OUTBOUND, providerMessageId, content, occurredAt));
-        } catch (RuntimeException exception) {
-            log.warn("Outbound conversation memory write failed: conversationId={} exceptionType={}",
-                    key.conversationId(), exception.getClass().getSimpleName());
-        }
-    }
-
     public MemoryProjectionUpdate project(ConversationMemoryContext context, String latestUserMessage,
                                           UUID sourceMessageId) {
         return projector.project(context, latestUserMessage, sourceMessageId);

@@ -3,11 +3,6 @@ package com.ford.service.e2e;
 import com.ford.service.ai.api.AssistantTurn;
 import com.ford.service.ai.application.AssistantService;
 import com.ford.service.ai.application.Intent;
-import com.ford.service.conversations.application.ConversationWorkflow;
-import com.ford.service.conversations.application.port.out.ConversationAssistant;
-import com.ford.service.conversations.application.port.out.ConversationRepository;
-import com.ford.service.conversations.api.AssistantReply;
-import org.springframework.context.ApplicationEventPublisher;
 import liquibase.integration.spring.SpringLiquibase;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -97,6 +92,8 @@ class MetaToOutboxVerticalFlowTest {
                 .andExpect(status().isAccepted());
 
         awaitCount("select count(*) from outbox_event where event_type = 'OUTBOUND_DELIVERY_REQUESTED'", 1);
+        awaitCount("select count(*) from event_publication where listener_id like '%ConversationWorkflow.on%' "
+                + "and completion_date is not null", 1);
 
         var conversationId = jdbc.sql("select id from conversation where tenant_id = :tenantId")
                 .param("tenantId", tenantId)
@@ -105,9 +102,10 @@ class MetaToOutboxVerticalFlowTest {
         var outbound = jdbc.sql("select content from conversation_message where conversation_id = :conversationId and direction = 'OUTBOUND'")
                 .param("conversationId", conversationId)
                 .query(String.class)
-                .single();
+                .list();
 
-        assertThat(outbound)
+        assertThat(outbound).singleElement()
+                .asString()
                 .contains("Ranger 2026", "$589,000 MXN", "catalog:ranger-2026", "vigencia")
                 .doesNotContain("5214521234567", "Ana", "ana@example.com");
         assertThat(jdbc.sql("select state from conversation where id = :conversationId")
@@ -165,7 +163,7 @@ class MetaToOutboxVerticalFlowTest {
         var inboundPublications = jdbc.sql("select count(*) from event_publication where event_type like '%InboundMessageAccepted%'")
                 .query(Integer.class).single();
         assertThat(actual)
-                .withFailMessage("outbox=%s conversations=%s state=%s inboundPublications=%s", actual,
+                .withFailMessage("actual=%s conversations=%s state=%s inboundPublications=%s", actual,
                         conversationCount, state, inboundPublications)
                 .isEqualTo(expected);
     }
@@ -188,22 +186,5 @@ class MetaToOutboxVerticalFlowTest {
                     Intent.CATALOG, false, java.util.List.of("catalog:ranger-2026"), "test", "fixture-1");
         }
 
-        @Bean
-        @Primary
-        ConversationAssistant conversationAssistant(AssistantService assistantService) {
-            return request -> {
-                var turn = assistantService.respond(
-                        new com.ford.service.ai.application.AiExecutionContext(
-                                request.tenantId(), false, request.conversationId()), request.message());
-                return new AssistantReply(turn.text(), turn.requestsHuman());
-            };
-        }
-
-        @Bean
-        ConversationWorkflow testConversationWorkflow(ConversationRepository repository,
-                                                       ConversationAssistant assistant,
-                                                       ApplicationEventPublisher eventPublisher) {
-            return new ConversationWorkflow(repository, assistant, eventPublisher);
-        }
     }
 }

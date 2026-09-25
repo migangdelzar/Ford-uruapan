@@ -21,7 +21,6 @@ import org.springframework.modulith.events.ApplicationModuleListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.time.Instant;
 import java.util.UUID;
@@ -82,10 +81,6 @@ public class ConversationWorkflow {
             }
 
             @Override
-            public void recordOutbound(ConversationMemoryKey key, ConversationMessage message) {
-            }
-
-            @Override
             public MemoryUpdateResult updateProjection(ConversationMemoryKey key,
                                                         MemoryProjectionUpdate update,
                                                         long expectedVersion) {
@@ -136,9 +131,6 @@ public class ConversationWorkflow {
         var accepted = repository.completeBotTurn(snapshot.conversationId(), snapshot.version(),
                 new ConversationTurn(text));
         if (accepted) {
-            var outboundMessageId = assistantMessageId(snapshot.conversationId(), event.providerMessageId());
-            memoryService.recordOutbound(memoryKey, outboundMessageId,
-                    "assistant:" + outboundMessageId, text, Instant.now());
             memoryService.updateProjection(memoryKey,
                     memoryService.project(memory, currentMessage, event.receiptId()), memory.memoryVersion());
             memoryService.invalidate(memoryKey);
@@ -146,11 +138,6 @@ public class ConversationWorkflow {
                     snapshot.tenantId(), snapshot.conversationId(), snapshot.channel(),
                     snapshot.recipientId(), text));
         }
-    }
-
-    private static UUID assistantMessageId(UUID conversationId, String inboundProviderMessageId) {
-        var seed = conversationId + ":" + String.valueOf(inboundProviderMessageId);
-        return UUID.nameUUIDFromBytes(seed.getBytes(StandardCharsets.UTF_8));
     }
 
     private static boolean canUseAssistant(ConversationState state) {
