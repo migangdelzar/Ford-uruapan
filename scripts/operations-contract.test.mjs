@@ -143,6 +143,16 @@ test("Ansible propagates Meta delivery and outbox runtime settings", async () =>
   assert.match(secrets, /FORD_META_WHATSAPP_ACCESS_TOKEN/);
 });
 
+test("Ansible propagates the human handoff feature flag", async () => {
+  const example = await read("deployment/config/oci.env.example");
+  const remote = await read("ford-ai-service/.mise/lib/remote.sh");
+  const template = await read("deployment/ansible/roles/app/templates/app.env.j2");
+
+  for (const source of [example, remote, template]) {
+    assert.match(source, /FORD_HUMAN_HANDOFF_ENABLED/);
+  }
+});
+
 test("Ansible accepts the source Ford MCP configuration names", async () => {
   const example = await read("deployment/config/oci.env.example");
   const remote = await read("ford-ai-service/.mise/lib/remote.sh");
