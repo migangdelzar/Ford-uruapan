@@ -67,3 +67,14 @@
     cmd: docker compose --env-file "{{ remote_root }}/data/.env" -f "{{ remote_root }}/data/compose.yml" up -d --wait
   register: data_compose
   changed_when: "'Started' in data_compose.stdout or 'Created' in data_compose.stdout or 'Recreated' in data_compose.stdout"
+
+- name: Reconcile the application PostgreSQL role password
+  ansible.builtin.command:
+    cmd: >-
+      docker compose --env-file "{{ remote_root }}/data/.env"
+      -f "{{ remote_root }}/data/compose.yml"
+      exec -T -u postgres postgres
+      psql -v ON_ERROR_STOP=1 -U ford -d ford_service
+      -c "ALTER ROLE ford PASSWORD '{{ postgres_password }}';"
+  no_log: true
+  changed_when: false

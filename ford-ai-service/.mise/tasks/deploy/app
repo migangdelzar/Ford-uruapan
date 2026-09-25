@@ -5,7 +5,6 @@ cd "$MISE_PROJECT_ROOT"
 source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
 load_deploy_config
 require_deploy_config
-require_command docker
 render_deploy_inventory
 
 ensure_deploy_state_dir
@@ -15,22 +14,31 @@ if [[ "$image" == ghcr.io/* && -n "${GHCR_TOKEN:-}" ]]; then
     --tags common,app,verify --limit app \
     -e "app_image=$image" "$@"
 else
-  if docker buildx version >/dev/null 2>&1; then
+  local_docker_available=0
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    local_docker_available=1
+  fi
+
+  if (( local_docker_available == 1 )) && docker buildx version >/dev/null 2>&1; then
     docker buildx build --platform linux/arm64 --load -t "$image" "$MISE_PROJECT_ROOT"
-  else
+  elif (( local_docker_available == 1 )); then
     docker_architecture="$(docker info --format '{{.Architecture}}')"
     case "$docker_architecture" in
       aarch64|arm64)
         docker build --platform linux/arm64 -t "$image" "$MISE_PROJECT_ROOT"
         ;;
       *)
-        echo "Docker buildx is unavailable and the Docker daemon is not ARM64 ($docker_architecture)." >&2
-        exit 1
+        echo "Local Docker is available but not ARM64 ($docker_architecture); using the emme-1 remote ARM64 build."
         ;;
     esac
   fi
+
+  if (( local_docker_available == 0 )) || ! docker image inspect "$image" >/dev/null 2>&1; then
+    require_command ssh
+    require_command tar
+    echo "Building the ARM64 application image directly on emme-1."
   remote_build_dir="/tmp/ford-service-build-$$"
-  tar \
+    COPYFILE_DISABLE=1 tar \
     --exclude=.git \
     --exclude=.gradle \
     --exclude=build \
@@ -44,7 +52,8 @@ else
     -o StrictHostKeyChecking=accept-new \
     -i "${EMME_1_SSH_KEY:-${OCI_SSH_PRIVATE_KEY}}" \
     "${OCI_SSH_USER}@${EMME_1_SSH_HOST}" \
-    "set -e; rm -rf '$remote_build_dir'; mkdir -p '$remote_build_dir'; gzip -d | tar -xf - -C '$remote_build_dir'; docker build --platform linux/arm64 -t '$image' '$remote_build_dir'; rm -rf '$remote_build_dir'"
+      "set -euo pipefail; cleanup() { rm -rf '$remote_build_dir'; }; trap cleanup EXIT; mkdir -p '$remote_build_dir'; gzip -d | tar -xf - -C '$remote_build_dir'; docker build --platform linux/arm64 -t '$image' '$remote_build_dir'"
+  fi
   ansible_command "$(deploy_repo_root)/deployment/ansible/site.yml" \
     --tags common,app,verify --limit app \
     -e "app_image_preloaded=true" \
