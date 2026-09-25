@@ -1,8 +1,10 @@
 package com.ford.service.ai.application.port.out;
 
 import com.ford.service.ai.application.AiExecutionContext;
+import com.ford.service.ai.application.AiProviderFailureDiagnostics;
 import com.ford.service.ai.application.ModelProviderPolicy;
 import com.ford.service.ai.application.ModelRequirements;
+import com.ford.service.ai.application.ProviderFailure;
 import com.ford.service.ai.application.ToolContext;
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantResponse;
@@ -33,14 +35,34 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
     @Override
     public AssistantResponse complete(AssistantRequest request, ToolContext context) {
         Objects.requireNonNull(request, "request must not be null");
-        var selected = policy.select(
+        var candidates = policy.candidates(
                 new AiExecutionContext(request.tenantId(), request.containsSensitiveData(), request.conversationId(),
                         request.memoryContext(), request.decision()),
                 new ModelRequirements(true, true));
-        var port = ports.get(selected.id());
-        if (port == null) {
-            throw new IllegalStateException("Selected AI provider is not configured: " + selected.id());
+        if (candidates.isEmpty()) {
+            throw new IllegalStateException("No provider satisfies the request policy");
         }
-        return port.complete(request, context);
+        for (var index = 0; index < candidates.size(); index++) {
+            var candidate = candidates.get(index);
+            var port = ports.get(candidate.id());
+            if (port == null) {
+                throw new IllegalStateException("Selected AI provider is not configured: " + candidate.id());
+            }
+            try {
+                return port.complete(request, context);
+            } catch (RuntimeException failure) {
+                if (!isRetryable(AiProviderFailureDiagnostics.classify(failure))
+                        || index == candidates.size() - 1) {
+                    throw failure;
+                }
+            }
+        }
+        throw new IllegalStateException("No configured AI provider completed the request");
+    }
+
+    private static boolean isRetryable(ProviderFailure failure) {
+        return ProviderFailure.RATE_LIMITED.equals(failure.category())
+                || ProviderFailure.PROVIDER_UNAVAILABLE.equals(failure.category())
+                || ProviderFailure.NETWORK.equals(failure.category());
     }
 }

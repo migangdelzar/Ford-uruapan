@@ -37,6 +37,37 @@ class ModelProviderPolicyTest {
     }
 
     @Test
+    void returnsEligibleProvidersInCloudFirstOrderForNonSensitiveRequests() {
+        ModelProviderPolicy policy = new DefaultModelProviderPolicy(List.of(
+                provider("ollama", true, true, true, false),
+                provider("openai", true, true, true, true),
+                provider("unhealthy", false, true, true, true),
+                provider("no-tools", true, false, true, true)));
+
+        var candidates = policy.candidates(new AiExecutionContext(UUID.randomUUID(), false),
+                new ModelRequirements(true, true));
+
+        assertThat(candidates).extracting(ProviderDescriptor::id).containsExactly("openai", "ollama");
+    }
+
+    @Test
+    void excludesEveryCloudCandidateForConfirmedSensitiveRequests() {
+        ModelProviderPolicy policy = new DefaultModelProviderPolicy(List.of(
+                provider("openai", true, true, true, true),
+                provider("ollama", true, true, true, false),
+                provider("second-cloud", true, true, true, true)));
+        var decision = new ConversationDecision(ConversationIntent.GENERAL, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.NONE,
+                SensitiveDataLevel.CONFIRMED, List.of());
+
+        var candidates = policy.candidates(new AiExecutionContext(
+                        UUID.randomUUID(), false, UUID.randomUUID(), null, decision),
+                new ModelRequirements(true, true));
+
+        assertThat(candidates).extracting(ProviderDescriptor::id).containsExactly("ollama");
+    }
+
+    @Test
     void selectsLocalProviderWhenSensitiveDataIsPresent() {
         ModelProviderPolicy policy = new DefaultModelProviderPolicy(List.of(
                 provider("openai", true, true, true, true),
