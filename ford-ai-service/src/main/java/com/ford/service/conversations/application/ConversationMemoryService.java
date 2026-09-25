@@ -1,11 +1,14 @@
 package com.ford.service.conversations.application;
 
 import com.ford.service.conversations.domain.ConversationMemoryContext;
+import com.ford.service.conversations.domain.ConversationMemoryKey;
+import com.ford.service.conversations.domain.ConversationMessage;
 import com.ford.service.conversations.domain.MemoryQuery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
+import java.util.UUID;
 
 public final class ConversationMemoryService {
 
@@ -58,6 +61,30 @@ public final class ConversationMemoryService {
                     query.key().conversationId(), query.key().tenantId(),
                     exception.getClass().getSimpleName());
             return ConversationMemoryContext.empty(query.key());
+        }
+    }
+
+    public void recordInbound(ConversationMemoryKey key, UUID messageId, String providerMessageId,
+                              String content, java.time.Instant occurredAt) {
+        if (!properties.enabled() || content == null || content.isBlank()) {
+            return;
+        }
+        try {
+            memory.recordInbound(key, new ConversationMessage(messageId, key.conversationId(),
+                    ConversationMessage.Direction.INBOUND, providerMessageId, content, occurredAt));
+        } catch (RuntimeException exception) {
+            log.warn("Inbound conversation memory write failed: conversationId={} exceptionType={}",
+                    key.conversationId(), exception.getClass().getSimpleName());
+            invalidate(key);
+        }
+    }
+
+    public void invalidate(ConversationMemoryKey key) {
+        try {
+            memory.invalidate(key);
+        } catch (RuntimeException exception) {
+            log.warn("Conversation memory invalidation failed: conversationId={} exceptionType={}",
+                    key.conversationId(), exception.getClass().getSimpleName());
         }
     }
 }

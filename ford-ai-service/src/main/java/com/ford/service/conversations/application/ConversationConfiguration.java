@@ -1,17 +1,25 @@
 package com.ford.service.conversations.application;
 
 import com.ford.service.ai.application.AssistantService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ford.service.conversations.adapter.out.JdbcConversationMemoryRepository;
 import com.ford.service.conversations.adapter.out.PgVectorConversationMemoryAdapter;
+import com.ford.service.conversations.adapter.out.RedisCachedConversationMemoryPort;
+import com.ford.service.conversations.adapter.out.RedisConversationMemoryCache;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
 import com.ford.service.shared.HumanHandoffPolicy;
+import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.annotation.Primary;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties({ConversationProperties.class, MemoryProperties.class})
@@ -32,6 +40,25 @@ public class ConversationConfiguration {
                                                         MemoryProperties properties,
                                                         ConversationMemorySemanticPort semanticMemory) {
         return new ConversationMemoryService(memory, properties, semanticMemory);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ford.memory", name = "cache-enabled", havingValue = "true")
+    ConversationMemoryCache conversationMemoryCache(StringRedisTemplate redis,
+                                                     ObjectMapper objectMapper,
+                                                     MemoryProperties properties,
+                                                     MeterRegistry meterRegistry) {
+        return new RedisConversationMemoryCache(redis, objectMapper, properties, meterRegistry);
+    }
+
+    @Bean
+    @Primary
+    @ConditionalOnProperty(prefix = "ford.memory", name = "cache-enabled", havingValue = "true")
+    ConversationMemoryPort cachedConversationMemoryPort(JdbcConversationMemoryRepository durable,
+                                                          ConversationMemoryCache cache,
+                                                          MemoryProperties properties,
+                                                          MeterRegistry meterRegistry) {
+        return new RedisCachedConversationMemoryPort(durable, cache, properties, meterRegistry);
     }
 
     @Bean

@@ -35,9 +35,9 @@
 - `ConversationMemoryCache.evict(ConversationMemoryKey key)` removes one conversation entry.
 - `RedisCachedConversationMemoryPort` implements `ConversationMemoryPort` and delegates durable work to a supplied durable port.
 
-- [ ] **Step 1: Write failing decorator tests.** Cover cache hit without durable read, durable load plus cache store on miss, durable fallback when cache read fails, eviction after durable message/projection writes, and filtering the current provider message plus the requested recent-message limit on cache hits. Use a fake cache and Mockito for the durable port.
-- [ ] **Step 2: Write failing Redis adapter tests.** Assert complete identity-based keys, serialized payload plus memory version, configured TTL, tenant/participant isolation, and invalid payload treated as a miss.
-- [ ] **Step 3: Run the focused tests and verify RED.**
+- [x] **Step 1: Write failing decorator tests.** Cover cache hit without durable read, durable load plus cache store on miss, durable fallback when cache read fails, eviction after durable message/projection writes, and filtering the current provider message plus the requested recent-message limit on cache hits. Use a fake cache and Mockito for the durable port.
+- [x] **Step 2: Write failing Redis adapter tests.** Assert complete identity-based keys, serialized payload plus memory version, configured TTL, tenant/participant isolation, and invalid payload treated as a miss.
+- [x] **Step 3: Run the focused tests and verify RED.**
 
 ```bash
 ./gradlew test --tests com.ford.service.conversations.RedisCachedConversationMemoryPortTest --tests com.ford.service.conversations.RedisConversationMemoryCacheTest --no-daemon --max-workers=1
@@ -49,17 +49,21 @@ Expected result: compilation/test failure because the cache boundary and impleme
 
 **Files:**
 - Modify: `ford-ai-service/src/main/java/com/ford/service/conversations/application/ConversationMemoryCache.java`
+- Modify: `ford-ai-service/src/main/java/com/ford/service/conversations/application/ConversationMemoryPort.java`
+- Modify: `ford-ai-service/src/main/java/com/ford/service/conversations/application/ConversationMemoryService.java`
+- Modify: `ford-ai-service/src/main/java/com/ford/service/conversations/application/ConversationWorkflow.java`
 - Modify: `ford-ai-service/src/main/java/com/ford/service/conversations/adapter/out/RedisConversationMemoryCache.java`
 - Modify: `ford-ai-service/src/main/java/com/ford/service/conversations/adapter/out/RedisCachedConversationMemoryPort.java`
 - Modify: `ford-ai-service/src/test/java/com/ford/service/conversations/RedisCachedConversationMemoryPortTest.java`
 - Modify: `ford-ai-service/src/test/java/com/ford/service/conversations/RedisConversationMemoryCacheTest.java`
+- Modify: `ford-ai-service/src/test/java/com/ford/service/conversations/ConversationWorkflowTest.java`
 
-- [ ] **Step 1: Implement identity-safe keys.** Use `ford:memory:v1:{tenantId}:{channel}:{providerAccountId}:{participantId}:{conversationId}` with deterministic URL-safe encoding for variable components.
-- [ ] **Step 2: Implement Redis hash storage.** Use `StringRedisTemplate` with fields `memoryVersion` and `payload`, refresh the configured TTL, reject missing fields/invalid JSON/invalid versions, and keep Redis exceptions inside the adapter boundary.
-- [ ] **Step 3: Implement reads.** Try Redis, filter `currentProviderMessageId`, retain the newest `recentMessageLimit` messages in chronological order, and fall back to the durable delegate on miss or failure.
-- [ ] **Step 4: Implement writes.** Call the durable delegate first for `recordInbound`, `recordOutbound`, and `updateProjection`; evict only after the durable call returns. Cache eviction failures must not change the durable result.
-- [ ] **Step 5: Keep logging safe.** Log only operation, outcome, and exception type; never log keys, payloads, identifiers, or message content.
-- [ ] **Step 6: Run the focused tests and verify GREEN.** Re-run the Task 1 command and require all focused tests to pass.
+- [x] **Step 1: Implement identity-safe keys.** Use `ford:memory:v1:{tenantId}:{channel}:{providerAccountId}:{participantId}:{conversationId}` with deterministic URL-safe encoding for variable components.
+- [x] **Step 2: Implement Redis hash storage.** Use `StringRedisTemplate` with fields `memoryVersion` and `payload`, refresh the configured TTL, reject missing fields/invalid JSON/invalid versions, and keep Redis exceptions inside the adapter boundary.
+- [x] **Step 3: Implement reads.** Try Redis, filter `currentProviderMessageId`, retain the newest `recentMessageLimit` messages in chronological order, and fall back to the durable delegate on miss or failure.
+- [x] **Step 4: Implement writes.** Call the durable delegate first for `recordInbound`, `recordOutbound`, and `updateProjection`; evict only after the durable call returns. Cache eviction failures must not change the durable result.
+- [x] **Step 5: Keep logging safe.** Log only operation, outcome, and exception type; never log keys, payloads, identifiers, or message content.
+- [x] **Step 6: Run the focused tests and verify GREEN.** Re-run the Task 1 command and require all focused tests to pass.
 
 ### Task 3: Add properties, conditional Spring wiring, and metrics
 
@@ -70,12 +74,12 @@ Expected result: compilation/test failure because the cache boundary and impleme
 - Modify: `ford-ai-service/src/test/java/com/ford/service/conversations/MemoryPropertiesTest.java`
 - Modify: `ford-ai-service/src/test/java/com/ford/service/conversations/ConversationConfigurationSliceTest.java`
 
-- [ ] **Step 1: Add `Duration cacheTtl` with positive validation.** Default it to 24 hours and expose it through `cacheTtl()`.
-- [ ] **Step 2: Add configuration.** Use `ford.memory.cache-enabled=${FORD_MEMORY_CACHE_ENABLED:false}` and `ford.memory.cache-ttl=${FORD_MEMORY_CACHE_TTL:PT24H}`.
-- [ ] **Step 3: Wire conditionally.** When enabled, create a `ConversationMemoryCache` backed by `StringRedisTemplate` and a `@Primary ConversationMemoryPort` backed by the existing JDBC repository plus the cache. When disabled, keep JDBC as the selected port.
-- [ ] **Step 4: Add low-cardinality metrics.** Record counters/timers for hit, miss, stale, failure, load, store, and evict. Tags may include operation/outcome only.
-- [ ] **Step 5: Test both wiring modes.** Verify the disabled context has no Redis decorator and the enabled context selects the decorator when Redis infrastructure is present.
-- [ ] **Step 6: Run focused configuration tests.**
+- [x] **Step 1: Add `Duration cacheTtl` with positive validation.** Default it to 24 hours and expose it through `cacheTtl()`.
+- [x] **Step 2: Add configuration.** Use `ford.memory.cache-enabled=${FORD_MEMORY_CACHE_ENABLED:false}` and `ford.memory.cache-ttl=${FORD_MEMORY_CACHE_TTL:PT24H}`.
+- [x] **Step 3: Wire conditionally.** When enabled, create a `ConversationMemoryCache` backed by `StringRedisTemplate` and a `@Primary ConversationMemoryPort` backed by the existing JDBC repository plus the cache. When disabled, keep JDBC as the selected port.
+- [x] **Step 4: Add low-cardinality metrics.** Record counters/timers for hit, miss, stale, failure, load, store, and evict. Tags may include operation/outcome only.
+- [x] **Step 5: Test both wiring modes.** Verify the disabled context has no Redis decorator and the enabled context selects the decorator when Redis infrastructure is present.
+- [x] **Step 6: Run focused configuration tests.**
 
 ```bash
 ./gradlew test --tests com.ford.service.conversations.MemoryPropertiesTest --tests com.ford.service.conversations.ConversationConfigurationSliceTest --no-daemon --max-workers=1
@@ -84,13 +88,11 @@ Expected result: compilation/test failure because the cache boundary and impleme
 ### Task 4: Add Redis integration coverage
 
 **Files:**
-- Modify: `ford-ai-service/build.gradle.kts`
-- Modify: `ford-ai-service/gradle/libs.versions.toml`
-- Create: `ford-ai-service/src/test/java/com/ford/service/conversations/RedisConversationMemoryIntegrationTest.java`
+- Create: `ford-ai-service/src/integrationTest/java/com/ford/service/conversations/RedisConversationMemoryCacheIntegrationTest.java`
 
-- [ ] **Step 1: Add `org.testcontainers:redis` at the existing Testcontainers version.** Keep the existing integration-test source set and dependency inheritance.
-- [ ] **Step 2: Test against `redis:7-alpine`.** Start a container, create a `LettuceConnectionFactory` and `StringRedisTemplate`, store/load a context, verify identity and positive TTL, evict it, and verify tenant/participant keys do not collide.
-- [ ] **Step 3: Run the focused integration test.**
+- [x] **Step 1: Reuse the existing Testcontainers core dependency.** A Redis-specific module is not required for `GenericContainer`; the existing integration-test source set and dependency inheritance remain unchanged.
+- [x] **Step 2: Test against `redis:7-alpine`.** Start a container, create a `LettuceConnectionFactory` and `StringRedisTemplate`, store/load a context, verify identity and positive TTL, stale-version protection, and eviction.
+- [x] **Step 3: Run the focused integration test.**
 
 ```bash
 DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock" \
@@ -108,21 +110,20 @@ Require zero failures and zero errors after implementation.
 - Modify: `ford-ai-service/.env.prod.example`
 - Modify: `deployment/runtime/app/.env.template`
 - Modify: `deployment/ansible/roles/app/templates/app.env.j2`
-- Modify: `docs/observability.md`
-- Modify: `docs/superpowers/specs/2026-09-24-redis-hot-memory-design.md`
+- Create: `docs/redis-hot-memory.md`
 
-- [ ] **Step 1: Add `FORD_MEMORY_CACHE_TTL=PT24H` to examples.** Keep local cache disabled by default; document production enablement.
-- [ ] **Step 2: Enable cache in VM app templates.** Add `FORD_MEMORY_CACHE_ENABLED=true` and `FORD_MEMORY_CACHE_TTL=PT24H`, preserving existing emme-2 Redis host, port, and password wiring.
-- [ ] **Step 3: Document Redis restart/eviction behavior.** State that Redis loss causes a PostgreSQL fallback and does not delete durable conversation history.
-- [ ] **Step 4: Run operational contract tests and shell syntax checks.**
+- [x] **Step 1: Add `FORD_MEMORY_CACHE_TTL=PT24H` to examples.** Keep local cache disabled by default; document production enablement.
+- [x] **Step 2: Enable cache in VM app templates.** Add `FORD_MEMORY_CACHE_ENABLED=true` and `FORD_MEMORY_CACHE_TTL=PT24H`, preserving existing emme-2 Redis host, port, and password wiring.
+- [x] **Step 3: Document Redis restart/eviction behavior.** State that Redis loss causes a PostgreSQL fallback and does not delete durable conversation history.
+- [x] **Step 4: Run available shell syntax checks.** `bash -n` passed; Ansible syntax validation was skipped because `ansible-playbook` is not installed locally.
 
 ### Task 6: Full verification and commit
 
 **Files:**
 - No additional production files; verify the complete change set.
 
-- [ ] **Step 1: Run `./gradlew test --no-daemon --max-workers=1`.**
-- [ ] **Step 2: Run the complete `integrationTest` suite with the Docker socket overrides from Task 4.** Require zero failures and errors.
-- [ ] **Step 3: Run existing Node contract tests and mise shell syntax checks.**
-- [ ] **Step 4: Review the diff for secrets, generated files, identifiers, and unrelated changes.**
+- [x] **Step 1: Run `./gradlew test --no-daemon --max-workers=1`.**
+- [x] **Step 2: Run the complete `integrationTest` suite with the Docker socket overrides from Task 4.** Require zero failures and errors.
+- [x] **Step 3: Run available shell syntax checks.** No Node project is present in this worktree; `bash -n` passed.
+- [x] **Step 4: Review the diff for secrets, generated files, identifiers, and unrelated changes.**
 - [ ] **Step 5: Commit with `feat: add Redis hot conversation memory`.** Stage only Redis implementation, tests, configuration/templates, documentation, and the already committed design/plan files.

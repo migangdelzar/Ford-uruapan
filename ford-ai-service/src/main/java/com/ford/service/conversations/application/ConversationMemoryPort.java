@@ -14,6 +14,9 @@ public interface ConversationMemoryPort {
 
     void recordOutbound(ConversationMemoryKey key, ConversationMessage message);
 
+    default void invalidate(ConversationMemoryKey key) {
+    }
+
     MemoryUpdateResult updateProjection(ConversationMemoryKey key,
                                         MemoryProjectionUpdate update,
                                         long expectedVersion);

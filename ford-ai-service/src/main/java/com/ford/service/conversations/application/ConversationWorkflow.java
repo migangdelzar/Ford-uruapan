@@ -102,6 +102,8 @@ public class ConversationWorkflow {
 
         var memoryKey = new ConversationMemoryKey(snapshot.tenantId(), snapshot.channel(),
                 snapshot.providerAccountId(), snapshot.recipientId(), snapshot.conversationId());
+        memoryService.recordInbound(memoryKey, event.receiptId(), event.providerMessageId(), event.text(),
+                event.acceptedAt());
         var memory = memoryService.load(new MemoryQuery(memoryKey, snapshot.inboundText(),
                 snapshot.providerMessageId()));
         var reply = assistant.respond(new ConversationTurnRequest(
@@ -128,6 +130,7 @@ public class ConversationWorkflow {
         var accepted = repository.completeBotTurn(snapshot.conversationId(), snapshot.version(),
                 new ConversationTurn(text));
         if (accepted) {
+            memoryService.invalidate(memoryKey);
             eventPublisher.publishEvent(new OutboundDeliveryRequested(
                     snapshot.tenantId(), snapshot.conversationId(), snapshot.channel(),
                     snapshot.recipientId(), text));

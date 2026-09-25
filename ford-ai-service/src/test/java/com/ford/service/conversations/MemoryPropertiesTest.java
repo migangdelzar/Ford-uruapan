@@ -3,6 +3,8 @@ package com.ford.service.conversations;
 import com.ford.service.conversations.application.MemoryProperties;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class MemoryPropertiesTest {
@@ -19,5 +21,6 @@ class MemoryPropertiesTest {
         assertThat(properties.semanticEnabled()).isFalse();
         assertThat(properties.semanticLimit()).isEqualTo(5);
         assertThat(properties.cacheEnabled()).isFalse();
+        assertThat(properties.cacheTtl()).isEqualTo(Duration.ofHours(24));
     }
 }
