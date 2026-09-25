@@ -59,7 +59,11 @@ class SystemPromptServiceTest {
                         "vehicle_snapshot_search", "approved_knowledge_search")
                 .contains("El mensaje actual siempre tiene prioridad")
                 .contains("No inventes información")
-                .contains("No saludes de nuevo");
+                .contains("No saludes de nuevo")
+                .contains("La pregunta más reciente tiene prioridad absoluta")
+                .contains("No muestres JSON")
+                .contains("No repitas la misma respuesta")
+                .contains("No uses una respuesta genérica de alcance");
     }
 
     private static final class InMemoryPromptRepository implements SystemPromptRepository {
