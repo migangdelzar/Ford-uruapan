@@ -3,10 +3,13 @@ package com.ford.service.ai;
 import com.ford.service.ai.application.SystemPromptService;
 import com.ford.service.ai.application.SystemPromptSnapshot;
 import com.ford.service.ai.application.port.out.SystemPromptRepository;
+import org.springframework.core.io.ClassPathResource;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 
+import java.io.IOException;
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,6 +46,20 @@ class SystemPromptServiceTest {
         assertThatThrownBy(() -> service.replace("stale prompt", 0, "other-operator"))
                 .isInstanceOf(SystemPromptService.VersionConflictException.class);
         assertThat(service.currentContent()).isEqualTo("first prompt");
+    }
+
+    @Test
+    void documentsTheRuntimeToolContractAndConversationRules() throws IOException {
+        var resource = new ClassPathResource("prompts/ford-uruapan-system.md");
+        var prompt = new String(resource.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+
+        assertThat(prompt)
+                .contains("search_vehicles", "get_vehicle", "compare_vehicles", "get_vehicle_provenance",
+                        "get_catalog_status", "list_promotions", "search_offers",
+                        "vehicle_snapshot_search", "approved_knowledge_search")
+                .contains("El mensaje actual siempre tiene prioridad")
+                .contains("No inventes información")
+                .contains("No saludes de nuevo");
     }
 
     private static final class InMemoryPromptRepository implements SystemPromptRepository {
