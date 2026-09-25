@@ -4,6 +4,16 @@
     that: [app_image is defined, app_image | length > 0]
     fail_msg: "Pass app_image from the deployment task."
 
+- name: Detect the Docker data directory
+  ansible.builtin.command:
+    cmd: "docker info --format '{% raw %}{{.DockerRootDir}}{% endraw %}'"
+  register: docker_root_dir
+  changed_when: false
+
+- name: Set the Docker container log directory
+  ansible.builtin.set_fact:
+    docker_container_logs_path: "{{ docker_root_dir.stdout | trim }}/containers"
+
 - name: Authenticate to GHCR
   ansible.builtin.command:
     cmd: docker login ghcr.io --username "{{ ghcr_username }}" --password-stdin
@@ -48,6 +58,22 @@
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: "0600"
+
+- name: Render Collector environment
+  ansible.builtin.template:
+    src: collector.env.j2
+    dest: "{{ remote_root }}/app/collector.env"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0600"
+
+- name: Copy Grafana Cloud Collector configuration
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../observability/otel-collector/grafana-cloud-config.yaml"
+    dest: "{{ remote_root }}/app/grafana-cloud-config.yaml"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0644"
 
 - name: Render application Compose file
   ansible.builtin.template:

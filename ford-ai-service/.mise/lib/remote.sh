@@ -35,7 +35,9 @@ require_deploy_config() {
   for name in OCI_REGION OCI_SSH_USER OCI_SSH_PRIVATE_KEY EMME_1_SSH_HOST \
     EMME_2_SSH_HOST EMME_1_PRIVATE_IP EMME_2_PRIVATE_IP EMME_REMOTE_ROOT \
     EMME_DATA_VOLUME_MOUNT POSTGRES_PASSWORD REDIS_PASSWORD \
-    FORD_OPERATOR_USERNAME FORD_OPERATOR_PASSWORD; do
+    FORD_OPERATOR_USERNAME FORD_OPERATOR_PASSWORD \
+    GRAFANA_CLOUD_OTLP_ENDPOINT GRAFANA_CLOUD_INSTANCE_ID GRAFANA_CLOUD_API_TOKEN \
+    LANGFUSE_PUBLIC_KEY LANGFUSE_SECRET_KEY; do
     [[ -n "${!name:-}" ]] || missing+=("$name")
   done
   [[ -r "${OCI_SSH_PRIVATE_KEY:-}" ]] || missing+=("readable:OCI_SSH_PRIVATE_KEY")
@@ -124,6 +126,7 @@ render_deploy_inventory() {
   local postgres_yaml redis_yaml operator_user_yaml operator_password_yaml
   local meta_secret_yaml verify_token_yaml openai_key_yaml app_image_yaml ghcr_username_yaml ghcr_token_yaml
   local backup_bucket_yaml backup_namespace_yaml backup_prefix_yaml backup_region_yaml
+  local grafana_endpoint_yaml grafana_instance_yaml grafana_token_yaml langfuse_endpoint_yaml langfuse_public_yaml langfuse_secret_yaml
   ansible_user_yaml="$(yaml_quote "$OCI_SSH_USER")"
   ansible_host_1_yaml="$(yaml_quote "$EMME_1_SSH_HOST")"
   ansible_host_2_yaml="$(yaml_quote "$EMME_2_SSH_HOST")"
@@ -144,6 +147,12 @@ render_deploy_inventory() {
   app_image_yaml="$(yaml_quote "${EMME_APP_IMAGE:-ford-service:deployment}")"
   ghcr_username_yaml="$(yaml_quote "${GHCR_USERNAME:-}")"
   ghcr_token_yaml="$(yaml_quote "${GHCR_TOKEN:-}")"
+  grafana_endpoint_yaml="$(yaml_quote "$GRAFANA_CLOUD_OTLP_ENDPOINT")"
+  grafana_instance_yaml="$(yaml_quote "$GRAFANA_CLOUD_INSTANCE_ID")"
+  grafana_token_yaml="$(yaml_quote "$GRAFANA_CLOUD_API_TOKEN")"
+  langfuse_endpoint_yaml="$(yaml_quote "${LANGFUSE_OTLP_ENDPOINT:-${LANGFUSE_BASE_URL:-https://us.cloud.langfuse.com}/api/public/otel}")"
+  langfuse_public_yaml="$(yaml_quote "$LANGFUSE_PUBLIC_KEY")"
+  langfuse_secret_yaml="$(yaml_quote "$LANGFUSE_SECRET_KEY")"
   backup_bucket_yaml="$(yaml_quote "${OCI_BACKUP_BUCKET:-emme-business}")"
   backup_namespace_yaml="$(yaml_quote "${OCI_OBJECT_STORAGE_NAMESPACE:-}")"
   backup_prefix_yaml="$(yaml_quote "${OCI_BACKUP_PREFIX:-ford/backups}")"
@@ -169,6 +178,12 @@ all:
     app_image: ${app_image_yaml}
     ghcr_username: ${ghcr_username_yaml}
     ghcr_token: ${ghcr_token_yaml}
+    grafana_cloud_otlp_endpoint: ${grafana_endpoint_yaml}
+    grafana_cloud_instance_id: ${grafana_instance_yaml}
+    grafana_cloud_api_token: ${grafana_token_yaml}
+    langfuse_otlp_endpoint: ${langfuse_endpoint_yaml}
+    langfuse_public_key: ${langfuse_public_yaml}
+    langfuse_secret_key: ${langfuse_secret_yaml}
     backup_bucket: ${backup_bucket_yaml}
     object_storage_namespace: ${backup_namespace_yaml}
     backup_object_prefix: ${backup_prefix_yaml}
