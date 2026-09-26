@@ -16,6 +16,7 @@ public class MemoryProperties {
     private int semanticLimit = 5;
     private boolean cacheEnabled;
     private Duration cacheTtl = Duration.ofHours(24);
+    private Duration workingMemoryTtl = Duration.ofDays(90);
 
     public boolean enabled() { return enabled; }
     public int recentMessageLimit() { return recentMessageLimit; }
@@ -26,6 +27,7 @@ public class MemoryProperties {
     public int semanticLimit() { return semanticLimit; }
     public boolean cacheEnabled() { return cacheEnabled; }
     public Duration cacheTtl() { return cacheTtl; }
+    public Duration workingMemoryTtl() { return workingMemoryTtl; }
 
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
     public void setRecentMessageLimit(int value) { recentMessageLimit = positive(value, "recentMessageLimit"); }
@@ -40,6 +42,12 @@ public class MemoryProperties {
             throw new IllegalArgumentException("cacheTtl must be positive");
         }
         cacheTtl = value;
+    }
+    public void setWorkingMemoryTtl(Duration value) {
+        if (value == null || value.isZero() || value.isNegative()) {
+            throw new IllegalArgumentException("workingMemoryTtl must be positive");
+        }
+        workingMemoryTtl = value;
     }
 
     private static int positive(int value, String name) {

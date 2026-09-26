@@ -22,5 +22,6 @@ class MemoryPropertiesTest {
         assertThat(properties.semanticLimit()).isEqualTo(5);
         assertThat(properties.cacheEnabled()).isFalse();
         assertThat(properties.cacheTtl()).isEqualTo(Duration.ofHours(24));
+        assertThat(properties.workingMemoryTtl()).isEqualTo(Duration.ofDays(90));
     }
 }

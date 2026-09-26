@@ -42,7 +42,7 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
     @Override
     public ConversationMemoryContext load(MemoryQuery query) {
         var projection = jdbc.sql("""
-                select summary, facts_json, memory_version
+                select summary, facts_json, memory_version, updated_at
                 from conversation_memory
                 where conversation_id = :conversationId
                   and tenant_id = :tenantId
@@ -57,9 +57,14 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
                 .param("participantId", query.key().participantId())
                 .query((rs, rowNum) -> new Projection(
                         rs.getString("summary"), rs.getString("facts_json"),
-                        rs.getLong("memory_version")))
+                        rs.getLong("memory_version"), rs.getTimestamp("updated_at").toInstant()))
                 .optional()
-                .orElse(new Projection("", "[]", 0));
+                .orElse(new Projection("", "[]", 0, null));
+
+        if (projection.updatedAt() == null
+                || !projection.updatedAt().isAfter(Instant.now().minus(properties.workingMemoryTtl()))) {
+            return ConversationMemoryContext.empty(query.key());
+        }
 
         var messages = jdbc.sql("""
                 select id, conversation_id, direction, provider_message_id, content, received_at
@@ -103,7 +108,7 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
                 truncate(projection.summary(), properties.summaryMaxChars()),
                 messages,
                 readFacts(projection.factsJson()),
-                projection.memoryVersion());
+                projection.memoryVersion(), projection.updatedAt());
     }
 
     @Override
@@ -219,6 +224,6 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
         return value.length() <= maxChars ? value : value.substring(0, maxChars);
     }
 
-    private record Projection(String summary, String factsJson, long memoryVersion) {
+    private record Projection(String summary, String factsJson, long memoryVersion, Instant updatedAt) {
     }
 }

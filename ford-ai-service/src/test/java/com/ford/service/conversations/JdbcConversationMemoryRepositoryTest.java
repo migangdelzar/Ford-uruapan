@@ -15,6 +15,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 import java.time.Instant;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 
@@ -141,6 +142,22 @@ class JdbcConversationMemoryRepositoryTest {
 
         assertThat(applied).isEqualTo(new com.ford.service.conversations.domain.MemoryUpdateResult(true, 1));
         assertThat(stale.applied()).isFalse();
+    }
+
+    @Test
+    void expiresWorkingMemoryAfterNinetyDaysWithoutReadingRetainedTranscript() {
+        jdbc.sql("update conversation_memory set updated_at = :expired where conversation_id = :id")
+                .param("expired", Instant.now().minus(Duration.ofDays(91)))
+                .param("id", key.conversationId())
+                .update();
+
+        var context = repository.load(new MemoryQuery(key, "nuevo tema", null, 5, 5));
+
+        assertThat(context.summary()).isEmpty();
+        assertThat(context.durableFacts()).isEmpty();
+        assertThat(context.recentMessages()).isEmpty();
+        assertThat(jdbc.sql("select count(*) from conversation_message where conversation_id = :id")
+                .param("id", key.conversationId()).query(Integer.class).single()).isEqualTo(3);
     }
 
     private void insertMessage(String providerId, ConversationMessage.Direction direction,
