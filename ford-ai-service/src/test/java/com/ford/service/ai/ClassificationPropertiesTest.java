@@ -49,6 +49,11 @@ class ClassificationPropertiesTest {
         assertThat(properties.allClassifiersEnabled()).isTrue();
     }
 
+    @Test
+    void keepsHandoffClassificationDisabledByDefault() {
+        assertThat(new ClassificationProperties().handoffEnabled()).isFalse();
+    }
+
     @TestConfiguration(proxyBeanMethods = false)
     @EnableConfigurationProperties(ClassificationProperties.class)
     static class PropertiesConfiguration {
