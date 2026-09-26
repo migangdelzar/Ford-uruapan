@@ -245,6 +245,7 @@ render_deploy_inventory() {
   local ford_outbox_enabled_yaml
   local ford_ai_chat_provider_yaml ford_ai_cloud_provider_yaml ford_ai_cloud_enabled_yaml ford_ai_local_enabled_yaml
   local ford_ai_cloud_base_url_yaml ford_ai_cloud_model_version_yaml
+  local ford_ai_classifier_handoff_enabled_yaml
   local ford_mcp_enabled_yaml ford_mcp_url_yaml ford_mcp_endpoint_yaml mcp_token_yaml
   ansible_user_yaml="$(yaml_quote "$OCI_SSH_USER")"
   ansible_host_1_yaml="$(yaml_quote "$EMME_1_SSH_HOST")"
@@ -277,6 +278,7 @@ render_deploy_inventory() {
   ford_ai_local_enabled_yaml="$(yaml_quote "${FORD_AI_LOCAL_ENABLED:-false}")"
   ford_ai_cloud_base_url_yaml="$(yaml_quote "${FORD_AI_CLOUD_BASE_URL:-https://api.openai.com/v1}")"
   ford_ai_cloud_model_version_yaml="$(yaml_quote "${FORD_AI_CLOUD_MODEL_VERSION:-gpt-4o-mini}")"
+  ford_ai_classifier_handoff_enabled_yaml="$(yaml_quote "${FORD_AI_CLASSIFIER_HANDOFF_ENABLED:-false}")"
   openai_key_yaml="$(yaml_quote "${OPENAI_API_KEY:-}")"
   app_image_yaml="$(yaml_quote "${EMME_APP_IMAGE:-ford-service:deployment}")"
   ghcr_username_yaml="$(yaml_quote "${GHCR_USERNAME:-}")"
@@ -327,6 +329,7 @@ all:
     ford_ai_local_enabled: ${ford_ai_local_enabled_yaml}
     ford_ai_cloud_base_url: ${ford_ai_cloud_base_url_yaml}
     ford_ai_cloud_model_version: ${ford_ai_cloud_model_version_yaml}
+    ford_ai_classifier_handoff_enabled: ${ford_ai_classifier_handoff_enabled_yaml}
     openai_api_key: ${openai_key_yaml}
     app_image: ${app_image_yaml}
     ghcr_username: ${ghcr_username_yaml}
