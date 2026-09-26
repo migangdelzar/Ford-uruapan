@@ -64,7 +64,7 @@ class ProviderRoutingChatCompletionPortTest {
     void fallsBackToTheNextEligibleProviderAfterRateLimiting() {
         var cloud = provider("openai", true);
         var local = provider("ollama", false);
-        var throttled = new RecordingPort(cloud.id(), openAiFailure(429, "4"));
+        var throttled = new RecordingPort(cloud.id(), new RateLimitException());
         var fallback = new StubPort(local.id(), "local-recovery");
         var port = new ProviderRoutingChatCompletionPort(List.of(throttled, fallback),
                 new DefaultModelProviderPolicy(List.of(cloud, local)));
@@ -99,16 +99,17 @@ class ProviderRoutingChatCompletionPortTest {
         var cloud = provider("openai", true);
         var delays = new java.util.ArrayList<Duration>();
         var observations = mock(AiObservationService.class);
-        var primary = new SequencedPort(cloud.id(), List.of(openAiFailure(429, "2")), "cloud-recovered");
-        var port = new ProviderRoutingChatCompletionPort(List.of(primary),
-                new DefaultModelProviderPolicy(List.of(cloud)), 2, Duration.ofSeconds(3), delays::add,
+        var primary = new RecordingPort(cloud.id(), new RateLimitException());
+        var fallback = new StubPort("ollama", "cloud-recovered");
+        var port = new ProviderRoutingChatCompletionPort(List.of(primary, fallback),
+                new DefaultModelProviderPolicy(List.of(cloud, provider("ollama", false))), 2, Duration.ofSeconds(3), delays::add,
                 observations);
 
         var response = port.complete(request(false), new ToolContext(UUID.randomUUID(), UUID.randomUUID()));
 
         assertThat(response.content()).isEqualTo("cloud-recovered");
-        assertThat(primary.calls).isEqualTo(2);
-        assertThat(delays).containsExactly(Duration.ofSeconds(2));
+        assertThat(primary.calls).isEqualTo(1);
+        assertThat(delays).containsExactly(Duration.ofMillis(100));
         verify(observations).event("ford.ai.provider.attempt", java.util.Map.of(
                 "provider", "openai", "outcome", "retry", "failure_category", "rate_limited"));
     }
@@ -120,13 +121,14 @@ class ProviderRoutingChatCompletionPortTest {
         var primary = new SequencedPort(cloud.id(),
                 List.of(new RuntimeException("temporary network timeout",
                         new SocketTimeoutException("temporary network timeout"))), "network-recovered");
-        var port = new ProviderRoutingChatCompletionPort(List.of(primary),
-                new DefaultModelProviderPolicy(List.of(cloud)), 2, Duration.ofSeconds(3), delays::add);
+        var fallback = new StubPort("ollama", "network-recovered");
+        var port = new ProviderRoutingChatCompletionPort(List.of(primary, fallback),
+                new DefaultModelProviderPolicy(List.of(cloud, provider("ollama", false))), 2, Duration.ofSeconds(3), delays::add);
 
         var response = port.complete(request(false), new ToolContext(UUID.randomUUID(), UUID.randomUUID()));
 
         assertThat(response.content()).isEqualTo("network-recovered");
-        assertThat(primary.calls).isEqualTo(2);
+        assertThat(primary.calls).isEqualTo(1);
         assertThat(delays).containsExactly(Duration.ofMillis(100));
     }
 
@@ -135,10 +137,10 @@ class ProviderRoutingChatCompletionPortTest {
         var cloud = provider("openrouter-free", true);
         var local = provider("ollama", false);
         var delays = new java.util.ArrayList<Duration>();
-        var primary = new RecordingPort(cloud.id(), openAiFailure(429, "4"));
+        var primary = new RecordingPort(cloud.id(), new RateLimitException());
         var fallback = new StubPort(local.id(), "local-after-long-retry-after");
         var port = new ProviderRoutingChatCompletionPort(List.of(primary, fallback),
-                new DefaultModelProviderPolicy(List.of(cloud, local)), 2, Duration.ofSeconds(3), delays::add);
+                new DefaultModelProviderPolicy(List.of(cloud, local)), 2, Duration.ZERO, delays::add);
 
         var response = port.complete(request(false), new ToolContext(UUID.randomUUID(), UUID.randomUUID()));
 
@@ -151,7 +153,7 @@ class ProviderRoutingChatCompletionPortTest {
     void limitsFreeProviderToTwoCallsBeforeFallbackWhenItReturnsRepeated429() {
         var cloud = provider("openrouter-free", true);
         var local = provider("ollama", false);
-        var primary = new SequencedPort(cloud.id(), List.of(openAiFailure(429, null), openAiFailure(429, null)), "unused");
+        var primary = new RecordingPort(cloud.id(), new RateLimitException());
         var fallback = new StubPort(local.id(), "local-after-rate-limit");
         var port = new ProviderRoutingChatCompletionPort(List.of(primary, fallback),
                 new DefaultModelProviderPolicy(List.of(cloud, local)), 2, Duration.ofSeconds(3), ignored -> { });
@@ -159,7 +161,7 @@ class ProviderRoutingChatCompletionPortTest {
         var response = port.complete(request(false), new ToolContext(UUID.randomUUID(), UUID.randomUUID()));
 
         assertThat(response.provider()).isEqualTo("ollama");
-        assertThat(primary.calls).isEqualTo(2);
+        assertThat(primary.calls).isEqualTo(1);
     }
 
     @Test
@@ -225,6 +227,9 @@ class ProviderRoutingChatCompletionPortTest {
             calls++;
             throw failure;
         }
+    }
+
+    private static final class RateLimitException extends RuntimeException {
     }
 
     private static final class SequencedPort implements ProviderChatCompletionPort {

@@ -114,6 +114,9 @@ public class AiProperties {
     }
 
     public void setProviderMaxAttempts(int value) {
+        if (value < 1 || value > 2) {
+            throw new IllegalArgumentException("providerMaxAttempts must be between 1 and 2");
+        }
         providerMaxAttempts = value;
     }
 

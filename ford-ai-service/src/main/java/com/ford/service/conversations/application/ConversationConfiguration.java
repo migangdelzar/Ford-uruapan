@@ -109,7 +109,7 @@ public class ConversationConfiguration {
                                                      ObjectProvider<AiObservationService> observationServices) {
         var observations = observationServices.getIfAvailable(
                 () -> new DefaultAiObservationService(ObservationRegistry.NOOP));
-        var handoffPolicy = handoffPolicies.getIfAvailable(() -> new HumanHandoffPolicy(true));
+        var handoffPolicy = handoffPolicies.getIfAvailable(() -> new HumanHandoffPolicy(false));
         return new ConversationWorkflow(repository, assistant, publisher, handoffPolicy, memoryService,
                 decisions, observations, inboundTurns.getIfAvailable(), turnLeases.getIfAvailable());
     }

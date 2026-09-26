@@ -82,45 +82,47 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
             throw new IllegalStateException("No provider satisfies the request policy");
         }
         RuntimeException lastFailure = null;
-        for (var candidate : candidates) {
+        var calls = 0;
+        for (var candidateIndex = 0; candidateIndex < candidates.size(); candidateIndex++) {
+            if (calls >= maxAttempts) break;
+            var candidate = candidates.get(candidateIndex);
             var port = ports.get(candidate.id());
             if (port == null) {
                 throw new IllegalStateException("Selected AI provider is not configured: " + candidate.id());
             }
-            for (var attempt = 1; attempt <= maxAttempts; attempt++) {
-                try {
-                    var response = port.complete(request, context);
+            calls++;
+            try {
+                var response = port.complete(request, context);
+                observations.event("ford.ai.provider.attempt", Map.of(
+                        "provider", candidate.id(), "outcome", "success"));
+                return response;
+            } catch (RuntimeException failure) {
+                lastFailure = failure;
+                var classified = AiProviderFailureDiagnostics.classify(failure);
+                if (!isRetryable(classified)) {
                     observations.event("ford.ai.provider.attempt", Map.of(
-                            "provider", candidate.id(), "outcome", "success"));
-                    return response;
-                } catch (RuntimeException failure) {
-                    lastFailure = failure;
-                    var classified = AiProviderFailureDiagnostics.classify(failure);
-                    if (!isRetryable(classified)) {
-                        observations.event("ford.ai.provider.attempt", Map.of(
-                                "provider", candidate.id(), "outcome", "failure",
-                                "failure_category", classified.category()));
-                        throw failure;
-                    }
-                    if (attempt == maxAttempts) {
-                        observations.event("ford.ai.provider.attempt", Map.of(
-                                "provider", candidate.id(), "outcome", "failure",
-                                "failure_category", classified.category()));
-                        break;
-                    }
-                    var delay = retryDelay(classified, attempt);
-                    if (delay.compareTo(maxRetryAfter) > 0) {
-                        observations.event("ford.ai.provider.attempt", Map.of(
-                                "provider", candidate.id(), "outcome", "failure",
-                                "failure_category", classified.category()));
-                        break;
-                    }
-                    observations.event("ford.ai.provider.attempt", Map.of(
-                            "provider", candidate.id(), "outcome", "retry",
+                            "provider", candidate.id(), "outcome", "failure",
                             "failure_category", classified.category()));
-                    if (!delay.isZero()) {
-                        retryDelay.delay(delay);
-                    }
+                    throw failure;
+                }
+                if (calls >= maxAttempts || candidateIndex == candidates.size() - 1) {
+                    observations.event("ford.ai.provider.attempt", Map.of(
+                            "provider", candidate.id(), "outcome", "failure",
+                            "failure_category", classified.category()));
+                    break;
+                }
+                var delay = retryDelay(classified, calls);
+                if (delay.compareTo(maxRetryAfter) > 0) {
+                    observations.event("ford.ai.provider.attempt", Map.of(
+                            "provider", candidate.id(), "outcome", "failure",
+                            "failure_category", classified.category()));
+                    break;
+                }
+                observations.event("ford.ai.provider.attempt", Map.of(
+                        "provider", candidate.id(), "outcome", "retry",
+                        "failure_category", classified.category()));
+                if (!delay.isZero()) {
+                    retryDelay.delay(delay);
                 }
             }
         }

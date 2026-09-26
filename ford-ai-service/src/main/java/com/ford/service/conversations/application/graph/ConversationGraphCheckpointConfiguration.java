@@ -9,6 +9,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.simple.JdbcClient;
+
+import java.time.Duration;
 
 @Configuration(proxyBeanMethods = false)
 class ConversationGraphCheckpointConfiguration {
@@ -42,5 +46,12 @@ class ConversationGraphCheckpointConfiguration {
     FordPostgresSaverV2 conversationGraphCheckpointSaver(
             @Qualifier("conversationGraphCheckpointDataSource") HikariDataSource dataSource) throws Exception {
         return FordPostgresSaverV2.create(dataSource);
+    }
+
+    @Bean
+    ConversationGraphCheckpointCleanup conversationGraphCheckpointCleanup(
+            @Qualifier("conversationGraphCheckpointDataSource") HikariDataSource dataSource,
+            @Value("${ford.memory.working-memory-ttl:P90D}") Duration retention) {
+        return new ConversationGraphCheckpointCleanup(JdbcClient.create(dataSource), retention);
     }
 }

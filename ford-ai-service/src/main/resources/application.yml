@@ -125,9 +125,9 @@ ford:
       audience: ${FORD_SECURITY_AUDIENCE:ford-ai-service}
   conversations:
     workflow:
-      graph-enabled: ${FORD_CONVERSATION_GRAPH_ENABLED:false}
+      graph-enabled: ${FORD_CONVERSATION_GRAPH_ENABLED:true}
     human-handoff:
-      enabled: ${FORD_HUMAN_HANDOFF_ENABLED:true}
+      enabled: ${FORD_HUMAN_HANDOFF_ENABLED:false}
   memory:
     enabled: ${FORD_MEMORY_ENABLED:true}
     recent-message-limit: ${FORD_MEMORY_RECENT_MESSAGE_LIMIT:20}

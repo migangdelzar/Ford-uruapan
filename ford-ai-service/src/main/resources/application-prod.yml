@@ -9,9 +9,9 @@ ford:
       enabled: ${FORD_SECURITY_JWT_ENABLED:true}
   conversations:
     workflow:
-      graph-enabled: ${FORD_CONVERSATION_GRAPH_ENABLED:false}
+      graph-enabled: ${FORD_CONVERSATION_GRAPH_ENABLED:true}
     human-handoff:
-      enabled: ${FORD_HUMAN_HANDOFF_ENABLED:true}
+      enabled: ${FORD_HUMAN_HANDOFF_ENABLED:false}
   ai:
     classification:
       enabled: ${FORD_AI_CLASSIFICATION_ENABLED:true}

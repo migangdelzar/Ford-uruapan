@@ -31,7 +31,7 @@ public class ConversationProperties {
     }
 
     public static class HumanHandoff {
-        private boolean enabled = true;
+        private boolean enabled;
 
         public boolean enabled() {
             return enabled;
