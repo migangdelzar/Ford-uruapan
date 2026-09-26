@@ -28,6 +28,8 @@ databaseChangeLog:
   - include:
       file: db/changelog/changes/014-lead-follow-up.yaml
   - include:
+      file: db/changelog/changes/015-conversation-turn-lease.yaml
+  - include:
       file: db/changelog/langgraph/db.changelog.yaml
   - include:
       file: db/changelog/changes/004-modulith-events.yaml

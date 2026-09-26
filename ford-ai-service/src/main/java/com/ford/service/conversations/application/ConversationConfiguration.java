@@ -89,10 +89,11 @@ public class ConversationConfiguration {
     @Bean
     @ConditionalOnProperty(prefix = "ford.conversations.workflow", name = "graph-enabled", havingValue = "true")
     ConversationWorkflow conversationWorkflow(ConversationGraphRunner graphRunner,
+                                               ObjectProvider<com.ford.service.conversations.application.port.out.ConversationTurnLeasePort> turnLeases,
                                                ObjectProvider<AiObservationService> observationServices) {
         var observations = observationServices.getIfAvailable(
                 () -> new DefaultAiObservationService(ObservationRegistry.NOOP));
-        return new ConversationWorkflow(graphRunner, observations);
+        return new ConversationWorkflow(graphRunner, observations, turnLeases.getIfAvailable());
     }
 
     @Bean
@@ -104,11 +105,12 @@ public class ConversationConfiguration {
                                                      ConversationMemoryService memoryService,
                                                      ConversationDecisionRepository decisions,
                                                      ObjectProvider<com.ford.service.channels.api.AcceptedInboundMessageRepository> inboundTurns,
+                                                     ObjectProvider<com.ford.service.conversations.application.port.out.ConversationTurnLeasePort> turnLeases,
                                                      ObjectProvider<AiObservationService> observationServices) {
         var observations = observationServices.getIfAvailable(
                 () -> new DefaultAiObservationService(ObservationRegistry.NOOP));
         var handoffPolicy = handoffPolicies.getIfAvailable(() -> new HumanHandoffPolicy(true));
         return new ConversationWorkflow(repository, assistant, publisher, handoffPolicy, memoryService,
-                decisions, observations, inboundTurns.getIfAvailable());
+                decisions, observations, inboundTurns.getIfAvailable(), turnLeases.getIfAvailable());
     }
 }

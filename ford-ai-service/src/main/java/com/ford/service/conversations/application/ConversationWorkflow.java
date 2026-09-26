@@ -8,6 +8,7 @@ import com.ford.service.conversations.api.HandoffRequested;
 import com.ford.service.conversations.api.OutboundDeliveryRequested;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
+import com.ford.service.conversations.application.port.out.ConversationTurnLeasePort;
 import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.conversations.domain.ConversationTurn;
 import com.ford.service.conversations.domain.ConversationMemoryContext;
@@ -30,6 +31,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.UUID;
 
 public class ConversationWorkflow {
@@ -45,6 +47,8 @@ public class ConversationWorkflow {
     private final AiObservationService observations;
     private final ConversationGraphRunner graphRunner;
     private final AcceptedInboundMessageRepository inboundTurns;
+    private final ConversationTurnLeasePort turnLeases;
+    private final String leaseOwner = UUID.randomUUID().toString();
 
     /**
      * Compatibility constructor for lightweight callers that do not provide
@@ -95,6 +99,19 @@ public class ConversationWorkflow {
                                 ConversationDecisionRepository decisionRepository,
                                 AiObservationService observations,
                                 AcceptedInboundMessageRepository inboundTurns) {
+        this(repository, assistant, eventPublisher, handoffPolicy, memoryService, decisionRepository,
+                observations, inboundTurns, null);
+    }
+
+    public ConversationWorkflow(ConversationRepository repository,
+                                ConversationAssistant assistant,
+                                ApplicationEventPublisher eventPublisher,
+                                HumanHandoffPolicy handoffPolicy,
+                                ConversationMemoryService memoryService,
+                                ConversationDecisionRepository decisionRepository,
+                                AiObservationService observations,
+                                AcceptedInboundMessageRepository inboundTurns,
+                                ConversationTurnLeasePort turnLeases) {
         this.repository = Objects.requireNonNull(repository);
         this.assistant = Objects.requireNonNull(assistant);
         this.eventPublisher = Objects.requireNonNull(eventPublisher);
@@ -104,9 +121,15 @@ public class ConversationWorkflow {
         this.observations = Objects.requireNonNull(observations);
         this.graphRunner = null;
         this.inboundTurns = inboundTurns;
+        this.turnLeases = turnLeases;
     }
 
     public ConversationWorkflow(ConversationGraphRunner graphRunner, AiObservationService observations) {
+        this(graphRunner, observations, null);
+    }
+
+    public ConversationWorkflow(ConversationGraphRunner graphRunner, AiObservationService observations,
+                                ConversationTurnLeasePort turnLeases) {
         this.repository = null;
         this.assistant = null;
         this.eventPublisher = null;
@@ -116,6 +139,7 @@ public class ConversationWorkflow {
         this.observations = Objects.requireNonNull(observations);
         this.graphRunner = Objects.requireNonNull(graphRunner);
         this.inboundTurns = null;
+        this.turnLeases = turnLeases;
     }
 
     private static ConversationMemoryService noOpMemoryService() {
@@ -140,6 +164,9 @@ public class ConversationWorkflow {
 
     @ApplicationModuleListener
     public void on(InboundMessageAccepted event) {
+        var leased = turnLeases == null || turnLeases.tryAcquire(event.tenantId(), event.conversationId(),
+                leaseOwner, Duration.ofSeconds(45));
+        if (!leased) return;
         try {
             if (graphRunner == null) {
                 handle(event);
@@ -153,6 +180,10 @@ public class ConversationWorkflow {
             observations.event("ford.conversation.inbound", java.util.Map.of(
                     "channel", event.channel().name(), "outcome", "failure"));
             throw exception;
+        } finally {
+            if (turnLeases != null) {
+                turnLeases.release(event.tenantId(), event.conversationId(), leaseOwner);
+            }
         }
     }
 
