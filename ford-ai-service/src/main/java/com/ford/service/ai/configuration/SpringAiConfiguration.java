@@ -159,16 +159,20 @@ public class SpringAiConfiguration {
         if (!toolObjects.isEmpty()) {
             callbacks.addAll(List.of(ToolCallbacks.from(toolObjects.toArray())));
         }
-        var mcpProvider = mcpProviders.getIfAvailable();
-        if (mcpProperties.enabled() && mcpProvider != null) {
+        if (mcpProperties.enabled()) {
             try {
+                var mcpProvider = mcpProviders.getIfAvailable();
+                if (mcpProvider == null) {
+                    return callbacks.isEmpty() ? new ToolAuthorizationPolicy()
+                            : new ToolAuthorizationPolicy(callbacks);
+                }
                 callbacks.addAll(List.of(mcpProvider.getToolCallbacks()).stream()
                         .filter(callback -> mcpProperties.readOnlyToolNames()
                                 .contains(callback.getToolDefinition().name().toLowerCase(java.util.Locale.ROOT)))
                         .toList());
             }
             catch (RuntimeException exception) {
-                log.warn("Ford MCP tools unavailable; volatile information remains fail-closed: exceptionType={}",
+                log.warn("Ford MCP tools unavailable; continuing without volatile MCP tools: exceptionType={}",
                         exception.getClass().getSimpleName());
             }
         }
