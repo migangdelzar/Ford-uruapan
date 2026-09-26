@@ -10,6 +10,7 @@ import com.ford.service.ai.application.HandoffRecommendation;
 import com.ford.service.ai.application.Intent;
 import com.ford.service.ai.application.IntentRouter;
 import com.ford.service.ai.application.LeadStage;
+import com.ford.service.ai.application.LeadNextAction;
 import com.ford.service.ai.application.LeadTemperature;
 import com.ford.service.ai.application.SensitiveDataLevel;
 import com.ford.service.ai.application.ToolFamily;
@@ -36,14 +37,37 @@ public final class RulesConversationDecisionAdapter implements ConversationDecis
         var handoff = handoff(normalized, intent);
         var sensitive = sensitive(context, normalized);
         var toolFamily = toolFamily(legacyIntent);
+        var urgency = urgency(normalized, intent);
+        var nextAction = nextAction(intent, urgency);
 
         return new ConversationDecision(intent, LeadTemperature.UNKNOWN, LeadStage.NEW, handoff,
-                toolFamily, sensitive, List.of(
+                toolFamily, sensitive, nextAction, urgency, summary(intent, message), List.of(
                         evidence(ClassifierType.INTENT, intent.name(), "rules_intent"),
                         evidence(ClassifierType.LEAD, "NEW/UNKNOWN", "rules_lead"),
                         evidence(ClassifierType.HANDOFF, handoff.name(), "rules_handoff"),
                         evidence(ClassifierType.TOOL_FAMILY, toolFamily.name(), "rules_tool_family"),
                         evidence(ClassifierType.SENSITIVE_DATA, sensitive.name(), "rules_sensitive_data")));
+    }
+
+    private static LeadNextAction nextAction(ConversationIntent intent, boolean urgency) {
+        if (intent == ConversationIntent.HUMAN_REQUEST) return LeadNextAction.CONNECT_ADVISOR;
+        if (intent == ConversationIntent.APPOINTMENT || urgency && intent == ConversationIntent.VEHICLE_DETAILS) {
+            return LeadNextAction.SCHEDULE_TEST_DRIVE;
+        }
+        if (intent == ConversationIntent.FINANCE) return LeadNextAction.SEND_QUOTE;
+        if (intent != ConversationIntent.GENERAL) return LeadNextAction.FOLLOW_UP;
+        return LeadNextAction.NO_ACTION;
+    }
+
+    private static boolean urgency(String normalized, ConversationIntent intent) {
+        return intent == ConversationIntent.APPOINTMENT || containsAny(normalized,
+                "hoy", "ahora", "urgente", "esta semana", "lo antes posible");
+    }
+
+    private static String summary(ConversationIntent intent, String message) {
+        var clean = message == null ? "" : message.trim().replaceAll("\\s+", " ");
+        if (clean.length() > 240) clean = clean.substring(0, 240).trim();
+        return clean.isBlank() ? intent.name().toLowerCase(Locale.ROOT) : clean;
     }
 
     private static ConversationIntent toIntent(Intent intent) {

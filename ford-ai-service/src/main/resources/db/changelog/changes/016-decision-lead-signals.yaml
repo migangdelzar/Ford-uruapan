@@ -1,0 +1,19 @@
+databaseChangeLog:
+  - changeSet:
+      id: 016-decision-lead-signals
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              alter table conversation_decision
+                  add column if not exists next_action varchar(40) not null default 'NO_ACTION';
+              alter table conversation_decision
+                  add column if not exists urgency_signal boolean not null default false;
+              alter table conversation_decision
+                  add column if not exists summary varchar(280) not null default '';
+      rollback:
+        - sql:
+            sql: |
+              alter table conversation_decision drop column if exists summary;
+              alter table conversation_decision drop column if exists urgency_signal;
+              alter table conversation_decision drop column if exists next_action;

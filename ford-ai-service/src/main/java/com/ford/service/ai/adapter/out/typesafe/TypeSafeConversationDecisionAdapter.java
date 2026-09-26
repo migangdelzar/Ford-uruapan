@@ -8,6 +8,7 @@ import com.ford.service.ai.application.ConversationDecisionPort;
 import com.ford.service.ai.application.ConversationIntent;
 import com.ford.service.ai.application.HandoffRecommendation;
 import com.ford.service.ai.application.LeadStage;
+import com.ford.service.ai.application.LeadNextAction;
 import com.ford.service.ai.application.LeadTemperature;
 import com.ford.service.ai.application.SensitiveDataLevel;
 import com.ford.service.ai.application.ToolFamily;
@@ -41,10 +42,10 @@ public final class TypeSafeConversationDecisionAdapter implements ConversationDe
         var started = System.nanoTime();
         var response = client.systemOne(state(context), questions());
         var latencyMs = Math.max(0, (System.nanoTime() - started) / 1_000_000);
-        return map(response, latencyMs);
+        return map(response, latencyMs, context.message());
     }
 
-    private ConversationDecision map(SystemOneResponse response, long latencyMs) {
+    private ConversationDecision map(SystemOneResponse response, long latencyMs, String message) {
         Objects.requireNonNull(response, "TypeSafe response is required");
         var intent = properties.intentEnabled()
                 ? choice(response, "intent", ConversationIntent.class) : ConversationIntent.GENERAL;
@@ -68,10 +69,12 @@ public final class TypeSafeConversationDecisionAdapter implements ConversationDe
                 ? noul(response, "has_sensitive_data") : NoulValue.none();
         var handoff = handoff(userRequested, negative, complex,
                 intentConfidence, toolConfidence);
+        var urgency = urgency(message, temperature.value(), intent);
+        var nextAction = nextAction(intent, urgency, handoff.value());
         var model = response.model() == null || response.model().isBlank() ? "typesafe" : response.model();
 
         return new ConversationDecision(intent, temperature.value(), leadStage, handoff.value(),
-                toolFamily, sensitive.level(), List.of(
+                toolFamily, sensitive.level(), nextAction, urgency, summary(message), List.of(
                         evidence(ClassifierType.INTENT, intent.name(),
                                 intentConfidence,
                                 properties.intentEnabled() ? "model_choice" : "classifier_disabled", model, latencyMs,
@@ -90,6 +93,30 @@ public final class TypeSafeConversationDecisionAdapter implements ConversationDe
                         evidence(ClassifierType.SENSITIVE_DATA, sensitive.level().name(), sensitive.confidence(),
                                 properties.sensitiveDataEnabled() ? "noul_threshold" : "classifier_disabled",
                                 model, latencyMs, !properties.sensitiveDataEnabled())));
+    }
+
+    private static LeadNextAction nextAction(ConversationIntent intent, boolean urgency,
+                                             HandoffRecommendation handoff) {
+        if (handoff == HandoffRecommendation.USER_REQUESTED) return LeadNextAction.CONNECT_ADVISOR;
+        if (intent == ConversationIntent.APPOINTMENT || urgency && intent == ConversationIntent.VEHICLE_DETAILS) {
+            return LeadNextAction.SCHEDULE_TEST_DRIVE;
+        }
+        if (intent == ConversationIntent.FINANCE) return LeadNextAction.SEND_QUOTE;
+        if (intent != ConversationIntent.GENERAL) return LeadNextAction.FOLLOW_UP;
+        return LeadNextAction.NO_ACTION;
+    }
+
+    private static boolean urgency(String message, LeadTemperature temperature, ConversationIntent intent) {
+        var normalized = message == null ? "" : message.toLowerCase(Locale.ROOT);
+        return temperature == LeadTemperature.HOT || intent == ConversationIntent.APPOINTMENT
+                || normalized.contains("hoy") || normalized.contains("ahora")
+                || normalized.contains("urgente") || normalized.contains("esta semana");
+    }
+
+    private static String summary(String message) {
+        if (message == null || message.isBlank()) return "";
+        var clean = message.trim().replaceAll("\\s+", " ");
+        return clean.length() <= 240 ? clean : clean.substring(0, 240).trim();
     }
 
     private static String state(ClassificationContext context) {

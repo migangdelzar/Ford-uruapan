@@ -39,7 +39,7 @@ spring:
     change-log: classpath:/db/changelog/db.changelog-master.yaml
   ai:
     retry:
-      max-attempts: 1
+      max-attempts: ${FORD_AI_RETRY_MAX_ATTEMPTS:2}
     chat:
       client:
         observations:
@@ -54,6 +54,10 @@ spring:
       chat:
         options:
           model: ${FORD_AI_CLOUD_MODEL_VERSION:gpt-4o-mini}
+          temperature: ${FORD_AI_CLOUD_TEMPERATURE:0.3}
+          top-p: ${FORD_AI_CLOUD_TOP_P:0.9}
+          max-tokens: ${FORD_AI_CLOUD_MAX_TOKENS:500}
+          frequency-penalty: ${FORD_AI_CLOUD_FREQUENCY_PENALTY:0.1}
     typesafe:
       api-key: ${TYPESAFE_API_KEY:}
       timeout: ${FORD_AI_CLASSIFICATION_TIMEOUT_MS:1500}ms
@@ -65,6 +69,10 @@ spring:
       chat:
         options:
           model: ${FORD_AI_LOCAL_MODEL_VERSION:llama3.2}
+          temperature: ${FORD_AI_LOCAL_TEMPERATURE:0.3}
+          top-k: ${FORD_AI_LOCAL_TOP_K:40}
+          top-p: ${FORD_AI_LOCAL_TOP_P:0.9}
+          num-predict: ${FORD_AI_LOCAL_MAX_TOKENS:500}
       embedding:
         options:
           model: ${FORD_AI_EMBEDDING_MODEL_VERSION:nomic-embed-text}
@@ -136,7 +144,7 @@ ford:
     fact-max-chars: ${FORD_MEMORY_FACT_MAX_CHARS:500}
     semantic-enabled: ${FORD_MEMORY_SEMANTIC_ENABLED:false}
     semantic-limit: ${FORD_MEMORY_SEMANTIC_LIMIT:5}
-    cache-enabled: ${FORD_MEMORY_CACHE_ENABLED:false}
+    cache-enabled: ${FORD_MEMORY_CACHE_ENABLED:true}
     cache-ttl: ${FORD_MEMORY_CACHE_TTL:PT24H}
     working-memory-ttl: ${FORD_MEMORY_WORKING_TTL:P90D}
   ingestion:
