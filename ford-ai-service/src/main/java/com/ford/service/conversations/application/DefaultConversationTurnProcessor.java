@@ -5,7 +5,7 @@ import com.ford.service.conversations.application.graph.ConversationGraphRoute;
 import com.ford.service.conversations.application.graph.ConversationTurnOutcome;
 import com.ford.service.conversations.application.graph.ConversationTurnProcessor;
 import com.ford.service.conversations.application.graph.ConversationTurnReference;
-import com.ford.service.conversations.application.port.out.AcceptedInboundTurnRepository;
+import com.ford.service.channels.api.AcceptedInboundMessageRepository;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
 import com.ford.service.conversations.domain.ConversationMemoryKey;
@@ -21,14 +21,14 @@ import java.util.Objects;
 @ConditionalOnProperty(prefix = "ford.conversations.workflow", name = "graph-enabled", havingValue = "true")
 public class DefaultConversationTurnProcessor implements ConversationTurnProcessor {
 
-    private final AcceptedInboundTurnRepository inboundRepository;
+    private final AcceptedInboundMessageRepository inboundRepository;
     private final ConversationRepository conversationRepository;
     private final ConversationMemoryService memoryService;
     private final LeadJourneyService leadJourneyService;
     private final ConversationAssistant assistant;
     private final ConversationTurnCommitService commitService;
 
-    public DefaultConversationTurnProcessor(AcceptedInboundTurnRepository inboundRepository,
+    public DefaultConversationTurnProcessor(AcceptedInboundMessageRepository inboundRepository,
                                             ConversationRepository conversationRepository,
                                             ConversationMemoryService memoryService,
                                             LeadJourneyService leadJourneyService,

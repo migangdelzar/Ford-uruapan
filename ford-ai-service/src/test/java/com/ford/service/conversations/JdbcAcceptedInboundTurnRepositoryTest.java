@@ -1,7 +1,7 @@
 package com.ford.service.conversations;
 
 import com.ford.service.conversations.adapter.out.JdbcAcceptedInboundTurnRepository;
-import com.ford.service.conversations.domain.AcceptedInboundTurn;
+import com.ford.service.channels.api.AcceptedInboundMessage;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -27,7 +27,7 @@ class JdbcAcceptedInboundTurnRepositoryTest {
         var jdbc = mock(JdbcClient.class);
         var statement = mock(JdbcClient.StatementSpec.class);
         var query = mock(JdbcClient.MappedQuerySpec.class);
-        var expected = new AcceptedInboundTurn("wamid.1", "participant-1", "¿Promociones?", Instant.now());
+        var expected = new AcceptedInboundMessage("wamid.1", "participant-1", "¿Promociones?", Instant.now());
         when(jdbc.sql(anyString())).thenReturn(statement);
         when(statement.param(anyString(), any())).thenReturn(statement);
         when(statement.query(any(RowMapper.class))).thenReturn(query);

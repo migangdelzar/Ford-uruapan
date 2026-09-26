@@ -103,11 +103,12 @@ public class ConversationConfiguration {
                                                      ObjectProvider<HumanHandoffPolicy> handoffPolicies,
                                                      ConversationMemoryService memoryService,
                                                      ConversationDecisionRepository decisions,
+                                                     ObjectProvider<com.ford.service.channels.api.AcceptedInboundMessageRepository> inboundTurns,
                                                      ObjectProvider<AiObservationService> observationServices) {
         var observations = observationServices.getIfAvailable(
                 () -> new DefaultAiObservationService(ObservationRegistry.NOOP));
         var handoffPolicy = handoffPolicies.getIfAvailable(() -> new HumanHandoffPolicy(true));
         return new ConversationWorkflow(repository, assistant, publisher, handoffPolicy, memoryService,
-                decisions, observations);
+                decisions, observations, inboundTurns.getIfAvailable());
     }
 }

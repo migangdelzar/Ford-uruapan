@@ -1,15 +1,15 @@
 package com.ford.service.conversations;
 
 import com.ford.service.channels.domain.Channel;
+import com.ford.service.channels.api.AcceptedInboundMessage;
 import com.ford.service.conversations.application.ConversationMemoryService;
 import com.ford.service.conversations.application.ConversationTurnCommitService;
 import com.ford.service.conversations.application.DefaultConversationTurnProcessor;
 import com.ford.service.conversations.application.graph.ConversationGraphRoute;
 import com.ford.service.conversations.application.graph.ConversationTurnReference;
-import com.ford.service.conversations.application.port.out.AcceptedInboundTurnRepository;
+import com.ford.service.channels.api.AcceptedInboundMessageRepository;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
-import com.ford.service.conversations.domain.AcceptedInboundTurn;
 import com.ford.service.conversations.domain.ConversationMemoryContext;
 import com.ford.service.conversations.domain.ConversationSnapshot;
 import com.ford.service.conversations.domain.ConversationState;
@@ -38,12 +38,12 @@ class DefaultConversationTurnProcessorTest {
         var conversationId = UUID.randomUUID();
         var receiptId = UUID.randomUUID();
         var reference = new ConversationTurnReference(tenantId, conversationId, receiptId);
-        var inbound = new AcceptedInboundTurn("wamid.1", "customer-1", "¿Promociones?", Instant.now());
+        var inbound = new AcceptedInboundMessage("wamid.1", "customer-1", "¿Promociones?", Instant.now());
         var snapshot = new ConversationSnapshot(tenantId, conversationId, Channel.WHATSAPP, "phone-1",
                 "customer-1", ConversationState.BOT_ACTIVE, 2, null, null);
         var journey = new LeadJourneySnapshot(tenantId, conversationId, null, null, null, null,
                 null, null, 0, null, 0, Instant.now());
-        var inboundRepository = mock(AcceptedInboundTurnRepository.class);
+        var inboundRepository = mock(AcceptedInboundMessageRepository.class);
         var conversationRepository = mock(ConversationRepository.class);
         var memory = mock(ConversationMemoryService.class);
         var leadJourney = mock(LeadJourneyService.class);
@@ -75,11 +75,11 @@ class DefaultConversationTurnProcessorTest {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
         var reference = new ConversationTurnReference(tenantId, conversationId, UUID.randomUUID());
-        var inboundRepository = mock(AcceptedInboundTurnRepository.class);
+        var inboundRepository = mock(AcceptedInboundMessageRepository.class);
         var conversationRepository = mock(ConversationRepository.class);
         var assistant = mock(ConversationAssistant.class);
         when(inboundRepository.find(tenantId, conversationId, reference.receiptId()))
-                .thenReturn(Optional.of(new AcceptedInboundTurn("wamid.duplicate", "customer-1", "Hola", Instant.now())));
+                .thenReturn(Optional.of(new AcceptedInboundMessage("wamid.duplicate", "customer-1", "Hola", Instant.now())));
         when(conversationRepository.turnAlreadyCompleted(tenantId, conversationId, "wamid.duplicate"))
                 .thenReturn(true);
 
@@ -97,10 +97,10 @@ class DefaultConversationTurnProcessorTest {
         var conversationId = UUID.randomUUID();
         var receiptId = UUID.randomUUID();
         var reference = new ConversationTurnReference(tenantId, conversationId, receiptId);
-        var inbound = new AcceptedInboundTurn("wamid.failure", "customer-1", "Quiero una Ranger", Instant.now());
+        var inbound = new AcceptedInboundMessage("wamid.failure", "customer-1", "Quiero una Ranger", Instant.now());
         var snapshot = new ConversationSnapshot(tenantId, conversationId, Channel.WHATSAPP, "phone-1",
                 "customer-1", ConversationState.BOT_ACTIVE, 2, null, null);
-        var inboundRepository = mock(AcceptedInboundTurnRepository.class);
+        var inboundRepository = mock(AcceptedInboundMessageRepository.class);
         var conversationRepository = mock(ConversationRepository.class);
         var memory = mock(ConversationMemoryService.class);
         var journeyService = mock(LeadJourneyService.class);

@@ -28,6 +28,7 @@ import com.ford.service.conversations.api.ConversationMemoryProjectionRefreshReq
 import com.ford.service.conversations.api.ConversationTurnRequest;
 import com.ford.service.conversations.api.HandoffRequested;
 import com.ford.service.conversations.domain.ConversationSnapshot;
+import com.ford.service.channels.api.AcceptedInboundMessage;
 import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.conversations.domain.ConversationTurn;
 import com.ford.service.conversations.domain.ConversationMemoryContext;
@@ -68,7 +69,7 @@ class ConversationWorkflowTest {
         var workflow = new ConversationWorkflow(graph, mock(AiObservationService.class));
 
         workflow.on(new InboundMessageAccepted(receiptId, tenantId, conversationId, Channel.WHATSAPP,
-                "wamid.graph", Instant.now(), "customer-private", "texto privado"));
+                "wamid.graph", Instant.now()));
 
         assertThat(processorCalls).containsExactly(new ConversationTurnReference(tenantId, conversationId, receiptId));
     }
@@ -116,7 +117,7 @@ class ConversationWorkflowTest {
                 (id, messageId, decision) -> { }, observations);
 
         workflow.on(new InboundMessageAccepted(UUID.randomUUID(), tenantId, conversationId, Channel.WHATSAPP,
-                "wamid.private", Instant.now(), "customer-private", "texto privado"));
+                "wamid.private", Instant.now()));
 
         verify(observations).event("ford.conversation.inbound", Map.of(
                 "channel", "WHATSAPP", "outcome", "success"));
@@ -132,12 +133,15 @@ class ConversationWorkflowTest {
         var assistant = new RecordingAssistant(new AssistantReply("Respuesta", false));
         var publisher = new RecordingPublisher();
 
+        var receiptId = UUID.randomUUID();
         new ConversationWorkflow(repository, assistant, publisher,
-                new HumanHandoffPolicy(true), new ConversationMemoryService(memoryPort, new MemoryProperties()))
-                .on(new InboundMessageAccepted(
-                        UUID.randomUUID(), tenantId, conversationId, Channel.WHATSAPP,
-                        "wamid.memory", Instant.parse("2026-09-19T12:00:00Z"),
-                        "customer-1", "¿Hay Ranger?"));
+                new HumanHandoffPolicy(true), new ConversationMemoryService(memoryPort, new MemoryProperties()),
+                (id, messageId, decision) -> { }, new com.ford.service.observability.DefaultAiObservationService(
+                io.micrometer.observation.ObservationRegistry.NOOP),
+                (tenant, conversation, receipt) -> Optional.of(new AcceptedInboundMessage(
+                        "wamid.memory", "customer-1", "¿Hay Ranger?", Instant.parse("2026-09-19T12:00:00Z"))))
+                .on(new InboundMessageAccepted(receiptId, tenantId, conversationId, Channel.WHATSAPP,
+                        "wamid.memory", Instant.parse("2026-09-19T12:00:00Z")));
 
         assertThat(memoryPort.inbound).isNotNull();
         assertThat(memoryPort.inbound.providerMessageId()).isEqualTo("wamid.memory");
@@ -152,7 +156,7 @@ class ConversationWorkflowTest {
     }
 
     @Test
-    void usesTheAcceptedEventTextInsteadOfAStaleConversationSnapshot() {
+    void loadsTheAcceptedReceiptTextInsteadOfAStaleConversationSnapshot() {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
         var repository = new RecordingConversationRepository(snapshot(
@@ -160,9 +164,13 @@ class ConversationWorkflowTest {
         var assistant = new RecordingAssistant(new AssistantReply("Respuesta actual", false));
 
         new ConversationWorkflow(repository, assistant, new RecordingPublisher(),
-                new HumanHandoffPolicy(false), memoryService()).on(new InboundMessageAccepted(
-                UUID.randomUUID(), tenantId, conversationId, Channel.WHATSAPP,
-                "wamid.latest", Instant.now(), "customer-1", "¿Qué promociones hay?"));
+                new HumanHandoffPolicy(false), memoryService(), (id, messageId, decision) -> { },
+                new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP),
+                (tenant, conversation, receipt) -> Optional.of(new AcceptedInboundMessage(
+                        "wamid.latest", "customer-1", "¿Qué promociones hay?", Instant.now())))
+                .on(new InboundMessageAccepted(UUID.randomUUID(), tenantId, conversationId, Channel.WHATSAPP,
+                        "wamid.latest", Instant.now()));
 
         assertThat(assistant.requests).singleElement()
                 .extracting(ConversationTurnRequest::message)

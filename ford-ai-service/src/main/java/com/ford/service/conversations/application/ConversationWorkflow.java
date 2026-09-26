@@ -1,6 +1,7 @@
 package com.ford.service.conversations.application;
 
 import com.ford.service.channels.api.InboundMessageAccepted;
+import com.ford.service.channels.api.AcceptedInboundMessageRepository;
 import com.ford.service.conversations.api.ConversationMemoryProjectionRefreshRequested;
 import com.ford.service.conversations.api.ConversationTurnRequest;
 import com.ford.service.conversations.api.HandoffRequested;
@@ -43,6 +44,7 @@ public class ConversationWorkflow {
     private final ConversationDecisionRepository decisionRepository;
     private final AiObservationService observations;
     private final ConversationGraphRunner graphRunner;
+    private final AcceptedInboundMessageRepository inboundTurns;
 
     /**
      * Compatibility constructor for lightweight callers that do not provide
@@ -60,7 +62,8 @@ public class ConversationWorkflow {
                                 HumanHandoffPolicy handoffPolicy,
                                 ConversationMemoryService memoryService) {
         this(repository, assistant, eventPublisher, handoffPolicy, memoryService,
-                (conversationId, providerMessageId, decision) -> { });
+                (conversationId, providerMessageId, decision) -> { },
+                new DefaultAiObservationService(ObservationRegistry.NOOP), null);
     }
 
     public ConversationWorkflow(ConversationRepository repository,
@@ -70,7 +73,7 @@ public class ConversationWorkflow {
                                 ConversationMemoryService memoryService,
                                 ConversationDecisionRepository decisionRepository) {
         this(repository, assistant, eventPublisher, handoffPolicy, memoryService, decisionRepository,
-                new DefaultAiObservationService(ObservationRegistry.NOOP));
+                new DefaultAiObservationService(ObservationRegistry.NOOP), null);
     }
 
     public ConversationWorkflow(ConversationRepository repository,
@@ -80,6 +83,18 @@ public class ConversationWorkflow {
                                 ConversationMemoryService memoryService,
                                 ConversationDecisionRepository decisionRepository,
                                 AiObservationService observations) {
+        this(repository, assistant, eventPublisher, handoffPolicy, memoryService, decisionRepository,
+                observations, null);
+    }
+
+    public ConversationWorkflow(ConversationRepository repository,
+                                ConversationAssistant assistant,
+                                ApplicationEventPublisher eventPublisher,
+                                HumanHandoffPolicy handoffPolicy,
+                                ConversationMemoryService memoryService,
+                                ConversationDecisionRepository decisionRepository,
+                                AiObservationService observations,
+                                AcceptedInboundMessageRepository inboundTurns) {
         this.repository = Objects.requireNonNull(repository);
         this.assistant = Objects.requireNonNull(assistant);
         this.eventPublisher = Objects.requireNonNull(eventPublisher);
@@ -88,6 +103,7 @@ public class ConversationWorkflow {
         this.decisionRepository = Objects.requireNonNull(decisionRepository);
         this.observations = Objects.requireNonNull(observations);
         this.graphRunner = null;
+        this.inboundTurns = inboundTurns;
     }
 
     public ConversationWorkflow(ConversationGraphRunner graphRunner, AiObservationService observations) {
@@ -99,6 +115,7 @@ public class ConversationWorkflow {
         this.decisionRepository = null;
         this.observations = Objects.requireNonNull(observations);
         this.graphRunner = Objects.requireNonNull(graphRunner);
+        this.inboundTurns = null;
     }
 
     private static ConversationMemoryService noOpMemoryService() {
@@ -145,13 +162,16 @@ public class ConversationWorkflow {
             return;
         }
 
-        // The event is the authoritative turn. The conversation row can already
-        // contain a newer message when webhooks are processed concurrently.
-        var currentMessage = event.text() == null || event.text().isBlank()
-                ? snapshot.inboundText() : event.text();
+        // Load canonical text by receipt; never rely on the conversation's latest
+        // message because a later webhook may already have updated that snapshot.
+        var acceptedTurn = inboundTurns == null ? null
+                : inboundTurns.find(event.tenantId(), event.conversationId(), event.receiptId()).orElse(null);
+        if (inboundTurns != null && acceptedTurn == null) return;
+        var currentMessage = acceptedTurn == null ? snapshot.inboundText() : acceptedTurn.text();
+        var participantId = acceptedTurn == null ? snapshot.recipientId() : acceptedTurn.participantId();
 
         var memoryKey = new ConversationMemoryKey(snapshot.tenantId(), snapshot.channel(),
-                snapshot.providerAccountId(), snapshot.recipientId(), snapshot.conversationId());
+                snapshot.providerAccountId(), participantId, snapshot.conversationId());
         memoryService.recordInbound(memoryKey, event.receiptId(), event.providerMessageId(), currentMessage,
                 event.acceptedAt());
         var memory = memoryService.load(new MemoryQuery(memoryKey, currentMessage,

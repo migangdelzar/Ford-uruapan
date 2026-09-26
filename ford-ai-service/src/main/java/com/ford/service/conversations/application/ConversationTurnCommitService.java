@@ -1,13 +1,13 @@
 package com.ford.service.conversations.application;
 
 import com.ford.service.ai.application.SensitiveDataLevel;
+import com.ford.service.channels.api.AcceptedInboundMessage;
 import com.ford.service.conversations.api.HandoffRequested;
 import com.ford.service.conversations.api.ConversationMemoryProjectionRefreshRequested;
 import com.ford.service.conversations.api.OutboundDeliveryRequested;
 import com.ford.service.conversations.application.graph.ConversationGraphRoute;
 import com.ford.service.conversations.application.graph.ConversationTurnReference;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
-import com.ford.service.conversations.domain.AcceptedInboundTurn;
 import com.ford.service.conversations.domain.ConversationMemoryContext;
 import com.ford.service.conversations.domain.ConversationSnapshot;
 import com.ford.service.conversations.domain.ConversationTurn;
@@ -18,7 +18,6 @@ import com.ford.service.shared.HumanHandoffPolicy;
 import com.ford.service.ai.application.ConversationIntent;
 import com.ford.service.ai.application.HandoffRecommendation;
 import com.ford.service.ai.application.LeadTemperature;
-import com.ford.service.conversations.application.port.out.LeadFollowUpTurnTracker;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -37,26 +36,23 @@ public class ConversationTurnCommitService {
     private final HumanHandoffPolicy handoffPolicy;
     private final ConversationMemoryService memoryService;
     private final ApplicationEventPublisher eventPublisher;
-    private final LeadFollowUpTurnTracker followUpTracker;
 
     public ConversationTurnCommitService(ConversationRepository repository,
                                          ConversationDecisionRepository decisionRepository,
                                          LeadJourneyService leadJourneyService,
                                          HumanHandoffPolicy handoffPolicy,
                                          ConversationMemoryService memoryService,
-                                         ApplicationEventPublisher eventPublisher,
-                                         LeadFollowUpTurnTracker followUpTracker) {
+                                         ApplicationEventPublisher eventPublisher) {
         this.repository = repository;
         this.decisionRepository = decisionRepository;
         this.leadJourneyService = leadJourneyService;
         this.handoffPolicy = handoffPolicy;
         this.memoryService = memoryService;
         this.eventPublisher = eventPublisher;
-        this.followUpTracker = followUpTracker;
     }
 
     @Transactional
-    public ConversationGraphRoute commit(ConversationTurnReference reference, AcceptedInboundTurn inbound,
+    public ConversationGraphRoute commit(ConversationTurnReference reference, AcceptedInboundMessage inbound,
                                          ConversationSnapshot conversation, ConversationMemoryContext memory,
                                          LeadJourneySnapshot journey, com.ford.service.conversations.api.AssistantReply reply) {
         var providerMessageId = inbound.providerMessageId();
@@ -104,8 +100,11 @@ public class ConversationTurnCommitService {
         memoryService.invalidate(key);
         eventPublisher.publishEvent(new OutboundDeliveryRequested(reference.tenantId(),
                 reference.conversationId(), conversation.channel(), conversation.recipientId(), text));
-        followUpTracker.processTurn(reference.tenantId(), reference.conversationId(), providerMessageId,
-                reply.decision().leadTemperature().name(), inbound.text(), reply.text());
+        var temperature = reply.decision() == null || reply.decision().leadTemperature() == null
+                ? "UNKNOWN" : reply.decision().leadTemperature().name();
+        eventPublisher.publishEvent(new com.ford.service.shared.ConversationTurnCompleted(
+                reference.tenantId(), reference.conversationId(), providerMessageId,
+                temperature, inbound.text(), reply.text()));
         return ConversationGraphRoute.BOT_REPLY;
     }
 

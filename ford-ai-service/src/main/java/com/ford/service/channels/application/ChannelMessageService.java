@@ -76,8 +76,7 @@ public class ChannelMessageService {
         if (eventPublisher != null) {
             eventPublisher.publishEvent(new InboundMessageAccepted(
                     receiptId, message.tenantId(), conversationId, message.channel(),
-                    message.providerMessageId(), message.receivedAt(),
-                    message.participantId(), message.text()));
+                    message.providerMessageId(), message.receivedAt()));
         }
         log.info("Inbound message accepted channel={} outcome=accepted durationMs={}",
                 message.channel(), elapsedMs(started));

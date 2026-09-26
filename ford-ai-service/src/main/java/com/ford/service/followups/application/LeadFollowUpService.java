@@ -3,7 +3,9 @@ package com.ford.service.followups.application;
 import com.ford.service.ai.application.LeadTemperature;
 import com.ford.service.followups.domain.FollowUpConsent;
 import com.ford.service.followups.domain.LeadFollowUp;
-import com.ford.service.conversations.application.port.out.LeadFollowUpTurnTracker;
+import com.ford.service.followups.api.LeadFollowUpTurnTracker;
+import com.ford.service.shared.ConversationTurnCompleted;
+import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +20,13 @@ public class LeadFollowUpService implements LeadFollowUpTurnTracker {
     public LeadFollowUpService(LeadFollowUpRepository repository) {
         this.repository = repository;
         this.policy = new WarmFollowUpPolicy();
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    @ApplicationModuleListener
+    public void on(ConversationTurnCompleted event) {
+        processTurn(event.tenantId(), event.conversationId(), event.providerMessageId(),
+                event.leadTemperature(), event.inboundText(), event.assistantText());
     }
 
     @Transactional

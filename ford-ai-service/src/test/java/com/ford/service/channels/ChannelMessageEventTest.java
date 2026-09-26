@@ -29,7 +29,13 @@ class ChannelMessageEventTest {
         assertThat(service.accept(webhook, adapter)).isNull();
         assertThat(published).hasSize(1);
         assertThat(published.getFirst()).isInstanceOf(InboundMessageAccepted.class);
-        assertThat(((InboundMessageAccepted) published.getFirst()).text())
-                .isEqualTo("Hola");
+        var event = (InboundMessageAccepted) published.getFirst();
+        assertThat(event.receiptId()).isNotNull();
+        assertThat(event.tenantId()).isNotNull();
+        assertThat(event.conversationId()).isNotNull();
+        var serialized = new ObjectMapper().findAndRegisterModules().valueToTree(event);
+        assertThat(serialized.fieldNames()).toIterable().containsExactlyInAnyOrder(
+                "receiptId", "tenantId", "conversationId", "channel", "providerMessageId", "acceptedAt");
+        assertThat(serialized.toString()).doesNotContain("Hola", "5214521234567", "participantId", "text");
     }
 }
