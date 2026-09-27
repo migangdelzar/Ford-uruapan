@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import java.util.regex.Pattern;
 
 @Component
-public final class ConversationMemoryIndexListener {
+public class ConversationMemoryIndexListener {
 
     private static final Pattern EMAIL = Pattern.compile("[\\w.%+-]+@[\\w.-]+\\.[A-Za-z]{2,}");
     private static final Pattern PHONE = Pattern.compile("\\+?\\d[\\d\\s().-]{7,}\\d");
