@@ -21,6 +21,10 @@ class MemoryPropertiesTest {
         assertThat(properties.factMaxChars()).isEqualTo(500);
         assertThat(properties.semanticEnabled()).isFalse();
         assertThat(properties.semanticLimit()).isEqualTo(5);
+        assertThat(properties.semanticRecallEnabled()).isFalse();
+        assertThat(properties.semanticRecallLimit()).isEqualTo(3);
+        assertThat(properties.semanticRecallMinimumSimilarity()).isEqualTo(0.78);
+        assertThat(properties.semanticEmbeddingModel()).isEqualTo("nomic-embed-text");
         assertThat(properties.cacheEnabled()).isFalse();
         assertThat(properties.cacheTtl()).isEqualTo(Duration.ofHours(24));
         assertThat(properties.workingMemoryTtl()).isEqualTo(Duration.ofDays(90));

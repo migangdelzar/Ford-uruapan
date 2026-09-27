@@ -145,6 +145,10 @@ ford:
     fact-max-chars: ${FORD_MEMORY_FACT_MAX_CHARS:500}
     semantic-enabled: ${FORD_MEMORY_SEMANTIC_ENABLED:false}
     semantic-limit: ${FORD_MEMORY_SEMANTIC_LIMIT:5}
+    semantic-recall-enabled: ${FORD_MEMORY_SEMANTIC_RECALL_ENABLED:false}
+    semantic-recall-limit: ${FORD_MEMORY_SEMANTIC_RECALL_LIMIT:3}
+    semantic-recall-minimum-similarity: ${FORD_MEMORY_SEMANTIC_RECALL_MINIMUM_SIMILARITY:0.78}
+    semantic-embedding-model: ${FORD_MEMORY_SEMANTIC_EMBEDDING_MODEL:${FORD_AI_EMBEDDING_MODEL_VERSION:nomic-embed-text}}
     cache-enabled: ${FORD_MEMORY_CACHE_ENABLED:true}
     cache-ttl: ${FORD_MEMORY_CACHE_TTL:PT24H}
     working-memory-ttl: ${FORD_MEMORY_WORKING_TTL:P90D}

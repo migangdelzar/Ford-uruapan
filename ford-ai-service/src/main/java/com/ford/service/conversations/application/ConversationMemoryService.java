@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 
 public final class ConversationMemoryService {
 
@@ -19,17 +20,26 @@ public final class ConversationMemoryService {
     private final MemoryProperties properties;
     private final ConversationMemorySemanticPort semanticMemory;
     private final ConversationMemoryProjector projector;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ConversationMemoryService(ConversationMemoryPort memory, MemoryProperties properties) {
-        this(memory, properties, new NoOpConversationMemorySemanticPort());
+        this(memory, properties, new NoOpConversationMemorySemanticPort(), event -> { });
     }
 
     public ConversationMemoryService(ConversationMemoryPort memory,
                                      MemoryProperties properties,
                                      ConversationMemorySemanticPort semanticMemory) {
+        this(memory, properties, semanticMemory, event -> { });
+    }
+
+    public ConversationMemoryService(ConversationMemoryPort memory,
+                                     MemoryProperties properties,
+                                     ConversationMemorySemanticPort semanticMemory,
+                                     ApplicationEventPublisher eventPublisher) {
         this.memory = Objects.requireNonNull(memory);
         this.properties = Objects.requireNonNull(properties);
         this.semanticMemory = Objects.requireNonNull(semanticMemory);
+        this.eventPublisher = Objects.requireNonNull(eventPublisher);
         this.projector = new ConversationMemoryProjector(properties);
     }
 
@@ -73,8 +83,10 @@ public final class ConversationMemoryService {
             return;
         }
         try {
-            memory.recordInbound(key, new ConversationMessage(messageId, key.conversationId(),
-                    ConversationMessage.Direction.INBOUND, providerMessageId, content, occurredAt));
+            var message = new ConversationMessage(messageId, key.conversationId(),
+                    ConversationMessage.Direction.INBOUND, providerMessageId, content, occurredAt);
+            memory.recordInbound(key, message);
+            publishIndexRequest(key, message);
         } catch (RuntimeException exception) {
             log.warn("Inbound conversation memory write failed: conversationId={} exceptionType={}",
                     key.conversationId(), exception.getClass().getSimpleName());
@@ -88,8 +100,10 @@ public final class ConversationMemoryService {
             return;
         }
         try {
-            memory.recordOutbound(key, new ConversationMessage(messageId, key.conversationId(),
-                    ConversationMessage.Direction.OUTBOUND, providerMessageId, content, occurredAt));
+            var message = new ConversationMessage(messageId, key.conversationId(),
+                    ConversationMessage.Direction.OUTBOUND, providerMessageId, content, occurredAt);
+            memory.recordOutbound(key, message);
+            publishIndexRequest(key, message);
         } catch (RuntimeException exception) {
             log.warn("Outbound conversation memory write failed: conversationId={} exceptionType={}",
                     key.conversationId(), exception.getClass().getSimpleName());
@@ -107,6 +121,15 @@ public final class ConversationMemoryService {
             memory.invalidate(key);
         } catch (RuntimeException exception) {
             log.warn("Conversation memory invalidation failed: conversationId={} exceptionType={}",
+                    key.conversationId(), exception.getClass().getSimpleName());
+        }
+    }
+
+    private void publishIndexRequest(ConversationMemoryKey key, ConversationMessage message) {
+        try {
+            eventPublisher.publishEvent(new com.ford.service.conversations.api.ConversationMemoryIndexRequested(key, message));
+        } catch (RuntimeException exception) {
+            log.warn("Conversation memory index event publication failed: conversationId={} exceptionType={}",
                     key.conversationId(), exception.getClass().getSimpleName());
         }
     }

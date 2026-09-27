@@ -4,6 +4,7 @@ import com.ford.service.ai.application.AssistantService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ford.service.conversations.adapter.out.JdbcConversationMemoryRepository;
 import com.ford.service.conversations.adapter.out.PgVectorConversationMemoryAdapter;
+import com.ford.service.conversations.adapter.out.PgVectorConversationMemoryRecallAdapter;
 import com.ford.service.conversations.adapter.out.RedisCachedConversationMemoryPort;
 import com.ford.service.conversations.adapter.out.RedisConversationMemoryCache;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
@@ -42,10 +43,23 @@ public class ConversationConfiguration {
     }
 
     @Bean
+    ConversationMemoryRecallPort conversationMemoryRecallPort(
+            ObjectProvider<JdbcClient> jdbcClients,
+            ObjectProvider<EmbeddingModel> embeddingModels,
+            MemoryProperties properties) {
+        var jdbc = jdbcClients.getIfAvailable();
+        var embeddingModel = embeddingModels.getIfAvailable();
+        return !properties.semanticRecallEnabled() || jdbc == null || embeddingModel == null
+                ? new NoOpConversationMemoryRecallPort()
+                : new PgVectorConversationMemoryRecallAdapter(jdbc, embeddingModel);
+    }
+
+    @Bean
     ConversationMemoryService conversationMemoryService(ConversationMemoryPort memory,
                                                         MemoryProperties properties,
-                                                        ConversationMemorySemanticPort semanticMemory) {
-        return new ConversationMemoryService(memory, properties, semanticMemory);
+                                                        ConversationMemorySemanticPort semanticMemory,
+                                                        ApplicationEventPublisher publisher) {
+        return new ConversationMemoryService(memory, properties, semanticMemory, publisher);
     }
 
     @Bean
