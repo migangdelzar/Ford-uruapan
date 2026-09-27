@@ -1,6 +1,6 @@
 # WhatsApp Message Understanding and Intent Routing Design
 
-**Status:** Approved direction; spec awaiting user review; implementation not started
+**Status:** Approved; implementation not started
 
 **Date:** 2026-09-27
 
