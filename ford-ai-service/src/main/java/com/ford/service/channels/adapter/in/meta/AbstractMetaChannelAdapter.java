@@ -96,8 +96,8 @@ abstract class AbstractMetaChannelAdapter implements ChannelAdapter {
         return value.isMissingNode() || value.isNull() ? null : value.asText();
     }
 
-    private static java.util.UUID conversationId(java.util.UUID tenantId, Channel channel,
-                                                String providerAccountId, String participantId) {
+    protected static java.util.UUID conversationId(java.util.UUID tenantId, Channel channel,
+                                                   String providerAccountId, String participantId) {
         return java.util.UUID.nameUUIDFromBytes((tenantId + ":" + channel + ":"
                 + providerAccountId + ":" + participantId)
                 .getBytes(java.nio.charset.StandardCharsets.UTF_8));

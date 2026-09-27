@@ -99,6 +99,8 @@
 
 ## Task 2: Normalize WhatsApp messages into typed single/batch records
 
+**Status:** Complete — red verified, parser implemented, focused channel compatibility tests passing.
+
 **Files:**
 - Create `src/main/java/com/ford/service/channels/domain/InboundMessageKind.java`
 - Create `src/main/java/com/ford/service/channels/domain/InboundAttachment.java`
@@ -113,11 +115,11 @@
 
 `InboundMessageKind` values: `TEXT`, `IMAGE`, `AUDIO`, `VIDEO`, `DOCUMENT`, `LOCATION`, `INTERACTIVE`, `STICKER`, `UNSUPPORTED`. `InboundAttachment` contains only `providerMediaId`, `declaredMimeType`, `filename`, and `sizeBytes` when supplied; it never contains downloaded bytes or a URL. Add typed kind/attachment fields to `InboundMessage`, with a compatibility constructor defaulting to `TEXT` and an empty attachment list. Reject a single webhook envelope that mixes provider phone-number IDs rather than accidentally binding one tenant's messages to another account.
 
-- [ ] **Step 1: Write failing adapter tests** for each listed kind, image caption, audio media ID/MIME, location coordinates, interactive title/id, multiple messages in one webhook, missing provider ID/sender, empty text, malformed JSON, and status callback separation.
-- [ ] **Step 2: Run** `./gradlew test --tests 'com.ford.service.channels.WhatsAppAdapterContractTest'`. Expected: parsing currently rejects non-text and loses all but a single text path.
-- [ ] **Step 3: Implement typed parsing** by checking the WhatsApp message `type` field and reading only the matching documented payload fields. For unknown types, produce `UNSUPPORTED` when identity is valid; reject malformed identities. Parse all message entries while preserving their provider IDs and receive time.
-- [ ] **Step 4: Run WhatsApp and other Meta adapter contract tests.** Expected: WhatsApp tests pass; Messenger/Instagram and stable single-message `parseInbound` callers remain unchanged.
-- [ ] **Step 5: Commit** as `feat(channels): normalize WhatsApp message types` with only Task 2 files.
+- [x] **Step 1: Write failing adapter tests** for text, image/audio, video/document/sticker/unknown, location, interactive reply, multiple messages, mixed account IDs, malformed identity/text/JSON, and status callbacks.
+- [x] **Step 2: Run** `./gradlew test --tests 'com.ford.service.channels.WhatsAppAdapterContractTest'`; initial run failed on the missing typed kind and batch parse API as expected.
+- [x] **Step 3: Implement typed parsing** with a WhatsApp-specific batch parser, compatibility `parseInbound` for exactly one item, immutable typed media references, and account-ID consistency validation.
+- [x] **Step 4: Run WhatsApp, Messenger, Instagram, identity, and vehicle-flow tests.** `./gradlew test --tests 'com.ford.service.channels.WhatsAppAdapterContractTest' --tests 'com.ford.service.channels.MessengerAdapterContractTest' --tests 'com.ford.service.channels.InstagramAdapterContractTest' --tests 'com.ford.service.channels.MetaChannelIdentityTest' --tests 'com.ford.service.e2e.MetaVehicleQuestionFlowTest'` passed.
+- [x] **Step 5: Commit** as `feat(channels): normalize WhatsApp message types` with only Task 2 files.
 
 ## Task 3: Accept each webhook message idempotently and persist safe metadata
 
