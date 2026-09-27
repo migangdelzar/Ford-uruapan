@@ -20,6 +20,53 @@
 - Semantic retrieval remains disabled by default until quality and isolation tests pass.
 - No Redis Stack dependency is introduced in this implementation.
 
+## Cognitive control policy
+
+The system does not add a second autonomous “reasoning agent.” The existing
+cloud chat model is the reasoning model, LangGraph4j owns orchestration, and
+Java policies remain the deterministic authority for safety, scope, handoff,
+tool authorization, and stage transitions.
+
+```mermaid
+flowchart LR
+    U[User turn] --> G[LangGraph4j graph]
+    G --> P[Java guardrails and journey policy]
+    P --> L[Spring AI model]
+    L -->|structured decision + native tool call| P
+    P -->|authorized| T[Ford MCP tool]
+    T --> L
+    P --> R[Reply / next durable stage]
+```
+
+| Pattern | Production policy | Reason |
+|---|---|---|
+| Native tool calling | Default for every live turn | Structured, fast, and compatible with MCP |
+| Plan-and-Execute | Use for the known sales journey: discovery → offers → financing/trade-in → appointment | LangGraph persists the stage and prevents unnecessary backtracking |
+| ReAct | Bounded recovery only: one tool correction/retry after a bad or incomplete result | Preserves adaptability without open-ended loops |
+| ReWOO | Background batch work only, such as independent enrichment or indexing jobs | Live MCP dependencies are not predictable enough for the primary chat path |
+| Reflexion | Prefer deterministic Java validation; allow at most one structured repair when enabled | A second full response call is expensive and must respect the two-call budget |
+| Tree of Thoughts | Not enabled for customer chat | Excessive cost, latency, and difficult operational behavior |
+
+The model may propose an intent, tool call, lead action, or next stage. The
+graph validates it against the current durable stage, authorized tool family,
+tenant scope, human-handoff policy, and model-call budget. Invalid proposals
+are rejected or repaired; the model cannot directly mutate conversation state.
+
+The live-turn budget is:
+
+- one primary model call;
+- one approved fallback or structured repair call, never both;
+- at most two attempts per MCP tool;
+- at most three graph rounds for one inbound turn;
+- no unbounded ReAct loop;
+- no full chain-of-thought persistence. Persist only structured decisions,
+  stage, action, summary, and operational observations.
+
+This means the “agent that reasons” is the configured Spring AI chat model,
+while LangGraph4j is the process owner and Java is the policy owner. The
+conversation-memory vector search is context retrieval, not an independent
+reasoning agent.
+
 ## File map
 
 - `src/main/resources/db/changelog/changes/017-conversation-memory-embeddings.yaml`: pgvector table and indexes.
@@ -305,7 +352,79 @@ git add ford-ai-service/src/main/java/com/ford/service/conversations ford-ai-ser
 git commit -m "feat(memory): add bounded semantic recall to turns"
 ```
 
-### Task 6: Verify database isolation and outbox behavior
+### Task 6: Enforce cognitive-pattern policy in the graph
+
+**Files:**
+- Modify: `ford-ai-service/src/main/java/com/ford/service/conversations/application/graph/ConversationGraphRunner.java`
+- Modify: `ford-ai-service/src/main/java/com/ford/service/conversations/application/ConversationTurnProcessor.java`
+- Modify: `ford-ai-service/src/main/java/com/ford/service/conversations/application/ConversationWorkflow.java`
+- Modify: `ford-ai-service/src/main/java/com/ford/service/conversations/application/ConversationTurnCommitService.java`
+- Modify: `ford-ai-service/src/main/java/com/ford/service/ai/application/DecisionPolicy.java`
+- Create: `ford-ai-service/src/main/java/com/ford/service/conversations/application/ConversationCognitivePolicy.java`
+- Test: `ford-ai-service/src/test/java/com/ford/service/conversations/ConversationCognitivePolicyTest.java`
+- Test: `ford-ai-service/src/test/java/com/ford/service/conversations/ConversationGraphRunnerTest.java`
+
+**Interfaces:**
+
+```java
+public interface ConversationCognitivePolicy {
+    CognitivePattern patternFor(ConversationTurnInput input);
+    boolean mayAdvance(ConversationStage current, ConversationStage proposed);
+    boolean mayRetryTool(int attempts, ToolFailureCategory failure);
+    boolean mayRepair(int modelCalls);
+}
+```
+
+The initial implementation returns native tool calling for ordinary turns,
+Plan-and-Execute for known journey stages, ReAct recovery only for retryable
+tool failures, and rejects Tree of Thoughts. It must not expose hidden model
+reasoning or persist chain-of-thought.
+
+- [ ] **Step 1: Write failing cognitive-policy tests**
+
+Cover these invariants:
+
+```java
+assertThat(policy.patternFor(ordinaryTurn())).isEqualTo(NATIVE_TOOL_CALLING);
+assertThat(policy.patternFor(knownSalesJourneyTurn())).isEqualTo(PLAN_AND_EXECUTE);
+assertThat(policy.patternFor(retryableMcpFailure())).isEqualTo(BOUNDED_REACT_RECOVERY);
+assertThat(policy.mayRetryTool(2, TIMEOUT)).isFalse();
+assertThat(policy.mayRepair(2)).isFalse();
+```
+
+- [ ] **Step 2: Run and verify failure**
+
+```bash
+./gradlew test --tests com.ford.service.conversations.ConversationCognitivePolicyTest
+```
+
+Expected: FAIL because the cognitive policy does not exist.
+
+- [ ] **Step 3: Implement the bounded policy and graph integration**
+
+Keep stage transitions and tool authorization in Java. Let the model return
+structured proposals only. Add graph metadata for pattern, stage, round, and
+model-call count; do not store private chain-of-thought. Route retryable MCP
+failures through one bounded recovery edge and route terminal failures to the
+existing safe response/fallback path.
+
+- [ ] **Step 4: Run focused and full tests**
+
+```bash
+./gradlew test --tests com.ford.service.conversations.ConversationCognitivePolicyTest --tests com.ford.service.conversations.ConversationGraphRunnerTest
+./gradlew test
+```
+
+Expected: both commands pass with no unbounded graph loop.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add ford-ai-service/src/main/java/com/ford/service/conversations/application/graph ford-ai-service/src/main/java/com/ford/service/conversations/application/ConversationCognitivePolicy.java ford-ai-service/src/main/java/com/ford/service/ai/application/DecisionPolicy.java ford-ai-service/src/test/java/com/ford/service/conversations/ConversationCognitivePolicyTest.java ford-ai-service/src/test/java/com/ford/service/conversations/ConversationGraphRunnerTest.java
+git commit -m "feat(graph): enforce bounded cognitive patterns"
+```
+
+### Task 7: Verify database isolation and outbox behavior
 
 **Files:**
 - Create: `ford-ai-service/src/integrationTest/java/com/ford/service/e2e/ConversationSemanticMemoryIsolationIntegrationTest.java`
@@ -339,7 +458,7 @@ git commit -m "test(memory): verify semantic memory isolation"
 
 Expected: PASS.
 
-### Task 7: Document rollout, metrics, and release safety
+### Task 8: Document rollout, metrics, and release safety
 
 **Files:**
 - Modify: `ford-ai-service/docs/operations.md`
@@ -377,9 +496,12 @@ git commit -m "docs(memory): document semantic recall rollout"
 
 ## Self-review
 
-- Schema, policy, adapter, async indexing, context integration, isolation, and operations are covered by Tasks 1–7.
+- Schema, memory policy, adapter, async indexing, context integration,
+  cognitive policy, isolation, and operations are covered by Tasks 1–8.
 - Ford MCP remains outside the conversation-memory path.
 - Redis Vector is explicitly deferred; no hidden Redis Stack dependency exists.
 - All retrieval is bounded by three results and complete scope predicates.
 - Embedding dimension and model version are explicit.
+- The model proposes actions; LangGraph4j orchestrates; Java policies authorize.
+- ReAct recovery, repair, tool attempts, model calls, and graph rounds are bounded.
 - Every implementation task starts with a failing test and ends with a focused commit.
