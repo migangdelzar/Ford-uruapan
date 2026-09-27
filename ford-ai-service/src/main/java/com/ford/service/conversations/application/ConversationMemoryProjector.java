@@ -1,6 +1,7 @@
 package com.ford.service.conversations.application;
 
 import com.ford.service.conversations.domain.ConversationMemoryContext;
+import com.ford.service.conversations.domain.ConversationMessage;
 import com.ford.service.conversations.domain.MemoryFact;
 import com.ford.service.conversations.domain.MemoryProjectionUpdate;
 
@@ -56,10 +57,34 @@ public final class ConversationMemoryProjector {
         if (facts.size() > properties.factLimit()) {
             facts = new ArrayList<>(facts.subList(facts.size() - properties.factLimit(), facts.size()));
         }
-        var summary = compact(latestUserMessage).isBlank()
-                ? memory == null ? "" : memory.summary()
-                : truncate(SUMMARY_PREFIX + compact(latestUserMessage), properties.summaryMaxChars());
+        var summary = rollingSummary(memory, latestUserMessage);
         return new MemoryProjectionUpdate(summary, facts, sourceMessageId);
+    }
+
+    private String rollingSummary(ConversationMemoryContext memory, String latestUserMessage) {
+        var latest = compact(latestUserMessage);
+        var previous = memory == null ? "" : compact(memory.summary());
+        var recentRequests = memory == null ? List.<String>of() : memory.recentMessages().stream()
+                .filter(message -> message.direction() == ConversationMessage.Direction.INBOUND)
+                .map(ConversationMessage::content)
+                .map(ConversationMemoryProjector::compact)
+                .filter(value -> !value.isBlank())
+                .toList();
+        if (recentRequests.isEmpty() && latest.isBlank()) {
+            return truncate(previous, properties.summaryMaxChars());
+        }
+        if (recentRequests.isEmpty()) {
+            return truncate(SUMMARY_PREFIX + latest, properties.summaryMaxChars());
+        }
+        var continuity = new StringBuilder("Continuidad de la conversación: ");
+        if (!previous.isBlank()) {
+            continuity.append(previous).append(" | ");
+        }
+        continuity.append(String.join(" | ", recentRequests));
+        if (!latest.isBlank()) {
+            continuity.append(" | ").append(latest);
+        }
+        return truncate(continuity.toString(), properties.summaryMaxChars());
     }
 
     private static String compact(String value) {

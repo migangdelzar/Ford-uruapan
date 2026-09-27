@@ -38,7 +38,7 @@ public final class ConversationMemoryService {
             return ConversationMemoryContext.empty(query.key());
         }
         var boundedQuery = new MemoryQuery(query.key(), query.latestMessage(), query.currentProviderMessageId(),
-                properties.recentMessageLimit(), properties.semanticLimit());
+                properties.promptRecentMessageLimit(), properties.semanticLimit());
         try {
             var context = memory.load(boundedQuery);
             if (!properties.semanticEnabled() || query.latestMessage() == null
@@ -77,6 +77,21 @@ public final class ConversationMemoryService {
                     ConversationMessage.Direction.INBOUND, providerMessageId, content, occurredAt));
         } catch (RuntimeException exception) {
             log.warn("Inbound conversation memory write failed: conversationId={} exceptionType={}",
+                    key.conversationId(), exception.getClass().getSimpleName());
+            invalidate(key);
+        }
+    }
+
+    public void recordOutbound(ConversationMemoryKey key, UUID messageId, String providerMessageId,
+                               String content, java.time.Instant occurredAt) {
+        if (!properties.enabled() || content == null || content.isBlank()) {
+            return;
+        }
+        try {
+            memory.recordOutbound(key, new ConversationMessage(messageId, key.conversationId(),
+                    ConversationMessage.Direction.OUTBOUND, providerMessageId, content, occurredAt));
+        } catch (RuntimeException exception) {
+            log.warn("Outbound conversation memory write failed: conversationId={} exceptionType={}",
                     key.conversationId(), exception.getClass().getSimpleName());
             invalidate(key);
         }

@@ -231,6 +231,10 @@ public class ConversationWorkflow {
         var accepted = repository.completeBotTurn(snapshot.conversationId(), snapshot.version(),
                 new ConversationTurn(text));
         if (accepted) {
+            memoryService.recordOutbound(memoryKey,
+                    UUID.nameUUIDFromBytes(("outbound:" + event.providerMessageId())
+                            .getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                    "outbound:" + event.providerMessageId(), text, Instant.now());
             eventPublisher.publishEvent(new ConversationMemoryProjectionRefreshRequested(
                     memoryKey,
                     memoryService.project(memory, currentMessage, event.receiptId()),

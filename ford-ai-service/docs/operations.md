@@ -14,7 +14,10 @@ Use environment variables or a deployment profile; keep secrets outside Git.
 - `FORD_META_APP_SECRET`, `FORD_META_VERIFY_TOKEN`
 - `FORD_META_DELIVERY_ENABLED`, channel delivery endpoints and access tokens
 - `FORD_HUMAN_HANDOFF_ENABLED` (`false` enables bot-only mode)
-- `FORD_MEMORY_ENABLED`, `FORD_MEMORY_RECENT_MESSAGE_LIMIT`
+- `FORD_MEMORY_ENABLED`, `FORD_MEMORY_RECENT_MESSAGE_LIMIT`, and
+  `FORD_MEMORY_PROMPT_RECENT_MESSAGE_LIMIT` (default `8`). The first setting
+  preserves the durable recent-memory bound; the second controls how many
+  messages are injected into each model prompt.
 - `FORD_MEMORY_SUMMARY_MAX_CHARS`, `FORD_MEMORY_FACT_LIMIT`, `FORD_MEMORY_FACT_MAX_CHARS`
 - `FORD_MEMORY_SEMANTIC_ENABLED`, `FORD_MEMORY_SEMANTIC_LIMIT`, `FORD_MEMORY_CACHE_ENABLED`
 - `FORD_AI_CHAT_PROVIDER`, `FORD_AI_EMBEDDING_PROVIDER`
@@ -123,12 +126,26 @@ additive; never reset the production database or tenant data for rollback.
 
 Conversation memory is enabled by default and is persisted in PostgreSQL. The
 session scope is tenant, channel, provider account, and participant, so the
-same person on two provider numbers cannot share memory accidentally. The
-bounded recent transcript is injected into each assistant request; Redis is
-not the source of truth. Semantic fact retrieval is disabled by default and
-should only be enabled after the configured embedding model is compatible with
-the pgvector memory table. Memory read, embedding, and provider failures are
-fail-open for webhook processing.
+same person on two provider numbers cannot share memory accidentally. Every
+accepted inbound message and successful bot reply is written to the canonical
+`conversation_message` transcript. Redis is only a 24-hour cache and is not
+the source of truth; the working-memory projection expires after 90 days of
+inactivity.
+
+Each model request receives a controlled context: the bounded rolling summary,
+up to `FORD_MEMORY_PROMPT_RECENT_MESSAGE_LIMIT` recent messages (8 by
+default), and durable facts. The database transcript is not deleted when this
+window is reached, so it remains available for audit and future retrieval.
+The summary is deterministic and bounded: it carries forward recent customer
+requests and the current request without spending a second model call. This
+is the safe first stage of long-conversation compaction.
+
+Semantic retrieval is disabled by default. The current pgvector adapter
+retrieves semantic facts, not archived message turns; enabling it does not yet
+provide full event-stream recall. A future message-recall adapter should index
+redacted transcript turns and retrieve only the top 2-3 relevant turns under a
+token budget. Memory read, embedding, and provider failures are fail-open for
+webhook processing.
 
 Jev classification is a separate structured decision step, not the response
 generation model. When enabled with a real `TYPESAFE_API_KEY`, it classifies

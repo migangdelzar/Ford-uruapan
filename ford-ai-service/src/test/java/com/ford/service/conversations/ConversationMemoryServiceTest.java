@@ -23,6 +23,40 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ConversationMemoryServiceTest {
 
     @Test
+    void loadsOnlyThePromptWindowWhileTheDurableWindowRemainsLarger() {
+        var properties = new MemoryProperties();
+        properties.setRecentMessageLimit(20);
+        properties.setPromptRecentMessageLimit(8);
+        var port = new FakeMemoryPort();
+        var service = new ConversationMemoryService(port, properties, new FakeSemanticPort());
+        var key = new ConversationMemoryKey(UUID.randomUUID(), Channel.WHATSAPP,
+                "phone-1", "customer-1", UUID.randomUUID());
+
+        service.load(new MemoryQuery(key, "¿Qué promociones tienen?"));
+
+        assertThat(port.lastQuery.recentMessageLimit()).isEqualTo(8);
+        assertThat(port.lastQuery.semanticLimit()).isEqualTo(properties.semanticLimit());
+    }
+
+    @Test
+    void recordsOutboundRepliesInTheDurableConversationTranscript() {
+        var properties = new MemoryProperties();
+        var port = new FakeMemoryPort();
+        var service = new ConversationMemoryService(port, properties);
+        var key = new ConversationMemoryKey(UUID.randomUUID(), Channel.WHATSAPP,
+                "phone-1", "customer-1", UUID.randomUUID());
+        var outboundId = UUID.randomUUID();
+
+        service.recordOutbound(key, outboundId, "outbound:inbound-1", "Le comparto la información.",
+                Instant.now());
+
+        assertThat(port.lastOutbound).isNotNull();
+        assertThat(port.lastOutbound.direction()).isEqualTo(ConversationMessage.Direction.OUTBOUND);
+        assertThat(port.lastOutbound.providerMessageId()).isEqualTo("outbound:inbound-1");
+        assertThat(port.lastOutbound.content()).isEqualTo("Le comparto la información.");
+    }
+
+    @Test
     void returnsEmptyContextWhenMemoryStoreFails() {
         var key = new ConversationMemoryKey(
                 UUID.randomUUID(), Channel.WHATSAPP, "phone-1", "customer-1", UUID.randomUUID());
@@ -58,9 +92,12 @@ class ConversationMemoryServiceTest {
 
     private static final class FakeMemoryPort implements ConversationMemoryPort {
         private RuntimeException loadFailure;
+        private MemoryQuery lastQuery;
+        private ConversationMessage lastOutbound;
 
         @Override
         public ConversationMemoryContext load(MemoryQuery query) {
+            lastQuery = query;
             if (loadFailure != null) {
                 throw loadFailure;
             }
@@ -69,6 +106,11 @@ class ConversationMemoryServiceTest {
 
         @Override
         public void recordInbound(ConversationMemoryKey key, ConversationMessage message) {
+        }
+
+        @Override
+        public void recordOutbound(ConversationMemoryKey key, ConversationMessage message) {
+            lastOutbound = message;
         }
 
         @Override

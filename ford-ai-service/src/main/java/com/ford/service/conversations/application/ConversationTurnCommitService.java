@@ -95,6 +95,8 @@ public class ConversationTurnCommitService {
             return ConversationGraphRoute.IGNORED;
         }
         var key = memory.key();
+        memoryService.recordOutbound(key, outboundMessageId(providerMessageId),
+                "outbound:" + providerMessageId, text, Instant.now());
         eventPublisher.publishEvent(new ConversationMemoryProjectionRefreshRequested(
                 key, memoryService.project(memory, inbound.text(), reference.receiptId()), memory.memoryVersion()));
         memoryService.invalidate(key);
@@ -117,5 +119,10 @@ public class ConversationTurnCommitService {
         } catch (java.security.NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is unavailable", exception);
         }
+    }
+
+    private static UUID outboundMessageId(String providerMessageId) {
+        return UUID.nameUUIDFromBytes(("outbound:" + providerMessageId)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 }

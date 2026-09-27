@@ -119,6 +119,12 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
 
     @Override
     @Transactional
+    public void recordOutbound(ConversationMemoryKey key, ConversationMessage message) {
+        recordMessage(key, message);
+    }
+
+    @Override
+    @Transactional
     public MemoryUpdateResult updateProjection(ConversationMemoryKey key,
                                                 MemoryProjectionUpdate update,
                                                 long expectedVersion) {

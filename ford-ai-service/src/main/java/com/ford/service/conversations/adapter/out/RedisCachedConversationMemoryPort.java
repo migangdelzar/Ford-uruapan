@@ -92,6 +92,12 @@ public final class RedisCachedConversationMemoryPort implements ConversationMemo
     }
 
     @Override
+    public void recordOutbound(ConversationMemoryKey key, ConversationMessage message) {
+        durable.recordOutbound(key, message);
+        evictSafely(key);
+    }
+
+    @Override
     public void invalidate(ConversationMemoryKey key) {
         evictSafely(key);
     }

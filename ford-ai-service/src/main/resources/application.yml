@@ -139,6 +139,7 @@ ford:
   memory:
     enabled: ${FORD_MEMORY_ENABLED:true}
     recent-message-limit: ${FORD_MEMORY_RECENT_MESSAGE_LIMIT:20}
+    prompt-recent-message-limit: ${FORD_MEMORY_PROMPT_RECENT_MESSAGE_LIMIT:8}
     summary-max-chars: ${FORD_MEMORY_SUMMARY_MAX_CHARS:4000}
     fact-limit: ${FORD_MEMORY_FACT_LIMIT:12}
     fact-max-chars: ${FORD_MEMORY_FACT_MAX_CHARS:500}

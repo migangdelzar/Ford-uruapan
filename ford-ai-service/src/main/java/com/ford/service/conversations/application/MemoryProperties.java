@@ -9,6 +9,7 @@ public class MemoryProperties {
 
     private boolean enabled = true;
     private int recentMessageLimit = 20;
+    private int promptRecentMessageLimit = 8;
     private int summaryMaxChars = 4000;
     private int factLimit = 12;
     private int factMaxChars = 500;
@@ -20,6 +21,7 @@ public class MemoryProperties {
 
     public boolean enabled() { return enabled; }
     public int recentMessageLimit() { return recentMessageLimit; }
+    public int promptRecentMessageLimit() { return promptRecentMessageLimit; }
     public int summaryMaxChars() { return summaryMaxChars; }
     public int factLimit() { return factLimit; }
     public int factMaxChars() { return factMaxChars; }
@@ -30,7 +32,16 @@ public class MemoryProperties {
     public Duration workingMemoryTtl() { return workingMemoryTtl; }
 
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
-    public void setRecentMessageLimit(int value) { recentMessageLimit = positive(value, "recentMessageLimit"); }
+    public void setRecentMessageLimit(int value) {
+        recentMessageLimit = positive(value, "recentMessageLimit");
+        promptRecentMessageLimit = Math.min(promptRecentMessageLimit, recentMessageLimit);
+    }
+    public void setPromptRecentMessageLimit(int value) {
+        promptRecentMessageLimit = positive(value, "promptRecentMessageLimit");
+        if (promptRecentMessageLimit > recentMessageLimit) {
+            throw new IllegalArgumentException("promptRecentMessageLimit cannot exceed recentMessageLimit");
+        }
+    }
     public void setSummaryMaxChars(int value) { summaryMaxChars = positive(value, "summaryMaxChars"); }
     public void setFactLimit(int value) { factLimit = positive(value, "factLimit"); }
     public void setFactMaxChars(int value) { factMaxChars = positive(value, "factMaxChars"); }

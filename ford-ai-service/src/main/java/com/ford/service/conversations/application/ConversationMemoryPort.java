@@ -12,6 +12,10 @@ public interface ConversationMemoryPort {
 
     void recordInbound(ConversationMemoryKey key, ConversationMessage message);
 
+    default void recordOutbound(ConversationMemoryKey key, ConversationMessage message) {
+        // Implementations that persist the canonical transcript should override this.
+    }
+
     default void invalidate(ConversationMemoryKey key) {
     }
 
