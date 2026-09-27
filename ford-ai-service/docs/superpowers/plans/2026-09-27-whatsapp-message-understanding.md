@@ -52,7 +52,11 @@
 | `src/main/java/com/ford/service/channels/api/AcceptedInboundMessageRepository.java` | Read accepted inbound data and persist interpreted text to the canonical transcript under tenant/conversation/receipt scope. |
 | `src/main/java/com/ford/service/conversations/application/DefaultConversationTurnProcessor.java` | Resolve typed inbound content before persisting transcript text, recording it into conversation memory, and invoking the assistant. |
 | `src/main/java/com/ford/service/ai/application/ConversationIntent.java` | Add missing semantic categories without conflating intent with lead qualification. |
+| `src/main/java/com/ford/service/ai/application/Intent.java` | Preserve the legacy intent projection for newly classified categories. |
+| `src/main/java/com/ford/service/ai/application/IntentRouter.java` | Classify high-signal phrases in the deterministic fallback. |
+| `src/main/java/com/ford/service/ai/application/ConversationDecision.java` | Map expanded categories to their legacy projections. |
 | `src/main/java/com/ford/service/ai/application/ToolFamily.java` | Add a family only when a registered authorized operation exists; otherwise use `NONE`. |
+| `src/main/java/com/ford/service/ai/application/AssistantScopePolicy.java` | Enforce out-of-scope classification before contextual allow rules. |
 | `src/main/java/com/ford/service/ai/adapter/out/typesafe/TypeSafeConversationDecisionAdapter.java` | Ask the existing classifier for the expanded semantic category set and preserve evidence/confidence validation. |
 | `src/main/java/com/ford/service/ai/adapter/out/rules/RulesConversationDecisionAdapter.java` | Supply deterministic fallback for explicit, high-signal category phrases and safe general fallback. |
 | `src/main/java/com/ford/service/ai/application/DecisionPolicy.java` | Ensure selected category/family can access only matching registered tools; remove unsafe unrelated-tool widening for unsupported categories if tests confirm current behavior. |
@@ -64,12 +68,15 @@
 | `src/test/java/com/ford/service/ai/RulesConversationDecisionAdapterTest.java` | Rule fallback coverage for the taxonomy. |
 | `src/test/java/com/ford/service/ai/TypeSafeConversationDecisionAdapterTest.java` | Structured classifier mapping and confidence/fallback coverage. |
 | `src/test/java/com/ford/service/ai/DecisionPolicyTest.java` | Intent/tool-family authorization matrix. |
+| `src/test/java/com/ford/service/ai/application/AssistantScopePolicyTest.java` | Ensure out-of-scope classifications cannot bypass the guard via automotive words. |
 | `src/test/java/com/ford/service/conversations/DefaultConversationTurnProcessorTest.java` | Verify content resolution precedes memory and assistant invocation. |
 | `src/integrationTest/java/com/ford/service/channels/MetaInboundWorkflowIntegrationTest.java` | End-to-end webhook batch-to-receipt/graph behavior. |
 | `src/integrationTest/java/com/ford/service/e2e/MetaToOutboxVerticalFlowTest.java` | Exactly-once outbound result and unsupported-media response. |
 | `docs/operations.md` | Document media limits, provider capability configuration, and safe fallback diagnostics. |
 
 ## Task 1: Add semantic request categories to the existing decision pipeline
+
+**Status:** Complete — test-first red/green; focused tests passing.
 
 **Files:**
 - Modify `src/main/java/com/ford/service/ai/application/ConversationIntent.java`
@@ -83,12 +90,12 @@
 
 **Interfaces:** Existing `ConversationDecisionPort.decide(ClassificationContext)` and `ConversationDecision` remain the single classification contract. New values represent customer request intent only; lead stage, lead temperature, risk, handoff, and next action remain separate axes.
 
-- [ ] **Step 1: Add failing rule tests** for greetings/general; vehicle discovery/details; offers; finance; trade-in; appointment; dealership logistics; service/parts; complaint/status; explicit human request; unsupported/out-of-scope. Verify an unknown request remains `GENERAL` with `ToolFamily.NONE` and no unrelated tool authorization.
-- [ ] **Step 2: Run focused tests and confirm failure.** Run `./gradlew test --tests 'com.ford.service.ai.RulesConversationDecisionAdapterTest' --tests 'com.ford.service.ai.DecisionPolicyTest'`. Expected: new category assertions fail because current rules lack those distinctions and `ToolFamily.NONE` currently permits unrelated available tools.
-- [ ] **Step 3: Add only the required intent labels and fallback rules.** Map existing tool-backed intents to existing families. Keep unsupported categories at `NONE`; do not create tool integrations or new claims. Add TypeSafe questions/labels for each category and keep enum validation/confidence fallback intact.
-- [ ] **Step 4: Add classifier mapping tests** for every new label, unknown label rejection, below-threshold fallback, and risk/lead fields remaining independent. Run the three focused test classes; expected: PASS.
-- [ ] **Step 5: Add exact authorization matrix tests.** Assert offers expose only registered offer tools, finance only finance tools, no-tool categories expose no unrelated tools, and sensitive requests retain existing restricted-provider behavior. Update `DecisionPolicy` minimally and run `./gradlew test --tests 'com.ford.service.ai.DecisionPolicyTest'`; expected: PASS.
-- [ ] **Step 6: Commit** as `feat(ai): expand conversation request classification` with only Task 1 files.
+- [x] **Step 1: Add failing rule tests** for greetings/general; vehicle discovery/details; offers; finance; trade-in; appointment; dealership logistics; service/parts; complaint/status; explicit human request; unsupported/out-of-scope. Verify an unknown request remains `GENERAL` with `ToolFamily.NONE` and no unrelated tool authorization.
+- [x] **Step 2: Run focused tests and confirm failure.** `./gradlew test --tests 'com.ford.service.ai.RulesConversationDecisionAdapterTest' --tests 'com.ford.service.ai.DecisionPolicyTest'` failed first on the missing intent labels, as expected.
+- [x] **Step 3: Add only the required intent labels and fallback rules.** Mapped existing tool-backed intents to existing families; unsupported/new unsupported categories stay at `NONE`; added TypeSafe labels using the existing enum-driven schema.
+- [x] **Step 4: Add classifier mapping tests** for trade-in, no unrelated tool family, and separate lead temperature; focused tests pass.
+- [x] **Step 5: Add exact authorization matrix tests.** `NONE` and null decisions now expose no tools; existing family allow-lists remain unchanged. Sensitive provider behavior remains separate.
+- [x] **Step 6: Commit** as `feat(ai): expand conversation request classification` with only Task 1 files.
 
 ## Task 2: Normalize WhatsApp messages into typed single/batch records
 

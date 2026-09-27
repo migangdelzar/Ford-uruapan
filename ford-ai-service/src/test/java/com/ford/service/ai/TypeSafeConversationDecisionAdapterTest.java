@@ -76,9 +76,27 @@ class TypeSafeConversationDecisionAdapterTest {
                 .allMatch(ClassificationEvidence::fallbackUsed);
     }
 
+    @Test
+    void classifiesTradeInAsARequestCategoryWithoutAssigningAnUnregisteredTool() {
+        var client = mock(TypeSafeClient.class);
+        when(client.systemOne(anyString(), anyMap())).thenReturn(response("TRADE_IN", "NONE"));
+        var adapter = new TypeSafeConversationDecisionAdapter(client, new ClassificationProperties());
+
+        var decision = adapter.decide(new ClassificationContext(
+                UUID.randomUUID(), UUID.randomUUID(), "Quiero dar mi auto a cuenta", null, "BOT_ACTIVE", false));
+
+        assertThat(decision.intent()).isEqualTo(ConversationIntent.TRADE_IN);
+        assertThat(decision.toolFamily()).isEqualTo(ToolFamily.NONE);
+        assertThat(decision.leadTemperature()).isEqualTo(LeadTemperature.WARM);
+    }
+
     private static SystemOneResponse response() {
+        return response("FINANCE", "FINANCE_ESTIMATE");
+    }
+
+    private static SystemOneResponse response(String intent, String toolFamily) {
         var answers = new HashMap<String, org.springaicommunity.typesafe.response.Answer>();
-        answers.put("intent", new ChoiceAnswer("FINANCE", Map.of("FINANCE", 0.91), 0.91));
+        answers.put("intent", new ChoiceAnswer(intent, Map.of(intent, 0.91), 0.91));
         answers.put("lead_stage", new ChoiceAnswer("QUALIFYING", Map.of("QUALIFYING", 0.84), 0.84));
         answers.put("lead_temperature", new ScoreAnswer(2,
                 Map.of(0, JsonContent.of("UNKNOWN"), 1, JsonContent.of("COLD"),
@@ -87,7 +105,7 @@ class TypeSafeConversationDecisionAdapterTest {
         answers.put("user_requests_human", new NoulAnswer(0.04));
         answers.put("negative_sentiment", new NoulAnswer(0.03));
         answers.put("complex_request", new NoulAnswer(0.12));
-        answers.put("tool_family", new ChoiceAnswer("FINANCE_ESTIMATE", Map.of("FINANCE_ESTIMATE", 0.88), 0.88));
+        answers.put("tool_family", new ChoiceAnswer(toolFamily, Map.of(toolFamily, 0.88), 0.88));
         answers.put("has_sensitive_data", new NoulAnswer(0.02));
         return new SystemOneResponse("jev", answers, Usage.EMPTY);
     }

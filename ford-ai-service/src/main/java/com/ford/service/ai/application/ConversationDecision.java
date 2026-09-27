@@ -52,7 +52,13 @@ public record ConversationDecision(
             case OFFERS -> Intent.OFFERS;
             case KNOWLEDGE -> Intent.KNOWLEDGE;
             case HUMAN_REQUEST -> Intent.LEAD_HANDOFF;
-            case GENERAL, APPOINTMENT -> Intent.GENERAL;
+            case APPOINTMENT -> Intent.APPOINTMENT;
+            case TRADE_IN -> Intent.TRADE_IN;
+            case DEALERSHIP_INFO -> Intent.DEALERSHIP_INFO;
+            case SERVICE_SUPPORT -> Intent.SERVICE_SUPPORT;
+            case COMPLAINT_STATUS -> Intent.COMPLAINT_STATUS;
+            case OUT_OF_SCOPE -> Intent.OUT_OF_SCOPE;
+            case GENERAL -> Intent.GENERAL;
         };
     }
 

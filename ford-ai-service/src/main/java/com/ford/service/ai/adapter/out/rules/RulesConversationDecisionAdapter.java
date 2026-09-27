@@ -78,6 +78,12 @@ public final class RulesConversationDecisionAdapter implements ConversationDecis
             case KNOWLEDGE -> ConversationIntent.KNOWLEDGE;
             case CATALOG -> ConversationIntent.VEHICLE_DETAILS;
             case LEAD_HANDOFF -> ConversationIntent.HUMAN_REQUEST;
+            case APPOINTMENT -> ConversationIntent.APPOINTMENT;
+            case TRADE_IN -> ConversationIntent.TRADE_IN;
+            case DEALERSHIP_INFO -> ConversationIntent.DEALERSHIP_INFO;
+            case SERVICE_SUPPORT -> ConversationIntent.SERVICE_SUPPORT;
+            case COMPLAINT_STATUS -> ConversationIntent.COMPLAINT_STATUS;
+            case OUT_OF_SCOPE -> ConversationIntent.OUT_OF_SCOPE;
             case GENERAL -> ConversationIntent.GENERAL;
         };
     }
@@ -89,7 +95,9 @@ public final class RulesConversationDecisionAdapter implements ConversationDecis
             case OFFERS -> ToolFamily.OFFERS;
             case FINANCE -> ToolFamily.FINANCE_ESTIMATE;
             case KNOWLEDGE -> ToolFamily.KNOWLEDGE_SEARCH;
-            default -> ToolFamily.NONE;
+            case APPOINTMENT -> ToolFamily.APPOINTMENT;
+            case LEAD_HANDOFF, TRADE_IN, DEALERSHIP_INFO, SERVICE_SUPPORT, COMPLAINT_STATUS,
+                    OUT_OF_SCOPE, GENERAL -> ToolFamily.NONE;
         };
     }
 

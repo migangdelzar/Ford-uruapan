@@ -26,10 +26,7 @@ public final class DecisionPolicy {
             return Set.of();
         }
         if (decision == null || decision.toolFamily() == ToolFamily.NONE) {
-            // A rules/low-confidence classifier may not know the exact family yet.
-            // Keep the model fail-safe (read-only tools only), but let it search the
-            // Ford catalog, offers, and approved knowledge before answering.
-            return Set.copyOf(availableTools);
+            return Set.of();
         }
         var allowed = TOOL_NAMES.getOrDefault(decision.toolFamily(), Set.of());
         return availableTools.stream()
