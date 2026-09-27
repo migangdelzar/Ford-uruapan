@@ -190,7 +190,6 @@ Spring AI 2.0.1 provides user-message media parts for supported multimodal chat 
 **Files:**
 - Modify `src/main/java/com/ford/service/conversations/application/DefaultConversationTurnProcessor.java`
 - Modify `src/main/java/com/ford/service/conversations/application/ConversationConfiguration.java`
-- Modify `src/main/java/com/ford/service/channels/api/AcceptedInboundMessage.java` only if Task 3 did not finalize its contract
 - Test `src/test/java/com/ford/service/conversations/DefaultConversationTurnProcessorTest.java`
 - Extend `src/integrationTest/java/com/ford/service/channels/MetaInboundWorkflowIntegrationTest.java`
 
