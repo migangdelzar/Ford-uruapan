@@ -9,18 +9,27 @@ public record ConversationMemoryContext(
         List<ConversationMessage> recentMessages,
         List<MemoryFact> durableFacts,
         long memoryVersion,
-        Instant updatedAt) {
+        Instant updatedAt,
+        List<ConversationMemoryRecall> recalledTurns) {
 
     public ConversationMemoryContext(ConversationMemoryKey key, String summary,
                                      List<ConversationMessage> recentMessages,
                                      List<MemoryFact> durableFacts, long memoryVersion) {
-        this(key, summary, recentMessages, durableFacts, memoryVersion, null);
+        this(key, summary, recentMessages, durableFacts, memoryVersion, null, List.of());
+    }
+
+    public ConversationMemoryContext(ConversationMemoryKey key, String summary,
+                                     List<ConversationMessage> recentMessages,
+                                     List<MemoryFact> durableFacts, long memoryVersion,
+                                     Instant updatedAt) {
+        this(key, summary, recentMessages, durableFacts, memoryVersion, updatedAt, List.of());
     }
 
     public ConversationMemoryContext {
         summary = summary == null ? "" : summary;
         recentMessages = List.copyOf(recentMessages == null ? List.of() : recentMessages);
         durableFacts = List.copyOf(durableFacts == null ? List.of() : durableFacts);
+        recalledTurns = List.copyOf(recalledTurns == null ? List.of() : recalledTurns);
     }
 
     public static ConversationMemoryContext empty(ConversationMemoryKey key) {

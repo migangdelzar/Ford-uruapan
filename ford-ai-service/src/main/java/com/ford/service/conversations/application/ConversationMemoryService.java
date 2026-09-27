@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
 import java.util.UUID;
+import java.time.Instant;
 import org.springframework.context.ApplicationEventPublisher;
 
 public final class ConversationMemoryService {
@@ -19,26 +20,39 @@ public final class ConversationMemoryService {
     private final ConversationMemoryPort memory;
     private final MemoryProperties properties;
     private final ConversationMemorySemanticPort semanticMemory;
+    private final ConversationMemoryRecallPort recall;
+    private final ConversationMemoryRecallPolicy recallPolicy;
     private final ConversationMemoryProjector projector;
     private final ApplicationEventPublisher eventPublisher;
 
     public ConversationMemoryService(ConversationMemoryPort memory, MemoryProperties properties) {
-        this(memory, properties, new NoOpConversationMemorySemanticPort(), event -> { });
+        this(memory, properties, new NoOpConversationMemorySemanticPort(),
+                new NoOpConversationMemoryRecallPort(), event -> { });
     }
 
     public ConversationMemoryService(ConversationMemoryPort memory,
                                      MemoryProperties properties,
                                      ConversationMemorySemanticPort semanticMemory) {
-        this(memory, properties, semanticMemory, event -> { });
+        this(memory, properties, semanticMemory, new NoOpConversationMemoryRecallPort(), event -> { });
     }
 
     public ConversationMemoryService(ConversationMemoryPort memory,
                                      MemoryProperties properties,
                                      ConversationMemorySemanticPort semanticMemory,
                                      ApplicationEventPublisher eventPublisher) {
+        this(memory, properties, semanticMemory, new NoOpConversationMemoryRecallPort(), eventPublisher);
+    }
+
+    public ConversationMemoryService(ConversationMemoryPort memory,
+                                     MemoryProperties properties,
+                                     ConversationMemorySemanticPort semanticMemory,
+                                     ConversationMemoryRecallPort recall,
+                                     ApplicationEventPublisher eventPublisher) {
         this.memory = Objects.requireNonNull(memory);
         this.properties = Objects.requireNonNull(properties);
         this.semanticMemory = Objects.requireNonNull(semanticMemory);
+        this.recall = Objects.requireNonNull(recall);
+        this.recallPolicy = new ConversationMemoryRecallPolicy();
         this.eventPublisher = Objects.requireNonNull(eventPublisher);
         this.projector = new ConversationMemoryProjector(properties);
     }
@@ -53,22 +67,39 @@ public final class ConversationMemoryService {
             var context = memory.load(boundedQuery);
             if (!properties.semanticEnabled() || query.latestMessage() == null
                     || query.latestMessage().isBlank()) {
-                return context;
+                // Continue to optional archived-turn recall below.
+            } else {
+                try {
+                    var semanticFacts = semanticMemory.search(query.key(), query.latestMessage(),
+                            properties.semanticLimit());
+                    var facts = java.util.stream.Stream.concat(context.durableFacts().stream(), semanticFacts.stream())
+                            .limit(properties.factLimit())
+                            .toList();
+                    context = new ConversationMemoryContext(context.key(), context.summary(),
+                            context.recentMessages(), facts, context.memoryVersion(), context.updatedAt(),
+                            context.recalledTurns());
+                } catch (RuntimeException exception) {
+                    log.warn("Semantic conversation memory search failed: conversationId={} tenantId={} exceptionType={}",
+                            query.key().conversationId(), query.key().tenantId(),
+                            exception.getClass().getSimpleName());
+                }
             }
-            try {
-                var semanticFacts = semanticMemory.search(query.key(), query.latestMessage(),
-                        properties.semanticLimit());
-                var facts = java.util.stream.Stream.concat(context.durableFacts().stream(), semanticFacts.stream())
-                        .limit(properties.factLimit())
-                        .toList();
-                return new ConversationMemoryContext(context.key(), context.summary(),
-                        context.recentMessages(), facts, context.memoryVersion());
-            } catch (RuntimeException exception) {
-                log.warn("Semantic conversation memory search failed: conversationId={} tenantId={} exceptionType={}",
-                        query.key().conversationId(), query.key().tenantId(),
-                        exception.getClass().getSimpleName());
-                return context;
+            if (properties.semanticRecallEnabled()
+                    && query.latestMessage() != null
+                    && recallPolicy.shouldRecall(query.latestMessage(), context)) {
+                try {
+                    var recalled = recall.search(query.key(), query.latestMessage(), Instant.now(),
+                            properties.semanticRecallLimit(), properties.semanticRecallMinimumSimilarity());
+                    context = new ConversationMemoryContext(context.key(), context.summary(),
+                            context.recentMessages(), context.durableFacts(), context.memoryVersion(),
+                            context.updatedAt(), recalled);
+                } catch (RuntimeException exception) {
+                    log.warn("Conversation semantic recall failed: conversationId={} tenantId={} exceptionType={}",
+                            query.key().conversationId(), query.key().tenantId(),
+                            exception.getClass().getSimpleName());
+                }
             }
+            return context;
         } catch (RuntimeException exception) {
             log.warn("Conversation memory load failed: conversationId={} tenantId={} exceptionType={}",
                     query.key().conversationId(), query.key().tenantId(),

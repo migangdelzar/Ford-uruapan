@@ -60,6 +60,13 @@ public class ConversationAssistantAdapter implements ConversationAssistant {
             memory.durableFacts().forEach(fact -> prompt.append("\n- ")
                     .append(safe(fact.kind())).append(": ").append(safe(fact.content())));
         }
+        if (!memory.recalledTurns().isEmpty()) {
+            prompt.append("\nRecuerdos históricos relevantes (solo continuidad; verifique contra la conversación actual):");
+            memory.recalledTurns().forEach(turn -> prompt.append("\n- ")
+                    .append(turn.direction() == ConversationMessage.Direction.INBOUND
+                            ? "usuario" : "asistente")
+                    .append(": ").append(safe(turn.content())));
+        }
         prompt.append("\n[FIN DEL HISTORIAL]");
         return prompt.toString();
     }

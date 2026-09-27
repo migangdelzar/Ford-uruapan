@@ -58,8 +58,9 @@ public class ConversationConfiguration {
     ConversationMemoryService conversationMemoryService(ConversationMemoryPort memory,
                                                         MemoryProperties properties,
                                                         ConversationMemorySemanticPort semanticMemory,
+                                                        ConversationMemoryRecallPort recall,
                                                         ApplicationEventPublisher publisher) {
-        return new ConversationMemoryService(memory, properties, semanticMemory, publisher);
+        return new ConversationMemoryService(memory, properties, semanticMemory, recall, publisher);
     }
 
     @Bean

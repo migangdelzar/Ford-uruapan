@@ -3,6 +3,7 @@ package com.ford.service.conversations;
 import com.ford.service.channels.domain.Channel;
 import com.ford.service.conversations.application.ConversationMemoryPort;
 import com.ford.service.conversations.application.ConversationMemorySemanticPort;
+import com.ford.service.conversations.application.ConversationMemoryRecallPort;
 import com.ford.service.conversations.application.ConversationMemoryService;
 import com.ford.service.conversations.application.MemoryProperties;
 import com.ford.service.conversations.domain.ConversationMemoryContext;
@@ -90,6 +91,25 @@ class ConversationMemoryServiceTest {
         assertThat(context.durableFacts()).containsExactly(new MemoryFact("preference", "Ranger", null));
     }
 
+    @Test
+    void recallsArchivedTurnsOnlyForHistoricalQuestions() {
+        var key = new ConversationMemoryKey(
+                UUID.randomUUID(), Channel.WHATSAPP, "phone-1", "customer-1", UUID.randomUUID());
+        var properties = new MemoryProperties();
+        properties.setSemanticRecallEnabled(true);
+        var recall = new FakeRecallPort();
+        recall.turns = List.of(new com.ford.service.conversations.domain.ConversationMemoryRecall(
+                UUID.randomUUID(), ConversationMessage.Direction.INBOUND, "Ranger", Instant.now(), 0.91));
+
+        var service = new ConversationMemoryService(new FakeMemoryPort(), properties,
+                new FakeSemanticPort(), recall, event -> { });
+
+        var context = service.load(new MemoryQuery(key, "¿Qué modelo le había dicho que me interesaba?"));
+
+        assertThat(context.recalledTurns()).hasSize(1);
+        assertThat(recall.lastLimit).isEqualTo(3);
+    }
+
     private static final class FakeMemoryPort implements ConversationMemoryPort {
         private RuntimeException loadFailure;
         private MemoryQuery lastQuery;
@@ -131,6 +151,23 @@ class ConversationMemoryServiceTest {
 
         @Override
         public void upsert(ConversationMemoryKey key, MemoryFact fact) {
+        }
+    }
+
+    private static final class FakeRecallPort implements ConversationMemoryRecallPort {
+        private List<com.ford.service.conversations.domain.ConversationMemoryRecall> turns = List.of();
+        private int lastLimit;
+
+        @Override
+        public List<com.ford.service.conversations.domain.ConversationMemoryRecall> search(
+                ConversationMemoryKey key, String query, Instant before, int limit, double minimumSimilarity) {
+            lastLimit = limit;
+            return turns;
+        }
+
+        @Override
+        public void upsert(ConversationMemoryKey key, ConversationMessage message, String redactedContent,
+                           String embeddingModel, float[] embedding) {
         }
     }
 }
