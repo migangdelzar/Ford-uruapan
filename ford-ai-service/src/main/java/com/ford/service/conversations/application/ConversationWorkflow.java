@@ -37,6 +37,7 @@ import java.util.UUID;
 public class ConversationWorkflow {
 
     private static final Logger log = LoggerFactory.getLogger(ConversationWorkflow.class);
+    private static final Duration TURN_LEASE_DURATION = Duration.ofMinutes(15);
 
     private final ConversationRepository repository;
     private final ConversationAssistant assistant;
@@ -175,18 +176,17 @@ public class ConversationWorkflow {
         MDC.put("workflowStage", "RECEIVED");
         log.info("Conversation workflow received inbound event: conversationId={} receiptId={} providerMessageId={} channel={}",
                 event.conversationId(), event.receiptId(), event.providerMessageId(), event.channel());
-        var leased = turnLeases == null || turnLeases.tryAcquire(event.tenantId(), event.conversationId(),
-                leaseOwner, Duration.ofSeconds(45));
-        if (!leased) {
-            log.info("Conversation workflow skipped inbound event: conversationId={} reason=turn_lease_unavailable",
-                    event.conversationId());
-            restoreMdc("conversationId", previousConversationId);
-            restoreMdc("receiptId", previousReceiptId);
-            restoreMdc("providerMessageId", previousProviderMessageId);
-            restoreMdc("workflowStage", previousStage);
-            return;
-        }
+        var leased = turnLeases == null;
         try {
+            if (turnLeases != null) {
+                leased = turnLeases.tryAcquire(event.tenantId(), event.conversationId(), leaseOwner,
+                        TURN_LEASE_DURATION);
+                if (!leased) {
+                    log.warn("Conversation workflow could not acquire turn lease: conversationId={} receiptId={} action=retain_event_for_retry",
+                            event.conversationId(), event.receiptId());
+                    throw new ConversationTurnLeaseUnavailableException(event.conversationId());
+                }
+            }
             MDC.put("workflowStage", "WORKFLOW_STARTED");
             log.info("Conversation workflow executing: conversationId={} mode={}", event.conversationId(),
                     graphRunner == null ? "legacy" : "graph");
@@ -211,7 +211,7 @@ public class ConversationWorkflow {
                     "channel", event.channel().name(), "outcome", "failure"));
             throw exception;
         } finally {
-            if (turnLeases != null) {
+            if (turnLeases != null && leased) {
                 turnLeases.release(event.tenantId(), event.conversationId(), leaseOwner);
             }
             restoreMdc("conversationId", previousConversationId);

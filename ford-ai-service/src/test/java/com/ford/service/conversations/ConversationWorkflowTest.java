@@ -12,7 +12,9 @@ import com.ford.service.ai.application.LeadTemperature;
 import com.ford.service.ai.application.SensitiveDataLevel;
 import com.ford.service.ai.application.ToolFamily;
 import com.ford.service.conversations.application.ConversationWorkflow;
+import com.ford.service.conversations.application.ConversationTurnLeaseUnavailableException;
 import com.ford.service.conversations.application.graph.ConversationGraphRunner;
+import com.ford.service.conversations.application.port.out.ConversationTurnLeasePort;
 import com.ford.service.conversations.application.graph.ConversationGraphRoute;
 import com.ford.service.conversations.application.graph.ConversationTurnOutcome;
 import com.ford.service.conversations.application.graph.ConversationTurnReference;
@@ -51,10 +53,43 @@ import java.util.UUID;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 class ConversationWorkflowTest {
+
+    @Test
+    void leavesInboundEventIncompleteWhenConversationLeaseIsBusy() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var receiptId = UUID.randomUUID();
+        var processorCalls = new ArrayList<ConversationTurnReference>();
+        var requestedLeaseDuration = new java.util.concurrent.atomic.AtomicReference<java.time.Duration>();
+        var graph = new ConversationGraphRunner(reference -> {
+            processorCalls.add(reference);
+            return new ConversationTurnOutcome(ConversationGraphRoute.IGNORED);
+        });
+        ConversationTurnLeasePort busyLease = new ConversationTurnLeasePort() {
+            @Override
+            public boolean tryAcquire(UUID tenant, UUID conversation, String owner, java.time.Duration duration) {
+                requestedLeaseDuration.set(duration);
+                return false;
+            }
+
+            @Override
+            public void release(UUID tenant, UUID conversation, String owner) {
+                throw new AssertionError("must not release a lease that was not acquired");
+            }
+        };
+        var workflow = new ConversationWorkflow(graph, mock(AiObservationService.class), busyLease);
+
+        assertThatThrownBy(() -> workflow.on(new InboundMessageAccepted(receiptId, tenantId, conversationId,
+                Channel.WHATSAPP, "wamid.lease-busy", Instant.now())))
+                .isInstanceOf(ConversationTurnLeaseUnavailableException.class);
+        assertThat(processorCalls).isEmpty();
+        assertThat(requestedLeaseDuration.get()).isEqualTo(java.time.Duration.ofMinutes(15));
+    }
 
     @Test
     void productionWorkflowDelegatesInboundIdsToTheBoundedGraph() {
