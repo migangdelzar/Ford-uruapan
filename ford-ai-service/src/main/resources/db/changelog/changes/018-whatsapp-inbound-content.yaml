@@ -1,0 +1,16 @@
+databaseChangeLog:
+  - changeSet:
+      id: 018-whatsapp-inbound-content
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              alter table channel_message
+                  add column if not exists message_kind varchar(30) not null default 'TEXT';
+              alter table channel_message
+                  add column if not exists attachment_metadata jsonb not null default '[]'::jsonb;
+      rollback:
+        - sql:
+            sql: |
+              alter table channel_message drop column if exists attachment_metadata;
+              alter table channel_message drop column if exists message_kind;

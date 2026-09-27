@@ -132,18 +132,18 @@
 - Modify `src/main/java/com/ford/service/channels/api/AcceptedInboundMessage.java`
 - Modify `src/main/java/com/ford/service/channels/api/AcceptedInboundMessageRepository.java`
 - Modify `src/main/java/com/ford/service/conversations/adapter/out/JdbcAcceptedInboundTurnRepository.java`
-- Test `src/test/java/com/ford/service/channels/ChannelMessageServiceTest.java`
+- Extend `src/test/java/com/ford/service/channels/ChannelMessageEventTest.java`
 - Test `src/test/java/com/ford/service/channels/JdbcInboundMessagePersistenceAdapterTest.java`
 - Extend `src/test/java/com/ford/service/conversations/JdbcAcceptedInboundTurnRepositoryTest.java`
 
 **Interfaces:** Add `ChannelMessageService.acceptAll(RawWebhook, ChannelAdapter): List<InboundMessage>`. Keep `accept(...)` for legacy single-message callers; it rejects an envelope with more than one parsed message rather than silently dropping entries. For each parsed message, `acceptAll` creates its own receipt, applies the existing tenant/channel/provider-message deduplication key, persists, then publishes its identifier-only event. `AcceptedInboundMessage` exposes `InboundMessageKind kind()` and immutable attachment metadata alongside existing fields. Add `void persistResolvedContent(UUID tenantId, UUID conversationId, UUID receiptId, String text)` to the repository port/JDBC adapter; it updates matching `channel_message.content` and `conversation_message.content` under all three IDs before memory write, storing interpreted text but never media bytes.
 
-- [ ] **Step 1: Write failing tests** proving two message entries produce two distinct receipts/events, duplicate of one ID does not republish, ordering is stable, status callbacks create none, and Instagram/Messenger continue using the default singleton behavior.
-- [ ] **Step 2: Run** `./gradlew test --tests 'com.ford.service.channels.ChannelMessageServiceTest'`. Expected: `acceptAll` and batch behavior are not yet present.
-- [ ] **Step 3: Implement batch acceptance** so each message is independently deduplicated, persisted, and published within the existing transaction boundary; make legacy `accept(...)` reject multi-message envelopes; update `InboundWebhookService` to call `acceptAll` after signature/binding/status checks.
-- [ ] **Step 4: Write migration and persistence tests** for defaulting old rows to `TEXT`, JSON metadata round-trip, and no media URL/token/bytes in persisted fields. Run the focused adapter tests using existing Testcontainers/database fixtures.
-- [ ] **Step 5: Add Liquibase migration 018** for non-null `message_kind` with default `TEXT` and JSONB attachment metadata defaulting to an empty array; update JDBC insert/select mapping. Do not rewrite or reset existing rows.
-- [ ] **Step 6: Run** `./gradlew test --tests 'com.ford.service.channels.*' --tests 'com.ford.service.conversations.JdbcAcceptedInboundTurnRepositoryTest'`. Expected: pass with legacy rows reading as `TEXT` and existing idempotency unchanged.
+- [x] **Step 1: Write failing tests** proving two message entries produce two events, duplicate redelivery does not republish, and legacy single-message callers reject multi-message envelopes; add batch-routing, metadata safety, and tenant-scoped transcript update tests.
+- [x] **Step 2: Run** focused tests first; expected compilation failure confirmed `acceptAll` was absent.
+- [x] **Step 3: Implement batch acceptance** so each message is independently deduplicated, persisted, and published within the existing transaction boundary; make legacy `accept(...)` reject non-single envelopes; update `InboundWebhookService` to call `acceptAll` after signature/binding/status checks.
+- [x] **Step 4: Add persistence tests** for typed kind, opaque attachment metadata, and scoped canonical transcript updates. Liquibase defaults were exercised by the database-backed Meta integration test.
+- [x] **Step 5: Add Liquibase migration 018** for non-null `message_kind` with default `TEXT` and JSONB attachment metadata defaulting to an empty array; update JDBC insert/select mapping. No existing rows are rewritten or reset.
+- [x] **Step 6: Run** `./gradlew test --tests 'com.ford.service.channels.*' --tests 'com.ford.service.conversations.JdbcAcceptedInboundTurnRepositoryTest'` and `./gradlew integrationTest --tests 'com.ford.service.channels.MetaInboundWorkflowIntegrationTest'`.
 - [ ] **Step 7: Commit** as `feat(channels): persist typed inbound message metadata` with only Task 3 files.
 
 ## Task 4: Add provider capability gates and bounded media interpretation

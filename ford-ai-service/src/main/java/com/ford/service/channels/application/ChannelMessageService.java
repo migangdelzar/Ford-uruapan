@@ -7,6 +7,7 @@ import com.ford.service.channels.application.port.out.InboundMessagePersistenceP
 import com.ford.service.channels.domain.InboundMessage;
 import com.ford.service.channels.domain.RawWebhook;
 
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -57,8 +58,23 @@ public class ChannelMessageService {
 
     @Transactional
     public InboundMessage accept(RawWebhook webhook, ChannelAdapter adapter) {
+        var messages = adapter.parseInboundMessages(webhook);
+        if (messages.size() != 1) {
+            throw new IllegalArgumentException("Expected exactly one inbound message; received " + messages.size());
+        }
+        return accept(messages.getFirst());
+    }
+
+    @Transactional
+    public List<InboundMessage> acceptAll(RawWebhook webhook, ChannelAdapter adapter) {
+        return adapter.parseInboundMessages(webhook).stream()
+                .map(this::accept)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
+    private InboundMessage accept(InboundMessage message) {
         var started = System.nanoTime();
-        var message = adapter.parseInbound(webhook);
         var key = message.tenantId() + ":" + message.channel() + ":" + message.providerMessageId();
         var receiptId = UUID.randomUUID();
         var firstDelivery = deduplication == null
