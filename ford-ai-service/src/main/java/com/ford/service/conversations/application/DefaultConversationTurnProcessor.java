@@ -14,12 +14,16 @@ import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.leads.application.LeadJourneyService;
 import org.springframework.stereotype.Component;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
 
 @Component
 @ConditionalOnProperty(prefix = "ford.conversations.workflow", name = "graph-enabled", havingValue = "true")
 public class DefaultConversationTurnProcessor implements ConversationTurnProcessor {
+
+    private static final Logger log = LoggerFactory.getLogger(DefaultConversationTurnProcessor.class);
 
     private final AcceptedInboundMessageRepository inboundRepository;
     private final ConversationRepository conversationRepository;
@@ -44,10 +48,15 @@ public class DefaultConversationTurnProcessor implements ConversationTurnProcess
 
     @Override
     public ConversationTurnOutcome process(ConversationTurnReference reference) {
+        var started = System.nanoTime();
+        log.info("Conversation turn started: conversationId={} receiptId={}",
+                reference.conversationId(), reference.receiptId());
         var inbound = inboundRepository.find(reference.tenantId(), reference.conversationId(), reference.receiptId())
                 .orElse(null);
         if (inbound == null || conversationRepository.turnAlreadyCompleted(reference.tenantId(),
                 reference.conversationId(), inbound.providerMessageId())) {
+            log.info("Conversation turn skipped: conversationId={} receiptId={} reason={}",
+                    reference.conversationId(), reference.receiptId(), inbound == null ? "inbound_not_found" : "turn_already_completed");
             return new ConversationTurnOutcome(ConversationGraphRoute.IGNORED);
         }
 
@@ -55,8 +64,14 @@ public class DefaultConversationTurnProcessor implements ConversationTurnProcess
                 .filter(snapshot -> snapshot.tenantId().equals(reference.tenantId()))
                 .orElse(null);
         if (conversation == null || !canUseAssistant(conversation.state())) {
+            log.info("Conversation turn skipped: conversationId={} receiptId={} reason={} state={}",
+                    reference.conversationId(), reference.receiptId(), conversation == null ? "conversation_not_found" : "assistant_not_allowed",
+                    conversation == null ? "UNKNOWN" : conversation.state());
             return new ConversationTurnOutcome(ConversationGraphRoute.IGNORED);
         }
+
+        log.info("Conversation turn context loaded: conversationId={} state={} channel={} providerAccountId={}",
+                reference.conversationId(), conversation.state(), conversation.channel(), conversation.providerAccountId());
 
         var memoryKey = new ConversationMemoryKey(reference.tenantId(), conversation.channel(),
                 conversation.providerAccountId(), inbound.participantId(), reference.conversationId());
@@ -64,10 +79,22 @@ public class DefaultConversationTurnProcessor implements ConversationTurnProcess
                 inbound.text(), inbound.receivedAt());
         var memory = memoryService.load(new MemoryQuery(memoryKey, inbound.text(), inbound.providerMessageId()));
         var journey = leadJourneyService.load(reference.tenantId(), reference.conversationId());
+        log.info("Conversation turn invoking assistant: conversationId={} memoryVersion={} recentMessages={} journeyPresent={}",
+                reference.conversationId(), memory.memoryVersion(), memory.recentMessages().size(), journey != null);
         var reply = assistant.respond(new ConversationTurnRequest(reference.tenantId(),
                 reference.conversationId(), inbound.text(), conversation.state(), memory, journey));
-        return new ConversationTurnOutcome(commitService.commit(reference, inbound, conversation,
-                memory, journey, reply));
+        log.info("Conversation turn assistant completed: conversationId={} handoffRequired={} decisionPresent={} replyChars={}",
+                reference.conversationId(), reply.handoffRequired(), reply.decision() != null,
+                reply.text() == null ? 0 : reply.text().length());
+        var route = commitService.commit(reference, inbound, conversation,
+                memory, journey, reply);
+        log.info("Conversation turn committed: conversationId={} route={} durationMs={}",
+                reference.conversationId(), route, elapsedMs(started));
+        return new ConversationTurnOutcome(route);
+    }
+
+    private static long elapsedMs(long started) {
+        return (System.nanoTime() - started) / 1_000_000L;
     }
 
     private static boolean canUseAssistant(ConversationState state) {

@@ -164,19 +164,33 @@ public class ConversationWorkflow {
 
     @ApplicationModuleListener
     public void on(InboundMessageAccepted event) {
+        var started = System.nanoTime();
+        log.info("Conversation workflow received inbound event: conversationId={} receiptId={} providerMessageId={} channel={}",
+                event.conversationId(), event.receiptId(), event.providerMessageId(), event.channel());
         var leased = turnLeases == null || turnLeases.tryAcquire(event.tenantId(), event.conversationId(),
                 leaseOwner, Duration.ofSeconds(45));
-        if (!leased) return;
+        if (!leased) {
+            log.info("Conversation workflow skipped inbound event: conversationId={} reason=turn_lease_unavailable",
+                    event.conversationId());
+            return;
+        }
         try {
+            log.info("Conversation workflow executing: conversationId={} mode={}", event.conversationId(),
+                    graphRunner == null ? "legacy" : "graph");
             if (graphRunner == null) {
                 handle(event);
             } else {
-                graphRunner.run(new ConversationTurnReference(
+                var result = graphRunner.run(new ConversationTurnReference(
                         event.tenantId(), event.conversationId(), event.receiptId()));
+                log.info("Conversation workflow completed: conversationId={} route={} terminal={} durationMs={}",
+                        event.conversationId(), result.route(), result.terminal(), elapsedMs(started));
             }
             observations.event("ford.conversation.inbound", java.util.Map.of(
                     "channel", event.channel().name(), "outcome", "success"));
         } catch (RuntimeException exception) {
+            log.error("Conversation workflow failed: conversationId={} receiptId={} exceptionType={} durationMs={}",
+                    event.conversationId(), event.receiptId(), exception.getClass().getSimpleName(),
+                    elapsedMs(started), exception);
             observations.event("ford.conversation.inbound", java.util.Map.of(
                     "channel", event.channel().name(), "outcome", "failure"));
             throw exception;
@@ -185,6 +199,10 @@ public class ConversationWorkflow {
                 turnLeases.release(event.tenantId(), event.conversationId(), leaseOwner);
             }
         }
+    }
+
+    private static long elapsedMs(long started) {
+        return (System.nanoTime() - started) / 1_000_000L;
     }
 
     private void handle(InboundMessageAccepted event) {

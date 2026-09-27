@@ -22,6 +22,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -29,6 +31,8 @@ import java.util.UUID;
 @Service
 @ConditionalOnProperty(prefix = "ford.conversations.workflow", name = "graph-enabled", havingValue = "true")
 public class ConversationTurnCommitService {
+
+    private static final Logger log = LoggerFactory.getLogger(ConversationTurnCommitService.class);
 
     private final ConversationRepository repository;
     private final ConversationDecisionRepository decisionRepository;
@@ -56,6 +60,9 @@ public class ConversationTurnCommitService {
                                          ConversationSnapshot conversation, ConversationMemoryContext memory,
                                          LeadJourneySnapshot journey, com.ford.service.conversations.api.AssistantReply reply) {
         var providerMessageId = inbound.providerMessageId();
+        log.info("Conversation commit started: conversationId={} providerMessageId={} handoffRequired={} decisionPresent={} journeyProposalPresent={}",
+                reference.conversationId(), providerMessageId, reply.handoffRequired(), reply.decision() != null,
+                reply.journeyProposal() != null);
         if (reply.decision() != null) {
             decisionRepository.save(conversation.conversationId(), providerMessageId, reply.decision());
         }
@@ -82,16 +89,22 @@ public class ConversationTurnCommitService {
                     new ConversationTurn("Ya registré tu solicitud para que un asesor te atienda. " +
                             "La conversación sigue en la fila de atención; te responderán por aquí cuando alguien la tome."));
             if (!accepted) {
+                log.warn("Conversation handoff commit rejected: conversationId={} providerMessageId={} reason=optimistic_lock_or_duplicate",
+                        reference.conversationId(), providerMessageId);
                 return ConversationGraphRoute.IGNORED;
             }
             eventPublisher.publishEvent(new HandoffRequested(UUID.randomUUID(), reference.tenantId(),
                     reference.conversationId(), reason, Instant.now()));
+            log.info("Conversation handoff committed: conversationId={} providerMessageId={} reason={} urgent={}",
+                    reference.conversationId(), providerMessageId, reason, urgent);
             return ConversationGraphRoute.HUMAN_PENDING;
         }
 
         var text = reply.handoffRequired() ? handoffPolicy.fallbackText() : reply.text();
         if (!repository.completeBotTurn(reference.tenantId(), reference.conversationId(), conversation.version(),
                 providerMessageId, new ConversationTurn(text))) {
+            log.warn("Conversation bot commit rejected: conversationId={} providerMessageId={} reason=optimistic_lock_or_duplicate",
+                    reference.conversationId(), providerMessageId);
             return ConversationGraphRoute.IGNORED;
         }
         var key = memory.key();
@@ -107,6 +120,8 @@ public class ConversationTurnCommitService {
         eventPublisher.publishEvent(new com.ford.service.shared.ConversationTurnCompleted(
                 reference.tenantId(), reference.conversationId(), providerMessageId,
                 temperature, inbound.text(), reply.text()));
+        log.info("Conversation bot reply committed: conversationId={} providerMessageId={} route=BOT_REPLY outboundRequested=true leadTemperature={}",
+                reference.conversationId(), providerMessageId, temperature);
         return ConversationGraphRoute.BOT_REPLY;
     }
 

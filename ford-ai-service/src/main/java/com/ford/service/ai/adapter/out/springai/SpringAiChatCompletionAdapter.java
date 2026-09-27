@@ -12,12 +12,16 @@ import com.ford.service.ai.api.AssistantResponse;
 import com.ford.service.ai.api.AssistantGeneration;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.tool.ToolCallback;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 public final class SpringAiChatCompletionAdapter implements ProviderChatCompletionPort {
+
+    private static final Logger log = LoggerFactory.getLogger(SpringAiChatCompletionAdapter.class);
 
     private static final String DEFAULT_SYSTEM_PROMPT =
             "Eres un asistente de Ford Uruapan. Responde en español de México con claridad, calidez y precisión. "
@@ -81,16 +85,25 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
     @Override
     public AssistantResponse complete(AssistantRequest request, ToolContext context) {
         var tools = authorizedTools(request);
+        log.info("Model completion prepared: conversationId={} provider={} toolFamily={} authorizedToolCount={} volatileDataRequired={} repairAttempt=false",
+                request.conversationId(), provider, request.decision().toolFamily(), tools.size(),
+                decisionPolicy.requiresVolatileInformation(request.decision()));
         if (decisionPolicy.requiresVolatileInformation(request.decision()) && tools.isEmpty()) {
+            log.warn("Model completion skipped: conversationId={} reason=volatile_data_required_but_no_authorized_tools",
+                    request.conversationId());
             return new AssistantResponse(VOLATILE_SOURCE_UNAVAILABLE, false, provider, List.of());
         }
         try {
             var generation = call(request, context, tools, null);
             var verdict = qualityPolicy.evaluate(request.message(), request.memoryContext(), generation.answer());
             if (!verdict.accepted()) {
+                log.warn("Model completion quality repair requested: conversationId={} reason={}",
+                        request.conversationId(), verdict.reason());
                 generation = call(request, context, tools, qualityPolicy.repairInstruction(verdict.reason()));
                 verdict = qualityPolicy.evaluate(request.message(), request.memoryContext(), generation.answer());
                 if (!verdict.accepted()) {
+                    log.warn("Model completion quality repair rejected: conversationId={} reason={}",
+                            request.conversationId(), verdict.reason());
                     return new AssistantResponse(qualityPolicy.recoveryMessage(verdict.reason()), false,
                             provider, List.of());
                 }
@@ -98,6 +111,8 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
             return new AssistantResponse(generation.answer().strip(), false, provider, List.of(),
                     generation.journeyProposal());
         } catch (RuntimeException exception) {
+            log.warn("Model completion failed: conversationId={} provider={} exceptionType={}",
+                    request.conversationId(), provider, exception.getClass().getSimpleName());
             if (decisionPolicy.requiresVolatileInformation(request.decision())) {
                 return new AssistantResponse(VOLATILE_SOURCE_UNAVAILABLE, false, provider, List.of());
             }
@@ -117,6 +132,8 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
 
     private AssistantGeneration call(AssistantRequest request, ToolContext context, List<ToolCallback> tools,
                                      String repairInstruction) {
+        log.info("Model call started: conversationId={} provider={} toolCount={} repairAttempt={}",
+                request.conversationId(), provider, tools.size(), repairInstruction != null);
         var prompt = client.prompt()
                 .system(systemPrompt(systemPromptService == null
                         ? DEFAULT_SYSTEM_PROMPT : systemPromptService.currentContent(),
@@ -135,6 +152,8 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         if (generation == null || generation.answer() == null || generation.answer().isBlank()) {
             throw new IllegalStateException("assistant returned an invalid structured response");
         }
+        log.info("Model call completed: conversationId={} provider={} answerChars={} journeyProposal={}",
+                request.conversationId(), provider, generation.answer().length(), generation.journeyProposal() != null);
         return generation;
     }
 
