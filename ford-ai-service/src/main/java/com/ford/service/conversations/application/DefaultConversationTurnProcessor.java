@@ -60,6 +60,8 @@ public class DefaultConversationTurnProcessor implements ConversationTurnProcess
 
         var memoryKey = new ConversationMemoryKey(reference.tenantId(), conversation.channel(),
                 conversation.providerAccountId(), inbound.participantId(), reference.conversationId());
+        memoryService.recordInbound(memoryKey, reference.receiptId(), inbound.providerMessageId(),
+                inbound.text(), inbound.receivedAt());
         var memory = memoryService.load(new MemoryQuery(memoryKey, inbound.text(), inbound.providerMessageId()));
         var journey = leadJourneyService.load(reference.tenantId(), reference.conversationId());
         var reply = assistant.respond(new ConversationTurnRequest(reference.tenantId(),

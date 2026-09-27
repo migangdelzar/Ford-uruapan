@@ -66,6 +66,9 @@ class DefaultConversationTurnProcessorTest {
 
         assertThat(processor.process(reference).route()).isEqualTo(ConversationGraphRoute.BOT_REPLY);
         verify(inboundRepository).find(tenantId, conversationId, receiptId);
+        verify(memory).recordInbound(any(), org.mockito.ArgumentMatchers.eq(receiptId),
+                org.mockito.ArgumentMatchers.eq("wamid.1"), org.mockito.ArgumentMatchers.eq("¿Promociones?"),
+                org.mockito.ArgumentMatchers.eq(inbound.receivedAt()));
         verify(assistant).respond(any());
         verify(commit).commit(reference, inbound, snapshot, memoryContext, journey, reply);
     }
