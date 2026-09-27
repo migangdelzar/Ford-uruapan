@@ -67,6 +67,42 @@ while LangGraph4j is the process owner and Java is the policy owner. The
 conversation-memory vector search is context retrieval, not an independent
 reasoning agent.
 
+### Runtime configuration contract
+
+Expose these settings through `ConversationCognitiveProperties` with safe
+defaults:
+
+```yaml
+ford:
+  ai:
+    cognitive:
+      mode: ${FORD_AI_COGNITIVE_MODE:hybrid}
+      native-tool-calling: ${FORD_AI_NATIVE_TOOL_CALLING:true}
+      max-model-calls: ${FORD_AI_MAX_MODEL_CALLS:2}
+      max-graph-rounds: ${FORD_AI_MAX_GRAPH_ROUNDS:3}
+      react:
+        enabled: ${FORD_AI_REACT_ENABLED:true}
+        max-rounds: ${FORD_AI_REACT_MAX_ROUNDS:1}
+        max-tool-attempts: ${FORD_AI_MAX_TOOL_ATTEMPTS:2}
+      plan-execute:
+        enabled: ${FORD_AI_PLAN_EXECUTE_ENABLED:true}
+        max-stage-advances-per-turn: ${FORD_AI_MAX_STAGE_ADVANCES:1}
+      rewoo:
+        enabled: ${FORD_AI_REWOO_ENABLED:false}
+        max-parallel-tools: ${FORD_AI_REWOO_MAX_PARALLEL_TOOLS:3}
+      reflexion:
+        enabled: ${FORD_AI_REFLEXION_ENABLED:false}
+        max-repairs: ${FORD_AI_REFLEXION_MAX_REPAIRS:1}
+      tree-of-thoughts:
+        enabled: ${FORD_AI_TOT_ENABLED:false}
+```
+
+`hybrid` maps ordinary turns to native tool calling, known sales stages to
+Plan-and-Execute, and retryable tool failures to bounded ReAct. ReWOO is
+accepted only for background jobs. Tree of Thoughts is rejected by startup
+validation. These settings are budgets and allowlists, not permission for the
+model to create arbitrary loops.
+
 ## File map
 
 - `src/main/resources/db/changelog/changes/017-conversation-memory-embeddings.yaml`: pgvector table and indexes.
