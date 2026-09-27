@@ -63,8 +63,12 @@ public class OutboxPublisher {
     public void publish(OutboxEvent event) {
         try {
             store.append(event);
+            log.info("Outbox event enqueued: eventId={} eventType={} aggregateId={} availableAt={}",
+                    event.id(), event.eventType(), event.aggregateId(), event.availableAt());
             observations.event("ford.outbox.publish", Map.of("outcome", "success"));
         } catch (RuntimeException exception) {
+            log.error("Outbox event enqueue failed: eventId={} eventType={} aggregateId={} exceptionType={}",
+                    event.id(), event.eventType(), event.aggregateId(), exception.getClass().getSimpleName(), exception);
             observations.event("ford.outbox.publish", Map.of(
                     "outcome", "failure", "failure_category", "persistence"));
             throw exception;

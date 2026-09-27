@@ -28,6 +28,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import java.util.Objects;
 import java.time.Instant;
@@ -165,6 +166,14 @@ public class ConversationWorkflow {
     @ApplicationModuleListener
     public void on(InboundMessageAccepted event) {
         var started = System.nanoTime();
+        var previousConversationId = MDC.get("conversationId");
+        var previousReceiptId = MDC.get("receiptId");
+        var previousProviderMessageId = MDC.get("providerMessageId");
+        var previousStage = MDC.get("workflowStage");
+        MDC.put("conversationId", event.conversationId().toString());
+        MDC.put("receiptId", event.receiptId().toString());
+        MDC.put("providerMessageId", event.providerMessageId());
+        MDC.put("workflowStage", "RECEIVED");
         log.info("Conversation workflow received inbound event: conversationId={} receiptId={} providerMessageId={} channel={}",
                 event.conversationId(), event.receiptId(), event.providerMessageId(), event.channel());
         var leased = turnLeases == null || turnLeases.tryAcquire(event.tenantId(), event.conversationId(),
@@ -172,16 +181,24 @@ public class ConversationWorkflow {
         if (!leased) {
             log.info("Conversation workflow skipped inbound event: conversationId={} reason=turn_lease_unavailable",
                     event.conversationId());
+            restoreMdc("conversationId", previousConversationId);
+            restoreMdc("receiptId", previousReceiptId);
+            restoreMdc("providerMessageId", previousProviderMessageId);
+            restoreMdc("workflowStage", previousStage);
             return;
         }
         try {
+            MDC.put("workflowStage", "WORKFLOW_STARTED");
             log.info("Conversation workflow executing: conversationId={} mode={}", event.conversationId(),
                     graphRunner == null ? "legacy" : "graph");
             if (graphRunner == null) {
+                MDC.put("workflowStage", "LEGACY_PROCESSING");
                 handle(event);
             } else {
+                MDC.put("workflowStage", "GRAPH_PROCESSING");
                 var result = graphRunner.run(new ConversationTurnReference(
                         event.tenantId(), event.conversationId(), event.receiptId()));
+                MDC.put("workflowStage", result.route().name());
                 log.info("Conversation workflow completed: conversationId={} route={} terminal={} durationMs={}",
                         event.conversationId(), result.route(), result.terminal(), elapsedMs(started));
             }
@@ -198,6 +215,18 @@ public class ConversationWorkflow {
             if (turnLeases != null) {
                 turnLeases.release(event.tenantId(), event.conversationId(), leaseOwner);
             }
+            restoreMdc("conversationId", previousConversationId);
+            restoreMdc("receiptId", previousReceiptId);
+            restoreMdc("providerMessageId", previousProviderMessageId);
+            restoreMdc("workflowStage", previousStage);
+        }
+    }
+
+    private static void restoreMdc(String key, String value) {
+        if (value == null) {
+            MDC.remove(key);
+        } else {
+            MDC.put(key, value);
         }
     }
 

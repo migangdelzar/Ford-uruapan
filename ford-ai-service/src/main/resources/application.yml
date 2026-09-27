@@ -115,7 +115,7 @@ logging:
     org.apache.catalina: WARN
     org.apache.tomcat: WARN
   pattern:
-    correlation: "[trace_id=%X{traceId:-},span_id=%X{spanId:-}] "
+    correlation: "[conversationId=%X{conversationId:-},receiptId=%X{receiptId:-},providerMessageId=%X{providerMessageId:-},stage=%X{workflowStage:-},trace_id=%X{traceId:-},span_id=%X{spanId:-}] "
 
 ford:
   mcp:
