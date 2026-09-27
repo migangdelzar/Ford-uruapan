@@ -14,5 +14,7 @@ class ProviderCapabilityContractTest {
         assertThat(capabilities.toolCalling()).isTrue();
         assertThat(capabilities.structuredOutput()).isTrue();
         assertThat(capabilities.embeddings()).isTrue();
+        assertThat(capabilities.imageInput()).isFalse();
+        assertThat(capabilities.audioInput()).isFalse();
     }
 }

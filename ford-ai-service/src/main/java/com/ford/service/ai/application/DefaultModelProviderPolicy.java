@@ -28,6 +28,8 @@ public final class DefaultModelProviderPolicy implements ModelProviderPolicy {
                 .filter(provider -> !restricted || !provider.cloud())
                 .filter(provider -> !requirements.toolCalling() || provider.capabilities().toolCalling())
                 .filter(provider -> !requirements.structuredOutput() || provider.capabilities().structuredOutput())
+                .filter(provider -> !requirements.imageInput() || provider.capabilities().imageInput())
+                .filter(provider -> !requirements.audioInput() || provider.capabilities().audioInput())
                 .sorted(Comparator.comparing(ProviderDescriptor::cloud).reversed())
                 .toList();
     }

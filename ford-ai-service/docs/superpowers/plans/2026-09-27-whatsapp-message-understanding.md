@@ -144,7 +144,7 @@
 - [x] **Step 4: Add persistence tests** for typed kind, opaque attachment metadata, and scoped canonical transcript updates. Liquibase defaults were exercised by the database-backed Meta integration test.
 - [x] **Step 5: Add Liquibase migration 018** for non-null `message_kind` with default `TEXT` and JSONB attachment metadata defaulting to an empty array; update JDBC insert/select mapping. No existing rows are rewritten or reset.
 - [x] **Step 6: Run** `./gradlew test --tests 'com.ford.service.channels.*' --tests 'com.ford.service.conversations.JdbcAcceptedInboundTurnRepositoryTest'` and `./gradlew integrationTest --tests 'com.ford.service.channels.MetaInboundWorkflowIntegrationTest'`.
-- [ ] **Step 7: Commit** as `feat(channels): persist typed inbound message metadata` with only Task 3 files.
+- [x] **Step 7: Commit** as `feat(channels): persist typed inbound message metadata` with only Task 3 files (`9467ce0`).
 
 ## Task 4: Add provider capability gates and bounded media interpretation
 
@@ -154,11 +154,15 @@
 - Modify `src/main/java/com/ford/service/ai/application/DefaultModelProviderPolicy.java`
 - Modify `src/main/java/com/ford/service/ai/adapter/out/springai/SpringAiProviderConfiguration.java`
 - Modify `src/main/java/com/ford/service/ai/configuration/AiProperties.java`
-- Create `src/main/java/com/ford/service/channels/application/port/out/MetaMediaRetrievalPort.java`
+- Create `src/main/java/com/ford/service/channels/api/MetaMediaRetrievalPort.java`
+- Create `src/main/java/com/ford/service/channels/domain/RetrievedMedia.java`
+- Create `src/main/java/com/ford/service/channels/adapter/out/meta/MetaMediaProperties.java`
+- Create `src/main/java/com/ford/service/channels/adapter/out/meta/MetaMediaClientConfiguration.java`
 - Create `src/main/java/com/ford/service/channels/adapter/out/meta/MetaMediaRestClientAdapter.java`
 - Create `src/main/java/com/ford/service/ai/application/InboundMediaInterpretationPort.java`
 - Create `src/main/java/com/ford/service/ai/application/InboundContentResolutionService.java`
 - Create `src/main/java/com/ford/service/ai/adapter/out/springai/SpringAiInboundMediaInterpretationAdapter.java`
+- Create `src/main/java/com/ford/service/ai/adapter/out/springai/SpringAiInboundMediaConfiguration.java`
 - Test `src/test/java/com/ford/service/ai/ModelProviderPolicyTest.java`
 - Create `src/test/java/com/ford/service/ai/InboundContentResolutionServiceTest.java`
 - Create `src/test/java/com/ford/service/channels/MetaMediaRestClientAdapterTest.java`
@@ -183,13 +187,13 @@ public ResolvedInboundContent InboundContentResolutionService.resolve(
 
 `RetrievedMedia` is an in-memory/temporary resource with verified MIME type and measured size; it must be `AutoCloseable` so cleanup is guaranteed in try-with-resources. A provider is eligible only if its ID is in `ford.ai.media.approved-providers`, its ID is also in the relevant `ford.ai.media.image-providers` or `ford.ai.media.audio-providers` list, and its configured runtime descriptor is healthy and supports that modality. All three lists default empty and `ford.ai.media.enabled` defaults false. No candidate means safe clarification, not a cloud/local bypass. Media approval explicitly covers raw customer media that may contain sensitive information. Meta media retrieval validates tenant binding and accepts only opaque provider media IDs; it never accepts a URL from webhook content.
 
-- [ ] **Step 1: Write failing provider policy tests** for image/audio candidate selection, incapable provider rejection, unapproved/unhealthy provider rejection, and sensitive-data restriction. Preserve the current three-boolean `ProviderCapabilities` constructor with new modality flags defaulting to false.
-- [ ] **Step 2: Run** `./gradlew test --tests 'com.ford.service.ai.ModelProviderPolicyTest'`. Expected: modality requirements are not modeled.
-- [ ] **Step 3: Implement explicit modality capability filtering** in the existing provider policy/configuration. Add no implicit capability defaults for OpenRouter-compatible endpoints.
-- [ ] **Step 4: Write failing resolution tests** for plain text, image caption+description, audio transcript, interactive choice, location, unsupported document/video/sticker, missing media, over-limit media, failed provider call, and resource cleanup. Verify no call to the interpreter occurs for unsupported or unapproved media.
-- [ ] **Step 5: Implement `InboundContentResolutionService`** with an initial maximum media size of 10 MiB and an 8-second combined download+interpretation timeout, both configurable; enforce the existing 30-second overall turn deadline. For image use Spring AI `UserMessage` media only on an explicitly image-capable approved chat provider. For audio use Spring AI `TranscriptionModel` only if its concrete provider is approved and supports the validated WhatsApp audio type; otherwise return the Spanish clarification `No pude interpretar ese archivo con seguridad. ¿Podría describirme lo que necesita o enviarlo en un mensaje de texto?`. Do not transcode or add native binaries in this plan.
-- [ ] **Step 6: Implement Meta retrieval** behind `MetaMediaRetrievalPort` with injected Spring `RestClient`, authenticated requests, status/timeout/content-length checks, streaming byte cap, MIME verification, and redacted error logs. Never log or persist Graph media URLs or tokens.
-- [ ] **Step 7: Run** `./gradlew test --tests 'com.ford.service.ai.ModelProviderPolicyTest' --tests 'com.ford.service.ai.InboundContentResolutionServiceTest' --tests 'com.ford.service.channels.MetaMediaRestClientAdapterTest'`. Expected: all gates/fallback/cleanup tests pass.
+- [x] **Step 1: Write failing provider policy tests** for image/audio candidates, approval and sensitivity. Preserve the three-boolean `ProviderCapabilities` constructor with new modality flags false.
+- [x] **Step 2: Run** `./gradlew test --tests 'com.ford.service.ai.ModelProviderPolicyTest'`; expected compile failure confirmed modality requirements were absent.
+- [x] **Step 3: Implement modality capability filtering** and require explicit approval plus configured capability; no implicit OpenRouter-compatible endpoint capability.
+- [x] **Step 4: Add resolution tests** for text, image, audio, interactive/location, unsupported and missing content, oversize media, model failure, timeout, and cleanup; ensure unsupported/unapproved paths make no interpreter call.
+- [x] **Step 5: Implement `InboundContentResolutionService`** with 10 MiB/8-second defaults and a bounded executor. Spring AI image media and audio `TranscriptionModel` are available only behind explicit provider allowlists; unsupported/failing media returns the safe Spanish clarification. No media bytes are persisted.
+- [x] **Step 6: Implement Meta retrieval** with tenant ownership check, bearer auth, HTTPS Meta-host allowlist, status/timeout/content-length/stream-byte/MIME validation, and byte zeroing on close or rejection. URLs and tokens are not logged.
+- [x] **Step 7: Run** `./gradlew test --tests 'com.ford.service.ai.ModelProviderPolicyTest' --tests 'com.ford.service.ai.InboundContentResolutionServiceTest' --tests 'com.ford.service.channels.MetaMediaRestClientAdapterTest'`, then `./gradlew test`.
 - [ ] **Step 8: Commit** as `feat(ai): interpret approved WhatsApp image and audio input` with only Task 4 files.
 
 Spring AI 2.0.1 provides user-message media parts for supported multimodal chat models and a `TranscriptionModel` abstraction. Use the APIs from the [Spring AI Multimodality reference](https://docs.spring.io/spring-ai/reference/api/multimodality.html) and [Transcription API](https://docs.spring.io/spring-ai/reference/api/audio/transcriptions.html); verify actual provider/model/MIME capability against resolved dependencies and current configured approvals before wiring.
@@ -204,10 +208,10 @@ Spring AI 2.0.1 provides user-message media parts for supported multimodal chat 
 
 **Interfaces:** Inject `InboundContentResolutionService` into the graph turn processor. Resolve the accepted message before `ConversationMemoryService.recordInbound`, `load`, and `ConversationAssistant.respond`. For interpreted content, persist the normalized transcript/description using `persistResolvedContent` before memory insertion; it becomes canonical text for transcript, memory, classification, and answering. Media bytes are already closed. Unsupported/failed media returns a typed safe-response status and bypasses answer-model/provider calls while still committing one normal bot reply through the existing commit/outbox path.
 
-- [ ] **Step 1: Write failing processor tests** asserting content resolution occurs before memory write/load and assistant call; supported image/audio uses resolved text; unsupported/failed media commits one safe clarification and does not call the assistant; plain text behavior remains unchanged.
-- [ ] **Step 2: Run** `./gradlew test --tests 'com.ford.service.conversations.DefaultConversationTurnProcessorTest'`. Expected: the processor currently passes raw stored text directly.
-- [ ] **Step 3: Implement the smallest processor/configuration change** using the resolver and existing turn commit service. Do not add a second persistence or delivery mechanism.
-- [ ] **Step 4: Run focused processor/workflow tests.** Expected: ordering and exactly-once commit tests pass.
+- [x] **Step 1: Write failing processor tests** for content resolution ordering, canonical persistence, and safe clarification without invoking the assistant.
+- [x] **Step 2: Run** `./gradlew test --tests 'com.ford.service.conversations.DefaultConversationTurnProcessorTest'`; expected compile failure confirmed the processor lacked the resolver dependency.
+- [x] **Step 3: Resolve content before memory and assistant invocation**, update canonical transcript for interpreted media, and bypass assistant while committing a safe reply for failed/unsupported media.
+- [x] **Step 4: Run** `./gradlew test --tests 'com.ford.service.conversations.DefaultConversationTurnProcessorTest'`; ordering and exactly-once commit tests pass.
 - [ ] **Step 5: Commit** as `feat(conversations): resolve typed inbound content before turns` with only Task 5 files.
 
 ## Task 6: End-to-end safety, observability, docs, and verification
