@@ -1,5 +1,6 @@
 package com.ford.service.ai.application;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.openai.errors.OpenAIServiceException;
 
 import java.time.Duration;
@@ -15,7 +16,8 @@ public final class AiProviderFailureDiagnostics {
     public static String describe(Throwable failure, boolean ignoredIncludeResponseBody) {
         var serviceFailure = find(failure, OpenAIServiceException.class).orElse(null);
         Integer status = serviceFailure == null ? inferStatus(failure) : safeStatus(serviceFailure, failure);
-        var category = category(status, failure);
+        var category = status != null && status == 404
+                ? "not_found" : failureCategory(status, failure);
         var retryAfter = serviceFailure == null ? null : safeHeader(serviceFailure, "retry-after");
         var requestId = serviceFailure == null ? null : safeHeader(serviceFailure, "x-request-id");
         var code = serviceFailure == null ? null : safeCode(serviceFailure);
@@ -102,26 +104,6 @@ public final class AiProviderFailureDiagnostics {
         return null;
     }
 
-    private static String category(Integer status, Throwable failure) {
-        if (status != null) {
-            if (status == 401 || status == 403) {
-                return "authentication";
-            }
-            if (status == 404) {
-                return "not_found";
-            }
-            if (status == 429) {
-                return "rate_limited";
-            }
-            if (status >= 500) {
-                return "provider_unavailable";
-            }
-        }
-        var name = failure.getClass().getSimpleName().toLowerCase(Locale.ROOT);
-        return name.contains("timeout") || name.contains("io")
-                ? "network" : "provider_error";
-    }
-
     private static String failureCategory(Integer status, Throwable failure) {
         if (status != null) {
             if (status == 401 || status == 403) {
@@ -136,6 +118,9 @@ public final class AiProviderFailureDiagnostics {
             if (status >= 400) {
                 return ProviderFailure.INVALID_REQUEST;
             }
+        }
+        if (find(failure, JsonProcessingException.class).isPresent()) {
+            return ProviderFailure.PROVIDER_ERROR;
         }
         var current = failure;
         while (current != null) {

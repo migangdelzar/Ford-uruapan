@@ -2,6 +2,7 @@ package com.ford.service.ai;
 
 import com.ford.service.ai.application.AiProviderFailureDiagnostics;
 import com.ford.service.ai.application.ProviderFailure;
+import com.fasterxml.jackson.core.JsonParseException;
 import com.openai.core.http.Headers;
 import com.openai.errors.OpenAIServiceException;
 import org.junit.jupiter.api.Test;
@@ -50,6 +51,16 @@ class ProviderFailureTest {
         assertThat(AiProviderFailureDiagnostics.classify(unknown).category()).isEqualTo(ProviderFailure.PROVIDER_ERROR);
         assertThat(AiProviderFailureDiagnostics.classify(timeout).toString())
                 .doesNotContain("customer text", "secret", "private customer content", "responseBody");
+    }
+
+    @Test
+    void doesNotMisclassifyStreamParsingFailuresAsNetworkFailures() {
+        var parseFailure = new JsonParseException("invalid provider response stream");
+
+        assertThat(AiProviderFailureDiagnostics.classify(parseFailure).category())
+                .isEqualTo(ProviderFailure.PROVIDER_ERROR);
+        assertThat(AiProviderFailureDiagnostics.describe(parseFailure, false))
+                .contains("category=provider_error");
     }
 
     private static OpenAIServiceException openAiFailure(int status, String retryAfter) {
