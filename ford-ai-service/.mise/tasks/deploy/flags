@@ -14,7 +14,7 @@ for (( index = 0; index < ${#flags[@]}; index += 2 )); do
   name="${flags[index]}"
   value="${flags[index + 1]}"
   case "$name" in
-    FORD_CONVERSATION_GRAPH_ENABLED|FORD_HUMAN_HANDOFF_ENABLED) ;;
+    FORD_CONVERSATION_GRAPH_ENABLED|FORD_HUMAN_HANDOFF_ENABLED|FORD_CONVERSATION_RESET_CHECKPOINTS_ON_STARTUP) ;;
     *) echo "Flag is not allowlisted: $name" >&2; exit 2 ;;
   esac
   case "$value" in true|false) ;; *) echo "Flag values must be true or false." >&2; exit 2 ;; esac

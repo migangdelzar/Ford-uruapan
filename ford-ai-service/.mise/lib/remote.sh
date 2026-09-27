@@ -241,7 +241,7 @@ render_deploy_inventory() {
   local ford_meta_auto_binding_enabled_yaml ford_meta_provider_account_id_yaml ford_tenant_id_yaml
   local ford_meta_delivery_enabled_yaml ford_meta_whatsapp_endpoint_yaml ford_meta_whatsapp_access_token_yaml
   local ford_human_handoff_enabled_yaml
-  local ford_conversation_graph_enabled_yaml
+  local ford_conversation_graph_enabled_yaml ford_conversation_reset_checkpoints_on_startup_yaml
   local ford_outbox_enabled_yaml
   local ford_ai_chat_provider_yaml ford_ai_cloud_provider_yaml ford_ai_cloud_enabled_yaml ford_ai_local_enabled_yaml
   local ford_ai_cloud_base_url_yaml ford_ai_cloud_model_version_yaml
@@ -271,6 +271,7 @@ render_deploy_inventory() {
   ford_meta_whatsapp_access_token_yaml="$(yaml_quote "${FORD_META_WHATSAPP_ACCESS_TOKEN:-}")"
   ford_human_handoff_enabled_yaml="$(yaml_quote "${FORD_HUMAN_HANDOFF_ENABLED:-true}")"
   ford_conversation_graph_enabled_yaml="$(yaml_quote "${FORD_CONVERSATION_GRAPH_ENABLED:-true}")"
+  ford_conversation_reset_checkpoints_on_startup_yaml="$(yaml_quote "${FORD_CONVERSATION_RESET_CHECKPOINTS_ON_STARTUP:-false}")"
   ford_outbox_enabled_yaml="$(yaml_quote "${FORD_OUTBOX_ENABLED:-false}")"
   ford_ai_chat_provider_yaml="$(yaml_quote "${FORD_AI_CHAT_PROVIDER:-openai}")"
   ford_ai_cloud_provider_yaml="$(yaml_quote "${FORD_AI_CLOUD_PROVIDER:-openai}")"
@@ -322,6 +323,7 @@ all:
     ford_meta_whatsapp_access_token: ${ford_meta_whatsapp_access_token_yaml}
     ford_human_handoff_enabled: ${ford_human_handoff_enabled_yaml}
     ford_conversation_graph_enabled: ${ford_conversation_graph_enabled_yaml}
+    ford_conversation_reset_checkpoints_on_startup: ${ford_conversation_reset_checkpoints_on_startup_yaml}
     ford_outbox_enabled: ${ford_outbox_enabled_yaml}
     ford_ai_chat_provider: ${ford_ai_chat_provider_yaml}
     ford_ai_cloud_provider: ${ford_ai_cloud_provider_yaml}
