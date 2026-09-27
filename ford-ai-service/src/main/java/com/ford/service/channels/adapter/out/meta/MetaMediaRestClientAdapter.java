@@ -9,6 +9,7 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.StreamUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -21,25 +22,30 @@ import java.util.Map;
 
 @Component
 public class MetaMediaRestClientAdapter implements MetaMediaRetrievalPort {
+    private static final long MAX_MEDIA_BYTES = 10L * 1024 * 1024;
     private final RestClient restClient;
     private final JdbcClient jdbc;
     private final MetaMediaProperties properties;
     private final ObjectMapper objectMapper;
+    private final String accessToken;
 
     public MetaMediaRestClientAdapter(@Qualifier("metaMediaRestClient") RestClient restClient, JdbcClient jdbc,
-                                      MetaMediaProperties properties, ObjectMapper objectMapper) {
+                                      MetaMediaProperties properties, ObjectMapper objectMapper,
+                                      @Value("${ford.meta.whatsapp-access-token:}") String accessToken) {
         this.restClient = restClient;
         this.jdbc = jdbc;
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.accessToken = accessToken;
     }
 
     @Override
     public RetrievedMedia retrieve(UUID tenantId, String providerMediaId, long maxBytes) {
-        if (tenantId == null || providerMediaId == null || providerMediaId.isBlank() || maxBytes < 1) {
+        if (tenantId == null || providerMediaId == null || providerMediaId.isBlank()
+                || maxBytes < 1 || maxBytes > MAX_MEDIA_BYTES) {
             throw new IllegalArgumentException("Valid tenant, provider media ID, and byte limit are required");
         }
-        if (!properties.isConfigured()) throw new IllegalStateException("Meta media retrieval is not configured");
+        if (!properties.isConfigured(accessToken)) throw new IllegalStateException("Meta media retrieval is not configured");
         if (!belongsToTenant(tenantId, providerMediaId)) {
             throw new IllegalArgumentException("Meta media ID is not attached to an accepted tenant message");
         }
@@ -47,7 +53,7 @@ public class MetaMediaRestClientAdapter implements MetaMediaRetrievalPort {
         var metadataUri = UriComponentsBuilder.fromUriString(properties.getGraphApiBaseUrl())
                 .pathSegment(properties.getGraphApiVersion(), providerMediaId).build().encode().toUri();
         var metadata = restClient.get().uri(metadataUri)
-                .header("Authorization", "Bearer " + properties.getAccessToken())
+                .header("Authorization", "Bearer " + accessToken)
                 .retrieve().body(MediaMetadata.class);
         if (metadata == null || metadata.url() == null || metadata.mimeType() == null) {
             throw new IllegalStateException("Meta media metadata is incomplete");
@@ -58,7 +64,7 @@ public class MetaMediaRestClientAdapter implements MetaMediaRetrievalPort {
             throw new IllegalArgumentException("Meta media exceeds configured byte limit");
         }
         var downloaded = restClient.get().uri(mediaUri)
-                .header("Authorization", "Bearer " + properties.getAccessToken())
+                .header("Authorization", "Bearer " + accessToken)
                 .exchange((request, response) -> {
                     if (!response.getStatusCode().is2xxSuccessful()) {
                         throw new IllegalStateException("Meta media download failed");

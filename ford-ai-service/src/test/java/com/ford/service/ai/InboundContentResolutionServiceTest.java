@@ -14,6 +14,9 @@ import com.ford.service.channels.domain.InboundAttachment;
 import com.ford.service.channels.domain.InboundMessageKind;
 import com.ford.service.channels.domain.RetrievedMedia;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.task.SyncTaskExecutor;
 
@@ -28,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+@ExtendWith(OutputCaptureExtension.class)
 class InboundContentResolutionServiceTest {
 
     private static final String SAFE_CLARIFICATION =
@@ -78,7 +82,7 @@ class InboundContentResolutionServiceTest {
     }
 
     @Test
-    void interpretsApprovedImageAndAlwaysClosesRetrievedMedia() {
+    void interpretsApprovedImageAndAlwaysClosesRetrievedMedia(CapturedOutput output) {
         var properties = enabledImageProperties();
         var retrieval = mock(MetaMediaRetrievalPort.class);
         var interpreter = mock(InboundMediaInterpretationPort.class);
@@ -90,11 +94,14 @@ class InboundContentResolutionServiceTest {
                 eq("image/jpeg"), eq("Revise esta camioneta"))).thenReturn("La imagen muestra una SUV azul.");
         var service = service(properties, capableProviders(), retrieval, interpreter);
 
-        var result = service.resolve(image(), UUID.randomUUID(), UUID.randomUUID());
+        var conversationId = UUID.randomUUID();
+        var result = service.resolve(image(), UUID.randomUUID(), conversationId);
 
         assertThat(result.status()).isEqualTo(InboundContentStatus.READY);
         assertThat(result.text()).contains("Revise esta camioneta", "SUV azul");
         assertThat(closed).isTrue();
+        assertThat(output.getOut()).contains("conversationId=" + conversationId, "kind=IMAGE", "provider=approved-vision")
+                .doesNotContain("Revise esta camioneta", "SUV azul", "opaque-media-id", "https://");
     }
 
     @Test
@@ -160,7 +167,7 @@ class InboundContentResolutionServiceTest {
     }
 
     @Test
-    void providerFailureReturnsSafeClarificationAndClosesMedia() {
+    void providerFailureReturnsSafeClarificationAndClosesMedia(CapturedOutput output) {
         var properties = enabledImageProperties();
         var retrieval = mock(MetaMediaRetrievalPort.class);
         var interpreter = mock(InboundMediaInterpretationPort.class);
@@ -169,13 +176,16 @@ class InboundContentResolutionServiceTest {
                 new RetrievedMedia(new ByteArrayResource(new byte[]{1}), "image/jpeg", 1,
                         () -> closed.set(true)));
         when(interpreter.interpret(anyString(), any(), any(), anyString(), anyString()))
-                .thenThrow(new IllegalStateException("provider unavailable"));
+                .thenThrow(new IllegalStateException("caption private customer content provider unavailable"));
         var service = service(properties, capableProviders(), retrieval, interpreter);
 
-        var result = service.resolve(image(), UUID.randomUUID(), UUID.randomUUID());
+        var conversationId = UUID.randomUUID();
+        var result = service.resolve(image(), UUID.randomUUID(), conversationId);
 
         assertThat(result.status()).isEqualTo(InboundContentStatus.CLARIFICATION_REQUIRED);
         assertThat(closed).isTrue();
+        assertThat(output.getOut()).contains("conversationId=" + conversationId, "exceptionType=ExecutionException")
+                .doesNotContain("caption private customer content", "opaque-media-id", "test-token");
     }
 
     @Test

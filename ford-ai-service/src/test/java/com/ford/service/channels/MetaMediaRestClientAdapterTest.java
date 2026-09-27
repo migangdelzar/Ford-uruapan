@@ -32,7 +32,7 @@ class MetaMediaRestClientAdapterTest {
         var properties = configuredProperties();
         var jdbc = tenantOwnedMediaLookup(true);
         var tenantId = UUID.randomUUID();
-        server.expect(requestTo("https://graph.facebook.com/vXX/media-123"))
+        server.expect(requestTo("https://graph.facebook.com/v23.0/media-123"))
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header("Authorization", "Bearer test-token"))
                 .andRespond(withSuccess("""
@@ -42,7 +42,7 @@ class MetaMediaRestClientAdapterTest {
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header("Authorization", "Bearer test-token"))
                 .andRespond(withSuccess(new byte[]{1, 2, 3}, MediaType.IMAGE_JPEG));
-        var adapter = new MetaMediaRestClientAdapter(builder.build(), jdbc, properties, new ObjectMapper());
+        var adapter = new MetaMediaRestClientAdapter(builder.build(), jdbc, properties, new ObjectMapper(), "test-token");
 
         var media = adapter.retrieve(tenantId, "media-123", 10);
 
@@ -58,7 +58,7 @@ class MetaMediaRestClientAdapterTest {
         var builder = RestClient.builder();
         var server = MockRestServiceServer.bindTo(builder).build();
         var adapter = new MetaMediaRestClientAdapter(builder.build(), tenantOwnedMediaLookup(false),
-                configuredProperties(), new ObjectMapper());
+                configuredProperties(), new ObjectMapper(), "test-token");
 
         assertThatThrownBy(() -> adapter.retrieve(UUID.randomUUID(), "media-123", 10))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -67,15 +67,27 @@ class MetaMediaRestClientAdapterTest {
     }
 
     @Test
+    void refusesCallerByteLimitsAboveTheHardSafetyCap() {
+        var builder = RestClient.builder();
+        var server = MockRestServiceServer.bindTo(builder).build();
+        var adapter = new MetaMediaRestClientAdapter(builder.build(), tenantOwnedMediaLookup(true),
+                configuredProperties(), new ObjectMapper(), "test-token");
+
+        assertThatThrownBy(() -> adapter.retrieve(UUID.randomUUID(), "media-123", 10L * 1024 * 1024 + 1))
+                .isInstanceOf(IllegalArgumentException.class);
+        server.verify();
+    }
+
+    @Test
     void rejectsUntrustedMetaMediaUrlBeforeSendingTheBearerToken() {
         var builder = RestClient.builder();
         var server = MockRestServiceServer.bindTo(builder).build();
-        server.expect(requestTo("https://graph.facebook.com/vXX/media-123"))
+        server.expect(requestTo("https://graph.facebook.com/v23.0/media-123"))
                 .andRespond(withSuccess("""
                         {"url":"https://attacker.example/steal","mime_type":"image/jpeg","file_size":3}
                         """, MediaType.APPLICATION_JSON));
         var adapter = new MetaMediaRestClientAdapter(builder.build(), tenantOwnedMediaLookup(true),
-                configuredProperties(), new ObjectMapper());
+                configuredProperties(), new ObjectMapper(), "test-token");
 
         assertThatThrownBy(() -> adapter.retrieve(UUID.randomUUID(), "media-123", 10))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -87,12 +99,12 @@ class MetaMediaRestClientAdapterTest {
     void rejectsProviderDeclaredOversizedMediaBeforeDownloadingIt() {
         var builder = RestClient.builder();
         var server = MockRestServiceServer.bindTo(builder).build();
-        server.expect(requestTo("https://graph.facebook.com/vXX/media-123"))
+        server.expect(requestTo("https://graph.facebook.com/v23.0/media-123"))
                 .andRespond(withSuccess("""
                         {"url":"https://lookaside.fbsbx.com/media-123","mime_type":"image/jpeg","file_size":11}
                         """, MediaType.APPLICATION_JSON));
         var adapter = new MetaMediaRestClientAdapter(builder.build(), tenantOwnedMediaLookup(true),
-                configuredProperties(), new ObjectMapper());
+                configuredProperties(), new ObjectMapper(), "test-token");
 
         assertThatThrownBy(() -> adapter.retrieve(UUID.randomUUID(), "media-123", 10))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -104,14 +116,14 @@ class MetaMediaRestClientAdapterTest {
     void rejectsMimeTypeMismatchAndDoesNotReturnTheDownloadedBytes() {
         var builder = RestClient.builder();
         var server = MockRestServiceServer.bindTo(builder).build();
-        server.expect(requestTo("https://graph.facebook.com/vXX/media-123"))
+        server.expect(requestTo("https://graph.facebook.com/v23.0/media-123"))
                 .andRespond(withSuccess("""
                         {"url":"https://lookaside.fbsbx.com/media-123","mime_type":"image/jpeg","file_size":3}
                         """, MediaType.APPLICATION_JSON));
         server.expect(requestTo("https://lookaside.fbsbx.com/media-123"))
                 .andRespond(withSuccess(new byte[]{1, 2, 3}, MediaType.IMAGE_PNG));
         var adapter = new MetaMediaRestClientAdapter(builder.build(), tenantOwnedMediaLookup(true),
-                configuredProperties(), new ObjectMapper());
+                configuredProperties(), new ObjectMapper(), "test-token");
 
         assertThatThrownBy(() -> adapter.retrieve(UUID.randomUUID(), "media-123", 10))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -121,8 +133,7 @@ class MetaMediaRestClientAdapterTest {
 
     private static MetaMediaProperties configuredProperties() {
         var properties = new MetaMediaProperties();
-        properties.setAccessToken("test-token");
-        properties.setGraphApiVersion("vXX");
+        properties.setGraphApiVersion("v23.0");
         return properties;
     }
 

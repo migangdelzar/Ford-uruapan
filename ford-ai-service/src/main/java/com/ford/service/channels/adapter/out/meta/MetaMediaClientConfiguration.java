@@ -11,9 +11,9 @@ import java.time.Duration;
 public class MetaMediaClientConfiguration {
     @Bean
     RestClient metaMediaRestClient(RestClient.Builder builder) {
-        var httpClient = java.net.http.HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+        var httpClient = java.net.http.HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(1)).build();
         var requestFactory = new JdkClientHttpRequestFactory(httpClient);
-        requestFactory.setReadTimeout(Duration.ofSeconds(4));
+        requestFactory.setReadTimeout(Duration.ofMillis(2500));
         return builder.clone().requestFactory(requestFactory).build();
     }
 }

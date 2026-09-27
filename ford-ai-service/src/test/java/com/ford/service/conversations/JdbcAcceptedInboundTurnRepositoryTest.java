@@ -47,6 +47,22 @@ class JdbcAcceptedInboundTurnRepositoryTest {
     }
 
     @Test
+    void failsClosedWhenScopedReceiptDoesNotExist() {
+        var jdbc = mock(JdbcClient.class);
+        var statement = mock(JdbcClient.StatementSpec.class);
+        when(jdbc.sql(anyString())).thenReturn(statement);
+        when(statement.param(anyString(), any())).thenReturn(statement);
+        when(statement.update()).thenReturn(0);
+        var repository = new JdbcAcceptedInboundTurnRepository(jdbc, new ObjectMapper());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> repository.persistResolvedContent(
+                        UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "resolved"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("receipt was not found");
+        verify(jdbc, org.mockito.Mockito.times(1)).sql(anyString());
+    }
+
+    @Test
     @SuppressWarnings({"unchecked", "rawtypes"})
     void loadsMessageOnlyWhenTenantConversationAndReceiptAllMatch() {
         var jdbc = mock(JdbcClient.class);

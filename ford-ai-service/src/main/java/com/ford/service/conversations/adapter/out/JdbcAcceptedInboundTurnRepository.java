@@ -44,7 +44,7 @@ public class JdbcAcceptedInboundTurnRepository implements AcceptedInboundMessage
     @Override
     @Transactional
     public void persistResolvedContent(UUID tenantId, UUID conversationId, UUID receiptId, String text) {
-        jdbc.sql("""
+        var updatedReceipt = jdbc.sql("""
                 update channel_message set content = :content
                 where id = :receiptId and tenant_id = :tenantId and conversation_id = :conversationId
                 """)
@@ -53,7 +53,10 @@ public class JdbcAcceptedInboundTurnRepository implements AcceptedInboundMessage
                 .param("tenantId", tenantId)
                 .param("conversationId", conversationId)
                 .update();
-        jdbc.sql("""
+        if (updatedReceipt != 1) {
+            throw new IllegalStateException("Accepted inbound receipt was not found in the requested scope");
+        }
+        var updatedTranscript = jdbc.sql("""
                 update conversation_message set content = :content
                 where provider_message_id = (select provider_message_id from channel_message
                     where id = :receiptId and tenant_id = :tenantId and conversation_id = :conversationId)
@@ -64,6 +67,9 @@ public class JdbcAcceptedInboundTurnRepository implements AcceptedInboundMessage
                 .param("tenantId", tenantId)
                 .param("conversationId", conversationId)
                 .update();
+        if (updatedTranscript != 1) {
+            throw new IllegalStateException("Canonical inbound transcript row was not found in the requested scope");
+        }
     }
 
     private static AcceptedInboundMessage map(ResultSet rs, ObjectMapper objectMapper) throws SQLException {

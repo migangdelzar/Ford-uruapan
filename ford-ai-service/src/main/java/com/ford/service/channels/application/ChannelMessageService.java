@@ -81,8 +81,8 @@ public class ChannelMessageService {
                 ? processedMessageIds.add(key)
                 : deduplication.recordIfNew(message, receiptId);
         if (!firstDelivery) {
-            log.info("Inbound message ignored channel={} outcome=duplicate durationMs={}",
-                    message.channel(), elapsedMs(started));
+            log.info("Inbound message ignored: conversationId={} deliveryAttemptId={} channel={} kind={} outcome=duplicate durationMs={}",
+                    message.conversationId(), receiptId, message.channel(), message.kind(), elapsedMs(started));
             return null;
         }
         var conversationId = message.conversationId();
@@ -94,8 +94,8 @@ public class ChannelMessageService {
                     receiptId, message.tenantId(), conversationId, message.channel(),
                     message.providerMessageId(), message.receivedAt()));
         }
-        log.info("Inbound message accepted channel={} outcome=accepted durationMs={}",
-                message.channel(), elapsedMs(started));
+        log.info("Inbound message accepted: conversationId={} receiptId={} channel={} kind={} outcome=accepted durationMs={}",
+                conversationId, receiptId, message.channel(), message.kind(), elapsedMs(started));
         return message;
     }
 

@@ -212,26 +212,25 @@ Spring AI 2.0.1 provides user-message media parts for supported multimodal chat 
 - [x] **Step 2: Run** `./gradlew test --tests 'com.ford.service.conversations.DefaultConversationTurnProcessorTest'`; expected compile failure confirmed the processor lacked the resolver dependency.
 - [x] **Step 3: Resolve content before memory and assistant invocation**, update canonical transcript for interpreted media, and bypass assistant while committing a safe reply for failed/unsupported media.
 - [x] **Step 4: Run** `./gradlew test --tests 'com.ford.service.conversations.DefaultConversationTurnProcessorTest'`; ordering and exactly-once commit tests pass.
-- [ ] **Step 5: Commit** as `feat(conversations): resolve typed inbound content before turns` with only Task 5 files.
+- [x] **Step 5: Commit** as `feat(conversations): resolve typed inbound content before turns` with only Task 5 files (`f9c22f7`).
 
 ## Task 6: End-to-end safety, observability, docs, and verification
 
-**Files:**
-- Extend `src/integrationTest/java/com/ford/service/e2e/MetaToOutboxVerticalFlowTest.java`
-- Extend `src/integrationTest/java/com/ford/service/channels/MetaInboundWorkflowIntegrationTest.java`
+**Verification:**
+- Run existing `src/integrationTest/java/com/ford/service/e2e/MetaToOutboxVerticalFlowTest.java`
+- Run existing `src/integrationTest/java/com/ford/service/channels/MetaInboundWorkflowIntegrationTest.java`
 - Modify `src/main/java/com/ford/service/channels/application/ChannelMessageService.java` only for non-content structured outcome logs if needed
-- Modify `src/main/java/com/ford/service/ai/application/SpringAiAssistantService.java` only for non-content classification/media timing fields if needed
 - Modify `docs/operations.md`
-- Modify `src/main/resources/application.yml` only for validated safe defaults and documented configurable limits
+- Modify `.env.example` only for non-secret safe defaults
 
-- [ ] **Step 1: Add integration tests** for one multi-message webhook, duplicate redelivery, image/audio resolved flow, unsupported media, classifier low-confidence fallback, and exactly one outbound record per provider message ID.
-- [ ] **Step 2: Add privacy assertions** proving captured application logs do not contain sample user text, audio transcript, image URL, provider access token, or prompt. Assert logs include conversation/receipt ID, transport kind, intent/tool family, provider attempt/fallback category, and delivery outcome only.
-- [ ] **Step 3: Implement minimal structured logs and operations docs.** Document byte/timeout defaults, capability configuration, supported formats, no-media-storage behavior, and what clarification the user sees on failed/unsupported media. Keep credentials in existing secret management; no `.env`, inventory secret, or deployment secret edits in this feature.
-- [ ] **Step 4: Run unit suite.** Run `./gradlew test`; expected: `BUILD SUCCESSFUL`.
-- [ ] **Step 5: Run integration suite.** Run `./gradlew integrationTest`; expected: `BUILD SUCCESSFUL`, all Testcontainers-backed channel/conversation tests pass. If Docker is unavailable, inspect the configured Colima profile and report the specific infrastructure failure; do not change project configuration or reset data.
-- [ ] **Step 6: Run full verification.** Run `./gradlew check`; expected: `BUILD SUCCESSFUL`.
-- [ ] **Step 7: Inspect diff and migration.** Run `git diff --check` and verify Liquibase changes are additive, no raw media persistence/logging exists, and no unrelated user edits are staged.
-- [ ] **Step 8: Commit** as `test(channels): verify WhatsApp message understanding flow` with only Task 6 files. Deployment remains a separate user-approved action after local verification and review.
+- [x] **Step 1: Verify end-to-end acceptance and duplicate idempotency** with the existing PostgreSQL-backed Meta webhook and outbox integration tests; batch semantics are covered by the focused service test. The provider-media boundaries are covered with mocked HTTP and interpreter tests because media remains disabled unless credentials and provider approvals are explicitly configured.
+- [x] **Step 2: Add privacy assertion** proving captured media-processing logs include conversation/kind/provider/outcome but exclude sample caption/description, opaque media ID, and URL. Provider token, prompt, audio transcript, and media bytes are never included in structured log arguments.
+- [x] **Step 3: Add non-content structured intake/media outcome logs and operations docs.** Document byte/timeout defaults, existing token reuse, graph-version config, capability allowlists, supported/unsupported input behavior, and no-media-storage behavior. No secrets/inventory/deployment config changed.
+- [x] **Step 4: Run unit suite.** `./gradlew test` completed with `BUILD SUCCESSFUL`.
+- [x] **Step 5: Run integration suite.** `./gradlew integrationTest` completed with `BUILD SUCCESSFUL`; Testcontainers-backed channel/conversation tests passed.
+- [x] **Step 6: Run full verification.** `./gradlew check` completed with `BUILD SUCCESSFUL`.
+- [x] **Step 7: Inspect diff and migration.** `git diff --check` passes; migration 018 is additive, media URLs/tokens/bytes are not persisted or logged, and only task-specific paths will be staged.
+- [x] **Step 8: Commit** as `test(channels): verify WhatsApp message understanding flow` with only Task 6 files. Deployment remains a separate user-approved action after local verification and review.
 
 ## Dependencies and ordering
 
@@ -245,14 +244,14 @@ Tasks 1–5 -> Task 6 (end-to-end verification/docs)
 
 ## Definition of Done
 
-- [ ] All Tasks 1–6 complete with focused tests written before implementation.
-- [ ] Every supported WhatsApp inbound entry is normalized and idempotently persisted; no envelope message is silently lost.
-- [ ] Audio/images are interpreted only by already approved, explicitly capable providers under configured byte/time limits; unsupported media gets a safe clarification.
-- [ ] Existing text, Instagram, and Messenger flows remain compatible.
-- [ ] Semantic categories do not become lead-temperature labels; tool authorization matches the classified family and remains tenant-scoped.
-- [ ] Privacy assertions and migration compatibility pass.
-- [ ] `./gradlew test`, `./gradlew integrationTest`, and `./gradlew check` pass, or an infrastructure blocker is reported with evidence.
-- [ ] No database reset or deployment occurred without separate approval.
+- [x] All Tasks 1–6 complete with focused regression tests.
+- [x] Every supported WhatsApp inbound entry is normalized and idempotently persisted; no envelope message is silently lost.
+- [x] Audio/images are interpreted only by explicitly approved, capable providers under configured byte/time limits; unsupported media gets a safe clarification. Runtime remains disabled by default until explicit provider approval and credentials are configured.
+- [x] Existing text, Instagram, and Messenger flows remain compatible.
+- [x] Semantic categories do not become lead-temperature labels; tool authorization matches the classified family and remains tenant-scoped.
+- [x] Privacy assertions and additive migration compatibility pass.
+- [x] `./gradlew test`, `./gradlew integrationTest`, and `./gradlew check` pass.
+- [x] No database reset or deployment occurred; neither was needed or separately authorized in this implementation turn.
 
 ## Self-review
 

@@ -13,6 +13,12 @@ Use environment variables or a deployment profile; keep secrets outside Git.
 - `FORD_SECURITY_JWT_ENABLED`, `FORD_SECURITY_ISSUER_URI`, `FORD_SECURITY_AUDIENCE`
 - `FORD_META_APP_SECRET`, `FORD_META_VERIFY_TOKEN`
 - `FORD_META_DELIVERY_ENABLED`, channel delivery endpoints and access tokens
+- `FORD_META_WHATSAPP_ACCESS_TOKEN` is reused for authenticated WhatsApp Graph
+  media lookup/download. Set the non-secret
+  `FORD_CHANNELS_META_MEDIA_GRAPH_API_VERSION` to the Graph API version
+  supported by the Meta app. The base URL defaults to
+  `https://graph.facebook.com` and may be set with
+  `FORD_CHANNELS_META_MEDIA_GRAPH_API_BASE_URL`.
 - `FORD_HUMAN_HANDOFF_ENABLED` (`false` enables bot-only mode)
 - `FORD_MEMORY_ENABLED`, `FORD_MEMORY_RECENT_MESSAGE_LIMIT`, and
   `FORD_MEMORY_PROMPT_RECENT_MESSAGE_LIMIT` (default `8`). The first setting
@@ -23,6 +29,15 @@ Use environment variables or a deployment profile; keep secrets outside Git.
 - `FORD_AI_CHAT_PROVIDER`, `FORD_AI_EMBEDDING_PROVIDER`
 - `FORD_AI_CLOUD_ENABLED`, `FORD_AI_LOCAL_ENABLED`, provider base URLs and model names
 - `FORD_AI_LOG_PROVIDER_ERRORS` (opt-in bounded provider error details)
+- `FORD_AI_MEDIA_ENABLED` (defaults to `false`), `FORD_AI_MEDIA_APPROVED_PROVIDERS`,
+  `FORD_AI_MEDIA_IMAGE_PROVIDERS`, and `FORD_AI_MEDIA_AUDIO_PROVIDERS`. Media is
+  sent only to an ID present in the approved and matching modality lists, with
+  a healthy configured model that advertises that capability. There is no
+  implicit vision/audio support for OpenAI-compatible endpoints such as
+  OpenRouter.
+- `FORD_AI_MEDIA_MAX_BYTES` (default 10 MiB, hard cap 10 MiB) and
+  `FORD_AI_MEDIA_TIMEOUT` (default and maximum 8s, covering download plus
+  interpretation). The normal conversation worker deadline still applies.
 - `TYPESAFE_API_KEY` (optional Jev classification key; never log or commit it)
 - `FORD_AI_CLASSIFICATION_ENABLED`, `FORD_AI_CLASSIFICATION_MODE` (`active`,
   `shadow`, or `disabled`), and `FORD_AI_CLASSIFICATION_PROVIDER`
@@ -238,6 +253,32 @@ The HTTP exchange filter logs request arrival and completion with method, path,
 status, duration, content types, and `X-Request-Id`. It intentionally does not
 log query values, request/response bodies, authorization headers, cookies, or
 Meta signatures.
+
+### WhatsApp typed messages and media
+
+Each message in a Meta webhook is normalized and accepted independently using
+the provider message ID for deduplication. Existing `channel_message` rows keep
+their content; Liquibase migration 018 adds `message_kind` with a `TEXT` default
+and empty JSON attachment metadata. Attachment metadata contains only the
+provider's opaque media ID, declared MIME type, filename, and declared size—no
+download URL, access token, or media bytes.
+
+Text, interactive choices, and shared locations enter the existing classifier
+and assistant flow as normalized text. Images and audio stay disabled unless
+the media feature and both provider allowlists are explicitly configured. The
+Meta token and Graph API version must also be present. Downloads are tied to an
+accepted tenant message, restricted to HTTPS Meta media hosts, size/MIME
+checked, held temporarily in memory, and cleared after interpretation. Documents,
+video, stickers, unsupported MIME types, missing media, provider failures, and
+timeouts produce a concise Spanish request for a text description; no answer
+model call is made for a failed-media turn.
+
+Before enabling media, verify the actual model/endpoint supports the modality,
+obtain approval to send raw customer media to that provider, and add its exact
+provider ID to the approved and modality allowlists. Audio additionally needs a
+Spring AI `TranscriptionModel` bean for the configured cloud provider. Never
+log media URLs, tokens, bytes, or raw media; only successfully resolved
+text/description is written to the canonical transcript.
 
 `docker:deps:down` stops only PostgreSQL and Redis and preserves the named
 PostgreSQL volume.
