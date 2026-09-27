@@ -194,7 +194,7 @@ public ResolvedInboundContent InboundContentResolutionService.resolve(
 - [x] **Step 5: Implement `InboundContentResolutionService`** with 10 MiB/8-second defaults and a bounded executor. Spring AI image media and audio `TranscriptionModel` are available only behind explicit provider allowlists; unsupported/failing media returns the safe Spanish clarification. No media bytes are persisted.
 - [x] **Step 6: Implement Meta retrieval** with tenant ownership check, bearer auth, HTTPS Meta-host allowlist, status/timeout/content-length/stream-byte/MIME validation, and byte zeroing on close or rejection. URLs and tokens are not logged.
 - [x] **Step 7: Run** `./gradlew test --tests 'com.ford.service.ai.ModelProviderPolicyTest' --tests 'com.ford.service.ai.InboundContentResolutionServiceTest' --tests 'com.ford.service.channels.MetaMediaRestClientAdapterTest'`, then `./gradlew test`.
-- [ ] **Step 8: Commit** as `feat(ai): interpret approved WhatsApp image and audio input` with only Task 4 files.
+- [x] **Step 8: Commit** as `feat(ai): interpret approved WhatsApp image and audio input` with only Task 4 files (`03c5f06`).
 
 Spring AI 2.0.1 provides user-message media parts for supported multimodal chat models and a `TranscriptionModel` abstraction. Use the APIs from the [Spring AI Multimodality reference](https://docs.spring.io/spring-ai/reference/api/multimodality.html) and [Transcription API](https://docs.spring.io/spring-ai/reference/api/audio/transcriptions.html); verify actual provider/model/MIME capability against resolved dependencies and current configured approvals before wiring.
 

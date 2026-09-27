@@ -1,11 +1,14 @@
 package com.ford.service.conversations.application;
 
 import com.ford.service.conversations.api.ConversationTurnRequest;
+import com.ford.service.conversations.api.AssistantReply;
 import com.ford.service.conversations.application.graph.ConversationGraphRoute;
 import com.ford.service.conversations.application.graph.ConversationTurnOutcome;
 import com.ford.service.conversations.application.graph.ConversationTurnProcessor;
 import com.ford.service.conversations.application.graph.ConversationTurnReference;
 import com.ford.service.channels.api.AcceptedInboundMessageRepository;
+import com.ford.service.ai.application.InboundContentResolutionService;
+import com.ford.service.ai.application.InboundContentStatus;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
 import com.ford.service.conversations.domain.ConversationMemoryKey;
@@ -31,19 +34,22 @@ public class DefaultConversationTurnProcessor implements ConversationTurnProcess
     private final LeadJourneyService leadJourneyService;
     private final ConversationAssistant assistant;
     private final ConversationTurnCommitService commitService;
+    private final InboundContentResolutionService contentResolutionService;
 
     public DefaultConversationTurnProcessor(AcceptedInboundMessageRepository inboundRepository,
                                             ConversationRepository conversationRepository,
                                             ConversationMemoryService memoryService,
                                             LeadJourneyService leadJourneyService,
                                             ConversationAssistant assistant,
-                                            ConversationTurnCommitService commitService) {
+                                            ConversationTurnCommitService commitService,
+                                            InboundContentResolutionService contentResolutionService) {
         this.inboundRepository = Objects.requireNonNull(inboundRepository);
         this.conversationRepository = Objects.requireNonNull(conversationRepository);
         this.memoryService = Objects.requireNonNull(memoryService);
         this.leadJourneyService = Objects.requireNonNull(leadJourneyService);
         this.assistant = Objects.requireNonNull(assistant);
         this.commitService = Objects.requireNonNull(commitService);
+        this.contentResolutionService = Objects.requireNonNull(contentResolutionService);
     }
 
     @Override
@@ -73,16 +79,26 @@ public class DefaultConversationTurnProcessor implements ConversationTurnProcess
         log.info("Conversation turn context loaded: conversationId={} state={} channel={} providerAccountId={}",
                 reference.conversationId(), conversation.state(), conversation.channel(), conversation.providerAccountId());
 
+        var resolved = contentResolutionService.resolve(inbound, reference.tenantId(), reference.conversationId());
+        if (resolved.status() == InboundContentStatus.READY
+                && (inbound.kind() == com.ford.service.channels.domain.InboundMessageKind.IMAGE
+                || inbound.kind() == com.ford.service.channels.domain.InboundMessageKind.AUDIO)) {
+            inboundRepository.persistResolvedContent(reference.tenantId(), reference.conversationId(),
+                    reference.receiptId(), resolved.text());
+        }
+
         var memoryKey = new ConversationMemoryKey(reference.tenantId(), conversation.channel(),
                 conversation.providerAccountId(), inbound.participantId(), reference.conversationId());
         memoryService.recordInbound(memoryKey, reference.receiptId(), inbound.providerMessageId(),
-                inbound.text(), inbound.receivedAt());
-        var memory = memoryService.load(new MemoryQuery(memoryKey, inbound.text(), inbound.providerMessageId()));
+                resolved.text(), inbound.receivedAt());
+        var memory = memoryService.load(new MemoryQuery(memoryKey, resolved.text(), inbound.providerMessageId()));
         var journey = leadJourneyService.load(reference.tenantId(), reference.conversationId());
         log.info("Conversation turn invoking assistant: conversationId={} memoryVersion={} recentMessages={} journeyPresent={}",
                 reference.conversationId(), memory.memoryVersion(), memory.recentMessages().size(), journey != null);
-        var reply = assistant.respond(new ConversationTurnRequest(reference.tenantId(),
-                reference.conversationId(), inbound.text(), conversation.state(), memory, journey));
+        var reply = resolved.status() == InboundContentStatus.CLARIFICATION_REQUIRED
+                ? new AssistantReply(resolved.text(), false)
+                : assistant.respond(new ConversationTurnRequest(reference.tenantId(),
+                        reference.conversationId(), resolved.text(), conversation.state(), memory, journey));
         log.info("Conversation turn assistant completed: conversationId={} handoffRequired={} decisionPresent={} replyChars={}",
                 reference.conversationId(), reply.handoffRequired(), reply.decision() != null,
                 reply.text() == null ? 0 : reply.text().length());
