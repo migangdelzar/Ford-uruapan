@@ -16,9 +16,9 @@ Use environment variables or a deployment profile; keep secrets outside Git.
 - `FORD_META_WHATSAPP_ACCESS_TOKEN` is reused for authenticated WhatsApp Graph
   media lookup/download. Set the non-secret
   `FORD_CHANNELS_META_MEDIA_GRAPH_API_VERSION` to the Graph API version
-  supported by the Meta app. The base URL defaults to
-  `https://graph.facebook.com` and may be set with
-  `FORD_CHANNELS_META_MEDIA_GRAPH_API_BASE_URL`.
+  supported by the Meta app. The Graph base URL defaults to
+  `https://graph.facebook.com`; overrides are accepted only for that official
+  HTTPS host.
 - `FORD_HUMAN_HANDOFF_ENABLED` (`false` enables bot-only mode)
 - `FORD_MEMORY_ENABLED`, `FORD_MEMORY_RECENT_MESSAGE_LIMIT`, and
   `FORD_MEMORY_PROMPT_RECENT_MESSAGE_LIMIT` (default `8`). The first setting

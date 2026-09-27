@@ -230,7 +230,7 @@ Spring AI 2.0.1 provides user-message media parts for supported multimodal chat 
 - [x] **Step 5: Run integration suite.** `./gradlew integrationTest` completed with `BUILD SUCCESSFUL`; Testcontainers-backed channel/conversation tests passed.
 - [x] **Step 6: Run full verification.** `./gradlew check` completed with `BUILD SUCCESSFUL`.
 - [x] **Step 7: Inspect diff and migration.** `git diff --check` passes; migration 018 is additive, media URLs/tokens/bytes are not persisted or logged, and only task-specific paths will be staged.
-- [x] **Step 8: Commit** as `test(channels): verify WhatsApp message understanding flow` with only Task 6 files. Deployment remains a separate user-approved action after local verification and review.
+- [x] **Step 8: Commit** as `test(channels): verify WhatsApp message understanding flow` with only Task 6 files (`fb0a00b`). Deployment remains a separate user-approved action after local verification and review.
 
 ## Dependencies and ordering
 
