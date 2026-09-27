@@ -62,7 +62,11 @@ class SystemPromptServiceTest {
                 .contains("No invente precios")
                 .contains("No salude de nuevo")
                 .contains("No muestre nombres de herramientas, JSON")
-                .contains("No repita una respuesta");
+                .contains("No repita una respuesta")
+                .contains("Valentina Ramírez")
+                .contains("¿En qué puedo ayudarle?")
+                .contains("aunque no incluya fechas de vigencia")
+                .contains("promoción sigue vigente");
     }
 
     private static final class InMemoryPromptRepository implements SystemPromptRepository {

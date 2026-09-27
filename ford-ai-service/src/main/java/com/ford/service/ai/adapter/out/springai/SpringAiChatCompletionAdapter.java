@@ -28,8 +28,7 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                     + "No inventes datos: usa únicamente la información autorizada y las herramientas de solo lectura. "
                     + "Responde primero la pregunta actual; usa el contexto de sesión para no repetir saludos ni preguntas. ";
     private static final String VOLATILE_SOURCE_UNAVAILABLE =
-            "Fíjese que ese dato no lo tengo confirmado en el catálogo vigente. "
-                    + "Con mucho gusto un asesor puede verificarlo.";
+            "Ese dato no lo tengo confirmado ahora; prefiero no darle información incompleta.";
 
     private final ChatClient client;
     private final String provider;

@@ -162,14 +162,12 @@ public class SpringAiConfiguration {
         if (mcpProperties.enabled()) {
             try {
                 var mcpProvider = mcpProviders.getIfAvailable();
-                if (mcpProvider == null) {
-                    return callbacks.isEmpty() ? new ToolAuthorizationPolicy()
-                            : new ToolAuthorizationPolicy(callbacks);
+                if (mcpProvider != null) {
+                    callbacks.addAll(List.of(mcpProvider.getToolCallbacks()).stream()
+                            .filter(callback -> mcpProperties.readOnlyToolNames()
+                                    .contains(callback.getToolDefinition().name().toLowerCase(java.util.Locale.ROOT)))
+                            .toList());
                 }
-                callbacks.addAll(List.of(mcpProvider.getToolCallbacks()).stream()
-                        .filter(callback -> mcpProperties.readOnlyToolNames()
-                                .contains(callback.getToolDefinition().name().toLowerCase(java.util.Locale.ROOT)))
-                        .toList());
             }
             catch (RuntimeException exception) {
                 log.warn("Ford MCP tools unavailable; continuing without volatile MCP tools: exceptionType={}",
@@ -179,7 +177,13 @@ public class SpringAiConfiguration {
         if (callbacks.isEmpty()) {
             return new ToolAuthorizationPolicy();
         }
-        return new ToolAuthorizationPolicy(callbacks);
+        var observedCallbacks = callbacks.stream()
+                .map(com.ford.service.ai.adapter.out.springai.ObservedToolCallback::new)
+                .map(ToolCallback.class::cast)
+                .toList();
+        log.info("AI read-only tools registered: count={} names={}", observedCallbacks.size(),
+                observedCallbacks.stream().map(tool -> tool.getToolDefinition().name()).sorted().toList());
+        return new ToolAuthorizationPolicy(observedCallbacks);
     }
 
     @Bean
