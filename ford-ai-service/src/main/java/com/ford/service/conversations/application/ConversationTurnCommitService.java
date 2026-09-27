@@ -4,7 +4,6 @@ import com.ford.service.ai.application.SensitiveDataLevel;
 import com.ford.service.channels.api.AcceptedInboundMessage;
 import com.ford.service.conversations.api.HandoffRequested;
 import com.ford.service.conversations.api.ConversationMemoryProjectionRefreshRequested;
-import com.ford.service.conversations.api.OutboundDeliveryRequested;
 import com.ford.service.conversations.application.graph.ConversationGraphRoute;
 import com.ford.service.conversations.application.graph.ConversationTurnReference;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
@@ -108,19 +107,17 @@ public class ConversationTurnCommitService {
             return ConversationGraphRoute.IGNORED;
         }
         var key = memory.key();
-        memoryService.recordOutbound(key, outboundMessageId(providerMessageId),
+        memoryService.indexOutbound(key, outboundMessageId(providerMessageId),
                 "outbound:" + providerMessageId, text, Instant.now());
         eventPublisher.publishEvent(new ConversationMemoryProjectionRefreshRequested(
                 key, memoryService.project(memory, inbound.text(), reference.receiptId()), memory.memoryVersion()));
         memoryService.invalidate(key);
-        eventPublisher.publishEvent(new OutboundDeliveryRequested(reference.tenantId(),
-                reference.conversationId(), conversation.channel(), conversation.recipientId(), text));
         var temperature = reply.decision() == null || reply.decision().leadTemperature() == null
                 ? "UNKNOWN" : reply.decision().leadTemperature().name();
         eventPublisher.publishEvent(new com.ford.service.shared.ConversationTurnCompleted(
                 reference.tenantId(), reference.conversationId(), providerMessageId,
                 temperature, inbound.text(), reply.text()));
-        log.info("Conversation bot reply committed: conversationId={} providerMessageId={} route=BOT_REPLY outboundRequested=true leadTemperature={}",
+        log.info("Conversation bot reply committed: conversationId={} providerMessageId={} route=BOT_REPLY durableOutbox=true leadTemperature={}",
                 reference.conversationId(), providerMessageId, temperature);
         return ConversationGraphRoute.BOT_REPLY;
     }

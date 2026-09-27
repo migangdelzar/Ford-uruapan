@@ -6,7 +6,7 @@ import com.ford.service.conversations.application.port.out.ConversationAssistant
 import com.ford.service.conversations.application.port.out.ConversationRepository;
 import com.ford.service.conversations.application.ConversationWorkflow;
 import com.ford.service.conversations.api.AssistantReply;
-import com.ford.service.conversations.api.OutboundDeliveryRequested;
+import com.ford.service.conversations.api.ConversationMemoryProjectionRefreshRequested;
 import com.ford.service.conversations.domain.ConversationSnapshot;
 import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.outbox.OutboxStore;
@@ -41,6 +41,7 @@ import static org.mockito.Mockito.when;
         "spring.modulith.runtime.verification-enabled=false",
         "spring.ai.model.chat=none",
         "spring.ai.model.embedding=none",
+        "ford.conversations.workflow.graph-enabled=false",
         "spring.autoconfigure.exclude=org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration"
 })
 class ConversationScenarioIntegrationTest {
@@ -60,11 +61,11 @@ class ConversationScenarioIntegrationTest {
         scenario.publish(new InboundMessageAccepted(
                         UUID.randomUUID(), tenantId, conversationId, Channel.WHATSAPP,
                         "wamid.inbound", Instant.now()))
-                .andWaitForEventOfType(OutboundDeliveryRequested.class)
+                .andWaitForEventOfType(ConversationMemoryProjectionRefreshRequested.class)
                 .toArriveAndVerify(event -> {
-                    org.assertj.core.api.Assertions.assertThat(event.tenantId()).isEqualTo(tenantId);
-                    org.assertj.core.api.Assertions.assertThat(event.conversationId()).isEqualTo(conversationId);
-                    org.assertj.core.api.Assertions.assertThat(event.text()).contains("Ranger");
+                    org.assertj.core.api.Assertions.assertThat(event.key().tenantId()).isEqualTo(tenantId);
+                    org.assertj.core.api.Assertions.assertThat(event.key().conversationId()).isEqualTo(conversationId);
+                    org.assertj.core.api.Assertions.assertThat(event.update().summary()).contains("¿Hay Ranger?");
                 });
     }
 

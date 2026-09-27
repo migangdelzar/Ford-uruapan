@@ -40,21 +40,26 @@ class ConversationMemoryServiceTest {
     }
 
     @Test
-    void recordsOutboundRepliesInTheDurableConversationTranscript() {
+    void indexesCanonicalOutboundRepliesWithoutWritingAnotherTranscriptCopy() {
         var properties = new MemoryProperties();
         var port = new FakeMemoryPort();
-        var service = new ConversationMemoryService(port, properties);
+        var published = new java.util.ArrayList<Object>();
+        var service = new ConversationMemoryService(port, properties,
+                new FakeSemanticPort(), event -> published.add(event));
         var key = new ConversationMemoryKey(UUID.randomUUID(), Channel.WHATSAPP,
                 "phone-1", "customer-1", UUID.randomUUID());
         var outboundId = UUID.randomUUID();
 
-        service.recordOutbound(key, outboundId, "outbound:inbound-1", "Le comparto la información.",
+        service.indexOutbound(key, outboundId, "outbound:inbound-1", "Le comparto la información.",
                 Instant.now());
 
-        assertThat(port.lastOutbound).isNotNull();
-        assertThat(port.lastOutbound.direction()).isEqualTo(ConversationMessage.Direction.OUTBOUND);
-        assertThat(port.lastOutbound.providerMessageId()).isEqualTo("outbound:inbound-1");
-        assertThat(port.lastOutbound.content()).isEqualTo("Le comparto la información.");
+        assertThat(published).singleElement()
+                .isInstanceOfSatisfying(com.ford.service.conversations.api.ConversationMemoryIndexRequested.class,
+                        event -> {
+                            assertThat(event.message().direction()).isEqualTo(ConversationMessage.Direction.OUTBOUND);
+                            assertThat(event.message().providerMessageId()).isEqualTo("outbound:inbound-1");
+                            assertThat(event.message().content()).isEqualTo("Le comparto la información.");
+                        });
     }
 
     @Test
@@ -113,7 +118,6 @@ class ConversationMemoryServiceTest {
     private static final class FakeMemoryPort implements ConversationMemoryPort {
         private RuntimeException loadFailure;
         private MemoryQuery lastQuery;
-        private ConversationMessage lastOutbound;
 
         @Override
         public ConversationMemoryContext load(MemoryQuery query) {
@@ -126,11 +130,6 @@ class ConversationMemoryServiceTest {
 
         @Override
         public void recordInbound(ConversationMemoryKey key, ConversationMessage message) {
-        }
-
-        @Override
-        public void recordOutbound(ConversationMemoryKey key, ConversationMessage message) {
-            lastOutbound = message;
         }
 
         @Override

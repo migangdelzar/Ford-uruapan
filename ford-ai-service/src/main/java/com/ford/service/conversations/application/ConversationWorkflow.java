@@ -5,7 +5,6 @@ import com.ford.service.channels.api.AcceptedInboundMessageRepository;
 import com.ford.service.conversations.api.ConversationMemoryProjectionRefreshRequested;
 import com.ford.service.conversations.api.ConversationTurnRequest;
 import com.ford.service.conversations.api.HandoffRequested;
-import com.ford.service.conversations.api.OutboundDeliveryRequested;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
 import com.ford.service.conversations.application.port.out.ConversationTurnLeasePort;
@@ -278,7 +277,7 @@ public class ConversationWorkflow {
         var accepted = repository.completeBotTurn(snapshot.conversationId(), snapshot.version(),
                 new ConversationTurn(text));
         if (accepted) {
-            memoryService.recordOutbound(memoryKey,
+            memoryService.indexOutbound(memoryKey,
                     UUID.nameUUIDFromBytes(("outbound:" + event.providerMessageId())
                             .getBytes(java.nio.charset.StandardCharsets.UTF_8)),
                     "outbound:" + event.providerMessageId(), text, Instant.now());
@@ -287,9 +286,6 @@ public class ConversationWorkflow {
                     memoryService.project(memory, currentMessage, event.receiptId()),
                     memory.memoryVersion()));
             memoryService.invalidate(memoryKey);
-            eventPublisher.publishEvent(new OutboundDeliveryRequested(
-                    snapshot.tenantId(), snapshot.conversationId(), snapshot.channel(),
-                    snapshot.recipientId(), text));
         }
     }
 

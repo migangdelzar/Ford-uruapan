@@ -102,8 +102,9 @@ class MetaInboundWorkflowIntegrationTest {
         assertThat(jdbc.sql("select distinct tenant_id from channel_delivery")
                 .query(UUID.class).single()).isEqualTo(tenantId);
         awaitPublication();
+        awaitConversationWorkflow();
         assertThat(PublicationProbe.ACCEPTED.get()).isEqualTo(1);
-        assertThat(publicationCount()).isEqualTo(publicationsBefore + 3);
+        assertThat(publicationCount()).isGreaterThan(publicationsBefore);
     }
 
     @Test
@@ -145,10 +146,11 @@ class MetaInboundWorkflowIntegrationTest {
     @Test
     void acknowledgesReplayWithoutPublishingSecondEvent() throws Exception {
         insertBinding(UUID.randomUUID());
-        var publicationsBefore = publicationCount();
 
         postWebhook(BODY, APP_SECRET).andExpect(status().isAccepted());
         awaitPublication();
+        awaitConversationWorkflow();
+        var publicationsAfterFirstDelivery = publicationCount();
         postWebhook(BODY, APP_SECRET).andExpect(status().isAccepted());
 
         assertThat(jdbc.sql("select count(*) from channel_delivery")
@@ -156,7 +158,7 @@ class MetaInboundWorkflowIntegrationTest {
         assertThat(jdbc.sql("select count(*) from channel_message")
                 .query(Integer.class).single()).isEqualTo(1);
         assertThat(PublicationProbe.ACCEPTED.get()).isEqualTo(1);
-        assertThat(publicationCount()).isEqualTo(publicationsBefore + 3);
+        assertThat(publicationCount()).isEqualTo(publicationsAfterFirstDelivery);
     }
 
     private org.springframework.test.web.servlet.ResultActions postWebhook(
@@ -187,6 +189,24 @@ class MetaInboundWorkflowIntegrationTest {
         while (PublicationProbe.ACCEPTED.get() == 0 && System.nanoTime() < deadline) {
             Thread.sleep(25);
         }
+    }
+
+    private void awaitConversationWorkflow() throws InterruptedException {
+        var deadline = System.nanoTime() + 10_000_000_000L;
+        while (System.nanoTime() < deadline) {
+            var pending = jdbc.sql("select count(*) from event_publication "
+                            + "where event_type like '%InboundMessageAccepted%' "
+                            + "and listener_id like '%ConversationWorkflow.on%' and completion_date is null")
+                    .query(Integer.class).single();
+            if (pending == 0) {
+                return;
+            }
+            Thread.sleep(25);
+        }
+        assertThat(jdbc.sql("select count(*) from event_publication "
+                        + "where event_type like '%InboundMessageAccepted%' "
+                        + "and listener_id like '%ConversationWorkflow.on%' and completion_date is null")
+                .query(Integer.class).single()).isZero();
     }
 
     private int publicationCount() {

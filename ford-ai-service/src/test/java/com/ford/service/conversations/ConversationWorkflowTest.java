@@ -100,8 +100,23 @@ class ConversationWorkflowTest {
                             assertThat(projection.key().conversationId()).isEqualTo(conversationId);
                             assertThat(projection.expectedVersion()).isZero();
                         }));
-        assertThat(publisher.events).anySatisfy(event ->
-                assertThat(event).isInstanceOf(OutboundDeliveryRequested.class));
+        assertThat(publisher.events).noneMatch(OutboundDeliveryRequested.class::isInstance);
+    }
+
+    @Test
+    void doesNotPublishSecondDeliveryRequestWhenRepositoryOwnsAtomicOutboxWrite() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var publisher = new RecordingPublisher();
+
+        new ConversationWorkflow(new RecordingConversationRepository(snapshot(
+                tenantId, conversationId, ConversationState.BOT_ACTIVE, 1)),
+                new RecordingAssistant(new AssistantReply("Una respuesta", false)), publisher,
+                new HumanHandoffPolicy(false), memoryService())
+                .on(new InboundMessageAccepted(UUID.randomUUID(), tenantId, conversationId,
+                        Channel.WHATSAPP, "wamid.atomic-outbox", Instant.now()));
+
+        assertThat(publisher.events).noneMatch(OutboundDeliveryRequested.class::isInstance);
     }
 
     @Test
@@ -239,8 +254,7 @@ class ConversationWorkflowTest {
 
         assertThat(repository.handoffDecision).isNull();
         assertThat(repository.completedTurn.text()).contains("No pude generar");
-        assertThat(publisher.events).anySatisfy(event ->
-                assertThat(event).isInstanceOf(OutboundDeliveryRequested.class));
+        assertThat(publisher.events).noneMatch(OutboundDeliveryRequested.class::isInstance);
     }
 
     @Test

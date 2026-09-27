@@ -102,6 +102,8 @@ class MetaToOutboxVerticalFlowTest {
         awaitCount("select count(*) from outbox_event where event_type = 'OUTBOUND_DELIVERY_REQUESTED'", 1);
         awaitCount("select count(*) from event_publication where listener_id like '%ConversationWorkflow.on%' "
                 + "and completion_date is not null", 1);
+        assertThat(jdbc.sql("select count(*) from event_publication where event_type like '%OutboundDeliveryRequested%'")
+                .query(Integer.class).single()).isZero();
         assertThat(ASSISTANT_TRANSACTION_ACTIVE.get()).isFalse();
 
         var conversationId = jdbc.sql("select id from conversation where tenant_id = :tenantId")

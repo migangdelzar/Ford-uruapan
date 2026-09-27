@@ -71,7 +71,7 @@ public final class ConversationGraphRunner {
             throw new ConversationGraphExecutionException(failure);
         }
         var result = new ConversationGraphResult(finalState.reference(), finalState.route(), finalState.terminal());
-        log.info("Conversation graph finished: conversationId={} receiptId={} route={} terminal={} replyCommitted={} outboundRequested={} durationMs={}",
+        log.info("Conversation graph finished: conversationId={} receiptId={} route={} terminal={} replyCommitted={} deliveryIntentPersisted={} durationMs={}",
                 reference.conversationId(), reference.receiptId(), result.route(), result.terminal(),
                 result.route() == ConversationGraphRoute.BOT_REPLY,
                 result.route() == ConversationGraphRoute.BOT_REPLY || result.route() == ConversationGraphRoute.HUMAN_PENDING,
