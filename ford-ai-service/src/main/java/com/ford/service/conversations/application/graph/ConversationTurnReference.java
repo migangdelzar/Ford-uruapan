@@ -12,6 +12,6 @@ public record ConversationTurnReference(UUID tenantId, UUID conversationId, UUID
     }
 
     public String checkpointThreadId() {
-        return tenantId + ":" + conversationId;
+        return tenantId + ":" + conversationId + ":" + receiptId;
     }
 }

@@ -5,6 +5,7 @@ import com.ford.service.conversations.application.graph.ConversationGraphRunner;
 import com.ford.service.conversations.application.graph.ConversationTurnOutcome;
 import com.ford.service.conversations.application.graph.ConversationTurnReference;
 import com.ford.service.conversations.application.graph.FordPostgresSaverV2;
+import com.ford.service.conversations.application.graph.ConversationGraphCheckpointReset;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import liquibase.Contexts;
@@ -18,6 +19,7 @@ import org.bsc.langgraph4j.checkpoint.Checkpoint;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -107,6 +109,39 @@ class PostgresGraphCheckpointIntegrationTest {
         assertThat(saver.list(RunnableConfig.builder().threadId(first.checkpointThreadId()).build())).isNotEmpty();
         assertThat(saver.list(RunnableConfig.builder().threadId(second.checkpointThreadId()).build())).isNotEmpty();
         assertThat(countCheckpointThreads()).isEqualTo(2);
+    }
+
+    @Test
+    void processesEachNewReceiptInTheSameConversationButResumesDuplicateReceipt() throws Exception {
+        var saver = saver();
+        var first = reference();
+        var second = new ConversationTurnReference(first.tenantId(), first.conversationId(), UUID.randomUUID());
+        var processorCalls = new AtomicInteger();
+        var runner = new ConversationGraphRunner(ignored -> {
+            processorCalls.incrementAndGet();
+            return new ConversationTurnOutcome(ConversationGraphRoute.BOT_REPLY);
+        }, saver);
+
+        runner.run(first);
+        runner.run(first);
+        runner.run(second);
+
+        assertThat(processorCalls).hasValue(2);
+        assertThat(saver.list(RunnableConfig.builder().threadId(first.checkpointThreadId()).build())).isNotEmpty();
+        assertThat(saver.list(RunnableConfig.builder().threadId(second.checkpointThreadId()).build())).isNotEmpty();
+        assertThat(countCheckpointThreads()).isEqualTo(2);
+    }
+
+    @Test
+    void resetRemovesOnlyGraphCheckpoints() throws Exception {
+        var saver = saver();
+        var reference = reference();
+        new ConversationGraphRunner(ignored ->
+                new ConversationTurnOutcome(ConversationGraphRoute.BOT_REPLY), saver).run(reference);
+
+        var reset = new ConversationGraphCheckpointReset(JdbcClient.create(dataSources.get(0)));
+        assertThat(reset.reset()).isPositive();
+        assertThat(saver.list(RunnableConfig.builder().threadId(reference.checkpointThreadId()).build())).isEmpty();
     }
 
     @Test

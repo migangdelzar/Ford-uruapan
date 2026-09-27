@@ -51,7 +51,8 @@ class ConversationGraphCheckpointConfiguration {
     @Bean
     ConversationGraphCheckpointCleanup conversationGraphCheckpointCleanup(
             @Qualifier("conversationGraphCheckpointDataSource") HikariDataSource dataSource,
-            @Value("${ford.memory.working-memory-ttl:P90D}") Duration retention) {
-        return new ConversationGraphCheckpointCleanup(JdbcClient.create(dataSource), retention);
+            @Value("${ford.memory.working-memory-ttl:P90D}") Duration retention,
+            @Value("${ford.conversations.workflow.reset-checkpoints-on-startup:false}") boolean resetOnStartup) {
+        return new ConversationGraphCheckpointCleanup(JdbcClient.create(dataSource), retention, resetOnStartup);
     }
 }

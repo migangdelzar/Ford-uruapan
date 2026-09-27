@@ -41,8 +41,9 @@ public final class ConversationGraphRunner {
         final ConversationGraphState finalState;
         try {
             var resume = checkpointSaver != null && checkpointSaver.get(config).isPresent();
-            log.info("Conversation graph started: conversationId={} receiptId={} checkpointResume={}",
-                    reference.conversationId(), reference.receiptId(), resume);
+            log.info("Conversation graph started: conversationId={} receiptId={} checkpointThreadId={} checkpointResume={} inputMode={}",
+                    reference.conversationId(), reference.receiptId(), reference.checkpointThreadId(), resume,
+                    resume ? "RESUME_EXISTING_TURN" : "START_NEW_TURN");
             var input = resume ? GraphInput.resume() : GraphInput.args(Map.of(
                             ConversationGraphState.TENANT_ID, reference.tenantId().toString(),
                             ConversationGraphState.CONVERSATION_ID, reference.conversationId().toString(),
