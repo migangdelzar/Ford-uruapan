@@ -2,6 +2,9 @@ package com.ford.service.ai;
 
 import com.ford.service.ai.adapter.out.springai.ObservedToolCallback;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
@@ -12,6 +15,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@ExtendWith(OutputCaptureExtension.class)
 class ObservedToolCallbackTest {
 
     @Test
@@ -64,5 +68,32 @@ class ObservedToolCallbackTest {
         assertThatThrownBy(() -> new ObservedToolCallback(delegate).call("{}"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("source unavailable");
+    }
+
+    @Test
+    void recordsToolOutcomeWithoutLoggingArgumentsOrResults(CapturedOutput output) {
+        var delegate = new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return DefaultToolDefinition.builder().name("list_promotions")
+                        .description("offers").inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String input) {
+                return "private-promotion-result";
+            }
+        };
+
+        var callback = new ObservedToolCallback(delegate);
+        assertThat(callback.call("private-tool-arguments"))
+                .isEqualTo("private-promotion-result");
+
+        assertThat(output.getOut())
+                .contains("MCP tool call started")
+                .contains("tool=list_promotions")
+                .contains("MCP tool call completed")
+                .doesNotContain("private-tool-arguments")
+                .doesNotContain("private-promotion-result");
     }
 }
