@@ -56,7 +56,7 @@
 - [x] Add a failing service test proving each account resolves its own tenant binding and the adapter is invoked with that account ID.
 - [x] Implement per-account IDs and parsing; do not short-circuit a mixed status/message callback based on its first entry.
 - [x] Verify WhatsApp's existing batch, binding, and duplicate semantics remain intact with focused tests.
-- [ ] Commit as `fix(channels): process Meta webhook messages per account`.
+- [x] Commit per-account webhook changes (included in consolidated channel commit).
 
 ## Task 3: Complete Messenger and Instagram Inbound Contracts
 
@@ -73,7 +73,7 @@
 - [x] Normalize account ID, participant ID, message ID, event time, text, and interactive label without leaking opaque payloads to the assistant.
 - [x] Return no inbound turns for echoes and non-message callbacks so the webhook can return 202 without triggering model calls.
 - [x] Preserve HMAC validation and route all three channels through the same inbound service and conversation workflow; existing route controller already provides channel-specific paths.
-- [ ] Commit as `feat(channels): normalize Messenger and Instagram webhook events`.
+- [x] Commit Messenger/Instagram inbound changes (included in consolidated channel commit).
 
 ## Task 4: Make Binding Initialization Channel-Aware
 
@@ -88,7 +88,7 @@
 - [x] Add failing tests for optional Messenger/Instagram bindings and for disabled/unconfigured channels doing no SQL.
 - [x] Retain legacy WhatsApp settings; add separately named, opt-in provider-account settings for Messenger and Instagram, sharing only the configured tenant ID.
 - [x] Add environment pass-through names without values and verify generated environment variable names against `application.yml`.
-- [ ] Commit as `feat(channels): support opt-in Meta bindings per channel`.
+- [x] Commit per-channel binding changes (included in consolidated channel commit).
 
 ## Task 5: Separate Channel-Specific Outbound Payload Strategies and Enforce the Customer Window
 
@@ -104,7 +104,7 @@
 - [x] Add channel-specific payload selection while keeping the same `ChannelDeliveryPort` and outbox contract.
 - [x] Add a router test proving a closed or missing customer window prevents a provider call and produces a permanent rejection; an open window continues to the selected channel delivery port.
 - [x] Assert provider 4xx permanent failures and transient throttling/server failures retain their existing retry classification; never assert/log message content in telemetry.
-- [ ] Commit as `feat(channels): send text replies through channel-specific Meta payloads`.
+- [x] Commit channel-specific outbound and customer-window changes (included in consolidated channel commit).
 
 ## Task 6: Document Setup and Run Full Verification
 
@@ -116,7 +116,7 @@
 - [x] Run `./gradlew test integrationTest check --rerun-tasks` from `ford-ai-service`.
 - [x] Run `node --test scripts/ai/openrouter-chat-eval.test.mjs` from the repository root.
 - [x] Run `git diff --check`, confirm no unresolved paths, and inspect the final diff/status.
-- [ ] Commit as `docs(channels): document Meta channel setup and verification`.
+- [x] Commit documentation and verification record (included in consolidated channel commit).
 
 ## Self-Review
 
