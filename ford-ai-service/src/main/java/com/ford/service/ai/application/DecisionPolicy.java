@@ -39,9 +39,6 @@ public final class DecisionPolicy {
     }
 
     public boolean requiresVolatileInformation(ConversationDecision decision) {
-        return decision != null && (decision.toolFamily() == ToolFamily.VEHICLE_SEARCH
-                || decision.toolFamily() == ToolFamily.VEHICLE_DETAILS
-                || decision.toolFamily() == ToolFamily.OFFERS
-                || decision.toolFamily() == ToolFamily.KNOWLEDGE_SEARCH);
+        return decision != null && decision.toolFamily().requiresVolatileInformation();
     }
 }

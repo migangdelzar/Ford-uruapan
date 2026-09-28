@@ -80,6 +80,20 @@ public record ConversationDecision(
                 toolFamily, sensitiveDataLevel, nextAction, urgencySignal, summary, evidence);
     }
 
+    public ConversationDecision withVolatileToolRoute(ConversationDecision route) {
+        Objects.requireNonNull(route, "volatile tool route is required");
+        var updatedEvidence = new java.util.ArrayList<>(evidence);
+        updatedEvidence.removeIf(item -> item.classifier() == ClassifierType.INTENT
+                || item.classifier() == ClassifierType.TOOL_FAMILY);
+        route.evidence().stream()
+                .filter(item -> item.classifier() == ClassifierType.INTENT
+                        || item.classifier() == ClassifierType.TOOL_FAMILY)
+                .forEach(updatedEvidence::add);
+        return new ConversationDecision(route.intent(), leadTemperature, leadStage, handoffRecommendation,
+                route.toolFamily(), sensitiveDataLevel, route.nextAction(), urgencySignal || route.urgencySignal(),
+                summary.isBlank() ? route.summary() : summary, updatedEvidence);
+    }
+
     public String toPromptContext() {
         return "[DECISION CONTEXT]\n" +
                 "intent=" + lower(intent) + "\n" +
