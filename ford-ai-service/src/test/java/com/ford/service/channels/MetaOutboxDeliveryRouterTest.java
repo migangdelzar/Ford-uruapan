@@ -3,12 +3,15 @@ package com.ford.service.channels;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ford.service.channels.adapter.out.meta.MetaOutboxDeliveryRouter;
 import com.ford.service.channels.application.port.out.ChannelDeliveryPort;
+import com.ford.service.channels.application.port.out.CustomerWindowPort;
 import com.ford.service.channels.domain.Channel;
 import com.ford.service.channels.domain.DeliveryResult;
 import com.ford.service.outbox.OutboxEvent;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.time.Duration;
+import java.util.Optional;
 import java.util.Map;
 import java.util.UUID;
 
@@ -48,6 +51,59 @@ class MetaOutboxDeliveryRouterTest {
 
         assertThat(result.accepted()).isFalse();
         assertThat(result.permanent()).isTrue();
+    }
+
+    @Test
+    void preventsProviderDeliveryWhenCustomerWindowIsMissing() {
+        var port = mock(ChannelDeliveryPort.class);
+        var windows = mock(CustomerWindowPort.class);
+        var conversationId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        var event = event("key");
+        when(windows.find(event.tenantId(), conversationId)).thenReturn(Optional.empty());
+        var router = new MetaOutboxDeliveryRouter(new ObjectMapper(), Map.of(Channel.WHATSAPP, port), windows);
+
+        var result = router.deliver(event);
+
+        assertThat(result.accepted()).isFalse();
+        assertThat(result.permanent()).isTrue();
+        org.mockito.Mockito.verifyNoInteractions(port);
+    }
+
+    @Test
+    void preventsProviderDeliveryWhenCustomerWindowHasExpired() {
+        var port = mock(ChannelDeliveryPort.class);
+        var windows = mock(CustomerWindowPort.class);
+        var event = event("key");
+        var conversationId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        when(windows.find(event.tenantId(), conversationId)).thenReturn(Optional.of(
+                new CustomerWindowPort.CustomerWindow(event.tenantId(), conversationId, Channel.WHATSAPP,
+                        Instant.now().minus(Duration.ofHours(25)), Instant.now().minus(Duration.ofHours(1)))));
+        var router = new MetaOutboxDeliveryRouter(new ObjectMapper(), Map.of(Channel.WHATSAPP, port), windows);
+
+        var result = router.deliver(event);
+
+        assertThat(result.accepted()).isFalse();
+        assertThat(result.permanent()).isTrue();
+        org.mockito.Mockito.verifyNoInteractions(port);
+    }
+
+    @Test
+    void allowsProviderDeliveryWhenTheMatchingCustomerWindowIsOpen() {
+        var port = mock(ChannelDeliveryPort.class);
+        var windows = mock(CustomerWindowPort.class);
+        var event = event("key");
+        var conversationId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        when(windows.find(event.tenantId(), conversationId)).thenReturn(Optional.of(
+                new CustomerWindowPort.CustomerWindow(event.tenantId(), conversationId, Channel.WHATSAPP,
+                        Instant.now().minus(Duration.ofHours(1)), Instant.now().plus(Duration.ofHours(23)))));
+        when(port.send(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new DeliveryResult(true, "wamid.2", null));
+        var router = new MetaOutboxDeliveryRouter(new ObjectMapper(), Map.of(Channel.WHATSAPP, port), windows);
+
+        var result = router.deliver(event);
+
+        assertThat(result.accepted()).isTrue();
+        verify(port).send(org.mockito.ArgumentMatchers.any());
     }
 
     private static OutboxEvent event(String idempotencyKey) {

@@ -7,6 +7,8 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
+import com.ford.service.channels.domain.Channel;
+
 import java.util.UUID;
 
 public class MetaBindingStartupInitializer implements ApplicationRunner {
@@ -29,26 +31,36 @@ public class MetaBindingStartupInitializer implements ApplicationRunner {
 
     public void initialize() {
         var binding = properties.getAutoBinding();
-        if (!binding.isEnabled()) {
-            return;
-        }
-        if (binding.getTenantId() == null || !isConfiguredProviderAccount(binding.getProviderAccountId())) {
-            log.warn("Meta automatic binding skipped: configure a numeric provider-account-id and tenant-id "
-                    + "before enabling it");
-            return;
-        }
-
         var jdbc = jdbcClients.getIfAvailable();
-        if (jdbc == null) {
-            log.warn("Meta automatic binding skipped: JDBC is not available");
+        var tenantId = properties.getTenantId();
+        if (binding.isEnabled()) {
+            ensureBinding(jdbc, Channel.WHATSAPP, binding.getProviderAccountId(), tenantId);
+        }
+        if (properties.getMessengerBinding().isEnabled()) {
+            ensureBinding(jdbc, Channel.MESSENGER,
+                    properties.getMessengerBinding().getProviderAccountId(), tenantId);
+        }
+        if (properties.getInstagramBinding().isEnabled()) {
+            ensureBinding(jdbc, Channel.INSTAGRAM,
+                    properties.getInstagramBinding().getProviderAccountId(), tenantId);
+        }
+    }
+
+    private static void ensureBinding(JdbcClient jdbc, Channel channel, String providerAccountId, UUID tenantId) {
+        if (tenantId == null || !isConfiguredProviderAccount(providerAccountId)) {
+            log.warn("Meta automatic binding skipped: configure a numeric provider-account-id and tenant-id "
+                    + "before enabling channel={}", channel);
             return;
         }
-
+        if (jdbc == null) {
+            log.warn("Meta automatic binding skipped: JDBC is not available for channel={}", channel);
+            return;
+        }
         jdbc.sql("""
                 insert into channel_binding (
                     id, webhook_key_hash, tenant_id, channel, provider_account_id,
                     secret_reference, enabled, created_at, updated_at)
-                values (:id, null, :tenantId, 'WHATSAPP', :providerAccountId,
+                values (:id, null, :tenantId, :channel, :providerAccountId,
                         null, true, now(), now())
                 on conflict (channel, provider_account_id) do update
                 set tenant_id = excluded.tenant_id,
@@ -56,12 +68,13 @@ public class MetaBindingStartupInitializer implements ApplicationRunner {
                     updated_at = now()
                 """)
                 .param("id", UUID.randomUUID())
-                .param("tenantId", binding.getTenantId())
-                .param("providerAccountId", binding.getProviderAccountId().strip())
+                .param("tenantId", tenantId)
+                .param("channel", channel.name())
+                .param("providerAccountId", providerAccountId.strip())
                 .update();
 
-        log.info("Ensured automatic Meta WhatsApp binding for provider account {} and tenant {}",
-                binding.getProviderAccountId().strip(), binding.getTenantId());
+        log.info("Ensured automatic Meta channel binding: channel={} providerAccountId={} tenantId={}",
+                channel, providerAccountId.strip(), tenantId);
     }
 
     private static boolean isBlank(String value) {

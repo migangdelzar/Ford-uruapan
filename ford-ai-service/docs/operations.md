@@ -80,6 +80,60 @@ remain explicit `SCOPE_*` authorities. Webhooks remain unauthenticated at the
 HTTP bearer layer because Meta requests are authenticated with HMAC,
 verify-token, and channel-binding checks.
 
+### Meta messaging channels
+
+For a single Meta app, register one callback URL per product at
+`/webhooks/meta/whatsapp`, `/webhooks/meta/messenger`, and
+`/webhooks/meta/instagram`. Verification uses the configured
+`FORD_META_VERIFY_TOKEN`; POSTs are checked with `FORD_META_APP_SECRET` before
+their body is parsed. All channels share the inbound pipeline, while account
+bindings map the signed provider account ID to the tenant. Do not put a tenant
+ID in the URL or trust a tenant header.
+
+If the deployment later hosts multiple Meta apps/integrations, use an explicit
+integration key such as `/webhooks/meta/{channel}/{integrationKey}` only to
+select that integration's app secret and verify token. Keep provider-account to
+tenant binding as a separate lookup. With the current single-app configuration,
+adding a `/ford` path segment would not add isolation because there is only one
+app-secret/verify-token configuration.
+
+WhatsApp keeps its existing `FORD_META_AUTO_BINDING_ENABLED` and
+`FORD_META_PROVIDER_ACCOUNT_ID` (falling back to `FORD_META_PHONE_ID`). Optional
+startup bindings for Messenger and Instagram use
+`FORD_META_MESSENGER_AUTO_BINDING_ENABLED` + `FORD_META_MESSENGER_PAGE_ID` and
+`FORD_META_INSTAGRAM_AUTO_BINDING_ENABLED` + `FORD_META_INSTAGRAM_ACCOUNT_ID`.
+All use `FORD_TENANT_ID`. Leave auto-binding disabled when managing bindings
+explicitly or when an integration serves multiple provider accounts.
+
+Outbound delivery is separately opt-in with `FORD_META_DELIVERY_ENABLED` and
+the channel-specific endpoint/access-token pairs:
+`FORD_META_WHATSAPP_DELIVERY_ENDPOINT` + `FORD_META_WHATSAPP_ACCESS_TOKEN`,
+`FORD_META_MESSENGER_DELIVERY_ENDPOINT` + `FORD_META_MESSENGER_ACCESS_TOKEN`,
+and `FORD_META_INSTAGRAM_DELIVERY_ENDPOINT` + `FORD_META_INSTAGRAM_ACCESS_TOKEN`.
+The endpoint/API version and credentials must match the corresponding Meta
+product and account. Only text delivery is implemented for Messenger and
+Instagram; their inbound media is acknowledged as unsupported without storing
+or forwarding provider media URLs. WhatsApp's existing typed-message handling
+is unchanged.
+
+The outbox checks the persisted conversation's 24-hour customer-service window
+before calling a configured provider port. Missing, mismatched, or expired
+windows are permanent delivery rejections; this service does not automatically
+send templates or initiate out-of-window messages. Provider credentials,
+permissions, app review, webhook subscriptions, and account linking must be
+completed in Meta's console before live delivery can be validated.
+At minimum, WhatsApp Cloud API messaging requires `whatsapp_business_messaging`,
+Messenger Send API requires `pages_messaging`, and Instagram messaging requires
+the messaging permission for the selected Instagram API login mode
+(`instagram_business_manage_messages` for Instagram Login; Facebook Login uses
+its corresponding Instagram messaging permission). Meta App Review/Advanced
+Access and account-role prerequisites depend on whether the app is in testing
+or production. Verify the current requirements in the [WhatsApp Cloud API
+collection](https://www.postman.com/meta/whatsapp-business-platform/documentation/wlk6lh4/whatsapp-cloud-api),
+[Messenger Send API](https://www.postman.com/meta/messenger-platform-api/folder/vilwbh4/send-api),
+and [Instagram API documentation](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api)
+before production setup.
+
 The current operator scopes are:
 
 - `operator:read` for read-only operator endpoints

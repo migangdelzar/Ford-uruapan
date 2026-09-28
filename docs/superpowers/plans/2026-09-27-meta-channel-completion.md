@@ -30,11 +30,11 @@
 - Consumes Spring AI `ToolCallback`; exposes the same `ToolCallback` definition, metadata, and call behavior.
 - Logs only tool name, safe context IDs, outcome, and elapsed milliseconds.
 
-- [ ] Add a test that callback calls produce start/completion observations without argument/result content.
-- [ ] Run `./gradlew test --tests com.ford.service.ai.ObservedToolCallbackTest`; first confirm the missing type prevents compilation.
-- [ ] Implement the decorator with constructor injection of the delegate and a logger; delegate every overload unchanged.
-- [ ] Re-run the focused test and `./gradlew compileJava`.
-- [ ] Commit as `fix(ai): restore observed tool callback decorator`.
+- [x] Add a test that callback calls produce start/completion observations without argument/result content.
+- [x] Run `./gradlew test --tests com.ford.service.ai.ObservedToolCallbackTest`; first confirm the missing type prevents compilation.
+- [x] Implement the decorator with constructor injection of the delegate and a logger; delegate every overload unchanged.
+- [x] Re-run the focused test and `./gradlew compileJava`.
+- [x] Commit as `fix(ai): restore observed tool callback decorator`.
 
 ## Task 2: Define Per-Account Webhook Parsing
 
@@ -52,10 +52,10 @@
 - `ChannelAdapter.parseInboundMessages(RawWebhook payload, String providerAccountId): List<InboundMessage>` parses only that account's message entries.
 - `ChannelMessageService.acceptAll(List<InboundMessage>): List<InboundMessage>` persists and publishes each deduplicated message in the caller's transaction.
 
-- [ ] Add failing tests for a WhatsApp batch with several messages, status-only entries, and multiple phone-number IDs.
-- [ ] Add a failing service test proving each account resolves its own tenant binding and the adapter is invoked with that account ID.
-- [ ] Implement per-account IDs and parsing; do not short-circuit a mixed status/message callback based on its first entry.
-- [ ] Verify WhatsApp's existing batch, binding, and duplicate semantics remain intact with focused tests.
+- [x] Add failing tests for a WhatsApp batch with several messages, status-only entries, and multiple phone-number IDs.
+- [x] Add a failing service test proving each account resolves its own tenant binding and the adapter is invoked with that account ID.
+- [x] Implement per-account IDs and parsing; do not short-circuit a mixed status/message callback based on its first entry.
+- [x] Verify WhatsApp's existing batch, binding, and duplicate semantics remain intact with focused tests.
 - [ ] Commit as `fix(channels): process Meta webhook messages per account`.
 
 ## Task 3: Complete Messenger and Instagram Inbound Contracts
@@ -69,10 +69,10 @@
 - Test: `ford-ai-service/src/test/java/com/ford/service/channels/InstagramAdapterContractTest.java`
 - Test: `ford-ai-service/src/test/java/com/ford/service/channels/MetaWebhookControllerTest.java`
 
-- [ ] Add failing contracts for multiple entries/messages, user text, quick replies, echoes, delivery/read events, and callbacks with no customer message.
-- [ ] Normalize account ID, participant ID, message ID, event time, text, and interactive label without leaking opaque payloads to the assistant.
-- [ ] Return no inbound turns for echoes and non-message callbacks so the webhook can return 202 without triggering model calls.
-- [ ] Preserve HMAC validation and route all three channels through the same inbound service and conversation workflow.
+- [x] Add failing contracts for multiple entries/messages, user text, quick replies, echoes, delivery/read events, and callbacks with no customer message.
+- [x] Normalize account ID, participant ID, message ID, event time, text, and interactive label without leaking opaque payloads to the assistant.
+- [x] Return no inbound turns for echoes and non-message callbacks so the webhook can return 202 without triggering model calls.
+- [x] Preserve HMAC validation and route all three channels through the same inbound service and conversation workflow; existing route controller already provides channel-specific paths.
 - [ ] Commit as `feat(channels): normalize Messenger and Instagram webhook events`.
 
 ## Task 4: Make Binding Initialization Channel-Aware
@@ -85,9 +85,9 @@
 - Modify: `ford-ai-service/.env.example`
 - Test: `ford-ai-service/src/test/java/com/ford/service/channels/MetaBindingStartupInitializerTest.java`
 
-- [ ] Add failing tests for optional Messenger/Instagram bindings and for disabled/unconfigured channels doing no SQL.
-- [ ] Retain legacy WhatsApp settings; add separately named, opt-in provider-account settings for Messenger and Instagram, sharing only the configured tenant ID.
-- [ ] Add environment pass-through names without values and verify generated environment variable names against `application.yml`.
+- [x] Add failing tests for optional Messenger/Instagram bindings and for disabled/unconfigured channels doing no SQL.
+- [x] Retain legacy WhatsApp settings; add separately named, opt-in provider-account settings for Messenger and Instagram, sharing only the configured tenant ID.
+- [x] Add environment pass-through names without values and verify generated environment variable names against `application.yml`.
 - [ ] Commit as `feat(channels): support opt-in Meta bindings per channel`.
 
 ## Task 5: Separate Channel-Specific Outbound Payload Strategies and Enforce the Customer Window
@@ -100,10 +100,10 @@
 - Test: `ford-ai-service/src/test/java/com/ford/service/channels/MetaDeliveryConfigurationTest.java`
 - Test: `ford-ai-service/src/test/java/com/ford/service/channels/MetaOutboxDeliveryRouterTest.java`
 
-- [ ] Add failing HTTP tests asserting WhatsApp, Messenger, and Instagram each use the correct configured endpoint, bearer token, request schema, and provider message ID parsing.
-- [ ] Add channel-specific payload selection while keeping the same `ChannelDeliveryPort` and outbox contract.
-- [ ] Add a router test proving a closed or missing customer window prevents a provider call and produces a permanent rejection; an open window continues to the selected channel delivery port.
-- [ ] Assert provider 4xx permanent failures and transient throttling/server failures retain their existing retry classification; never assert/log message content in telemetry.
+- [x] Add failing HTTP tests asserting WhatsApp, Messenger, and Instagram each use the correct configured endpoint, bearer token, request schema, and provider message ID parsing.
+- [x] Add channel-specific payload selection while keeping the same `ChannelDeliveryPort` and outbox contract.
+- [x] Add a router test proving a closed or missing customer window prevents a provider call and produces a permanent rejection; an open window continues to the selected channel delivery port.
+- [x] Assert provider 4xx permanent failures and transient throttling/server failures retain their existing retry classification; never assert/log message content in telemetry.
 - [ ] Commit as `feat(channels): send text replies through channel-specific Meta payloads`.
 
 ## Task 6: Document Setup and Run Full Verification
@@ -112,10 +112,10 @@
 - Modify: `ford-ai-service/docs/operations.md`
 - Modify only if needed: channel adapter tests and configuration tests from prior tasks.
 
-- [ ] Document webhook route, per-channel account IDs, endpoint/token variable names, required platform permissions, and provider-console prerequisites without including secret values.
-- [ ] Run `./gradlew test integrationTest check --rerun-tasks` from `ford-ai-service`.
-- [ ] Run `node --test scripts/ai/openrouter-chat-eval.test.mjs` from the repository root.
-- [ ] Run `git diff --check`, confirm no unresolved paths, and inspect the final diff/status.
+- [x] Document webhook route, per-channel account IDs, endpoint/token variable names, required platform permissions, and provider-console prerequisites without including secret values.
+- [x] Run `./gradlew test integrationTest check --rerun-tasks` from `ford-ai-service`.
+- [x] Run `node --test scripts/ai/openrouter-chat-eval.test.mjs` from the repository root.
+- [x] Run `git diff --check`, confirm no unresolved paths, and inspect the final diff/status.
 - [ ] Commit as `docs(channels): document Meta channel setup and verification`.
 
 ## Self-Review

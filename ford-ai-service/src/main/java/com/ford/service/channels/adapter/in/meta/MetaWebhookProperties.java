@@ -10,6 +10,8 @@ public class MetaWebhookProperties {
     private String appSecret = "";
     private String verifyToken = "";
     private final AutoBinding autoBinding = new AutoBinding();
+    private final ProviderBinding messengerBinding = new ProviderBinding();
+    private final ProviderBinding instagramBinding = new ProviderBinding();
 
     public String getAppSecret() {
         return appSecret;
@@ -30,6 +32,10 @@ public class MetaWebhookProperties {
     public AutoBinding getAutoBinding() {
         return autoBinding;
     }
+
+    public ProviderBinding getMessengerBinding() { return messengerBinding; }
+
+    public ProviderBinding getInstagramBinding() { return instagramBinding; }
 
     public UUID getTenantId() {
         return autoBinding.getTenantId();
@@ -68,5 +74,18 @@ public class MetaWebhookProperties {
         public void setTenantId(UUID tenantId) {
             this.tenantId = tenantId;
         }
+    }
+
+    public static class ProviderBinding {
+        private boolean enabled;
+        private String providerAccountId = "";
+
+        public boolean isEnabled() { return enabled; }
+
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+        public String getProviderAccountId() { return providerAccountId; }
+
+        public void setProviderAccountId(String providerAccountId) { this.providerAccountId = providerAccountId; }
     }
 }

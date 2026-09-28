@@ -85,7 +85,7 @@ class WhatsAppAdapterContractTest {
     }
 
     @Test
-    void rejectsMixedProviderAccountsInsideOneWebhook() {
+    void parsesMixedProviderAccountsInsideOneWebhookWithoutCrossingAccountBoundaries() {
         var adapter = new WhatsAppChannelAdapter(new ObjectMapper());
         var payload = "{\"entry\":[{\"changes\":["
                 + "{\"value\":{\"metadata\":{\"phone_number_id\":\"phone-42\"},\"messages\":["
@@ -93,9 +93,12 @@ class WhatsAppAdapterContractTest {
                 + "{\"value\":{\"metadata\":{\"phone_number_id\":\"phone-99\"},\"messages\":["
                 + message("wamid.2", "text", "\"text\":{\"body\":\"Hola\"}") + "]}}]}]}";
 
-        org.assertj.core.api.Assertions.assertThatIllegalArgumentException()
-                .isThrownBy(() -> adapter.parseInboundMessages(new RawWebhook(UUID.randomUUID(), payload, "{}")))
-                .withMessageContaining("Mixed");
+        var webhook = new RawWebhook(UUID.randomUUID(), payload, "{}");
+        assertThat(adapter.providerAccountIds(payload)).containsExactly("phone-42", "phone-99");
+        assertThat(adapter.parseInboundMessages(webhook, "phone-42"))
+                .extracting(InboundMessage::providerMessageId).containsExactly("wamid.1");
+        assertThat(adapter.parseInboundMessages(webhook, "phone-99"))
+                .extracting(InboundMessage::providerMessageId).containsExactly("wamid.2");
     }
 
     @Test

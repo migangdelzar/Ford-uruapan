@@ -2,10 +2,12 @@ package com.ford.service.channels.application;
 
 import com.ford.service.channels.application.port.in.ChannelAdapter;
 import com.ford.service.channels.domain.Channel;
+import com.ford.service.channels.domain.InboundMessage;
 import com.ford.service.channels.domain.RawWebhook;
 import com.ford.service.channels.domain.WebhookRequest;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -28,15 +30,17 @@ public class InboundWebhookService {
                 ? Map.of()
                 : Map.of("X-Hub-Signature-256", signature));
         adapter.validateWebhook(request, appSecret);
-        var providerAccountId = adapter.providerAccountId(body);
-        var binding = bindingService.resolve(channel, providerAccountId);
-
-        if (adapter.isStatusCallback(body)) {
+        var providerAccountIds = adapter.providerAccountIds(body);
+        if (providerAccountIds.isEmpty()) {
             return;
         }
-
-        var webhook = RawWebhook.fromBinding(binding, body,
-                "meta:" + channel.name().toLowerCase() + ":" + UUID.randomUUID());
-        messageService.acceptAll(webhook, adapter);
+        var rawPayloadReference = "meta:" + channel.name().toLowerCase() + ":" + UUID.randomUUID();
+        var messages = new ArrayList<InboundMessage>();
+        for (var providerAccountId : providerAccountIds) {
+            var binding = bindingService.resolve(channel, providerAccountId);
+            var webhook = RawWebhook.fromBinding(binding, body, rawPayloadReference);
+            messages.addAll(adapter.parseInboundMessages(webhook, providerAccountId));
+        }
+        messageService.acceptAll(messages);
     }
 }

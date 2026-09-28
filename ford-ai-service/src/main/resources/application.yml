@@ -170,6 +170,12 @@ ford:
         enabled: ${FORD_META_AUTO_BINDING_ENABLED:false}
         provider-account-id: ${FORD_META_PROVIDER_ACCOUNT_ID:${FORD_META_PHONE_ID:}}
         tenant-id: ${FORD_TENANT_ID:00000000-0000-0000-0000-000000000001}
+      messenger-binding:
+        enabled: ${FORD_META_MESSENGER_AUTO_BINDING_ENABLED:false}
+        provider-account-id: ${FORD_META_MESSENGER_PAGE_ID:}
+      instagram-binding:
+        enabled: ${FORD_META_INSTAGRAM_AUTO_BINDING_ENABLED:false}
+        provider-account-id: ${FORD_META_INSTAGRAM_ACCOUNT_ID:}
       delivery:
         enabled: ${FORD_META_DELIVERY_ENABLED:false}
         whatsapp-endpoint: ${FORD_META_WHATSAPP_DELIVERY_ENDPOINT:}

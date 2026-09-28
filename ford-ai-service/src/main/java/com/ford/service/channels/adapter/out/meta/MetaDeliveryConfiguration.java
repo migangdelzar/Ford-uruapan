@@ -2,6 +2,7 @@ package com.ford.service.channels.adapter.out.meta;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ford.service.channels.application.port.out.ChannelDeliveryPort;
+import com.ford.service.channels.application.port.out.CustomerWindowPort;
 import com.ford.service.channels.domain.Channel;
 import com.ford.service.outbox.OutboxDeliveryRouter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -21,12 +22,13 @@ public class MetaDeliveryConfiguration {
 
     @Bean
     OutboxDeliveryRouter metaOutboxDeliveryRouter(ObjectMapper objectMapper,
-                                                   MetaDeliveryProperties properties) {
+                                                   MetaDeliveryProperties properties,
+                                                   CustomerWindowPort customerWindows) {
         var ports = new EnumMap<Channel, ChannelDeliveryPort>(Channel.class);
         addPort(ports, Channel.WHATSAPP, properties.getWhatsappEndpoint(), properties.getWhatsappAccessToken());
         addPort(ports, Channel.MESSENGER, properties.getMessengerEndpoint(), properties.getMessengerAccessToken());
         addPort(ports, Channel.INSTAGRAM, properties.getInstagramEndpoint(), properties.getInstagramAccessToken());
-        return new MetaOutboxDeliveryRouter(objectMapper, ports);
+        return new MetaOutboxDeliveryRouter(objectMapper, ports, customerWindows);
     }
 
     private static void addPort(Map<Channel, ChannelDeliveryPort> ports, Channel channel,

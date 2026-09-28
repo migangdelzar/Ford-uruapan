@@ -53,8 +53,8 @@ class MetaBindingStartupInitializerTest {
         verify(statement).update();
         org.assertj.core.api.Assertions.assertThat(sql.getValue())
                 .contains("insert into channel_binding")
-                .contains("on conflict (channel, provider_account_id)")
-                .contains("'WHATSAPP'");
+                .contains("on conflict (channel, provider_account_id)");
+        verify(statement).param("channel", "WHATSAPP");
     }
 
     @Test
@@ -68,6 +68,25 @@ class MetaBindingStartupInitializerTest {
         new MetaBindingStartupInitializer(jdbcClients, properties).run(null);
 
         verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    void createsOptionalMessengerBindingWithoutChangingWhatsAppConfiguration() {
+        var jdbc = mock(JdbcClient.class);
+        var statement = mock(JdbcClient.StatementSpec.class);
+        when(jdbc.sql(anyString())).thenReturn(statement);
+        when(statement.param(anyString(), any())).thenReturn(statement);
+        when(statement.update()).thenReturn(1);
+        var properties = new MetaWebhookProperties();
+        properties.getAutoBinding().setTenantId(TENANT_ID);
+        properties.getMessengerBinding().setEnabled(true);
+        properties.getMessengerBinding().setProviderAccountId("99887766");
+
+        new MetaBindingStartupInitializer(jdbcProvider(jdbc), properties).initialize();
+
+        verify(statement).param("tenantId", TENANT_ID);
+        verify(statement).param("channel", "MESSENGER");
+        verify(statement).param("providerAccountId", "99887766");
     }
 
     @SuppressWarnings("unchecked")

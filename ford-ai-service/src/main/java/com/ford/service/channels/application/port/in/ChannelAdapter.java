@@ -28,6 +28,20 @@ public interface ChannelAdapter {
         throw new UnsupportedOperationException("Provider account validation is not implemented");
     }
 
+    default List<String> providerAccountIds(String body) {
+        try {
+            return List.of(providerAccountId(body));
+        } catch (IllegalArgumentException exception) {
+            return List.of();
+        }
+    }
+
+    default List<InboundMessage> parseInboundMessages(RawWebhook payload, String providerAccountId) {
+        return parseInboundMessages(payload).stream()
+                .filter(message -> providerAccountId.equals(message.providerAccountId()))
+                .toList();
+    }
+
     default boolean isStatusCallback(String body) {
         return false;
     }

@@ -3,6 +3,7 @@ package com.ford.service.channels.adapter.out.meta;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ford.service.channels.application.port.out.ChannelDeliveryPort;
+import com.ford.service.channels.application.port.out.CustomerWindowPort;
 import com.ford.service.channels.domain.Channel;
 import com.ford.service.channels.domain.DeliveryResult;
 import com.ford.service.channels.domain.OutboundMessage;
@@ -10,16 +11,25 @@ import com.ford.service.outbox.NotificationResult;
 import com.ford.service.outbox.OutboxDeliveryRouter;
 import com.ford.service.outbox.OutboxEvent;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 public final class MetaOutboxDeliveryRouter implements OutboxDeliveryRouter {
     private final ObjectMapper objectMapper;
     private final Map<Channel, ChannelDeliveryPort> deliveryPorts;
+    private final CustomerWindowPort customerWindows;
 
     public MetaOutboxDeliveryRouter(ObjectMapper objectMapper, Map<Channel, ChannelDeliveryPort> deliveryPorts) {
+        this(objectMapper, deliveryPorts, null);
+    }
+
+    public MetaOutboxDeliveryRouter(ObjectMapper objectMapper, Map<Channel, ChannelDeliveryPort> deliveryPorts,
+                                    CustomerWindowPort customerWindows) {
         this.objectMapper = Objects.requireNonNull(objectMapper);
         this.deliveryPorts = Map.copyOf(deliveryPorts);
+        this.customerWindows = customerWindows;
     }
 
     @Override
@@ -33,6 +43,13 @@ public final class MetaOutboxDeliveryRouter implements OutboxDeliveryRouter {
             var port = deliveryPorts.get(channel);
             if (port == null) {
                 return NotificationResult.permanentFailure("No delivery port configured for " + channel);
+            }
+            if (customerWindows != null) {
+                var conversationId = UUID.fromString(payload.conversationId());
+                var window = customerWindows.find(event.tenantId(), conversationId);
+                if (window.isEmpty() || window.get().channel() != channel || !window.get().open(Instant.now())) {
+                    return NotificationResult.permanentFailure("Customer messaging window is closed or unavailable");
+                }
             }
             var result = port.send(new OutboundMessage(event.tenantId(), channel, payload.recipientId(),
                     payload.text(), event.idempotencyKey()));

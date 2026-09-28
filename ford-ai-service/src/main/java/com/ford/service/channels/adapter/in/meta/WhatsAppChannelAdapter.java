@@ -11,17 +11,33 @@ import com.ford.service.channels.domain.RawWebhook;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashSet;
 
 public class WhatsAppChannelAdapter extends AbstractMetaChannelAdapter {
     public WhatsAppChannelAdapter(ObjectMapper objectMapper) { super(objectMapper); }
     @Override public Channel channel() { return Channel.WHATSAPP; }
     @Override public String providerAccountId(String body) {
-        var root = readTree(body);
-        var phoneNumberId = root.at("/entry/0/changes/0/value/metadata/phone_number_id").asText(null);
-        if (phoneNumberId == null || phoneNumberId.isBlank()) {
-            throw new IllegalArgumentException("Meta WhatsApp phone number ID is missing");
+        for (var entry : readTree(body).path("entry")) {
+            for (var change : entry.path("changes")) {
+                var id = change.path("value").at("/metadata/phone_number_id").asText(null);
+                if (id != null && !id.isBlank()) return id;
+            }
         }
-        return phoneNumberId;
+        throw new IllegalArgumentException("Meta WhatsApp phone number ID is missing");
+    }
+
+    @Override public List<String> providerAccountIds(String body) {
+        var accounts = new LinkedHashSet<String>();
+        var root = readTree(body);
+        for (var entry : root.path("entry")) {
+            for (var change : entry.path("changes")) {
+                var value = change.path("value");
+                if (!value.path("messages").isArray() || value.path("messages").isEmpty()) continue;
+                var id = value.at("/metadata/phone_number_id").asText(null);
+                if (id != null && !id.isBlank()) accounts.add(id);
+            }
+        }
+        return List.copyOf(accounts);
     }
 
     @Override public boolean isStatusCallback(String body) {
@@ -47,17 +63,23 @@ public class WhatsAppChannelAdapter extends AbstractMetaChannelAdapter {
 
     @Override
     public List<InboundMessage> parseInboundMessages(RawWebhook payload) {
+        var result = new ArrayList<InboundMessage>();
+        for (var accountId : providerAccountIds(payload.body())) {
+            result.addAll(parseInboundMessages(payload, accountId));
+        }
+        return List.copyOf(result);
+    }
+
+    @Override
+    public List<InboundMessage> parseInboundMessages(RawWebhook payload, String accountId) {
         var root = readTree(payload.body());
-        var accountId = providerAccountId(payload.body());
         var messages = new ArrayList<InboundMessage>();
         for (var entry : root.path("entry")) {
             for (var change : entry.path("changes")) {
                 var value = change.path("value");
                 var valueAccountId = value.at("/metadata/phone_number_id").asText(null);
                 if (value.path("messages").isArray() && !value.path("messages").isEmpty()) {
-                    if (!accountId.equals(valueAccountId)) {
-                        throw new IllegalArgumentException("Mixed or missing WhatsApp provider account IDs");
-                    }
+                    if (!accountId.equals(valueAccountId)) continue;
                     for (var message : value.path("messages")) {
                         messages.add(normalize(payload, accountId, message));
                     }

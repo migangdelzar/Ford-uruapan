@@ -21,4 +21,27 @@ class InstagramAdapterContractTest {
         assertThat(message).extracting(InboundMessage::channel, InboundMessage::providerMessageId, InboundMessage::text)
                 .containsExactly(Channel.INSTAGRAM, "igmid.1", "Colores disponibles");
     }
+
+    @Test
+    void ignoresEchoAndReadEventsAndParsesEachInstagramAccountSeparately() {
+        var adapter = new InstagramChannelAdapter(new ObjectMapper());
+        var body = """
+                {"entry":[
+                  {"id":"ig-account-1","messaging":[
+                    {"sender":{"id":"ig-user-1"},"message":{"mid":"igmid.1","text":"Hola"}},
+                    {"sender":{"id":"ig-account-1"},"message":{"mid":"echo","text":"eco","is_echo":true}},
+                    {"sender":{"id":"ig-user-1"},"read":{"mid":"igmid.1"}}]},
+                  {"id":"ig-account-2","messaging":[
+                    {"sender":{"id":"ig-user-2"},"message":{"mid":"igmid.2","text":"Buenas"}}]}
+                ]}
+                """;
+
+        assertThat(adapter.providerAccountIds(body)).containsExactly("ig-account-1", "ig-account-2");
+        var firstAccountMessages = adapter.parseInboundMessages(
+                new RawWebhook(UUID.randomUUID(), body, "{}"), "ig-account-1");
+        assertThat(firstAccountMessages).extracting(InboundMessage::providerMessageId)
+                .containsExactly("igmid.1");
+        assertThat(adapter.parseInboundMessages(new RawWebhook(UUID.randomUUID(), body, "{}"), "ig-account-2"))
+                .extracting(InboundMessage::providerMessageId).containsExactly("igmid.2");
+    }
 }

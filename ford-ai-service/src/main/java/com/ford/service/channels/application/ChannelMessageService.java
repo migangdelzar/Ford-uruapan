@@ -67,7 +67,12 @@ public class ChannelMessageService {
 
     @Transactional
     public List<InboundMessage> acceptAll(RawWebhook webhook, ChannelAdapter adapter) {
-        return adapter.parseInboundMessages(webhook).stream()
+        return acceptAll(adapter.parseInboundMessages(webhook));
+    }
+
+    @Transactional
+    public List<InboundMessage> acceptAll(List<InboundMessage> messages) {
+        return messages.stream()
                 .map(this::accept)
                 .filter(java.util.Objects::nonNull)
                 .toList();

@@ -27,15 +27,13 @@ class InboundWebhookServiceTest {
         var adapter = mock(ChannelAdapter.class);
         var binding = new ChannelBinding(UUID.randomUUID(), UUID.randomUUID(), Channel.WHATSAPP,
                 "phone-42", "app-secret", true);
-        when(adapter.providerAccountId("status-body")).thenReturn("phone-42");
-        when(adapter.isStatusCallback("status-body")).thenReturn(true);
-        when(bindingService.resolve(Channel.WHATSAPP, "phone-42")).thenReturn(binding);
+        when(adapter.providerAccountIds("status-body")).thenReturn(java.util.List.of());
 
         new InboundWebhookService(bindingService, messageService)
                 .accept(Channel.WHATSAPP, "sha256=valid", "status-body", adapter, "app-secret");
 
         verify(adapter).validateWebhook(any(), eq("app-secret"));
-        verify(bindingService).resolve(Channel.WHATSAPP, "phone-42");
+        verifyNoInteractions(bindingService);
         verifyNoInteractions(messageService);
     }
 
@@ -46,13 +44,36 @@ class InboundWebhookServiceTest {
         var adapter = mock(ChannelAdapter.class);
         var binding = new ChannelBinding(UUID.randomUUID(), UUID.randomUUID(), Channel.WHATSAPP,
                 "phone-42", "app-secret", true);
-        when(adapter.providerAccountId("message-body")).thenReturn("phone-42");
+        when(adapter.providerAccountIds("message-body")).thenReturn(java.util.List.of("phone-42"));
         when(bindingService.resolve(Channel.WHATSAPP, "phone-42")).thenReturn(binding);
 
         new InboundWebhookService(bindingService, messageService)
                 .accept(Channel.WHATSAPP, "sha256=valid", "message-body", adapter, "app-secret");
 
-        verify(messageService).acceptAll(any(), eq(adapter));
+        verify(messageService).acceptAll(org.mockito.ArgumentMatchers.<com.ford.service.channels.domain.InboundMessage>anyList());
         verify(messageService, never()).accept(any(), eq(adapter));
+    }
+
+    @Test
+    void resolvesAndRoutesEachProviderAccountInMixedBatchIndependently() {
+        var bindingService = mock(ChannelBindingService.class);
+        var messageService = mock(ChannelMessageService.class);
+        var adapter = mock(ChannelAdapter.class);
+        var bindingOne = new ChannelBinding(UUID.randomUUID(), UUID.randomUUID(), Channel.WHATSAPP,
+                "phone-1", "secret", true);
+        var bindingTwo = new ChannelBinding(UUID.randomUUID(), UUID.randomUUID(), Channel.WHATSAPP,
+                "phone-2", "secret", true);
+        when(adapter.providerAccountIds("mixed-body")).thenReturn(java.util.List.of("phone-1", "phone-2"));
+        when(bindingService.resolve(Channel.WHATSAPP, "phone-1")).thenReturn(bindingOne);
+        when(bindingService.resolve(Channel.WHATSAPP, "phone-2")).thenReturn(bindingTwo);
+
+        new InboundWebhookService(bindingService, messageService)
+                .accept(Channel.WHATSAPP, "sha256=valid", "mixed-body", adapter, "secret");
+
+        verify(bindingService).resolve(Channel.WHATSAPP, "phone-1");
+        verify(bindingService).resolve(Channel.WHATSAPP, "phone-2");
+        verify(adapter).parseInboundMessages(any(), eq("phone-1"));
+        verify(adapter).parseInboundMessages(any(), eq("phone-2"));
+        verify(messageService).acceptAll(org.mockito.ArgumentMatchers.<com.ford.service.channels.domain.InboundMessage>anyList());
     }
 }

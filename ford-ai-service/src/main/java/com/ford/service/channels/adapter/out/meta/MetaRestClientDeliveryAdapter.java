@@ -51,16 +51,19 @@ public final class MetaRestClientDeliveryAdapter implements ChannelDeliveryPort 
     }
 
     private Map<String, Object> payload(OutboundMessage message) {
-        if (channel == Channel.WHATSAPP) {
-            return Map.of(
+        return switch (channel) {
+            case WHATSAPP -> Map.of(
                     "messaging_product", "whatsapp",
                     "to", message.recipientId(),
                     "type", "text",
                     "text", Map.of("body", message.text()));
-        }
-        return Map.of(
-                "recipient", Map.of("id", message.recipientId()),
-                "message", Map.of("text", message.text()));
+            case MESSENGER -> Map.of(
+                    "recipient", Map.of("id", message.recipientId()),
+                    "message", Map.of("text", message.text()));
+            case INSTAGRAM -> Map.of(
+                    "recipient", Map.of("id", message.recipientId()),
+                    "message", Map.of("text", message.text()));
+        };
     }
 
     private static String firstValue(Map<?, ?> body, String... keys) {
