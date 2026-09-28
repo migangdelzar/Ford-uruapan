@@ -29,6 +29,15 @@ class AssistantScopePolicyTest {
     }
 
     @Test
+    void rejectsExplicitOutOfScopeClassificationEvenWhenTheMessageHasAutomotiveTerms() {
+        var outOfScope = new ConversationDecision(
+                ConversationIntent.OUT_OF_SCOPE, LeadTemperature.UNKNOWN, LeadStage.NEW,
+                HandoffRecommendation.NONE, ToolFamily.NONE, SensitiveDataLevel.NONE, java.util.List.of());
+
+        assertThat(policy.allows("¿Me recomienda una receta médica para manejar mi Ford?", outOfScope)).isFalse();
+    }
+
+    @Test
     void doesNotTrustAConflictingModelIntentToExpandTheScope() {
         var financeDecision = new ConversationDecision(
                 ConversationIntent.FINANCE, LeadTemperature.WARM, LeadStage.QUALIFYING,

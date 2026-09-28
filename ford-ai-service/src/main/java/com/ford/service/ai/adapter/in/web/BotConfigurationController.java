@@ -31,7 +31,7 @@ public class BotConfigurationController {
         var model = ai.cloudEnabled() ? ai.cloudChatModelVersion() : ai.localChatModelVersion();
         return new BotConfigurationView(
                 ai.cloudEnabled() || ai.localEnabled(),
-                environment.getProperty("ford.conversations.human-handoff.enabled", Boolean.class, true),
+                environment.getProperty("ford.conversations.human-handoff.enabled", Boolean.class, false),
                 model, ai.cloudChatProvider(), ai.cloudEnabled(), ai.localEnabled(),
                 classification.enabled(), classification.mode(), classification.provider(),
                 classification.selfRefineEnabled() || classification.guardrailsEnabled(),

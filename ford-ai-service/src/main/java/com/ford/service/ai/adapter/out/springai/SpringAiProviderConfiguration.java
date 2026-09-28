@@ -7,8 +7,8 @@ import com.ford.service.ai.application.ProviderCapabilities;
 import com.ford.service.ai.application.ProviderDescriptor;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.audio.transcription.TranscriptionModel;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,19 +22,33 @@ public class SpringAiProviderConfiguration {
     @Bean
     ModelProviderPolicy modelProviderPolicy(AiProperties properties,
                                             ObjectProvider<OpenAiChatModel> cloudModel,
-                                            ObjectProvider<OllamaChatModel> localModel) {
+                                            ObjectProvider<OllamaChatModel> localModel,
+                                            ObjectProvider<TranscriptionModel> transcriptionModel) {
+        var cloudId = properties.cloudChatProvider();
+        var localId = properties.localChatProvider();
+        var cloud = cloudModel.getIfAvailable();
+        var local = localModel.getIfAvailable();
+        var transcriptionAvailable = transcriptionModel.getIfAvailable() != null;
         return new DefaultModelProviderPolicy(List.of(
                 new ProviderDescriptor(
-                        properties.cloudChatProvider(),
-                        new ProviderCapabilities(true, true, true),
-                        properties.cloudEnabled() && cloudModel.getIfAvailable() != null,
+                        cloudId,
+                        capabilities(properties, cloudId, cloud != null, transcriptionAvailable),
+                        properties.cloudEnabled() && cloud != null,
                         true,
                         properties.cloudChatModelVersion()),
                 new ProviderDescriptor(
-                        properties.localChatProvider(),
-                        new ProviderCapabilities(true, true, true),
-                        properties.localEnabled() && localModel.getIfAvailable() != null,
+                        localId,
+                        capabilities(properties, localId, local != null, false),
+                        properties.localEnabled() && local != null,
                         false,
                         properties.localChatModelVersion())));
+    }
+
+    private static ProviderCapabilities capabilities(AiProperties properties, String providerId,
+                                                    boolean chatAvailable, boolean transcriptionAvailable) {
+        return new ProviderCapabilities(true, true, true,
+                chatAvailable && properties.allowsMediaProvider(providerId, true, false),
+                transcriptionAvailable && providerId.equals(properties.cloudChatProvider())
+                        && properties.allowsMediaProvider(providerId, false, true));
     }
 }

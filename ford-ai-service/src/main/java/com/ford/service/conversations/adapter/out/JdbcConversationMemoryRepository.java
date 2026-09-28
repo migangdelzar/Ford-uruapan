@@ -42,7 +42,7 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
     @Override
     public ConversationMemoryContext load(MemoryQuery query) {
         var projection = jdbc.sql("""
-                select summary, facts_json, memory_version
+                select summary, facts_json, memory_version, updated_at
                 from conversation_memory
                 where conversation_id = :conversationId
                   and tenant_id = :tenantId
@@ -57,9 +57,14 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
                 .param("participantId", query.key().participantId())
                 .query((rs, rowNum) -> new Projection(
                         rs.getString("summary"), rs.getString("facts_json"),
-                        rs.getLong("memory_version")))
+                        rs.getLong("memory_version"), rs.getTimestamp("updated_at").toInstant()))
                 .optional()
-                .orElse(new Projection("", "[]", 0));
+                .orElse(new Projection("", "[]", 0, null));
+
+        if (projection.updatedAt() == null
+                || !projection.updatedAt().isAfter(Instant.now().minus(properties.workingMemoryTtl()))) {
+            return ConversationMemoryContext.empty(query.key());
+        }
 
         var messages = jdbc.sql("""
                 select id, conversation_id, direction, provider_message_id, content, received_at
@@ -68,6 +73,14 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
                            row_number() over (order by received_at desc, id desc) as row_number
                     from conversation_message
                     where conversation_id = :conversationId
+                      and exists (
+                          select 1 from conversation owner
+                          where owner.id = conversation_message.conversation_id
+                            and owner.tenant_id = :tenantId
+                            and owner.channel = :channel
+                            and owner.provider_account_id = :providerAccountId
+                            and owner.participant_id = :participantId
+                      )
                       and (cast(:currentProviderMessageId as varchar) is null
                            or provider_message_id <> :currentProviderMessageId)
                 ) recent
@@ -75,6 +88,10 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
                 order by received_at asc, id asc
                 """)
                 .param("conversationId", query.key().conversationId())
+                .param("tenantId", query.key().tenantId())
+                .param("channel", query.key().channel().name())
+                .param("providerAccountId", query.key().providerAccountId())
+                .param("participantId", query.key().participantId())
                 .param("currentProviderMessageId", query.currentProviderMessageId())
                 .param("recentMessageLimit", query.recentMessageLimit())
                 .query((rs, rowNum) -> new ConversationMessage(
@@ -91,18 +108,12 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
                 truncate(projection.summary(), properties.summaryMaxChars()),
                 messages,
                 readFacts(projection.factsJson()),
-                projection.memoryVersion());
+                projection.memoryVersion(), projection.updatedAt());
     }
 
     @Override
     @Transactional
     public void recordInbound(ConversationMemoryKey key, ConversationMessage message) {
-        recordMessage(key, message);
-    }
-
-    @Override
-    @Transactional
-    public void recordOutbound(ConversationMemoryKey key, ConversationMessage message) {
         recordMessage(key, message);
     }
 
@@ -133,7 +144,7 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
         var updated = jdbc.sql("""
                 update conversation_memory
                 set summary = :summary,
-                    facts_json = :factsJson,
+                    facts_json = cast(:factsJson as jsonb),
                     memory_version = memory_version + 1,
                     source_message_id = :sourceMessageId,
                     updated_at = :updatedAt
@@ -213,6 +224,6 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
         return value.length() <= maxChars ? value : value.substring(0, maxChars);
     }
 
-    private record Projection(String summary, String factsJson, long memoryVersion) {
+    private record Projection(String summary, String factsJson, long memoryVersion, Instant updatedAt) {
     }
 }

@@ -15,9 +15,15 @@ public interface HandoffRepository {
 
     HandoffTicket findByConversation(UUID conversationId);
 
+    default Optional<HandoffTicket> findOpenByConversation(UUID tenantId, UUID conversationId) {
+        return Optional.empty();
+    }
+
     List<HandoffTicket> list(UUID tenantId);
 
     UUID findConversationTenant(UUID conversationId);
+
+    default boolean transitionConversationToPending(UUID tenantId, UUID conversationId) { return true; }
 
     Optional<HandoffTicket> claim(UUID ticketId, UUID tenantId, UUID operatorId,
                                    long expectedVersion, Instant claimedAt);

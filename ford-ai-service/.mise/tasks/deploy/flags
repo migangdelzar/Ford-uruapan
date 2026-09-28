@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#MISE description="Set allowlisted non-secret deployment feature flags"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+
+if (( $# == 0 || $# % 2 != 0 )); then
+  echo "Usage: mise run deploy:flags -- FORD_CONVERSATION_GRAPH_ENABLED true [FORD_HUMAN_HANDOFF_ENABLED true]" >&2
+  exit 2
+fi
+
+flags=("$@")
+for (( index = 0; index < ${#flags[@]}; index += 2 )); do
+  name="${flags[index]}"
+  value="${flags[index + 1]}"
+  case "$name" in
+    FORD_CONVERSATION_GRAPH_ENABLED|FORD_HUMAN_HANDOFF_ENABLED|FORD_CONVERSATION_RESET_CHECKPOINTS_ON_STARTUP) ;;
+    *) echo "Flag is not allowlisted: $name" >&2; exit 2 ;;
+  esac
+  case "$value" in true|false) ;; *) echo "Flag values must be true or false." >&2; exit 2 ;; esac
+done
+
+load_deploy_config
+for (( index = 0; index < ${#flags[@]}; index += 2 )); do
+  name="${flags[index]}"
+  value="${flags[index + 1]}"
+  set_deploy_secret "$name" "$value"
+done
+chmod 600 "$(deploy_config_file)"
+echo "Allowlisted deployment flags saved without displaying values."

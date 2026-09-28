@@ -13,6 +13,8 @@ import com.ford.service.ai.application.AssistantScopePolicy;
 import com.ford.service.ai.application.IntentRouter;
 import com.ford.service.ai.application.LeadQualificationPolicy;
 import com.ford.service.ai.application.SpringAiAssistantService;
+import com.ford.service.ai.application.ProviderRetryDelay;
+import com.ford.service.ai.application.ThreadBasedProviderRetryDelay;
 import com.ford.service.ai.application.SystemPromptService;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
 import com.ford.service.ai.application.DecisionPolicy;
@@ -24,6 +26,9 @@ import com.ford.service.ai.application.port.out.ProviderChatCompletionPort;
 import com.ford.service.ai.application.port.out.ProviderRoutingChatCompletionPort;
 import com.ford.service.ai.application.ModelProviderPolicy;
 import com.ford.service.shared.HumanHandoffPolicy;
+import com.ford.service.observability.AiObservationService;
+import com.ford.service.observability.DefaultAiObservationService;
+import io.micrometer.observation.ObservationRegistry;
 import com.ford.service.catalog.application.VehicleCatalog;
 import com.ford.service.finance.application.FinanceOperations;
 import com.ford.service.finance.application.port.out.FinanceTermsRepository;
@@ -154,31 +159,46 @@ public class SpringAiConfiguration {
         if (!toolObjects.isEmpty()) {
             callbacks.addAll(List.of(ToolCallbacks.from(toolObjects.toArray())));
         }
-        var mcpProvider = mcpProviders.getIfAvailable();
-        if (mcpProperties.enabled() && mcpProvider != null) {
+        if (mcpProperties.enabled()) {
             try {
-                callbacks.addAll(List.of(mcpProvider.getToolCallbacks()).stream()
-                        .filter(callback -> mcpProperties.readOnlyToolNames()
-                                .contains(callback.getToolDefinition().name().toLowerCase(java.util.Locale.ROOT)))
-                        .toList());
+                var mcpProvider = mcpProviders.getIfAvailable();
+                if (mcpProvider != null) {
+                    callbacks.addAll(List.of(mcpProvider.getToolCallbacks()).stream()
+                            .filter(callback -> mcpProperties.readOnlyToolNames()
+                                    .contains(callback.getToolDefinition().name().toLowerCase(java.util.Locale.ROOT)))
+                            .toList());
+                }
             }
             catch (RuntimeException exception) {
-                log.warn("Ford MCP tools unavailable; volatile information remains fail-closed: exceptionType={}",
+                log.warn("Ford MCP tools unavailable; continuing without volatile MCP tools: exceptionType={}",
                         exception.getClass().getSimpleName());
             }
         }
         if (callbacks.isEmpty()) {
             return new ToolAuthorizationPolicy();
         }
-        return new ToolAuthorizationPolicy(callbacks);
+        var observedCallbacks = callbacks.stream()
+                .map(com.ford.service.ai.adapter.out.springai.ObservedToolCallback::new)
+                .map(ToolCallback.class::cast)
+                .toList();
+        log.info("AI read-only tools registered: count={} names={}", observedCallbacks.size(),
+                observedCallbacks.stream().map(tool -> tool.getToolDefinition().name()).sorted().toList());
+        return new ToolAuthorizationPolicy(observedCallbacks);
+    }
+
+    @Bean
+    ProviderRetryDelay providerRetryDelay() {
+        return new ThreadBasedProviderRetryDelay();
     }
 
     @Bean
     ChatCompletionPort chatCompletionPort(ObjectProvider<OpenAiChatModel> cloudModel,
                                            ObjectProvider<OllamaChatModel> localModel,
                                          AiProperties properties,
-                                         ToolAuthorizationPolicy toolPolicy,
-                                         ModelProviderPolicy providerPolicy,
+                                           ToolAuthorizationPolicy toolPolicy,
+                                           ModelProviderPolicy providerPolicy,
+                                           ProviderRetryDelay retryDelay,
+                                           ObjectProvider<AiObservationService> observationServices,
                                          DecisionPolicy decisionPolicy,
                                          AssistantScopePolicy scopePolicy,
                                          ObjectProvider<SystemPromptService> systemPromptServices,
@@ -204,9 +224,13 @@ public class SpringAiConfiguration {
                             typeSafeConfigured ? typeSafeClient : null, scopePolicy),
                     properties.localChatProvider(), toolPolicy, decisionPolicy, systemPromptService));
         }
+        var observations = observationServices.getIfAvailable(
+                () -> new DefaultAiObservationService(ObservationRegistry.NOOP));
         return providers.isEmpty()
                 ? new UnavailableChatCompletionPort()
-                : new ProviderRoutingChatCompletionPort(providers, providerPolicy);
+                : new ProviderRoutingChatCompletionPort(providers, providerPolicy,
+                        properties.providerMaxAttempts(), properties.providerMaxRetryAfter(), retryDelay,
+                        observations);
     }
 
     private static ChatClient chatClient(ChatModel model,

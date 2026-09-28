@@ -7,11 +7,13 @@ import com.ford.service.conversations.api.ConversationTurnRequest;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.domain.ConversationMemoryContext;
 import com.ford.service.conversations.domain.ConversationMessage;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Objects;
 import java.util.function.Supplier;
 
-public final class ConversationAssistantAdapter implements ConversationAssistant {
+public class ConversationAssistantAdapter implements ConversationAssistant {
 
     private static final String FALLBACK_TEXT = "En este momento te comunicaré con un asesor humano.";
 
@@ -26,14 +28,16 @@ public final class ConversationAssistantAdapter implements ConversationAssistant
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public AssistantReply respond(ConversationTurnRequest request) {
         var assistant = assistantProvider.get();
         if (assistant == null) {
             return new AssistantReply(FALLBACK_TEXT, true);
         }
         var turn = assistant.respond(new AiExecutionContext(
-                request.tenantId(), false, request.conversationId(), memoryPrompt(request.memory())), request.message());
-        return new AssistantReply(turn.text(), turn.requestsHuman(), turn.decision());
+                request.tenantId(), false, request.conversationId(), memoryPrompt(request.memory()), null,
+                new LeadJourneyContextFormatter().format(request.leadJourney())), request.message());
+        return new AssistantReply(turn.text(), turn.requestsHuman(), turn.decision(), turn.journeyProposal());
     }
 
     private static String memoryPrompt(ConversationMemoryContext memory) {
@@ -55,6 +59,13 @@ public final class ConversationAssistantAdapter implements ConversationAssistant
             prompt.append("\nHechos relevantes:");
             memory.durableFacts().forEach(fact -> prompt.append("\n- ")
                     .append(safe(fact.kind())).append(": ").append(safe(fact.content())));
+        }
+        if (!memory.recalledTurns().isEmpty()) {
+            prompt.append("\nRecuerdos históricos relevantes (solo continuidad; verifique contra la conversación actual):");
+            memory.recalledTurns().forEach(turn -> prompt.append("\n- ")
+                    .append(turn.direction() == ConversationMessage.Direction.INBOUND
+                            ? "usuario" : "asistente")
+                    .append(": ").append(safe(turn.content())));
         }
         prompt.append("\n[FIN DEL HISTORIAL]");
         return prompt.toString();

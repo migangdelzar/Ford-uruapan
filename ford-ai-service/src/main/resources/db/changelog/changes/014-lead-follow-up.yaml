@@ -1,0 +1,25 @@
+databaseChangeLog:
+  - changeSet:
+      id: 014-lead-follow-up
+      author: codex
+      changes:
+        - sql:
+            sql: |
+              create table if not exists lead_follow_up (
+                id uuid primary key,
+                tenant_id uuid not null,
+                conversation_id uuid not null references conversation(id),
+                status varchar(20) not null,
+                offered_at timestamptz not null,
+                consent_at timestamptz,
+                source_message_key varchar(255) not null,
+                consent_message_key varchar(255),
+                check (status in ('OFFERED','DECLINED','QUEUED','CLAIMED','CLOSED')),
+                unique (tenant_id, conversation_id)
+              );
+              create index if not exists idx_lead_follow_up_queue
+                on lead_follow_up(tenant_id, status, consent_at);
+      rollback:
+        - sql:
+            sql: |
+              drop table if exists lead_follow_up;

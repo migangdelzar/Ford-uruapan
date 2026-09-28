@@ -1,0 +1,45 @@
+databaseChangeLog:
+  - changeSet:
+      id: 017-conversation-memory-embeddings
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              create table if not exists conversation_memory_embedding (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  conversation_id uuid not null references conversation(id) on delete cascade,
+                  channel varchar(30) not null,
+                  provider_account_id varchar(200) not null,
+                  participant_id varchar(200) not null,
+                  source_message_id uuid not null references conversation_message(id) on delete cascade,
+                  direction varchar(20) not null,
+                  content_redacted text not null,
+                  embedding_model varchar(160) not null,
+                  embedding vector(1536) not null,
+                  occurred_at timestamptz not null,
+                  active boolean not null default true,
+                  created_at timestamptz not null,
+                  updated_at timestamptz not null,
+                  unique (conversation_id, source_message_id, embedding_model)
+              );
+
+              create index if not exists idx_conversation_memory_embedding_scope
+                  on conversation_memory_embedding(
+                      tenant_id,
+                      conversation_id,
+                      channel,
+                      provider_account_id,
+                      participant_id,
+                      active,
+                      occurred_at
+                  );
+
+              create index if not exists idx_conversation_memory_embedding_hnsw
+                  on conversation_memory_embedding using hnsw (embedding vector_cosine_ops);
+      rollback:
+        - sql:
+            sql: |
+              drop index if exists idx_conversation_memory_embedding_hnsw;
+              drop index if exists idx_conversation_memory_embedding_scope;
+              drop table if exists conversation_memory_embedding;

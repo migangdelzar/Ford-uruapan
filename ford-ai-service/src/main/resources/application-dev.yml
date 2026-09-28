@@ -6,7 +6,7 @@ spring:
 ford:
   conversations:
     human-handoff:
-      enabled: ${FORD_HUMAN_HANDOFF_ENABLED:true}
+      enabled: ${FORD_HUMAN_HANDOFF_ENABLED:false}
   ai:
     classification:
       enabled: ${FORD_AI_CLASSIFICATION_ENABLED:true}

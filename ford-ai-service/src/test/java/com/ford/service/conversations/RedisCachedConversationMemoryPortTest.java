@@ -80,12 +80,10 @@ class RedisCachedConversationMemoryPortTest {
         when(durable.updateProjection(key, update, 0)).thenReturn(new MemoryUpdateResult(true, 1));
 
         port.recordInbound(key, message);
-        port.recordOutbound(key, message);
         port.updateProjection(key, update, 0);
 
-        assertThat(cache.evicted).containsExactly(key, key, key);
+        assertThat(cache.evicted).containsExactly(key, key);
         verify(durable).recordInbound(key, message);
-        verify(durable).recordOutbound(key, message);
         verify(durable).updateProjection(key, update, 0);
     }
 

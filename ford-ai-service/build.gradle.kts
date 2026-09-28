@@ -41,6 +41,8 @@ dependencies {
     implementation(libs.spring.ai.starter.vector.store.pgvector)
     implementation(libs.spring.ai.starter.typesafe)
     implementation(libs.typesafe.spring.ai)
+    implementation(libs.langgraph4j.core)
+    implementation(libs.langgraph4j.postgres.saver)
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.security.test)

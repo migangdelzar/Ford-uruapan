@@ -3,6 +3,7 @@ package com.ford.service.handoff.api;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.modulith.NamedInterface;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -12,6 +13,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@NamedInterface
 public record OperatorPrincipal(UUID operatorId, Set<UUID> tenantIds, Set<String> authorities) {
 
     public OperatorPrincipal {

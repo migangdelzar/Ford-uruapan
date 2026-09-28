@@ -38,6 +38,14 @@ public final class ConversationDecisionService {
                             && evidence.confidence() < properties.minConfidence())) {
                 throw new IllegalStateException("TypeSafe classification confidence is below the configured threshold");
             }
+            if (classified.toolFamily() == ToolFamily.NONE) {
+                var route = rules.decide(context);
+                if (route.toolFamily().requiresVolatileInformation()) {
+                    log.warn("Conversation volatile tool route corrected: conversationId={} classifiedIntent={} correctedIntent={} correctedToolFamily={}",
+                            context.conversationId(), classified.intent(), route.intent(), route.toolFamily());
+                    return classified.withVolatileToolRoute(route);
+                }
+            }
             return classified;
         } catch (RuntimeException ignored) {
             log.warn("Conversation classification failed; using rules fallback: exceptionType={}",

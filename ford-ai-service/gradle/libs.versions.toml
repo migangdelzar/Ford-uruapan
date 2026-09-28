@@ -8,6 +8,7 @@ postgresql = "42.7.12"
 liquibase = "4.29.2"
 testcontainers = "1.20.6"
 archunit = "1.4.0"
+langgraph4j = "1.9.1"
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
@@ -44,6 +45,8 @@ typesafe-spring-ai = { module = "org.springaicommunity:typesafe-spring-ai", vers
 testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
 testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
 archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
+langgraph4j-core = { module = "org.bsc.langgraph4j:langgraph4j-core", version.ref = "langgraph4j" }
+langgraph4j-postgres-saver = { module = "org.bsc.langgraph4j:langgraph4j-postgres-saver", version.ref = "langgraph4j" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }

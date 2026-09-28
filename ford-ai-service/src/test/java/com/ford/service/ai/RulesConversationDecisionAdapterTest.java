@@ -47,6 +47,36 @@ class RulesConversationDecisionAdapterTest {
         assertThat(adapter.decide(context(" ")).intent()).isEqualTo(ConversationIntent.GENERAL);
     }
 
+    @Test
+    void classifiesNonToolLeadRequestsWithoutInventingToolFamilies() {
+        assertDecision("Quiero dar mi auto a cuenta", ConversationIntent.TRADE_IN, ToolFamily.NONE);
+        assertDecision("¿Cuál es el horario de la agencia?", ConversationIntent.DEALERSHIP_INFO, ToolFamily.NONE);
+        assertDecision("Necesito servicio para mi F-150", ConversationIntent.SERVICE_SUPPORT, ToolFamily.NONE);
+        assertDecision("Quiero presentar una queja por la atención", ConversationIntent.COMPLAINT_STATUS,
+                ToolFamily.NONE);
+        assertDecision("¿Me recomienda una receta médica?", ConversationIntent.OUT_OF_SCOPE, ToolFamily.NONE);
+    }
+
+    @Test
+    void classifiesAppointmentSeparatelyFromVehicleDetails() {
+        assertDecision("Quiero agendar una prueba de manejo", ConversationIntent.APPOINTMENT,
+                ToolFamily.APPOINTMENT);
+    }
+
+    @Test
+    void treatsPurchaseInterestAsLeadIntentNotARequestForAHuman() {
+        var decision = adapter.decide(context("Quiero comprar una Bronco"));
+
+        assertThat(decision.intent()).isEqualTo(ConversationIntent.VEHICLE_DETAILS);
+        assertThat(decision.handoffRecommendation()).isEqualTo(HandoffRecommendation.NONE);
+    }
+
+    private void assertDecision(String message, ConversationIntent intent, ToolFamily family) {
+        var decision = adapter.decide(context(message));
+        assertThat(decision.intent()).as(message).isEqualTo(intent);
+        assertThat(decision.toolFamily()).as(message).isEqualTo(family);
+    }
+
     private static ClassificationContext context(String message) {
         return new ClassificationContext(UUID.randomUUID(), UUID.randomUUID(), message,
                 null, "BOT_ACTIVE", false);

@@ -57,13 +57,16 @@ class SystemPromptServiceTest {
                 .contains("search_vehicles", "get_vehicle", "compare_vehicles", "get_vehicle_provenance",
                         "get_catalog_status", "list_promotions", "search_offers",
                         "vehicle_snapshot_search", "approved_knowledge_search")
-                .contains("El mensaje actual siempre tiene prioridad")
-                .contains("No inventes información")
-                .contains("No saludes de nuevo")
-                .contains("La pregunta más reciente tiene prioridad absoluta")
-                .contains("No muestres JSON")
-                .contains("No repitas la misma respuesta")
-                .contains("No uses una respuesta genérica de alcance");
+                .contains("Usted es Valentina")
+                .contains("Resuelva primero la pregunta más reciente")
+                .contains("No invente precios")
+                .contains("No salude de nuevo")
+                .contains("No muestre nombres de herramientas, JSON")
+                .contains("No repita una respuesta")
+                .contains("Valentina Ramírez")
+                .contains("¿En qué puedo ayudarle?")
+                .contains("aunque no incluya fechas de vigencia")
+                .contains("promoción sigue vigente");
     }
 
     private static final class InMemoryPromptRepository implements SystemPromptRepository {

@@ -6,9 +6,10 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import com.ford.service.channels.adapter.out.meta.MetaMediaProperties;
 
 @Configuration
-@EnableConfigurationProperties(MetaWebhookProperties.class)
+@EnableConfigurationProperties({MetaWebhookProperties.class, MetaMediaProperties.class})
 public class MetaChannelConfiguration {
 
     @Bean

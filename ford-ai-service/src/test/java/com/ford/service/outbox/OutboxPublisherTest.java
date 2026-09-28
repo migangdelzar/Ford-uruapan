@@ -1,13 +1,17 @@
 package com.ford.service.outbox;
 
+import com.ford.service.observability.AiObservationService;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class OutboxPublisherTest {
 
@@ -16,26 +20,34 @@ class OutboxPublisherTest {
         var store = new InMemoryOutboxStore();
         var event = event();
         store.events.add(event);
-        var publisher = new OutboxPublisher(store, notification -> NotificationResult.delivered("provider-1"), 3);
+        var observations = mock(AiObservationService.class);
+        var publisher = new OutboxPublisher(store, notification -> NotificationResult.delivered("provider-1"),
+                3, observations);
 
         assertThat(publisher.deliverOne(Instant.now())).isTrue();
         assertThat(publisher.deliverOne(Instant.now())).isFalse();
         assertThat(store.events.peek().status()).isEqualTo(OutboxEvent.Status.DELIVERED);
+        verify(observations).event("ford.outbox.delivery", Map.of("outcome", "success"));
     }
 
     @Test
     void movesRepeatedFailuresToDeadLetter() {
         var store = new InMemoryOutboxStore();
         store.events.add(event());
+        var observations = mock(AiObservationService.class);
         var publisher = new OutboxPublisher(store, notification -> {
             throw new IllegalStateException("provider unavailable");
-        }, 2);
+        }, 2, observations);
 
         publisher.deliverOne(Instant.now());
         publisher.deliverOne(Instant.now());
 
         assertThat(store.events.peek().status()).isEqualTo(OutboxEvent.Status.DEAD_LETTER);
         assertThat(store.events.peek().attempts()).isEqualTo(2);
+        verify(observations).event("ford.outbox.delivery", Map.of(
+                "outcome", "retry", "failure_category", "delivery_error"));
+        verify(observations).event("ford.outbox.delivery", Map.of(
+                "outcome", "dead_letter", "failure_category", "delivery_error"));
     }
 
     private static OutboxEvent event() {

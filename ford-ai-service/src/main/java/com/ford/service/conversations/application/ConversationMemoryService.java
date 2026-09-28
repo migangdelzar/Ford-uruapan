@@ -5,12 +5,13 @@ import com.ford.service.conversations.domain.ConversationMemoryKey;
 import com.ford.service.conversations.domain.ConversationMessage;
 import com.ford.service.conversations.domain.MemoryProjectionUpdate;
 import com.ford.service.conversations.domain.MemoryQuery;
-import com.ford.service.conversations.domain.MemoryUpdateResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
 import java.util.UUID;
+import java.time.Instant;
+import org.springframework.context.ApplicationEventPublisher;
 
 public final class ConversationMemoryService {
 
@@ -19,18 +20,40 @@ public final class ConversationMemoryService {
     private final ConversationMemoryPort memory;
     private final MemoryProperties properties;
     private final ConversationMemorySemanticPort semanticMemory;
+    private final ConversationMemoryRecallPort recall;
+    private final ConversationMemoryRecallPolicy recallPolicy;
     private final ConversationMemoryProjector projector;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ConversationMemoryService(ConversationMemoryPort memory, MemoryProperties properties) {
-        this(memory, properties, new NoOpConversationMemorySemanticPort());
+        this(memory, properties, new NoOpConversationMemorySemanticPort(),
+                new NoOpConversationMemoryRecallPort(), event -> { });
     }
 
     public ConversationMemoryService(ConversationMemoryPort memory,
                                      MemoryProperties properties,
                                      ConversationMemorySemanticPort semanticMemory) {
+        this(memory, properties, semanticMemory, new NoOpConversationMemoryRecallPort(), event -> { });
+    }
+
+    public ConversationMemoryService(ConversationMemoryPort memory,
+                                     MemoryProperties properties,
+                                     ConversationMemorySemanticPort semanticMemory,
+                                     ApplicationEventPublisher eventPublisher) {
+        this(memory, properties, semanticMemory, new NoOpConversationMemoryRecallPort(), eventPublisher);
+    }
+
+    public ConversationMemoryService(ConversationMemoryPort memory,
+                                     MemoryProperties properties,
+                                     ConversationMemorySemanticPort semanticMemory,
+                                     ConversationMemoryRecallPort recall,
+                                     ApplicationEventPublisher eventPublisher) {
         this.memory = Objects.requireNonNull(memory);
         this.properties = Objects.requireNonNull(properties);
         this.semanticMemory = Objects.requireNonNull(semanticMemory);
+        this.recall = Objects.requireNonNull(recall);
+        this.recallPolicy = new ConversationMemoryRecallPolicy();
+        this.eventPublisher = Objects.requireNonNull(eventPublisher);
         this.projector = new ConversationMemoryProjector(properties);
     }
 
@@ -39,27 +62,44 @@ public final class ConversationMemoryService {
             return ConversationMemoryContext.empty(query.key());
         }
         var boundedQuery = new MemoryQuery(query.key(), query.latestMessage(), query.currentProviderMessageId(),
-                properties.recentMessageLimit(), properties.semanticLimit());
+                properties.promptRecentMessageLimit(), properties.semanticLimit());
         try {
             var context = memory.load(boundedQuery);
             if (!properties.semanticEnabled() || query.latestMessage() == null
                     || query.latestMessage().isBlank()) {
-                return context;
+                // Continue to optional archived-turn recall below.
+            } else {
+                try {
+                    var semanticFacts = semanticMemory.search(query.key(), query.latestMessage(),
+                            properties.semanticLimit());
+                    var facts = java.util.stream.Stream.concat(context.durableFacts().stream(), semanticFacts.stream())
+                            .limit(properties.factLimit())
+                            .toList();
+                    context = new ConversationMemoryContext(context.key(), context.summary(),
+                            context.recentMessages(), facts, context.memoryVersion(), context.updatedAt(),
+                            context.recalledTurns());
+                } catch (RuntimeException exception) {
+                    log.warn("Semantic conversation memory search failed: conversationId={} tenantId={} exceptionType={}",
+                            query.key().conversationId(), query.key().tenantId(),
+                            exception.getClass().getSimpleName());
+                }
             }
-            try {
-                var semanticFacts = semanticMemory.search(query.key(), query.latestMessage(),
-                        properties.semanticLimit());
-                var facts = java.util.stream.Stream.concat(context.durableFacts().stream(), semanticFacts.stream())
-                        .limit(properties.factLimit())
-                        .toList();
-                return new ConversationMemoryContext(context.key(), context.summary(),
-                        context.recentMessages(), facts, context.memoryVersion());
-            } catch (RuntimeException exception) {
-                log.warn("Semantic conversation memory search failed: conversationId={} tenantId={} exceptionType={}",
-                        query.key().conversationId(), query.key().tenantId(),
-                        exception.getClass().getSimpleName());
-                return context;
+            if (properties.semanticRecallEnabled()
+                    && query.latestMessage() != null
+                    && recallPolicy.shouldRecall(query.latestMessage(), context)) {
+                try {
+                    var recalled = recall.search(query.key(), query.latestMessage(), Instant.now(),
+                            properties.semanticRecallLimit(), properties.semanticRecallMinimumSimilarity());
+                    context = new ConversationMemoryContext(context.key(), context.summary(),
+                            context.recentMessages(), context.durableFacts(), context.memoryVersion(),
+                            context.updatedAt(), recalled);
+                } catch (RuntimeException exception) {
+                    log.warn("Conversation semantic recall failed: conversationId={} tenantId={} exceptionType={}",
+                            query.key().conversationId(), query.key().tenantId(),
+                            exception.getClass().getSimpleName());
+                }
             }
+            return context;
         } catch (RuntimeException exception) {
             log.warn("Conversation memory load failed: conversationId={} tenantId={} exceptionType={}",
                     query.key().conversationId(), query.key().tenantId(),
@@ -74,8 +114,10 @@ public final class ConversationMemoryService {
             return;
         }
         try {
-            memory.recordInbound(key, new ConversationMessage(messageId, key.conversationId(),
-                    ConversationMessage.Direction.INBOUND, providerMessageId, content, occurredAt));
+            var message = new ConversationMessage(messageId, key.conversationId(),
+                    ConversationMessage.Direction.INBOUND, providerMessageId, content, occurredAt);
+            memory.recordInbound(key, message);
+            publishIndexRequest(key, message);
         } catch (RuntimeException exception) {
             log.warn("Inbound conversation memory write failed: conversationId={} exceptionType={}",
                     key.conversationId(), exception.getClass().getSimpleName());
@@ -83,18 +125,14 @@ public final class ConversationMemoryService {
         }
     }
 
-    public void recordOutbound(ConversationMemoryKey key, UUID messageId, String providerMessageId,
-                               String content, java.time.Instant occurredAt) {
+    public void indexOutbound(ConversationMemoryKey key, UUID messageId, String providerMessageId,
+                              String content, java.time.Instant occurredAt) {
         if (!properties.enabled() || content == null || content.isBlank()) {
             return;
         }
-        try {
-            memory.recordOutbound(key, new ConversationMessage(messageId, key.conversationId(),
-                    ConversationMessage.Direction.OUTBOUND, providerMessageId, content, occurredAt));
-        } catch (RuntimeException exception) {
-            log.warn("Outbound conversation memory write failed: conversationId={} exceptionType={}",
-                    key.conversationId(), exception.getClass().getSimpleName());
-        }
+        var message = new ConversationMessage(messageId, key.conversationId(),
+                ConversationMessage.Direction.OUTBOUND, providerMessageId, content, occurredAt);
+        publishIndexRequest(key, message);
     }
 
     public MemoryProjectionUpdate project(ConversationMemoryContext context, String latestUserMessage,
@@ -102,26 +140,20 @@ public final class ConversationMemoryService {
         return projector.project(context, latestUserMessage, sourceMessageId);
     }
 
-    public MemoryUpdateResult updateProjection(ConversationMemoryKey key,
-                                                MemoryProjectionUpdate update,
-                                                long expectedVersion) {
-        if (!properties.enabled()) {
-            return new MemoryUpdateResult(false, expectedVersion);
-        }
-        try {
-            return memory.updateProjection(key, update, expectedVersion);
-        } catch (RuntimeException exception) {
-            log.warn("Conversation memory projection update failed: conversationId={} exceptionType={}",
-                    key.conversationId(), exception.getClass().getSimpleName());
-            return new MemoryUpdateResult(false, expectedVersion);
-        }
-    }
-
     public void invalidate(ConversationMemoryKey key) {
         try {
             memory.invalidate(key);
         } catch (RuntimeException exception) {
             log.warn("Conversation memory invalidation failed: conversationId={} exceptionType={}",
+                    key.conversationId(), exception.getClass().getSimpleName());
+        }
+    }
+
+    private void publishIndexRequest(ConversationMemoryKey key, ConversationMessage message) {
+        try {
+            eventPublisher.publishEvent(new com.ford.service.conversations.api.ConversationMemoryIndexRequested(key, message));
+        } catch (RuntimeException exception) {
+            log.warn("Conversation memory index event publication failed: conversationId={} exceptionType={}",
                     key.conversationId(), exception.getClass().getSimpleName());
         }
     }

@@ -38,12 +38,60 @@ class AiObservationServiceTest {
         var observations = new ArrayList<Observation.Context>();
         var registry = registry(observations);
         var service = new DefaultAiObservationService(registry);
-        var failure = new IllegalStateException("provider unavailable");
+        var failure = new IllegalStateException("secret-token customer-phone 4521234567 private response body");
 
         assertThatThrownBy(() -> service.observe("ford.ai.model", Map.of("provider", "ollama"), () -> {
             throw failure;
         })).isSameAs(failure);
-        assertThat(observations).singleElement().satisfies(context -> assertThat(context.getError()).isSameAs(failure));
+        assertThat(observations).singleElement().satisfies(context -> {
+            assertThat(context.getError()).isNotSameAs(failure);
+            assertThat(context.getError().getMessage()).isEqualTo("IllegalStateException");
+        });
+    }
+
+    @Test
+    void recordsBoundedProviderAttemptDimensionsWithoutCustomerOrPayloadData() {
+        var observations = new ArrayList<Observation.Context>();
+        var service = new DefaultAiObservationService(registry(observations));
+
+        service.event("ford.ai.provider.attempt", Map.of(
+                "provider", "openrouter/free",
+                "outcome", "retry",
+                "failure_category", "rate_limited",
+                "tenant", "00000000-0000-0000-0000-000000000001",
+                "conversation_id", "private-conversation",
+                "tool.result", "private source payload"));
+
+        assertThat(observations).singleElement().satisfies(context -> {
+            assertThat(context.getLowCardinalityKeyValue("provider").getValue()).isEqualTo("openrouter");
+            assertThat(context.getLowCardinalityKeyValue("outcome").getValue()).isEqualTo("retry");
+            assertThat(context.getLowCardinalityKeyValue("failure_category").getValue()).isEqualTo("rate_limited");
+            assertThat(context.getAllKeyValues().stream().map(io.micrometer.common.KeyValue::getKey))
+                    .containsExactlyInAnyOrder("provider", "outcome", "failure_category");
+        });
+    }
+
+    @Test
+    void observationInfrastructureFailureNeverChangesBusinessBehavior() {
+        var registry = ObservationRegistry.create();
+        registry.observationConfig().observationHandler(new ObservationHandler<>() {
+            @Override
+            public void onStart(Observation.Context context) {
+                throw new IllegalStateException("telemetry unavailable");
+            }
+
+            @Override
+            public boolean supportsContext(Observation.Context context) {
+                return true;
+            }
+        });
+        var service = new DefaultAiObservationService(registry);
+
+        assertThat(service.observe("ford.ai.conversation", Map.of("outcome", "success"), () -> "reply"))
+                .isEqualTo("reply");
+        org.assertj.core.api.Assertions.assertThatCode(() ->
+                service.event("ford.outbox.delivery", Map.of("outcome", "success")))
+                .doesNotThrowAnyException();
     }
 
     private static ObservationRegistry registry(ArrayList<Observation.Context> observations) {

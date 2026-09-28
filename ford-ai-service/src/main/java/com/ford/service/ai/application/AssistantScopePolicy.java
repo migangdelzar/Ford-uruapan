@@ -42,6 +42,10 @@ public final class AssistantScopePolicy {
             return false;
         }
         var normalized = userText.toLowerCase(Locale.ROOT);
+        if (decision != null && decision.intent() == ConversationIntent.OUT_OF_SCOPE
+                || intentRouter.route(userText) == Intent.OUT_OF_SCOPE) {
+            return false;
+        }
         var hasFordContext = containsAny(normalized, ALLOWED_TERMS)
                 || intentRouter.route(userText) != Intent.GENERAL
                 || hasFordContext(memoryContext);

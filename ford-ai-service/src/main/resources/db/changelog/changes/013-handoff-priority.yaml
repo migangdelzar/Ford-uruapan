@@ -1,0 +1,24 @@
+databaseChangeLog:
+  - changeSet:
+      id: 013-handoff-priority
+      author: codex
+      changes:
+        - sql:
+            sql: |
+              alter table handoff_ticket add column if not exists priority varchar(20) not null default 'NORMAL';
+              alter table handoff_ticket add column if not exists idempotency_key varchar(255);
+              create unique index if not exists uq_handoff_ticket_idempotency
+                on handoff_ticket(tenant_id, idempotency_key) where idempotency_key is not null;
+              create index if not exists idx_handoff_priority_queue
+                on handoff_ticket(tenant_id, status, priority, created_at);
+              create unique index if not exists uq_handoff_open_conversation
+                on handoff_ticket(tenant_id, conversation_id)
+                where status in ('HUMAN_PENDING','HUMAN_ACTIVE');
+      rollback:
+        - sql:
+            sql: |
+              drop index if exists idx_handoff_priority_queue;
+              drop index if exists uq_handoff_open_conversation;
+              drop index if exists uq_handoff_ticket_idempotency;
+              alter table handoff_ticket drop column if exists idempotency_key;
+              alter table handoff_ticket drop column if exists priority;

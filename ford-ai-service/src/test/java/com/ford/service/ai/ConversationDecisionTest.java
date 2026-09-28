@@ -7,6 +7,7 @@ import com.ford.service.ai.application.ConversationIntent;
 import com.ford.service.ai.application.HandoffRecommendation;
 import com.ford.service.ai.application.LeadStage;
 import com.ford.service.ai.application.LeadTemperature;
+import com.ford.service.ai.application.LeadNextAction;
 import com.ford.service.ai.application.SensitiveDataLevel;
 import com.ford.service.ai.application.ToolFamily;
 import org.junit.jupiter.api.Test;
@@ -47,8 +48,24 @@ class ConversationDecisionTest {
                         "tool_family=finance_estimate\n" +
                         "handoff=none\n" +
                         "sensitive_data=none\n" +
+                        "next_action=no_action\n" +
+                        "urgency_signal=false\n" +
+                        "summary=\n" +
                         "[/DECISION CONTEXT]");
         assertThat(decision.toPromptContext()).doesNotContain("typesafe", "0.91", "model_choice");
+    }
+
+    @Test
+    void keepsOperationalLeadSignalsTypedAndBounded() {
+        var decision = new ConversationDecision(
+                ConversationIntent.OFFERS, LeadTemperature.WARM, LeadStage.QUALIFYING,
+                HandoffRecommendation.NONE, ToolFamily.OFFERS, SensitiveDataLevel.NONE,
+                LeadNextAction.FOLLOW_UP, true, "  Quiere conocer promociones vigentes.  ", List.of());
+
+        assertThat(decision.nextAction()).isEqualTo(LeadNextAction.FOLLOW_UP);
+        assertThat(decision.urgencySignal()).isTrue();
+        assertThat(decision.summary()).isEqualTo("Quiere conocer promociones vigentes.");
+        assertThat(decision.summary()).hasSizeLessThanOrEqualTo(280);
     }
 
     @Test

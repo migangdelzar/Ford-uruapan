@@ -32,21 +32,23 @@ public class JdbcConversationDecisionRepository implements ConversationDecisionR
         Objects.requireNonNull(decision, "conversation decision is required");
         var createdAt = Timestamp.from(Instant.now());
         for (var evidence : decision.evidence()) {
-            saveEvidence(conversationId, providerMessageId, evidence, createdAt);
+            saveEvidence(conversationId, providerMessageId, decision, evidence, createdAt);
             saveAiExecution(conversationId, providerMessageId, evidence, createdAt);
         }
     }
 
     private void saveEvidence(UUID conversationId, String providerMessageId,
-                               ClassificationEvidence evidence, Timestamp createdAt) {
+                               ConversationDecision decision, ClassificationEvidence evidence,
+                               Timestamp createdAt) {
         jdbc.sql("""
                 merge into conversation_decision as target
                 using (values (:id, :conversationId, :providerMessageId, :classifierType,
                                :classification, :confidence, :reasonCode, :provider, :model,
-                               :latencyMs, :fallbackUsed, cast(:createdAt as timestamp with time zone)))
+                               :latencyMs, :fallbackUsed, :nextAction, :urgencySignal, :summary,
+                               cast(:createdAt as timestamp with time zone)))
                     as incoming(id, conversation_id, provider_message_id, classifier_type,
                                 classification, confidence, reason_code, provider, model,
-                                latency_ms, fallback_used, created_at)
+                                latency_ms, fallback_used, next_action, urgency_signal, summary, created_at)
                 on target.conversation_id = incoming.conversation_id
                    and target.provider_message_id = incoming.provider_message_id
                    and target.classifier_type = incoming.classifier_type
@@ -58,15 +60,19 @@ public class JdbcConversationDecisionRepository implements ConversationDecisionR
                     model = incoming.model,
                     latency_ms = incoming.latency_ms,
                     fallback_used = incoming.fallback_used,
+                    next_action = incoming.next_action,
+                    urgency_signal = incoming.urgency_signal,
+                    summary = incoming.summary,
                     created_at = incoming.created_at
                 when not matched then insert
                     (id, conversation_id, provider_message_id, classifier_type,
                      classification, confidence, reason_code, provider, model,
-                     latency_ms, fallback_used, created_at)
+                     latency_ms, fallback_used, next_action, urgency_signal, summary, created_at)
                 values (incoming.id, incoming.conversation_id, incoming.provider_message_id,
                         incoming.classifier_type, incoming.classification, incoming.confidence,
                         incoming.reason_code, incoming.provider, incoming.model,
-                        incoming.latency_ms, incoming.fallback_used, incoming.created_at)
+                        incoming.latency_ms, incoming.fallback_used, incoming.next_action,
+                        incoming.urgency_signal, incoming.summary, incoming.created_at)
                 """)
                 .param("id", UUID.randomUUID())
                 .param("conversationId", conversationId)
@@ -79,6 +85,9 @@ public class JdbcConversationDecisionRepository implements ConversationDecisionR
                 .param("model", evidence.model())
                 .param("latencyMs", evidence.latencyMs())
                 .param("fallbackUsed", evidence.fallbackUsed())
+                .param("nextAction", decision.nextAction().name())
+                .param("urgencySignal", decision.urgencySignal())
+                .param("summary", decision.summary())
                 .param("createdAt", createdAt)
                 .update();
     }

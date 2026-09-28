@@ -16,6 +16,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
 
 class InboundWebhookServiceTest {
 
@@ -36,5 +37,22 @@ class InboundWebhookServiceTest {
         verify(adapter).validateWebhook(any(), eq("app-secret"));
         verify(bindingService).resolve(Channel.WHATSAPP, "phone-42");
         verifyNoInteractions(messageService);
+    }
+
+    @Test
+    void routesNonStatusWebhookThroughBatchAcceptance() {
+        var bindingService = mock(ChannelBindingService.class);
+        var messageService = mock(ChannelMessageService.class);
+        var adapter = mock(ChannelAdapter.class);
+        var binding = new ChannelBinding(UUID.randomUUID(), UUID.randomUUID(), Channel.WHATSAPP,
+                "phone-42", "app-secret", true);
+        when(adapter.providerAccountId("message-body")).thenReturn("phone-42");
+        when(bindingService.resolve(Channel.WHATSAPP, "phone-42")).thenReturn(binding);
+
+        new InboundWebhookService(bindingService, messageService)
+                .accept(Channel.WHATSAPP, "sha256=valid", "message-body", adapter, "app-secret");
+
+        verify(messageService).acceptAll(any(), eq(adapter));
+        verify(messageService, never()).accept(any(), eq(adapter));
     }
 }

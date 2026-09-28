@@ -12,6 +12,12 @@ import com.ford.service.ai.application.LeadTemperature;
 import com.ford.service.ai.application.SensitiveDataLevel;
 import com.ford.service.ai.application.ToolFamily;
 import com.ford.service.conversations.application.ConversationWorkflow;
+import com.ford.service.conversations.application.ConversationTurnLeaseUnavailableException;
+import com.ford.service.conversations.application.graph.ConversationGraphRunner;
+import com.ford.service.conversations.application.port.out.ConversationTurnLeasePort;
+import com.ford.service.conversations.application.graph.ConversationGraphRoute;
+import com.ford.service.conversations.application.graph.ConversationTurnOutcome;
+import com.ford.service.conversations.application.graph.ConversationTurnReference;
 import com.ford.service.conversations.application.ConversationDecisionRepository;
 import com.ford.service.conversations.application.ConversationMemoryPort;
 import com.ford.service.conversations.application.ConversationMemoryService;
@@ -20,9 +26,11 @@ import com.ford.service.shared.HumanHandoffPolicy;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
 import com.ford.service.conversations.api.AssistantReply;
+import com.ford.service.conversations.api.ConversationMemoryProjectionRefreshRequested;
 import com.ford.service.conversations.api.ConversationTurnRequest;
 import com.ford.service.conversations.api.HandoffRequested;
 import com.ford.service.conversations.domain.ConversationSnapshot;
+import com.ford.service.channels.api.AcceptedInboundMessage;
 import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.conversations.domain.ConversationTurn;
 import com.ford.service.conversations.domain.ConversationMemoryContext;
@@ -33,6 +41,7 @@ import com.ford.service.conversations.domain.MemoryProjectionUpdate;
 import com.ford.service.conversations.domain.MemoryQuery;
 import com.ford.service.conversations.domain.MemoryUpdateResult;
 import com.ford.service.conversations.api.OutboundDeliveryRequested;
+import com.ford.service.observability.AiObservationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 
@@ -41,10 +50,64 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class ConversationWorkflowTest {
+
+    @Test
+    void leavesInboundEventIncompleteWhenConversationLeaseIsBusy() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var receiptId = UUID.randomUUID();
+        var processorCalls = new ArrayList<ConversationTurnReference>();
+        var requestedLeaseDuration = new java.util.concurrent.atomic.AtomicReference<java.time.Duration>();
+        var graph = new ConversationGraphRunner(reference -> {
+            processorCalls.add(reference);
+            return new ConversationTurnOutcome(ConversationGraphRoute.IGNORED);
+        });
+        ConversationTurnLeasePort busyLease = new ConversationTurnLeasePort() {
+            @Override
+            public boolean tryAcquire(UUID tenant, UUID conversation, String owner, java.time.Duration duration) {
+                requestedLeaseDuration.set(duration);
+                return false;
+            }
+
+            @Override
+            public void release(UUID tenant, UUID conversation, String owner) {
+                throw new AssertionError("must not release a lease that was not acquired");
+            }
+        };
+        var workflow = new ConversationWorkflow(graph, mock(AiObservationService.class), busyLease);
+
+        assertThatThrownBy(() -> workflow.on(new InboundMessageAccepted(receiptId, tenantId, conversationId,
+                Channel.WHATSAPP, "wamid.lease-busy", Instant.now())))
+                .isInstanceOf(ConversationTurnLeaseUnavailableException.class);
+        assertThat(processorCalls).isEmpty();
+        assertThat(requestedLeaseDuration.get()).isEqualTo(java.time.Duration.ofMinutes(15));
+    }
+
+    @Test
+    void productionWorkflowDelegatesInboundIdsToTheBoundedGraph() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var receiptId = UUID.randomUUID();
+        var processorCalls = new ArrayList<ConversationTurnReference>();
+        var graph = new ConversationGraphRunner(reference -> {
+            processorCalls.add(reference);
+            return new ConversationTurnOutcome(ConversationGraphRoute.IGNORED);
+        });
+        var workflow = new ConversationWorkflow(graph, mock(AiObservationService.class));
+
+        workflow.on(new InboundMessageAccepted(receiptId, tenantId, conversationId, Channel.WHATSAPP,
+                "wamid.graph", Instant.now()));
+
+        assertThat(processorCalls).containsExactly(new ConversationTurnReference(tenantId, conversationId, receiptId));
+    }
 
     @Test
     void activeBotTurnPersistsReplyAndPublishesDeliveryRequest() {
@@ -65,7 +128,49 @@ class ConversationWorkflowTest {
         assertThat(assistant.requests).hasSize(1);
         assertThat(repository.completedTurn).isEqualTo(new ConversationTurn("La Ranger está disponible."));
         assertThat(repository.completedExpectedVersion).isEqualTo(4);
-        assertThat(publisher.events).singleElement().isInstanceOf(OutboundDeliveryRequested.class);
+        assertThat(publisher.events).anySatisfy(event ->
+                assertThat(event).isInstanceOfSatisfying(ConversationMemoryProjectionRefreshRequested.class,
+                        projection -> {
+                            assertThat(projection.key().tenantId()).isEqualTo(tenantId);
+                            assertThat(projection.key().conversationId()).isEqualTo(conversationId);
+                            assertThat(projection.expectedVersion()).isZero();
+                        }));
+        assertThat(publisher.events).noneMatch(OutboundDeliveryRequested.class::isInstance);
+    }
+
+    @Test
+    void doesNotPublishSecondDeliveryRequestWhenRepositoryOwnsAtomicOutboxWrite() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var publisher = new RecordingPublisher();
+
+        new ConversationWorkflow(new RecordingConversationRepository(snapshot(
+                tenantId, conversationId, ConversationState.BOT_ACTIVE, 1)),
+                new RecordingAssistant(new AssistantReply("Una respuesta", false)), publisher,
+                new HumanHandoffPolicy(false), memoryService())
+                .on(new InboundMessageAccepted(UUID.randomUUID(), tenantId, conversationId,
+                        Channel.WHATSAPP, "wamid.atomic-outbox", Instant.now()));
+
+        assertThat(publisher.events).noneMatch(OutboundDeliveryRequested.class::isInstance);
+    }
+
+    @Test
+    void recordsOnlyBoundedChannelAndOutcomeForInboundProcessing() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var observations = mock(AiObservationService.class);
+        var workflow = new ConversationWorkflow(
+                new RecordingConversationRepository(snapshot(tenantId, conversationId,
+                        ConversationState.BOT_ACTIVE, 1)),
+                new RecordingAssistant(new AssistantReply("Respuesta útil.", false)),
+                new RecordingPublisher(), new HumanHandoffPolicy(false), memoryService(),
+                (id, messageId, decision) -> { }, observations);
+
+        workflow.on(new InboundMessageAccepted(UUID.randomUUID(), tenantId, conversationId, Channel.WHATSAPP,
+                "wamid.private", Instant.now()));
+
+        verify(observations).event("ford.conversation.inbound", Map.of(
+                "channel", "WHATSAPP", "outcome", "success"));
     }
 
     @Test
@@ -76,31 +181,32 @@ class ConversationWorkflowTest {
                 tenantId, conversationId, ConversationState.BOT_ACTIVE, 4));
         var memoryPort = new RecordingMemoryPort();
         var assistant = new RecordingAssistant(new AssistantReply("Respuesta", false));
+        var publisher = new RecordingPublisher();
 
-        new ConversationWorkflow(repository, assistant, new RecordingPublisher(),
-                new HumanHandoffPolicy(true), new ConversationMemoryService(memoryPort, new MemoryProperties()))
-                .on(new InboundMessageAccepted(
-                        UUID.randomUUID(), tenantId, conversationId, Channel.WHATSAPP,
-                        "wamid.memory", Instant.parse("2026-09-19T12:00:00Z"),
-                        "customer-1", "¿Hay Ranger?"));
+        var receiptId = UUID.randomUUID();
+        new ConversationWorkflow(repository, assistant, publisher,
+                new HumanHandoffPolicy(true), new ConversationMemoryService(memoryPort, new MemoryProperties()),
+                (id, messageId, decision) -> { }, new com.ford.service.observability.DefaultAiObservationService(
+                io.micrometer.observation.ObservationRegistry.NOOP),
+                (tenant, conversation, receipt) -> Optional.of(new AcceptedInboundMessage(
+                        "wamid.memory", "customer-1", "¿Hay Ranger?", Instant.parse("2026-09-19T12:00:00Z"))))
+                .on(new InboundMessageAccepted(receiptId, tenantId, conversationId, Channel.WHATSAPP,
+                        "wamid.memory", Instant.parse("2026-09-19T12:00:00Z")));
 
         assertThat(memoryPort.inbound).isNotNull();
         assertThat(memoryPort.inbound.providerMessageId()).isEqualTo("wamid.memory");
         assertThat(memoryPort.inbound.content()).isEqualTo("¿Hay Ranger?");
-        assertThat(memoryPort.outbound).isNotNull();
-        assertThat(memoryPort.outbound.direction()).isEqualTo(ConversationMessage.Direction.OUTBOUND);
-        assertThat(memoryPort.outbound.content()).isEqualTo("Respuesta");
-        assertThat(memoryPort.outbound.providerMessageId())
-                .startsWith("assistant:")
-                .hasSize(46);
-        assertThat(memoryPort.projection).isNotNull();
-        assertThat(memoryPort.projection.summary()).contains("¿Hay Ranger?");
-        assertThat(memoryPort.projectionExpectedVersion).isZero();
+        assertThat(publisher.events).anySatisfy(event ->
+                assertThat(event).isInstanceOfSatisfying(ConversationMemoryProjectionRefreshRequested.class,
+                        projection -> {
+                            assertThat(projection.update().summary()).contains("¿Hay Ranger?");
+                            assertThat(projection.expectedVersion()).isZero();
+                        }));
         assertThat(memoryPort.invalidated).isEqualTo(conversationId);
     }
 
     @Test
-    void usesTheAcceptedEventTextInsteadOfAStaleConversationSnapshot() {
+    void loadsTheAcceptedReceiptTextInsteadOfAStaleConversationSnapshot() {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
         var repository = new RecordingConversationRepository(snapshot(
@@ -108,9 +214,13 @@ class ConversationWorkflowTest {
         var assistant = new RecordingAssistant(new AssistantReply("Respuesta actual", false));
 
         new ConversationWorkflow(repository, assistant, new RecordingPublisher(),
-                new HumanHandoffPolicy(false), memoryService()).on(new InboundMessageAccepted(
-                UUID.randomUUID(), tenantId, conversationId, Channel.WHATSAPP,
-                "wamid.latest", Instant.now(), "customer-1", "¿Qué promociones hay?"));
+                new HumanHandoffPolicy(false), memoryService(), (id, messageId, decision) -> { },
+                new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP),
+                (tenant, conversation, receipt) -> Optional.of(new AcceptedInboundMessage(
+                        "wamid.latest", "customer-1", "¿Qué promociones hay?", Instant.now())))
+                .on(new InboundMessageAccepted(UUID.randomUUID(), tenantId, conversationId, Channel.WHATSAPP,
+                        "wamid.latest", Instant.now()));
 
         assertThat(assistant.requests).singleElement()
                 .extracting(ConversationTurnRequest::message)
@@ -179,7 +289,7 @@ class ConversationWorkflowTest {
 
         assertThat(repository.handoffDecision).isNull();
         assertThat(repository.completedTurn.text()).contains("No pude generar");
-        assertThat(publisher.events).singleElement().isInstanceOf(OutboundDeliveryRequested.class);
+        assertThat(publisher.events).noneMatch(OutboundDeliveryRequested.class::isInstance);
     }
 
     @Test
@@ -249,10 +359,6 @@ class ConversationWorkflowTest {
             }
 
             @Override
-            public void recordOutbound(ConversationMemoryKey key, ConversationMessage message) {
-            }
-
-            @Override
             public MemoryUpdateResult updateProjection(ConversationMemoryKey key,
                                                         MemoryProjectionUpdate update,
                                                         long expectedVersion) {
@@ -287,9 +393,6 @@ class ConversationWorkflowTest {
 
     private static final class RecordingMemoryPort implements ConversationMemoryPort {
         private ConversationMessage inbound;
-        private ConversationMessage outbound;
-        private MemoryProjectionUpdate projection;
-        private long projectionExpectedVersion = -1;
         private UUID invalidated;
 
         @Override
@@ -303,16 +406,9 @@ class ConversationWorkflowTest {
         }
 
         @Override
-        public void recordOutbound(ConversationMemoryKey key, ConversationMessage message) {
-            outbound = message;
-        }
-
-        @Override
         public MemoryUpdateResult updateProjection(ConversationMemoryKey key,
                                                     MemoryProjectionUpdate update,
                                                     long expectedVersion) {
-            projection = update;
-            projectionExpectedVersion = expectedVersion;
             return new MemoryUpdateResult(true, expectedVersion + 1);
         }
 

@@ -11,7 +11,8 @@ public record AssistantRequest(
         String conversationState,
         String memoryContext,
         boolean containsSensitiveData,
-        ConversationDecision decision) {
+        ConversationDecision decision,
+        String leadJourneyContext) {
 
     public AssistantRequest {
         decision = decision == null ? ConversationDecision.deterministicDefault() : decision;
@@ -20,13 +21,19 @@ public record AssistantRequest(
     public AssistantRequest(UUID tenantId, UUID conversationId, String message,
                              String conversationState, boolean containsSensitiveData) {
         this(tenantId, conversationId, message, conversationState, null, containsSensitiveData,
-                ConversationDecision.deterministicDefault());
+                ConversationDecision.deterministicDefault(), null);
     }
 
     public AssistantRequest(UUID tenantId, UUID conversationId, String message,
                              String conversationState, String memoryContext,
                              boolean containsSensitiveData) {
         this(tenantId, conversationId, message, conversationState, memoryContext, containsSensitiveData,
-                ConversationDecision.deterministicDefault());
+                ConversationDecision.deterministicDefault(), null);
+    }
+
+    public AssistantRequest(UUID tenantId, UUID conversationId, String message, String conversationState,
+                            String memoryContext, boolean containsSensitiveData, ConversationDecision decision) {
+        this(tenantId, conversationId, message, conversationState, memoryContext, containsSensitiveData,
+                decision, null);
     }
 }

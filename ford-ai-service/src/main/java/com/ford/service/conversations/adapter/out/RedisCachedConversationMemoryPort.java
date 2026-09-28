@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Objects;
+import java.time.Instant;
 
 public final class RedisCachedConversationMemoryPort implements ConversationMemoryPort {
 
@@ -55,8 +56,12 @@ public final class RedisCachedConversationMemoryPort implements ConversationMemo
         try {
             var cached = cache.load(query.key());
             if (cached.isPresent()) {
-                cacheHits.increment();
-                return bound(cached.get(), query);
+                var updatedAt = cached.get().updatedAt();
+                if (updatedAt == null || updatedAt.isAfter(Instant.now().minus(properties.workingMemoryTtl()))) {
+                    cacheHits.increment();
+                    return bound(cached.get(), query);
+                }
+                evictSafely(query.key());
             }
             cacheMisses.increment();
             durableFallbacks.increment();
@@ -83,12 +88,6 @@ public final class RedisCachedConversationMemoryPort implements ConversationMemo
     @Override
     public void recordInbound(ConversationMemoryKey key, ConversationMessage message) {
         durable.recordInbound(key, message);
-        evictSafely(key);
-    }
-
-    @Override
-    public void recordOutbound(ConversationMemoryKey key, ConversationMessage message) {
-        durable.recordOutbound(key, message);
         evictSafely(key);
     }
 

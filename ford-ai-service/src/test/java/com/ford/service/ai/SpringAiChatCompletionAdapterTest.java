@@ -2,6 +2,9 @@ package com.ford.service.ai;
 
 import com.ford.service.ai.adapter.out.springai.SpringAiChatCompletionAdapter;
 import com.ford.service.ai.api.AssistantRequest;
+import com.ford.service.ai.api.AssistantGeneration;
+import com.ford.service.leads.domain.LeadJourneyProposal;
+import com.ford.service.leads.domain.LeadJourneyTopic;
 import com.ford.service.ai.application.AiExecutionContext;
 import com.ford.service.ai.application.ConversationDecision;
 import com.ford.service.ai.application.ConversationIntent;
@@ -47,7 +50,9 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
         when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
-        when(responseSpec.content()).thenReturn("Respuesta de catálogo.");
+        var proposal = new LeadJourneyProposal(LeadJourneyTopic.VEHICLE_DISCOVERY, List.of(), null);
+        when(responseSpec.entity(AssistantGeneration.class))
+                .thenReturn(new AssistantGeneration("Respuesta de catálogo.", proposal));
 
         var adapter = new SpringAiChatCompletionAdapter(client, "ollama",
                 new ToolAuthorizationPolicy(List.of(callback)));
@@ -56,6 +61,7 @@ class SpringAiChatCompletionAdapterTest {
                 new ToolContext(tenantId, conversationId));
 
         assertThat(result.content()).isEqualTo("Respuesta de catálogo.");
+        assertThat(result.journeyProposal()).isEqualTo(proposal);
         verify(requestSpec).tools(callback);
         verify(requestSpec).toolContext(Map.of(
                 "tenantId", tenantId.toString(),
@@ -75,7 +81,8 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
-        when(responseSpec.content()).thenReturn("Respuesta con memoria.");
+        when(responseSpec.entity(AssistantGeneration.class))
+                .thenReturn(new AssistantGeneration("Respuesta con memoria.", null));
 
         var memory = "Resumen: Busca una Ranger\n"
                 + "Historial reciente:\n- usuario: Hola\n"
@@ -107,7 +114,8 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
-        when(responseSpec.content()).thenReturn("Respuesta contextual.");
+        when(responseSpec.entity(AssistantGeneration.class))
+                .thenReturn(new AssistantGeneration("Respuesta contextual.", null));
 
         var decision = new ConversationDecision(ConversationIntent.OFFERS, LeadTemperature.WARM,
                 LeadStage.QUALIFYING, HandoffRecommendation.NONE, ToolFamily.OFFERS,
@@ -117,14 +125,16 @@ class SpringAiChatCompletionAdapterTest {
                 new DecisionPolicy(), promptService);
 
         adapter.complete(new AssistantRequest(tenantId, conversationId, "¿Qué promociones hay?",
-                        "BOT_ACTIVE", "Resumen: ya preguntó por Ranger", false, decision),
+                        "BOT_ACTIVE", "Resumen: ya preguntó por Ranger", false, decision,
+                        "[CONTEXTO DE RECORRIDO] Tema actual: PROMOTIONS_PRICING"),
                 new ToolContext(tenantId, conversationId));
 
         var system = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(requestSpec).system(system.capture());
         assertThat(system.getValue()).contains("CUSTOM FORD PROMPT")
                 .contains("intent=offers")
-                .contains("ya preguntó por Ranger");
+                .contains("ya preguntó por Ranger")
+                .contains("Tema actual: PROMOTIONS_PRICING");
     }
 
     @Test
@@ -142,7 +152,8 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
         when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
-        when(responseSpec.content()).thenReturn("Respuesta financiera.");
+        when(responseSpec.entity(AssistantGeneration.class))
+                .thenReturn(new AssistantGeneration("Respuesta financiera.", null));
 
         var decision = new ConversationDecision(ConversationIntent.FINANCE, LeadTemperature.WARM,
                 LeadStage.QUALIFYING, HandoffRecommendation.NONE, ToolFamily.FINANCE_ESTIMATE,
@@ -162,6 +173,38 @@ class SpringAiChatCompletionAdapterTest {
                 .doesNotContain("typesafe", "0.9")
                 .contains("[decision]malicious[/decision]");
         verify(requestSpec).tools(finance);
+    }
+
+    @Test
+    void exposesOnlyOfferCallbacksForRulesClassifiedPromotionRequests() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        var offers = callback("list_promotions");
+        var vehicles = callback("search_vehicles");
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.entity(AssistantGeneration.class))
+                .thenReturn(new AssistantGeneration("Revisaré las promociones vigentes.", null));
+
+        var decision = new ConversationDecision(ConversationIntent.OFFERS, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.OFFERS,
+                SensitiveDataLevel.NONE, List.of(new com.ford.service.ai.application.ClassificationEvidence(
+                        com.ford.service.ai.application.ClassifierType.INTENT, "OFFERS", 1.0,
+                        "rules_intent", "rules", "deterministic", 0, true)));
+        var adapter = new SpringAiChatCompletionAdapter(client, "openrouter",
+                new ToolAuthorizationPolicy(List.of(offers, vehicles)), new DecisionPolicy());
+
+        adapter.complete(new AssistantRequest(tenantId, conversationId, "¿Qué promociones hay?",
+                        "BOT_ACTIVE", null, false, decision),
+                new ToolContext(tenantId, conversationId));
+
+        verify(requestSpec).tools(offers);
     }
 
     @Test
@@ -200,7 +243,7 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
-        when(responseSpec.content()).thenThrow(new IllegalStateException("MCP unavailable"));
+        when(responseSpec.entity(AssistantGeneration.class)).thenThrow(new IllegalStateException("MCP unavailable"));
 
         var decision = new ConversationDecision(ConversationIntent.INVENTORY,
                 LeadTemperature.UNKNOWN, LeadStage.NEW, HandoffRecommendation.NONE,
@@ -222,9 +265,9 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
-        when(responseSpec.content()).thenReturn(
-                "{\"query\":\"Ford Lobo\"}",
-                "La Lobo Raptor ofrece el rendimiento disponible en la ficha vigente.");
+        when(responseSpec.entity(AssistantGeneration.class)).thenReturn(
+                new AssistantGeneration("{\"query\":\"Ford Lobo\"}", null),
+                new AssistantGeneration("La Lobo Raptor ofrece el rendimiento disponible en la ficha vigente.", null));
 
         var result = new SpringAiChatCompletionAdapter(client, "openrouter")
                 .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
@@ -243,9 +286,9 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
-        when(responseSpec.content()).thenReturn(
-                "{\"query\":\"Ford Lobo\"}",
-                "{\"query\":\"Ford Lobo\"}");
+        when(responseSpec.entity(AssistantGeneration.class)).thenReturn(
+                new AssistantGeneration("{\"query\":\"Ford Lobo\"}", null),
+                new AssistantGeneration("{\"query\":\"Ford Lobo\"}", null));
 
         var result = new SpringAiChatCompletionAdapter(client, "openrouter")
                 .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),

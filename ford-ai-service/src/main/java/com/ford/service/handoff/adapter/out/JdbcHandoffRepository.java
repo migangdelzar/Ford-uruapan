@@ -3,9 +3,11 @@ package com.ford.service.handoff.adapter.out;
 import com.ford.service.handoff.api.OperatorPrincipal;
 import com.ford.service.handoff.application.port.out.HandoffRepository;
 import com.ford.service.handoff.domain.HandoffStatus;
+import com.ford.service.handoff.domain.HandoffPriority;
 import com.ford.service.handoff.domain.HandoffTicket;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
@@ -25,12 +27,13 @@ public class JdbcHandoffRepository implements HandoffRepository {
     public HandoffTicket save(HandoffTicket ticket) {
         jdbc.sql("""
                 insert into handoff_ticket
-                    (id, tenant_id, conversation_id, lead_id, status, assigned_operator_id,
-                     reason, version, created_at, claimed_at, closed_at)
-                values (:id, :tenantId, :conversationId, :leadId, :status, :operatorId,
-                        :reason, :version, :createdAt, :claimedAt, :closedAt)
+                    (id, tenant_id, conversation_id, lead_id, status, priority, assigned_operator_id,
+                     reason, idempotency_key, version, created_at, claimed_at, closed_at)
+                values (:id, :tenantId, :conversationId, :leadId, :status, :priority, :operatorId,
+                        :reason, :idempotencyKey, :version, :createdAt, :claimedAt, :closedAt)
                 on conflict (id) do update set
                     status = excluded.status,
+                    priority = excluded.priority,
                     assigned_operator_id = excluded.assigned_operator_id,
                     version = excluded.version,
                     claimed_at = excluded.claimed_at,
@@ -41,12 +44,14 @@ public class JdbcHandoffRepository implements HandoffRepository {
                 .param("conversationId", ticket.conversationId())
                 .param("leadId", ticket.leadId())
                 .param("status", ticket.status().name())
+                .param("priority", ticket.priority().name())
                 .param("operatorId", ticket.assignedOperatorId())
                 .param("reason", ticket.reason())
+                .param("idempotencyKey", ticket.idempotencyKey())
                 .param("version", ticket.version())
-                .param("createdAt", ticket.createdAt())
-                .param("claimedAt", ticket.claimedAt())
-                .param("closedAt", ticket.closedAt())
+                .param("createdAt", timestamp(ticket.createdAt()))
+                .param("claimedAt", timestamp(ticket.claimedAt()))
+                .param("closedAt", timestamp(ticket.closedAt()))
                 .update();
         return ticket;
     }
@@ -68,8 +73,17 @@ public class JdbcHandoffRepository implements HandoffRepository {
     }
 
     @Override
+    public Optional<HandoffTicket> findOpenByConversation(UUID tenantId, UUID conversationId) {
+        return jdbc.sql("select * from handoff_ticket where tenant_id=:tenantId and conversation_id=:conversationId " +
+                        "and status in ('HUMAN_PENDING','HUMAN_ACTIVE') order by created_at desc limit 1")
+                .param("tenantId", tenantId).param("conversationId", conversationId)
+                .query(this::map).optional();
+    }
+
+    @Override
     public List<HandoffTicket> list(UUID tenantId) {
-        return jdbc.sql("select * from handoff_ticket where tenant_id = :tenantId order by created_at desc")
+        return jdbc.sql("select * from handoff_ticket where tenant_id = :tenantId order by " +
+                        "case priority when 'HIGH' then 3 when 'NORMAL' then 2 else 1 end desc, created_at asc")
                 .param("tenantId", tenantId)
                 .query(this::map)
                 .list();
@@ -81,6 +95,15 @@ public class JdbcHandoffRepository implements HandoffRepository {
                 .param("conversationId", conversationId)
                 .query(UUID.class)
                 .single();
+    }
+
+    @Override
+    public boolean transitionConversationToPending(UUID tenantId, UUID conversationId) {
+        return jdbc.sql("""
+                update conversation set state='HUMAN_PENDING', version=version+1, updated_at=now()
+                 where id=:conversationId and tenant_id=:tenantId and state in ('BOT_ACTIVE','LEAD_CAPTURE')
+                """)
+                .param("tenantId", tenantId).param("conversationId", conversationId).update() == 1;
     }
 
     @Override
@@ -116,6 +139,7 @@ public class JdbcHandoffRepository implements HandoffRepository {
     }
 
     @Override
+    @Transactional
     public Optional<HandoffTicket> resume(UUID conversationId, UUID tenantId, UUID operatorId,
                                           long expectedVersion, Instant closedAt) {
         var updated = jdbc.sql("""
@@ -127,7 +151,15 @@ public class JdbcHandoffRepository implements HandoffRepository {
                 .param("conversationId", conversationId).param("tenantId", tenantId)
                 .param("expectedVersion", expectedVersion).param("closedAt", java.sql.Timestamp.from(closedAt))
                 .update();
-        return updated == 1 ? Optional.of(findByConversation(conversationId)) : Optional.empty();
+        if (updated != 1) return Optional.empty();
+        var resumed = jdbc.sql("""
+                update conversation set state='BOT_ACTIVE', version=version+1, updated_at=:updatedAt
+                 where id=:conversationId and tenant_id=:tenantId and state in ('HUMAN_PENDING','HUMAN_ACTIVE')
+                """)
+                .param("conversationId", conversationId).param("tenantId", tenantId)
+                .param("updatedAt", java.sql.Timestamp.from(closedAt)).update();
+        if (resumed != 1) throw new IllegalStateException("Could not resume bot for handed-off conversation");
+        return Optional.of(findByConversation(conversationId));
     }
 
     @Override
@@ -170,8 +202,10 @@ public class JdbcHandoffRepository implements HandoffRepository {
                 rs.getObject("conversation_id", UUID.class),
                 rs.getObject("lead_id", UUID.class),
                 HandoffStatus.valueOf(rs.getString("status")),
+                HandoffPriority.valueOf(rs.getString("priority")),
                 rs.getObject("assigned_operator_id", UUID.class),
                 rs.getString("reason"),
+                rs.getString("idempotency_key"),
                 rs.getLong("version"),
                 rs.getTimestamp("created_at").toInstant(),
                 instant(rs, "claimed_at"),
@@ -181,5 +215,9 @@ public class JdbcHandoffRepository implements HandoffRepository {
     private static Instant instant(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
         var timestamp = rs.getTimestamp(column);
         return timestamp == null ? null : timestamp.toInstant();
+    }
+
+    private static java.sql.Timestamp timestamp(Instant instant) {
+        return instant == null ? null : java.sql.Timestamp.from(instant);
     }
 }

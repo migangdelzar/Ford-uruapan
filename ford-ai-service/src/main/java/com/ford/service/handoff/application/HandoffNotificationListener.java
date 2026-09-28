@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Objects;
 
-/** Completes the durable operator-notification reaction for an assistant handoff. */
+/** Audits the durable handoff queue entry; this does not claim an external notification was sent. */
 @Component
 public class HandoffNotificationListener {
 
@@ -21,6 +21,6 @@ public class HandoffNotificationListener {
     public void on(HandoffRequested event) {
         var ticket = repository.findByConversation(event.conversationId());
         repository.recordSystemAudit(
-                "HANDOFF_NOTIFICATION_REQUESTED", ticket, event.eventId(), event.occurredAt());
+                "HANDOFF_QUEUE_ITEM_CREATED", ticket, event.eventId(), event.occurredAt());
     }
 }

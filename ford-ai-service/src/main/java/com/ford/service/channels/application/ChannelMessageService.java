@@ -7,6 +7,7 @@ import com.ford.service.channels.application.port.out.InboundMessagePersistenceP
 import com.ford.service.channels.domain.InboundMessage;
 import com.ford.service.channels.domain.RawWebhook;
 
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -57,16 +58,31 @@ public class ChannelMessageService {
 
     @Transactional
     public InboundMessage accept(RawWebhook webhook, ChannelAdapter adapter) {
+        var messages = adapter.parseInboundMessages(webhook);
+        if (messages.size() != 1) {
+            throw new IllegalArgumentException("Expected exactly one inbound message; received " + messages.size());
+        }
+        return accept(messages.getFirst());
+    }
+
+    @Transactional
+    public List<InboundMessage> acceptAll(RawWebhook webhook, ChannelAdapter adapter) {
+        return adapter.parseInboundMessages(webhook).stream()
+                .map(this::accept)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
+    private InboundMessage accept(InboundMessage message) {
         var started = System.nanoTime();
-        var message = adapter.parseInbound(webhook);
         var key = message.tenantId() + ":" + message.channel() + ":" + message.providerMessageId();
         var receiptId = UUID.randomUUID();
         var firstDelivery = deduplication == null
                 ? processedMessageIds.add(key)
                 : deduplication.recordIfNew(message, receiptId);
         if (!firstDelivery) {
-            log.info("Inbound message ignored channel={} outcome=duplicate durationMs={}",
-                    message.channel(), elapsedMs(started));
+            log.info("Inbound message ignored: conversationId={} deliveryAttemptId={} channel={} kind={} outcome=duplicate durationMs={}",
+                    message.conversationId(), receiptId, message.channel(), message.kind(), elapsedMs(started));
             return null;
         }
         var conversationId = message.conversationId();
@@ -76,11 +92,10 @@ public class ChannelMessageService {
         if (eventPublisher != null) {
             eventPublisher.publishEvent(new InboundMessageAccepted(
                     receiptId, message.tenantId(), conversationId, message.channel(),
-                    message.providerMessageId(), message.receivedAt(),
-                    message.participantId(), message.text()));
+                    message.providerMessageId(), message.receivedAt()));
         }
-        log.info("Inbound message accepted channel={} outcome=accepted durationMs={}",
-                message.channel(), elapsedMs(started));
+        log.info("Inbound message accepted: conversationId={} receiptId={} channel={} kind={} outcome=accepted durationMs={}",
+                conversationId, receiptId, message.channel(), message.kind(), elapsedMs(started));
         return message;
     }
 

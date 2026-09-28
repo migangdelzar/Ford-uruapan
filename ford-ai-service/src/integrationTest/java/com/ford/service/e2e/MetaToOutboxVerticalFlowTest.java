@@ -3,11 +3,6 @@ package com.ford.service.e2e;
 import com.ford.service.ai.api.AssistantTurn;
 import com.ford.service.ai.application.AssistantService;
 import com.ford.service.ai.application.Intent;
-import com.ford.service.conversations.application.ConversationWorkflow;
-import com.ford.service.conversations.application.port.out.ConversationAssistant;
-import com.ford.service.conversations.application.port.out.ConversationRepository;
-import com.ford.service.conversations.api.AssistantReply;
-import org.springframework.context.ApplicationEventPublisher;
 import liquibase.integration.spring.SpringLiquibase;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -16,11 +11,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -31,6 +28,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -38,14 +36,18 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Testcontainers
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(properties = {
         "spring.modulith.runtime.verification-enabled=false",
-        "spring.main.allow-bean-definition-overriding=true"
+        "spring.main.allow-bean-definition-overriding=true",
+        "ford.conversations.workflow.graph-enabled=true"
 })
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Import(MetaToOutboxVerticalFlowTest.TestBeans.class)
 class MetaToOutboxVerticalFlowTest {
+
+    private static final AtomicReference<Boolean> ASSISTANT_TRANSACTION_ACTIVE = new AtomicReference<>();
 
     private static final String APP_SECRET = "vertical-meta-app-secret";
     private static final String PROVIDER_ACCOUNT_ID = "vertical-phone-number-1";
@@ -54,7 +56,7 @@ class MetaToOutboxVerticalFlowTest {
             """;
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("pgvector/pgvector:pg16");
+    static final PostgreSQLContainer<?> POSTGRES = new com.ford.service.database.FordPostgresContainer();
 
     @BeforeAll
     static void prepareSchema() throws Exception {
@@ -91,12 +93,18 @@ class MetaToOutboxVerticalFlowTest {
     @Test
     void signedMetaQuestionProducesOneGroundedSpanishOutboundAndReplayDoesNotDuplicate() throws Exception {
         var tenantId = UUID.randomUUID();
+        ASSISTANT_TRANSACTION_ACTIVE.set(null);
         insertBinding(tenantId);
 
         postWebhook()
                 .andExpect(status().isAccepted());
 
         awaitCount("select count(*) from outbox_event where event_type = 'OUTBOUND_DELIVERY_REQUESTED'", 1);
+        awaitCount("select count(*) from event_publication where listener_id like '%ConversationWorkflow.on%' "
+                + "and completion_date is not null", 1);
+        assertThat(jdbc.sql("select count(*) from event_publication where event_type like '%OutboundDeliveryRequested%'")
+                .query(Integer.class).single()).isZero();
+        assertThat(ASSISTANT_TRANSACTION_ACTIVE.get()).isFalse();
 
         var conversationId = jdbc.sql("select id from conversation where tenant_id = :tenantId")
                 .param("tenantId", tenantId)
@@ -105,9 +113,10 @@ class MetaToOutboxVerticalFlowTest {
         var outbound = jdbc.sql("select content from conversation_message where conversation_id = :conversationId and direction = 'OUTBOUND'")
                 .param("conversationId", conversationId)
                 .query(String.class)
-                .single();
+                .list();
 
-        assertThat(outbound)
+        assertThat(outbound).singleElement()
+                .asString()
                 .contains("Ranger 2026", "$589,000 MXN", "catalog:ranger-2026", "vigencia")
                 .doesNotContain("5214521234567", "Ana", "ana@example.com");
         assertThat(jdbc.sql("select state from conversation where id = :conversationId")
@@ -165,7 +174,7 @@ class MetaToOutboxVerticalFlowTest {
         var inboundPublications = jdbc.sql("select count(*) from event_publication where event_type like '%InboundMessageAccepted%'")
                 .query(Integer.class).single();
         assertThat(actual)
-                .withFailMessage("outbox=%s conversations=%s state=%s inboundPublications=%s", actual,
+                .withFailMessage("actual=%s conversations=%s state=%s inboundPublications=%s", actual,
                         conversationCount, state, inboundPublications)
                 .isEqualTo(expected);
     }
@@ -182,28 +191,14 @@ class MetaToOutboxVerticalFlowTest {
         @Bean
         @Primary
         AssistantService assistantService() {
-            return (context, userText) -> new AssistantTurn(
-                    "La Ford Ranger 2026 tiene precio vigente desde $589,000 MXN. "
-                            + "Fuente: catalog:ranger-2026; vigencia: 2026-09-19. Confirma inventario con la agencia.",
-                    Intent.CATALOG, false, java.util.List.of("catalog:ranger-2026"), "test", "fixture-1");
-        }
-
-        @Bean
-        @Primary
-        ConversationAssistant conversationAssistant(AssistantService assistantService) {
-            return request -> {
-                var turn = assistantService.respond(
-                        new com.ford.service.ai.application.AiExecutionContext(
-                                request.tenantId(), false, request.conversationId()), request.message());
-                return new AssistantReply(turn.text(), turn.requestsHuman());
+            return (context, userText) -> {
+                ASSISTANT_TRANSACTION_ACTIVE.set(TransactionSynchronizationManager.isActualTransactionActive());
+                return new AssistantTurn(
+                        "La Ford Ranger 2026 tiene precio vigente desde $589,000 MXN. "
+                                + "Fuente: catalog:ranger-2026; vigencia: 2026-09-19. Confirma inventario con la agencia.",
+                        Intent.CATALOG, false, java.util.List.of("catalog:ranger-2026"), "test", "fixture-1");
             };
         }
 
-        @Bean
-        ConversationWorkflow testConversationWorkflow(ConversationRepository repository,
-                                                       ConversationAssistant assistant,
-                                                       ApplicationEventPublisher eventPublisher) {
-            return new ConversationWorkflow(repository, assistant, eventPublisher);
-        }
     }
 }

@@ -13,13 +13,31 @@ Use environment variables or a deployment profile; keep secrets outside Git.
 - `FORD_SECURITY_JWT_ENABLED`, `FORD_SECURITY_ISSUER_URI`, `FORD_SECURITY_AUDIENCE`
 - `FORD_META_APP_SECRET`, `FORD_META_VERIFY_TOKEN`
 - `FORD_META_DELIVERY_ENABLED`, channel delivery endpoints and access tokens
+- `FORD_META_WHATSAPP_ACCESS_TOKEN` is reused for authenticated WhatsApp Graph
+  media lookup/download. Set the non-secret
+  `FORD_CHANNELS_META_MEDIA_GRAPH_API_VERSION` to the Graph API version
+  supported by the Meta app. The Graph base URL defaults to
+  `https://graph.facebook.com`; overrides are accepted only for that official
+  HTTPS host.
 - `FORD_HUMAN_HANDOFF_ENABLED` (`false` enables bot-only mode)
-- `FORD_MEMORY_ENABLED`, `FORD_MEMORY_RECENT_MESSAGE_LIMIT`
+- `FORD_MEMORY_ENABLED`, `FORD_MEMORY_RECENT_MESSAGE_LIMIT`, and
+  `FORD_MEMORY_PROMPT_RECENT_MESSAGE_LIMIT` (default `8`). The first setting
+  preserves the durable recent-memory bound; the second controls how many
+  messages are injected into each model prompt.
 - `FORD_MEMORY_SUMMARY_MAX_CHARS`, `FORD_MEMORY_FACT_LIMIT`, `FORD_MEMORY_FACT_MAX_CHARS`
 - `FORD_MEMORY_SEMANTIC_ENABLED`, `FORD_MEMORY_SEMANTIC_LIMIT`, `FORD_MEMORY_CACHE_ENABLED`
 - `FORD_AI_CHAT_PROVIDER`, `FORD_AI_EMBEDDING_PROVIDER`
 - `FORD_AI_CLOUD_ENABLED`, `FORD_AI_LOCAL_ENABLED`, provider base URLs and model names
 - `FORD_AI_LOG_PROVIDER_ERRORS` (opt-in bounded provider error details)
+- `FORD_AI_MEDIA_ENABLED` (defaults to `false`), `FORD_AI_MEDIA_APPROVED_PROVIDERS`,
+  `FORD_AI_MEDIA_IMAGE_PROVIDERS`, and `FORD_AI_MEDIA_AUDIO_PROVIDERS`. Media is
+  sent only to an ID present in the approved and matching modality lists, with
+  a healthy configured model that advertises that capability. There is no
+  implicit vision/audio support for OpenAI-compatible endpoints such as
+  OpenRouter.
+- `FORD_AI_MEDIA_MAX_BYTES` (default 10 MiB, hard cap 10 MiB) and
+  `FORD_AI_MEDIA_TIMEOUT` (default and maximum 8s, covering download plus
+  interpretation). The normal conversation worker deadline still applies.
 - `TYPESAFE_API_KEY` (optional Jev classification key; never log or commit it)
 - `FORD_AI_CLASSIFICATION_ENABLED`, `FORD_AI_CLASSIFICATION_MODE` (`active`,
   `shadow`, or `disabled`), and `FORD_AI_CLASSIFICATION_PROVIDER`
@@ -83,14 +101,66 @@ events. The workflow persists the deterministic bot fallback and publishes the
 normal outbound delivery request instead. Set it back to `true` to restore
 human escalation behavior.
 
+## Conversation graph and sales escalation
+
+`FORD_CONVERSATION_GRAPH_ENABLED` selects the bounded LangGraph4j inbound
+workflow. It defaults to `false` for rollback compatibility. The graph runs one
+accepted inbound turn at a time and invokes the existing Spring AI assistant
+once; the model, authorized Ford MCP/RAG tools, conversation transcript, lead
+journey, and outbox remain owned by their existing application services and
+PostgreSQL tables. Graph checkpoints live in the separate `ford_graph` schema
+and contain only tenant, conversation, and receipt identifiers plus route
+metadata. They are execution checkpoints, not conversation memory or the
+system of record. Disable the flag and redeploy to return to the legacy
+workflow; do not drop checkpoint or business tables as part of rollback.
+
+With `FORD_HUMAN_HANDOFF_ENABLED=true`, direct requests for a person and HOT
+leads enter the high-priority `/api/v1/handoffs` queue. A queued ticket means
+the request is waiting; only a successful operator claim means an advisor has
+taken the conversation, at which point automated replies pause. Operators need
+`operator:read` to list tickets and `handoff:manage` to claim, pause, resume, or
+hand back a conversation. Claims are tenant-scoped and version-checked.
+
+For WARM leads, the assistant may offer an optional advisor follow-up. A
+follow-up is queued only after an unambiguous customer acceptance; declining
+suppresses another offer for that conversation. WARM follow-ups are listed at
+`GET /api/v1/follow-ups` and claimed at
+`POST /api/v1/follow-ups/{followUpId}/claim?tenantId=...`. Claiming a WARM
+follow-up does not pause the bot or claim that an advisor has joined the live
+conversation.
+
+For the OCI rollout, use `mise run deploy:flags -- FORD_CONVERSATION_GRAPH_ENABLED
+true FORD_HUMAN_HANDOFF_ENABLED true` to set only these allowlisted booleans in
+the private deployment config, then deploy through `mise run deploy:app`.
+Before a release, inspect both hosts and logs, run `mise run backup:run` and
+`mise run backup:verify`, and save the current app image with
+`mise run deploy:image-backup -- <current-image>`. Publish and deploy an
+immutable GHCR tag. If startup, migration, or health checks fail, deploy the
+previous immutable tag through the same app task. Migrations 013 and 014 are
+additive; never reset the production database or tenant data for rollback.
+
 Conversation memory is enabled by default and is persisted in PostgreSQL. The
 session scope is tenant, channel, provider account, and participant, so the
-same person on two provider numbers cannot share memory accidentally. The
-bounded recent transcript is injected into each assistant request; Redis is
-not the source of truth. Semantic fact retrieval is disabled by default and
-should only be enabled after the configured embedding model is compatible with
-the pgvector memory table. Memory read, embedding, and provider failures are
-fail-open for webhook processing.
+same person on two provider numbers cannot share memory accidentally. Every
+accepted inbound message and successful bot reply is written to the canonical
+`conversation_message` transcript. Redis is only a 24-hour cache and is not
+the source of truth; the working-memory projection expires after 90 days of
+inactivity.
+
+Each model request receives a controlled context: the bounded rolling summary,
+up to `FORD_MEMORY_PROMPT_RECENT_MESSAGE_LIMIT` recent messages (8 by
+default), and durable facts. The database transcript is not deleted when this
+window is reached, so it remains available for audit and future retrieval.
+The summary is deterministic and bounded: it carries forward recent customer
+requests and the current request without spending a second model call. This
+is the safe first stage of long-conversation compaction.
+
+Semantic retrieval is disabled by default. The current pgvector adapter
+retrieves semantic facts, not archived message turns; enabling it does not yet
+provide full event-stream recall. A future message-recall adapter should index
+redacted transcript turns and retrieve only the top 2-3 relevant turns under a
+token budget. Memory read, embedding, and provider failures are fail-open for
+webhook processing.
 
 Jev classification is a separate structured decision step, not the response
 generation model. When enabled with a real `TYPESAFE_API_KEY`, it classifies
@@ -184,6 +254,32 @@ status, duration, content types, and `X-Request-Id`. It intentionally does not
 log query values, request/response bodies, authorization headers, cookies, or
 Meta signatures.
 
+### WhatsApp typed messages and media
+
+Each message in a Meta webhook is normalized and accepted independently using
+the provider message ID for deduplication. Existing `channel_message` rows keep
+their content; Liquibase migration 018 adds `message_kind` with a `TEXT` default
+and empty JSON attachment metadata. Attachment metadata contains only the
+provider's opaque media ID, declared MIME type, filename, and declared size—no
+download URL, access token, or media bytes.
+
+Text, interactive choices, and shared locations enter the existing classifier
+and assistant flow as normalized text. Images and audio stay disabled unless
+the media feature and both provider allowlists are explicitly configured. The
+Meta token and Graph API version must also be present. Downloads are tied to an
+accepted tenant message, restricted to HTTPS Meta media hosts, size/MIME
+checked, held temporarily in memory, and cleared after interpretation. Documents,
+video, stickers, unsupported MIME types, missing media, provider failures, and
+timeouts produce a concise Spanish request for a text description; no answer
+model call is made for a failed-media turn.
+
+Before enabling media, verify the actual model/endpoint supports the modality,
+obtain approval to send raw customer media to that provider, and add its exact
+provider ID to the approved and modality allowlists. Audio additionally needs a
+Spring AI `TranscriptionModel` bean for the configured cloud provider. Never
+log media URLs, tokens, bytes, or raw media; only successfully resolved
+text/description is written to the canonical transcript.
+
 `docker:deps:down` stops only PostgreSQL and Redis and preserves the named
 PostgreSQL volume.
 
@@ -276,6 +372,68 @@ Metrics use bounded provider, tool and lead-band labels. Prompts, completions,
 raw webhook bodies, phone numbers, email addresses and financial details must
 not be placed in logs or metric labels. Use `DefaultPiiRedactor` before any
 diagnostic payload is exported.
+
+### Chat failure triage and release gate
+
+Run these gates from `ford-ai-service` before publishing an application image:
+
+```bash
+mise run test:unit
+mise run test:integration
+mise run test:ai-evaluation
+mise run test:check
+```
+
+The integration gate requires Docker/Testcontainers. The AI evaluation task
+runs deterministic Java and Node fixture tests without contacting OpenRouter;
+`mise run test:ai-evaluation --live` is a separate, opt-in model call and must
+not use customer conversation data. A `202` response from a webhook means the
+inbound event was accepted, not that an assistant reply was delivered.
+
+Use the durable stores to distinguish internal memory refresh from external
+delivery. These aggregate queries deliberately omit event payloads, transcript
+content, tenant identifiers, and serialized Modulith events:
+
+```sql
+select event_type, count(*) as outstanding,
+       min(publication_date) as oldest_publication
+from event_publication
+where completion_date is null
+group by event_type
+order by oldest_publication;
+
+select status, attempts, count(*) as events,
+       min(available_at) as oldest_available
+from outbox_event
+where status in ('PENDING', 'PROCESSING', 'DEAD_LETTER')
+group by status, attempts
+order by status, attempts;
+```
+
+An outstanding `ConversationMemoryProjectionRefreshRequested` publication
+means the derived memory projection needs retry; the accepted transcript and
+outbound event are committed independently. A growing `outbox_event` retry
+count means customer delivery is delayed; `DEAD_LETTER` needs operator review
+before any replay. Never replay an outbound message solely because a projection
+failed.
+
+During an incident, check `/actuator/health`, then the bounded observations and
+the two aggregate queries. Provider `rate_limited`/`provider_unavailable`
+events retry at most once per eligible provider before policy-approved fallback;
+repeated failures indicate upstream/provider capacity or configuration, not a
+reason to increase retry loops. Projection `persistence` failures are recoverable
+through Modulith publications. Outbox `retry` followed by `dead_letter` indicates
+delivery exhaustion; inspect the redacted error category and provider health.
+Review `mise run deploy:logs` through approved redacted filters only. Do not
+paste raw logs, SQL payload columns, prompts, tool results, phone numbers, tokens,
+or provider response bodies into incident notes.
+
+For a production release, additionally validate `mise run deploy:check` and
+`mise run deploy:status`, record the immutable current app image for rollback,
+then publish/deploy only after explicit release approval. The app deploy targets
+`emme-1`; database and Redis services remain on `emme-2`. Verify health and
+redacted startup/provider/MCP summaries after rollout. Do not reset data volumes
+or send a customer test message as part of release verification.
 
 ## Provider and safety controls
 

@@ -230,8 +230,33 @@ export function evaluateTranscript(transcript, scenario) {
       failures.push(`missing required tool: ${requiredTool}`);
     }
   }
+  for (const [index, expectedTurn] of (scenario.turns ?? []).entries()) {
+    const actualTurn = transcript.turns?.[index];
+    const response = actualTurn?.response?.toLowerCase() ?? '';
+    const turnTools = actualTurn?.toolNames ?? [];
+    for (const requiredTool of expectedTurn.requiredTools ?? []) {
+      if (!turnTools.includes(requiredTool)) {
+        failures.push(`turn ${index + 1} missing required tool: ${requiredTool}`);
+      }
+    }
+    for (const required of expectedTurn.requiredText ?? []) {
+      if (!response.includes(required.toLowerCase())) {
+        failures.push(`turn ${index + 1} missing required text: ${required}`);
+      }
+    }
+    for (const forbidden of expectedTurn.forbiddenText ?? []) {
+      if (response.includes(forbidden.toLowerCase())) {
+        failures.push(`turn ${index + 1} contains forbidden text: ${forbidden}`);
+      }
+    }
+  }
   const normalizedResponses = responses.map(normalizeResponse);
-  const duplicates = normalizedResponses.length - new Set(normalizedResponses).size;
+  let duplicates = 0;
+  for (let index = 1; index < normalizedResponses.length; index += 1) {
+    if (normalizedResponses.slice(0, index).some((previous) => materiallySimilar(previous, normalizedResponses[index]))) {
+      duplicates += 1;
+    }
+  }
   if (duplicates > (scenario.maxRepeatedResponses ?? 0)) {
     failures.push(`repeated response count: ${duplicates}`);
   }
@@ -314,7 +339,19 @@ function parseArguments(value) {
 }
 
 function normalizeResponse(value) {
-  return value.toLowerCase().replaceAll(/\s+/g, ' ').trim();
+  return value.toLowerCase().replaceAll(/[^\p{L}\p{N}]+/gu, ' ').replaceAll(/\s+/g, ' ').trim();
+}
+
+function materiallySimilar(left, right) {
+  if (left === right) return true;
+  const leftWords = new Set(left.split(' ').filter(Boolean));
+  const rightWords = new Set(right.split(' ').filter(Boolean));
+  if (leftWords.size < 5 || rightWords.size < 5) return false;
+  let intersection = 0;
+  for (const word of leftWords) {
+    if (rightWords.has(word)) intersection += 1;
+  }
+  return intersection / Math.max(leftWords.size, rightWords.size) >= 0.85;
 }
 
 function parseArgs(args) {

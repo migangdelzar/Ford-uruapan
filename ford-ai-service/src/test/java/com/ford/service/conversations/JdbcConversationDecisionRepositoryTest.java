@@ -49,6 +49,9 @@ class JdbcConversationDecisionRepositoryTest {
                     model varchar(160) not null,
                     latency_ms bigint not null,
                     fallback_used boolean not null,
+                    next_action varchar(40) not null default 'NO_ACTION',
+                    urgency_signal boolean not null default false,
+                    summary varchar(280) not null default '',
                     created_at timestamp with time zone not null,
                     unique (conversation_id, provider_message_id, classifier_type)
                 )
@@ -88,6 +91,8 @@ class JdbcConversationDecisionRepositoryTest {
                 .query(Integer.class).single()).isEqualTo(5);
         assertThat(jdbc.sql("select count(*) from conversation_decision where provider = 'typesafe'")
                 .query(Integer.class).single()).isEqualTo(5);
+        assertThat(jdbc.sql("select distinct next_action from conversation_decision")
+                .query(String.class).list()).containsExactly("NO_ACTION");
     }
 
     private static ConversationDecision decision() {

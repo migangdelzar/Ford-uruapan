@@ -108,7 +108,7 @@ public final class AssistantResponseQualityPolicy {
         }
         var intersection = new LinkedHashSet<>(leftWords);
         intersection.retainAll(rightWords);
-        return intersection.size() / (double) Math.max(leftWords.size(), rightWords.size()) >= 0.9;
+        return intersection.size() / (double) Math.max(leftWords.size(), rightWords.size()) >= 0.85;
     }
 
     private static Set<String> words(String value) {

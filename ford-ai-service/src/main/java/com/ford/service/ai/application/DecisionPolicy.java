@@ -25,15 +25,8 @@ public final class DecisionPolicy {
         if (availableTools == null) {
             return Set.of();
         }
-        if (decision != null && !decision.evidence().isEmpty()
-                && decision.evidence().stream().allMatch(ClassificationEvidence::fallbackUsed)) {
-            return Set.copyOf(availableTools);
-        }
         if (decision == null || decision.toolFamily() == ToolFamily.NONE) {
-            // A rules/low-confidence classifier may not know the exact family yet.
-            // Keep the model fail-safe (read-only tools only), but let it search the
-            // Ford catalog, offers, and approved knowledge before answering.
-            return Set.copyOf(availableTools);
+            return Set.of();
         }
         var allowed = TOOL_NAMES.getOrDefault(decision.toolFamily(), Set.of());
         return availableTools.stream()
@@ -46,9 +39,6 @@ public final class DecisionPolicy {
     }
 
     public boolean requiresVolatileInformation(ConversationDecision decision) {
-        return decision != null && (decision.toolFamily() == ToolFamily.VEHICLE_SEARCH
-                || decision.toolFamily() == ToolFamily.VEHICLE_DETAILS
-                || decision.toolFamily() == ToolFamily.OFFERS
-                || decision.toolFamily() == ToolFamily.KNOWLEDGE_SEARCH);
+        return decision != null && decision.toolFamily().requiresVolatileInformation();
     }
 }

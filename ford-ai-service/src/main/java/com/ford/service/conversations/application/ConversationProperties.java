@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class ConversationProperties {
 
     private HumanHandoff humanHandoff = new HumanHandoff();
+    private Workflow workflow = new Workflow();
 
     public boolean humanHandoffEnabled() {
         return humanHandoff.enabled();
@@ -19,8 +20,18 @@ public class ConversationProperties {
         humanHandoff = value;
     }
 
+    public boolean graphEnabled() { return workflow.graphEnabled(); }
+    public Workflow workflow() { return workflow; }
+    public void setWorkflow(Workflow value) { workflow = value; }
+
+    public static class Workflow {
+        private boolean graphEnabled;
+        public boolean graphEnabled() { return graphEnabled; }
+        public void setGraphEnabled(boolean value) { graphEnabled = value; }
+    }
+
     public static class HumanHandoff {
-        private boolean enabled = true;
+        private boolean enabled;
 
         public boolean enabled() {
             return enabled;

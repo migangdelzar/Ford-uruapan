@@ -37,6 +37,6 @@ public class InboundWebhookService {
 
         var webhook = RawWebhook.fromBinding(binding, body,
                 "meta:" + channel.name().toLowerCase() + ":" + UUID.randomUUID());
-        messageService.accept(webhook, adapter);
+        messageService.acceptAll(webhook, adapter);
     }
 }

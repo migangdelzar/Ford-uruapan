@@ -1,0 +1,20 @@
+databaseChangeLog:
+  - changeSet:
+      id: 015-conversation-turn-lease
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              create table if not exists conversation_turn_lease (
+                  tenant_id uuid not null,
+                  conversation_id uuid not null references conversation(id) on delete cascade,
+                  owner_id varchar(200) not null,
+                  lease_until timestamptz not null,
+                  updated_at timestamptz not null,
+                  primary key (tenant_id, conversation_id)
+              );
+              create index if not exists idx_conversation_turn_lease_expiry
+                  on conversation_turn_lease(lease_until);
+      rollback:
+        - sql:
+            sql: drop table if exists conversation_turn_lease;

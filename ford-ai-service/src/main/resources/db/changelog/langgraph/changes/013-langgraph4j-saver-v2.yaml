@@ -1,0 +1,47 @@
+databaseChangeLog:
+  - changeSet:
+      id: 013-langgraph4j-saver-v2
+      author: codex
+      changes:
+        - sql:
+            sql: CREATE SCHEMA IF NOT EXISTS ford_graph
+        - sql:
+            sql: |
+              CREATE TABLE ford_graph.lg4jthread (
+                thread_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                thread_name VARCHAR(255) UNIQUE NOT NULL,
+                parent_thread_id BIGINT,
+                is_interrupted BOOLEAN DEFAULT FALSE NOT NULL,
+                message TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+              )
+        - sql:
+            sql: |
+              CREATE TABLE ford_graph.lg4jthreadtag (
+                thread_id BIGINT PRIMARY KEY,
+                thread_name VARCHAR(255),
+                released_version INTEGER,
+                parent_thread_id BIGINT,
+                is_released BOOLEAN DEFAULT FALSE NOT NULL,
+                is_error BOOLEAN DEFAULT FALSE NOT NULL,
+                message TEXT,
+                created_at TIMESTAMP WITH TIME ZONE
+              )
+        - sql:
+            sql: |
+              CREATE TABLE ford_graph.lg4jcheckpoint (
+                checkpoint_id UUID PRIMARY KEY,
+                parent_checkpoint_id UUID,
+                thread_id BIGINT NOT NULL,
+                node_id VARCHAR(255),
+                next_node_id VARCHAR(255),
+                state_data JSONB NOT NULL,
+                state_content_type VARCHAR(100) NOT NULL,
+                saved_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+              )
+        - sql:
+            sql: CREATE INDEX idx_lg4jcheckpoint_thread_id ON ford_graph.lg4jcheckpoint(thread_id)
+        - sql:
+            sql: CREATE INDEX idx_lg4jcheckpoint_thread_id_saved_at_desc ON ford_graph.lg4jcheckpoint(thread_id, saved_at DESC)
+        - sql:
+            sql: CREATE INDEX idx_lg4jthreadtag_thread_name_released_version ON ford_graph.lg4jthreadtag(thread_name, released_version DESC)

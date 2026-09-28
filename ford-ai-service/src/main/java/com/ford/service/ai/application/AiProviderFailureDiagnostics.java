@@ -1,7 +1,9 @@
 package com.ford.service.ai.application;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.openai.errors.OpenAIServiceException;
 
+import java.time.Duration;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -14,7 +16,8 @@ public final class AiProviderFailureDiagnostics {
     public static String describe(Throwable failure, boolean ignoredIncludeResponseBody) {
         var serviceFailure = find(failure, OpenAIServiceException.class).orElse(null);
         Integer status = serviceFailure == null ? inferStatus(failure) : safeStatus(serviceFailure, failure);
-        var category = category(status, failure);
+        var category = status != null && status == 404
+                ? "not_found" : failureCategory(status, failure);
         var retryAfter = serviceFailure == null ? null : safeHeader(serviceFailure, "retry-after");
         var requestId = serviceFailure == null ? null : safeHeader(serviceFailure, "x-request-id");
         var code = serviceFailure == null ? null : safeCode(serviceFailure);
@@ -27,6 +30,14 @@ public final class AiProviderFailureDiagnostics {
         append(result, "code", code);
         append(result, "type", type);
         return result.toString();
+    }
+
+    public static ProviderFailure classify(Throwable failure) {
+        var serviceFailure = find(failure, OpenAIServiceException.class).orElse(null);
+        Integer status = serviceFailure == null ? inferStatus(failure) : safeStatus(serviceFailure, failure);
+        var category = failureCategory(status, failure);
+        var retryAfter = serviceFailure == null ? null : parseRetryAfter(safeHeader(serviceFailure, "retry-after"));
+        return new ProviderFailure(category, status, retryAfter);
     }
 
     private static <T extends Throwable> Optional<T> find(Throwable failure, Class<T> type) {
@@ -93,24 +104,46 @@ public final class AiProviderFailureDiagnostics {
         return null;
     }
 
-    private static String category(Integer status, Throwable failure) {
+    private static String failureCategory(Integer status, Throwable failure) {
         if (status != null) {
             if (status == 401 || status == 403) {
-                return "authentication";
-            }
-            if (status == 404) {
-                return "not_found";
+                return ProviderFailure.AUTHENTICATION;
             }
             if (status == 429) {
-                return "rate_limited";
+                return ProviderFailure.RATE_LIMITED;
             }
             if (status >= 500) {
-                return "provider_unavailable";
+                return ProviderFailure.PROVIDER_UNAVAILABLE;
+            }
+            if (status >= 400) {
+                return ProviderFailure.INVALID_REQUEST;
             }
         }
-        var name = failure.getClass().getSimpleName().toLowerCase(Locale.ROOT);
-        return name.contains("timeout") || name.contains("io")
-                ? "network" : "provider_error";
+        if (find(failure, JsonProcessingException.class).isPresent()) {
+            return ProviderFailure.PROVIDER_ERROR;
+        }
+        var current = failure;
+        while (current != null) {
+            var name = current.getClass().getSimpleName().toLowerCase(Locale.ROOT);
+            if (current instanceof java.io.IOException || name.contains("timeout")
+                    || name.contains("connectexception") || name.contains("socketexception")
+                    || name.contains("network")) {
+                return ProviderFailure.NETWORK;
+            }
+            current = current.getCause();
+        }
+        return ProviderFailure.PROVIDER_ERROR;
+    }
+
+    private static Duration parseRetryAfter(String value) {
+        if (value == null || !value.trim().matches("\\d+")) {
+            return null;
+        }
+        try {
+            return Duration.ofSeconds(Long.parseLong(value.trim()));
+        } catch (ArithmeticException | NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private static void append(StringBuilder result, String name, String value) {

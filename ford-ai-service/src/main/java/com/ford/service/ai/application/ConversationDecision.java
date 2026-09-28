@@ -11,7 +11,21 @@ public record ConversationDecision(
         HandoffRecommendation handoffRecommendation,
         ToolFamily toolFamily,
         SensitiveDataLevel sensitiveDataLevel,
+        LeadNextAction nextAction,
+        boolean urgencySignal,
+        String summary,
         List<ClassificationEvidence> evidence) {
+
+    public ConversationDecision(ConversationIntent intent,
+                                LeadTemperature leadTemperature,
+                                LeadStage leadStage,
+                                HandoffRecommendation handoffRecommendation,
+                                ToolFamily toolFamily,
+                                SensitiveDataLevel sensitiveDataLevel,
+                                List<ClassificationEvidence> evidence) {
+        this(intent, leadTemperature, leadStage, handoffRecommendation, toolFamily,
+                sensitiveDataLevel, LeadNextAction.NO_ACTION, false, "", evidence);
+    }
 
     public static ConversationDecision deterministicDefault() {
         return new ConversationDecision(ConversationIntent.GENERAL, LeadTemperature.UNKNOWN, LeadStage.NEW,
@@ -25,6 +39,8 @@ public record ConversationDecision(
         Objects.requireNonNull(handoffRecommendation, "handoff recommendation is required");
         Objects.requireNonNull(toolFamily, "tool family is required");
         Objects.requireNonNull(sensitiveDataLevel, "sensitive data level is required");
+        Objects.requireNonNull(nextAction, "next action is required");
+        summary = normalizeSummary(summary);
         evidence = List.copyOf(evidence == null ? List.of() : evidence);
     }
 
@@ -36,7 +52,13 @@ public record ConversationDecision(
             case OFFERS -> Intent.OFFERS;
             case KNOWLEDGE -> Intent.KNOWLEDGE;
             case HUMAN_REQUEST -> Intent.LEAD_HANDOFF;
-            case GENERAL, APPOINTMENT -> Intent.GENERAL;
+            case APPOINTMENT -> Intent.APPOINTMENT;
+            case TRADE_IN -> Intent.TRADE_IN;
+            case DEALERSHIP_INFO -> Intent.DEALERSHIP_INFO;
+            case SERVICE_SUPPORT -> Intent.SERVICE_SUPPORT;
+            case COMPLAINT_STATUS -> Intent.COMPLAINT_STATUS;
+            case OUT_OF_SCOPE -> Intent.OUT_OF_SCOPE;
+            case GENERAL -> Intent.GENERAL;
         };
     }
 
@@ -50,12 +72,26 @@ public record ConversationDecision(
             updatedEvidence.add(leadEvidence);
         }
         return new ConversationDecision(intent, temperature, stage, handoffRecommendation,
-                toolFamily, sensitiveDataLevel, updatedEvidence);
+                toolFamily, sensitiveDataLevel, nextAction, urgencySignal, summary, updatedEvidence);
     }
 
     public ConversationDecision withHandoffRecommendation(HandoffRecommendation recommendation) {
         return new ConversationDecision(intent, leadTemperature, leadStage, recommendation,
-                toolFamily, sensitiveDataLevel, evidence);
+                toolFamily, sensitiveDataLevel, nextAction, urgencySignal, summary, evidence);
+    }
+
+    public ConversationDecision withVolatileToolRoute(ConversationDecision route) {
+        Objects.requireNonNull(route, "volatile tool route is required");
+        var updatedEvidence = new java.util.ArrayList<>(evidence);
+        updatedEvidence.removeIf(item -> item.classifier() == ClassifierType.INTENT
+                || item.classifier() == ClassifierType.TOOL_FAMILY);
+        route.evidence().stream()
+                .filter(item -> item.classifier() == ClassifierType.INTENT
+                        || item.classifier() == ClassifierType.TOOL_FAMILY)
+                .forEach(updatedEvidence::add);
+        return new ConversationDecision(route.intent(), leadTemperature, leadStage, handoffRecommendation,
+                route.toolFamily(), sensitiveDataLevel, route.nextAction(), urgencySignal || route.urgencySignal(),
+                summary.isBlank() ? route.summary() : summary, updatedEvidence);
     }
 
     public String toPromptContext() {
@@ -66,7 +102,18 @@ public record ConversationDecision(
                 "tool_family=" + lower(toolFamily) + "\n" +
                 "handoff=" + lower(handoffRecommendation) + "\n" +
                 "sensitive_data=" + lower(sensitiveDataLevel) + "\n" +
+                "next_action=" + lower(nextAction) + "\n" +
+                "urgency_signal=" + urgencySignal + "\n" +
+                "summary=" + summary + "\n" +
                 "[/DECISION CONTEXT]";
+    }
+
+    private static String normalizeSummary(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        var normalized = value.trim().replaceAll("\\s+", " ");
+        return normalized.length() <= 280 ? normalized : normalized.substring(0, 280).trim();
     }
 
     private static String lower(Enum<?> value) {

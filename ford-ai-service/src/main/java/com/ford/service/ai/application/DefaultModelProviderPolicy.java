@@ -14,6 +14,13 @@ public final class DefaultModelProviderPolicy implements ModelProviderPolicy {
 
     @Override
     public ProviderDescriptor select(AiExecutionContext context, ModelRequirements requirements) {
+        return candidates(context, requirements).stream()
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("No provider satisfies the request policy"));
+    }
+
+    @Override
+    public List<ProviderDescriptor> candidates(AiExecutionContext context, ModelRequirements requirements) {
         var restricted = context.containsSensitiveData()
                 || context.decision().sensitiveDataLevel() == SensitiveDataLevel.CONFIRMED;
         return providers.stream()
@@ -21,9 +28,10 @@ public final class DefaultModelProviderPolicy implements ModelProviderPolicy {
                 .filter(provider -> !restricted || !provider.cloud())
                 .filter(provider -> !requirements.toolCalling() || provider.capabilities().toolCalling())
                 .filter(provider -> !requirements.structuredOutput() || provider.capabilities().structuredOutput())
+                .filter(provider -> !requirements.imageInput() || provider.capabilities().imageInput())
+                .filter(provider -> !requirements.audioInput() || provider.capabilities().audioInput())
                 .sorted(Comparator.comparing(ProviderDescriptor::cloud).reversed())
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("No provider satisfies the request policy"));
+                .toList();
     }
 
     @Override

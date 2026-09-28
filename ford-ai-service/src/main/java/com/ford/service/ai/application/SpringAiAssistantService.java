@@ -104,6 +104,10 @@ public final class SpringAiAssistantService implements AssistantService {
         }
 
         var conversationId = context.conversationId() == null ? UUID.randomUUID() : context.conversationId();
+        var started = System.nanoTime();
+        log.info("AI turn started: conversationId={} memoryChars={} sensitiveData={}",
+                conversationId, context.memoryContext() == null ? 0 : context.memoryContext().length(),
+                context.containsSensitiveData());
         var decision = decisionService.decide(new ClassificationContext(
                 context.tenantId(), conversationId, userText, context.memoryContext(),
                 "BOT_ACTIVE", context.containsSensitiveData()));
@@ -112,12 +116,19 @@ public final class SpringAiAssistantService implements AssistantService {
         if (leadAssessment.shouldEscalate() && decision.handoffRecommendation() == HandoffRecommendation.NONE) {
             decision = decision.withHandoffRecommendation(HandoffRecommendation.ASSISTANT_RECOMMENDED);
         }
+        log.info("AI turn classified: conversationId={} intent={} leadTemperature={} leadStage={} toolFamily={} handoff={} nextAction={} evidenceCount={}",
+                conversationId, decision.intent(), decision.leadTemperature(), decision.leadStage(),
+                decision.toolFamily(), decision.handoffRecommendation(), decision.nextAction(), decision.evidence().size());
         if (!scopePolicy.allows(userText, decision, context.memoryContext())) {
+            log.info("AI turn completed by scope guard: conversationId={} durationMs={}",
+                    conversationId, elapsedMs(started));
             return new AssistantTurn(scopePolicy.scopeResponse(), decision.toLegacyIntent(), false,
                     List.of(), "scope-guard", "none", decision);
         }
         if (handoffPolicy.enabled()
                 && (leadAssessment.shouldEscalate() || decisionPolicy.mayCreateHandoff(decision, true))) {
+            log.info("AI turn routed to handoff policy: conversationId={} reason=lead_policy handoffEnabled=true durationMs={}",
+                    conversationId, elapsedMs(started));
             return new AssistantTurn(handoffPolicy.fallbackText(), decision.toLegacyIntent(), true,
                     List.of(), "lead-policy", "none", decision);
         }
@@ -125,18 +136,28 @@ public final class SpringAiAssistantService implements AssistantService {
             AssistantResponse response = orchestrator.respond(new AssistantRequest(
                     context.tenantId(), conversationId, userText, "BOT_ACTIVE",
                     context.memoryContext(),
-                    context.containsSensitiveData(), decision));
+                    context.containsSensitiveData(), decision, context.leadJourneyContext()));
             var requestsHuman = response.handoffRequired()
                     || decisionPolicy.mayCreateHandoff(decision, handoffPolicy.enabled());
+            log.info("AI turn completed: conversationId={} provider={} model={} requestsHuman={} sourceCount={} journeyProposal={} durationMs={}",
+                    conversationId, response.provider(), modelVersion(response.provider()), requestsHuman,
+                    response.sourceDocumentIds().size(), response.journeyProposal() != null, elapsedMs(started));
             return new AssistantTurn(response.content(), decision.toLegacyIntent(), requestsHuman,
-                    response.sourceDocumentIds(), response.provider(), modelVersion(response.provider()), decision);
+                    response.sourceDocumentIds(), response.provider(), modelVersion(response.provider()), decision,
+                    response.journeyProposal());
         } catch (RuntimeException exception) {
-            log.warn("AI completion failed: providers={} exceptionType={} {}",
+            log.error("AI turn failed: conversationId={} providers={} exceptionType={} durationMs={} {}",
+                    conversationId,
                     providerSummary(), exception.getClass().getSimpleName(),
+                    elapsedMs(started),
                     AiProviderFailureDiagnostics.describe(exception, logProviderErrors));
             return new AssistantTurn(handoffPolicy.fallbackText(), decision.toLegacyIntent(),
                     false, List.of(), "fallback", "none", decision);
         }
+    }
+
+    private static long elapsedMs(long started) {
+        return (System.nanoTime() - started) / 1_000_000L;
     }
 
     private static ConversationDecisionService defaultDecisionService() {

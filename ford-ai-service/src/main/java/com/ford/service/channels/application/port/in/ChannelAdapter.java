@@ -7,10 +7,16 @@ import com.ford.service.channels.domain.RawWebhook;
 import com.ford.service.channels.domain.WebhookRequest;
 import com.ford.service.channels.domain.DeliveryResult;
 
+import java.util.List;
+
 public interface ChannelAdapter {
     Channel channel();
 
     InboundMessage parseInbound(RawWebhook payload);
+
+    default List<InboundMessage> parseInboundMessages(RawWebhook payload) {
+        return List.of(parseInbound(payload));
+    }
 
     void validateWebhook(WebhookRequest request);
 

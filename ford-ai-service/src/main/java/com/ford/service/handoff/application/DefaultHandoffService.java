@@ -36,10 +36,16 @@ public class DefaultHandoffService implements HandoffService {
         }
         var tenantId = repository.findConversationTenant(request.conversationId());
         requireTenant(principal, tenantId);
+        var existing = repository.findOpenByConversation(tenantId, request.conversationId());
+        if (existing.isPresent()) return existing.get();
         var ticket = repository.save(new HandoffTicket(
                 UUID.randomUUID(), tenantId, request.conversationId(), request.leadId(),
-                HandoffStatus.HUMAN_PENDING, null, request.reason(), 0,
+                HandoffStatus.HUMAN_PENDING, com.ford.service.handoff.domain.HandoffPriority.NORMAL,
+                null, request.reason(), "operator:" + tenantId + ":" + request.conversationId(), 0,
                 Instant.now(), null, null));
+        if (!repository.transitionConversationToPending(tenantId, request.conversationId())) {
+            throw new IllegalStateException("Conversation cannot enter human handoff from its current state");
+        }
         publishAuditAndEvent("HANDOFF_REQUESTED", ticket, principal);
         return ticket;
     }

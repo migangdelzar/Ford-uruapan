@@ -2,6 +2,8 @@ package com.ford.service.channels.adapter.out;
 
 import com.ford.service.channels.application.port.out.InboundMessagePersistencePort;
 import com.ford.service.channels.domain.InboundMessage;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,9 +15,11 @@ import java.util.UUID;
 @Repository
 public class JdbcInboundMessagePersistenceAdapter implements InboundMessagePersistencePort {
     private final JdbcClient jdbc;
+    private final ObjectMapper objectMapper;
 
-    public JdbcInboundMessagePersistenceAdapter(JdbcClient jdbc) {
+    public JdbcInboundMessagePersistenceAdapter(JdbcClient jdbc, ObjectMapper objectMapper) {
         this.jdbc = jdbc;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -53,10 +57,10 @@ public class JdbcInboundMessagePersistenceAdapter implements InboundMessagePersi
                 insert into channel_message
                     (id, binding_id, conversation_id, tenant_id, channel,
                      provider_message_id, participant_id, content, received_at,
-                     raw_payload_reference)
+                     raw_payload_reference, message_kind, attachment_metadata)
                 values (:receiptId, :bindingId, :conversationId, :tenantId, :channel,
                         :providerMessageId, :participantId, :content, :receivedAt,
-                        :rawPayloadReference)
+                        :rawPayloadReference, :messageKind, cast(:attachmentMetadata as jsonb))
                 on conflict (tenant_id, channel, provider_message_id) do nothing
                 """)
                 .param("receiptId", receiptId)
@@ -69,6 +73,8 @@ public class JdbcInboundMessagePersistenceAdapter implements InboundMessagePersi
                 .param("content", message.text())
                 .param("receivedAt", Timestamp.from(message.receivedAt()))
                 .param("rawPayloadReference", message.rawPayloadReference())
+                .param("messageKind", message.kind().name())
+                .param("attachmentMetadata", attachmentMetadata(message))
                 .update();
 
         jdbc.sql("""
@@ -84,5 +90,13 @@ public class JdbcInboundMessagePersistenceAdapter implements InboundMessagePersi
                 .param("receivedAt", Timestamp.from(message.receivedAt()))
                 .update();
         return conversationId;
+    }
+
+    private String attachmentMetadata(InboundMessage message) {
+        try {
+            return objectMapper.writeValueAsString(message.attachments());
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to serialize inbound attachment metadata", exception);
+        }
     }
 }

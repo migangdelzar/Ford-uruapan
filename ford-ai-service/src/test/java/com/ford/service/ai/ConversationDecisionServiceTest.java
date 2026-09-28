@@ -3,8 +3,11 @@ package com.ford.service.ai;
 import com.ford.service.ai.application.ClassificationContext;
 import com.ford.service.ai.application.ConversationDecision;
 import com.ford.service.ai.application.ConversationDecisionService;
+import com.ford.service.ai.application.DecisionPolicy;
 import com.ford.service.ai.application.ConversationIntent;
 import com.ford.service.ai.application.ConversationDecisionPort;
+import com.ford.service.ai.application.IntentRouter;
+import com.ford.service.ai.adapter.out.rules.RulesConversationDecisionAdapter;
 import com.ford.service.ai.application.HandoffRecommendation;
 import com.ford.service.ai.application.LeadStage;
 import com.ford.service.ai.application.LeadTemperature;
@@ -14,11 +17,31 @@ import com.ford.service.ai.configuration.ClassificationProperties;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ConversationDecisionServiceTest {
+
+    @Test
+    void restoresVolatileToolRouteWhenPrimaryClassifierMissesAnOffersQuestion() {
+        var primaryDecision = new ConversationDecision(ConversationIntent.GENERAL,
+                LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE, ToolFamily.NONE,
+                SensitiveDataLevel.NONE, List.of());
+        var rules = new RulesConversationDecisionAdapter(new IntentRouter());
+        var service = new ConversationDecisionService(context -> primaryDecision, rules,
+                new ClassificationProperties());
+
+        var decision = service.decide(context("Quiero conocer qué modelos tienen promoción"));
+
+        assertThat(decision.intent()).isEqualTo(ConversationIntent.OFFERS);
+        assertThat(decision.toolFamily()).isEqualTo(ToolFamily.OFFERS);
+        assertThat(decision.leadTemperature()).isEqualTo(LeadTemperature.WARM);
+        assertThat(decision.leadStage()).isEqualTo(LeadStage.QUALIFYING);
+        assertThat(new DecisionPolicy().allowedToolNames(decision, Set.of("list_promotions", "search_offers")))
+                .contains("list_promotions", "search_offers");
+    }
 
     @Test
     void recordsRulesFallbackWhenThePrimaryClassifierFails() {
