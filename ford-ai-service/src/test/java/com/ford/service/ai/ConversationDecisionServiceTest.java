@@ -63,6 +63,51 @@ class ConversationDecisionServiceTest {
     }
 
     @Test
+    void replacesAConflictingSpecializedToolRouteWithTheDeterministicRoute() {
+        var primaryDecision = new ConversationDecision(ConversationIntent.FINANCE,
+                LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE,
+                ToolFamily.KNOWLEDGE_SEARCH, SensitiveDataLevel.NONE, List.of());
+        var rules = new RulesConversationDecisionAdapter(new IntentRouter());
+        var service = new ConversationDecisionService(context -> primaryDecision, rules,
+                new ClassificationProperties());
+
+        var decision = service.decide(context("Quiero una mensualidad"));
+
+        assertThat(decision.intent()).isEqualTo(ConversationIntent.FINANCE);
+        assertThat(decision.toolFamily()).isEqualTo(ToolFamily.FINANCE_ESTIMATE);
+    }
+
+    @Test
+    void preventsPrimaryToolCallsForDeterministicallyGeneralOrOutOfScopeMessages() {
+        var primaryDecision = new ConversationDecision(ConversationIntent.OUT_OF_SCOPE,
+                LeadTemperature.UNKNOWN, LeadStage.NEW, HandoffRecommendation.NONE,
+                ToolFamily.KNOWLEDGE_SEARCH, SensitiveDataLevel.NONE, List.of());
+        var rules = new RulesConversationDecisionAdapter(new IntentRouter());
+        var service = new ConversationDecisionService(context -> primaryDecision, rules,
+                new ClassificationProperties());
+
+        var decision = service.decide(context("Escribe un poema"));
+
+        assertThat(decision.intent()).isEqualTo(ConversationIntent.OUT_OF_SCOPE);
+        assertThat(decision.toolFamily()).isEqualTo(ToolFamily.NONE);
+    }
+
+    @Test
+    void keepsTheMoreSpecificPrimaryVehicleRouteWhenRulesOnlyHaveAKnowledgeRoute() {
+        var primaryDecision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
+                LeadTemperature.UNKNOWN, LeadStage.NEW, HandoffRecommendation.NONE,
+                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, List.of());
+        var rules = new RulesConversationDecisionAdapter(new IntentRouter());
+        var service = new ConversationDecisionService(context -> primaryDecision, rules,
+                new ClassificationProperties());
+
+        var decision = service.decide(context("¿Qué rendimiento de gasolina tiene la Ford Escape? "));
+
+        assertThat(decision.intent()).isEqualTo(ConversationIntent.VEHICLE_DETAILS);
+        assertThat(decision.toolFamily()).isEqualTo(ToolFamily.VEHICLE_DETAILS);
+    }
+
+    @Test
     void recordsRulesFallbackWhenThePrimaryClassifierFails() {
         ConversationDecisionPort primary = context -> { throw new IllegalStateException("provider unavailable"); };
         ConversationDecision fallback = new ConversationDecision(ConversationIntent.GENERAL,

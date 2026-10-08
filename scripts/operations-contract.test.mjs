@@ -259,6 +259,44 @@ test("deploy secret adoption stores exported fallback keys privately without pri
   }
 });
 
+test("deployment adopts the prefixed Jev key into the private app credential without printing it", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "ford-typesafe-secret-test-"));
+  try {
+    const configDir = path.join(temporary, "deployment", "config");
+    const miseRoot = path.join(temporary, "ford-ai-service");
+    await mkdir(configDir, { recursive: true });
+    await mkdir(miseRoot, { recursive: true });
+    const configFile = path.join(configDir, "oci.env");
+    await writeFile(configFile, "TYPESAFE_API_KEY=\n", { mode: 0o600 });
+    const library = path.resolve("ford-ai-service/.mise/lib/remote.sh");
+    const stdout = execFileSync("bash", ["-c", `source "${library}"; load_deploy_config; adopt_environment_secret TYPESAFE_API_KEY FORD_TYPESAFE_JEV_API_KEY`], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: { ...process.env, MISE_PROJECT_ROOT: miseRoot, FORD_TYPESAFE_JEV_API_KEY: "synthetic-jev-key" }
+    });
+
+    assert.equal(stdout, "");
+    assert.match(await readFile(configFile, "utf8"), /^TYPESAFE_API_KEY=synthetic-jev-key$/m);
+    assert.equal((await stat(configFile)).mode & 0o777, 0o600);
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
+
+test("Ansible inventory and app environment receive the TypeSafe credential", async () => {
+  const remote = await read("ford-ai-service/.mise/lib/remote.sh");
+  const template = await read("deployment/ansible/roles/app/templates/app.env.j2");
+  const secrets = await read("ford-ai-service/.mise/tasks/deploy/secrets");
+  const example = await read("deployment/config/oci.env.example");
+
+  assert.match(remote, /typesafe_api_key:\s*\$\{typesafe_key_yaml\}/);
+  assert.match(remote, /typesafe_key_yaml=.*TYPESAFE_API_KEY/);
+  assert.match(template, /^TYPESAFE_API_KEY=\{\{ typesafe_api_key \| default\(''\) \}\}$/m);
+  assert.match(secrets, /TYPESAFE_API_KEY/);
+  assert.match(example, /^TYPESAFE_API_KEY=$/m);
+  assert.doesNotMatch(remote, /typesafe_api_key.*terraform|terraform.*typesafe_api_key/i);
+});
+
 test("deployment preflight reports fallback readiness without revealing provider keys", async () => {
   const library = path.resolve("ford-ai-service/.mise/lib/remote.sh");
   const output = execFileSync("bash", ["-c", `source "${library}"; report_ai_fallback_status`], {
@@ -275,6 +313,24 @@ test("deployment preflight reports fallback readiness without revealing provider
   assert.match(output, /AI fallback groq\s+enabled credential=present capabilities=verified/);
   assert.match(output, /AI fallback gemini\s+disabled/);
   assert.doesNotMatch(output, /synthetic-hidden-key/);
+});
+
+test("deployment preflight reports Jev readiness without revealing its key", async () => {
+  const library = path.resolve("ford-ai-service/.mise/lib/remote.sh");
+  const output = execFileSync("bash", ["-c", `source "${library}"; report_classification_status`], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      FORD_AI_CLASSIFICATION_ENABLED: "true",
+      FORD_AI_CLASSIFICATION_MODE: "active",
+      FORD_AI_CLASSIFICATION_PROVIDER: "typesafe",
+      TYPESAFE_API_KEY: "synthetic-hidden-jev-key",
+      FORD_AI_CLASSIFIER_SENSITIVE_DATA_ENABLED: "false"
+    }
+  });
+
+  assert.match(output, /classification typesafe enabled=true mode=active credential=present sensitive_data=false/);
+  assert.doesNotMatch(output, /synthetic-hidden-jev-key/);
 });
 
 test("live provider preflight always executes and requires a synthetic tool call", async () => {

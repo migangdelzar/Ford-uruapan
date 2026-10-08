@@ -13,6 +13,7 @@ import com.ford.service.ai.configuration.ClassificationProperties;
 import org.junit.jupiter.api.Test;
 import org.springaicommunity.typesafe.JsonContent;
 import org.springaicommunity.typesafe.TypeSafeClient;
+import org.springaicommunity.typesafe.question.Choice;
 import org.springaicommunity.typesafe.response.ChoiceAnswer;
 import org.springaicommunity.typesafe.response.NoulAnswer;
 import org.springaicommunity.typesafe.response.ScoreAnswer;
@@ -93,6 +94,27 @@ class TypeSafeConversationDecisionAdapterTest {
         assertThat(questions.getValue()).containsKeys("intent", "lead_stage", "lead_temperature", "tool_family",
                 "user_requests_human", "negative_sentiment", "complex_request")
                 .doesNotContainKey("has_sensitive_data");
+    }
+
+    @Test
+    void explainsIntentAndToolChoicesInSpanishInsteadOfSendingBareEnumLabels() {
+        var client = mock(TypeSafeClient.class);
+        when(client.systemOne(anyString(), anyMap())).thenReturn(response());
+        var adapter = new TypeSafeConversationDecisionAdapter(client, new ClassificationProperties());
+
+        adapter.decide(new ClassificationContext(
+                UUID.randomUUID(), UUID.randomUUID(), "Busco una SUV disponible", null, "BOT_ACTIVE", false));
+
+        var questions = org.mockito.ArgumentCaptor.forClass(Map.class);
+        verify(client).systemOne(anyString(), questions.capture());
+        var toolQuestion = (Choice) questions.getValue().get("tool_family");
+        var intentQuestion = (Choice) questions.getValue().get("intent");
+        assertThat(toolQuestion.criteria().get("VEHICLE_SEARCH"))
+                .isEqualTo(JsonContent.of("Buscar unidades disponibles en el inventario."));
+        assertThat(toolQuestion.criteria().get("FINANCE_ESTIMATE"))
+                .isEqualTo(JsonContent.of("Calcular una estimación de pagos o financiamiento."));
+        assertThat(intentQuestion.criteria().get("FINANCE"))
+                .isEqualTo(JsonContent.of("Financiamiento, crédito o mensualidades."));
     }
 
     @Test

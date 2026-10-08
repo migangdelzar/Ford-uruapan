@@ -90,8 +90,12 @@ Use environment variables or a deployment profile; keep secrets outside Git.
   `FORD_AI_MEDIA_TIMEOUT` (default and maximum 8s, covering download plus
   interpretation). The normal conversation worker deadline still applies.
 - `TYPESAFE_API_KEY` (optional Jev classification key; inject only through
-  private deployment config; never log or commit it). If missing, startup logs
-  that rules are the effective classifier.
+  private deployment config; never log or commit it). Workstation operators may
+  keep the exported shell value under `FORD_TYPESAFE_JEV_API_KEY`; run
+  `mise run deploy:secrets` to copy it into the ignored
+  `deployment/config/oci.env`. `mise run deploy:check` reports presence only.
+  Ansible then injects the canonical name into emme-1's app environment. If
+  missing, startup uses deterministic rules.
 - `FORD_AI_CLASSIFICATION_ENABLED`, `FORD_AI_CLASSIFICATION_MODE` (`active`,
   `shadow`, or `disabled`), and `FORD_AI_CLASSIFICATION_PROVIDER`
 - `FORD_AI_CLASSIFICATION_MIN_CONFIDENCE`, classifier-specific `FORD_AI_CLASSIFIER_*`
@@ -311,6 +315,20 @@ score. Jev handoff output is advisory; Java enforces direct requests or clear
 consent after an offer.
 Use `FORD_AI_CLASSIFICATION_MODE=shadow` to exercise the provider while
 retaining rules decisions.
+
+Jev's published rate is $0.042 per million input tokens; output tokens are
+free. The app makes a classification request per eligible customer turn, so
+conversation and memory context affect usage. The TypeSafe API key is never
+printed by deployment preflight. Set a $5 account-level usage cap in the
+TypeSafe console. If the account uses purchased credits without a monthly cap,
+disable automatic refills and keep the purchased balance within that limit so
+exhausting credits stops paid requests. Confirm existing balance and refill
+settings before production activation. See [TypeSafe model pricing](https://docs.typesafe.ai/models)
+and [TypeSafe credit terms](https://typesafe.ai/legal/mca).
+
+The initial 8-case Spanish smoke evaluation uses synthetic dealership messages
+only and is recorded in [the Jev evaluation note](../../docs/jev-spanish-smoke-eval.md).
+It is a routing check, not a broad accuracy benchmark.
 
 The input security policy runs before Jev and response generation. It blocks
 common direct attempts to override or reveal system instructions, redacts

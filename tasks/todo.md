@@ -1,5 +1,22 @@
 # Jev classification implementation
 
+## TypeSafe Jev activation wiring (2026-10-08)
+
+- [x] Verify the exported workstation key and identify the app/deployment variable mismatch.
+- [x] Add a no-echo adoption path from `FORD_TYPESAFE_JEV_API_KEY` to private `TYPESAFE_API_KEY`.
+- [x] Propagate the canonical key through Mise inventory and Ansible to emme-1.
+- [x] Add safe deployment readiness output and regression coverage for key presence/permissions.
+- [x] Run an eight-flow synthetic Spanish classification smoke check and tighten option descriptions.
+- [x] Reconcile deterministic specialist and scope routes against conflicting Jev tool choices.
+- [ ] Confirm TypeSafe account spend limit or prepaid credits with automatic refill disabled.
+- [ ] Publish and deploy to emme-1 after the account limit is confirmed.
+
+### Results
+
+- The API key was copied to the ignored local deployment config with mode `0600`; neither secret values nor generated Ansible credentials were printed.
+- Jev 1.13 matched all eight synthetic intents and seven of eight raw intent/tool pairs. The app's deterministic route correction prevents a tool call on the one out-of-scope mismatch. Token usage was 7,689 input tokens, approximately $0.000323 at the listed rate.
+- Full rollout remains gated on the TypeSafe account credit/refill setting. TypeSafe's API exposes no account billing configuration; production should wait until a $5 cap is set or a $5 credit balance is protected from automatic refill.
+
 ## Hybrid approved-knowledge retrieval
 
 - [x] Confirm the existing knowledge vector store, metadata contract, Spring AI version, and PostgreSQL table.

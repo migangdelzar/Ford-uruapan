@@ -133,11 +133,29 @@ public final class TypeSafeConversationDecisionAdapter implements ConversationDe
     private Map<String, org.springaicommunity.typesafe.question.Question> questions() {
         var questions = new LinkedHashMap<String, org.springaicommunity.typesafe.question.Question>();
         if (properties.intentEnabled()) {
-            questions.put("intent", Choice.of("Clasifica la intención principal.", enumLabels(ConversationIntent.class)));
+            questions.put("intent", choice("Clasifica la intención principal del cliente en una conversación de venta y atención de una agencia Ford mexicana.", Map.ofEntries(
+                    Map.entry("GENERAL", "Saludo o conversación general sin petición específica."),
+                    Map.entry("INVENTORY", "Disponibilidad o búsqueda de vehículos para comprar."),
+                    Map.entry("VEHICLE_DETAILS", "Características, versiones o datos de un vehículo específico."),
+                    Map.entry("FINANCE", "Financiamiento, crédito o mensualidades."),
+                    Map.entry("OFFERS", "Promociones, descuentos u ofertas vigentes."),
+                    Map.entry("APPOINTMENT", "Agendar o cambiar una cita o prueba de manejo."),
+                    Map.entry("KNOWLEDGE", "Pregunta informativa sobre vehículos o procesos de compra."),
+                    Map.entry("HUMAN_REQUEST", "Petición explícita para hablar con un asesor o una persona."),
+                    Map.entry("TRADE_IN", "Valuación o intercambio de un vehículo usado."),
+                    Map.entry("DEALERSHIP_INFO", "Ubicación, horarios o contacto de la agencia."),
+                    Map.entry("SERVICE_SUPPORT", "Servicio, mantenimiento o reparación de un vehículo."),
+                    Map.entry("COMPLAINT_STATUS", "Queja o seguimiento de una queja existente."),
+                    Map.entry("OUT_OF_SCOPE", "Tema ajeno a vehículos Ford, la agencia o sus servicios."))));
         }
         if (properties.leadEnabled()) {
-            questions.put("lead_stage", Choice.of("Clasifica la etapa del lead.", enumLabels(LeadStage.class)));
-            questions.put("lead_temperature", Score.of("Clasifica la temperatura comercial.",
+            questions.put("lead_stage", choice("Clasifica la etapa actual del proceso de compra, usando solo lo que el cliente expresó.", Map.of(
+                    "NEW", "Primer contacto; todavía no hay señales suficientes de calificación.",
+                    "QUALIFYING", "Está explorando opciones o compartiendo necesidades, presupuesto o plazo.",
+                    "QUALIFIED", "Tiene intención, necesidades y próximos pasos claros para comprar.",
+                    "CONVERTED", "Confirma que ya compró o completó la conversión.",
+                    "LOST", "Declara que ya no seguirá con la compra o eligió otra alternativa.")));
+            questions.put("lead_temperature", Score.of("Clasifica la temperatura comercial según intención y señales expresas de compra. UNKNOWN si no hay evidencia; COLD si la intención es débil; WARM si explora seriamente; HOT si expresa intención o plazo inmediato.",
                     "UNKNOWN", "COLD", "WARM", "HOT"));
         }
         if (properties.handoffEnabled()) {
@@ -146,7 +164,14 @@ public final class TypeSafeConversationDecisionAdapter implements ConversationDe
             questions.put("complex_request", Noul.of("La solicitud requiere coordinación o juicio humano complejo."));
         }
         if (properties.toolsEnabled()) {
-            questions.put("tool_family", Choice.of("Selecciona la familia de herramienta necesaria.", enumLabels(ToolFamily.class)));
+            questions.put("tool_family", choice("Selecciona la familia de herramienta necesaria para responder con datos confiables. Usa la familia más específica y no elijas KNOWLEDGE_SEARCH si aplica una familia especializada: inventario usa VEHICLE_SEARCH, características de un modelo usan VEHICLE_DETAILS, pagos o crédito usan FINANCE_ESTIMATE, y promociones usan OFFERS. Elige NONE si no se necesita consultar datos externos.", Map.of(
+                    "NONE", "No hace falta consultar una herramienta." ,
+                    "VEHICLE_SEARCH", "Buscar unidades disponibles en el inventario." ,
+                    "VEHICLE_DETAILS", "Consultar características de una unidad o modelo específico." ,
+                    "OFFERS", "Consultar promociones u ofertas vigentes." ,
+                    "FINANCE_ESTIMATE", "Calcular una estimación de pagos o financiamiento." ,
+                    "KNOWLEDGE_SEARCH", "Solo para preguntas generales o información estática aprobada de la agencia; no usar cuando aplique una familia especializada." ,
+                    "APPOINTMENT", "Agendar o actualizar una cita.")));
         }
         if (properties.sensitiveDataEnabled()) {
             questions.put("has_sensitive_data", Noul.of("El usuario incluye o solicita credenciales, secretos o datos financieros sensibles."));
@@ -154,13 +179,8 @@ public final class TypeSafeConversationDecisionAdapter implements ConversationDe
         return Map.copyOf(questions);
     }
 
-    private static String[] enumLabels(Class<? extends Enum<?>> type) {
-        var values = type.getEnumConstants();
-        var labels = new String[values.length];
-        for (var index = 0; index < values.length; index++) {
-            labels[index] = values[index].name();
-        }
-        return labels;
+    private static Choice choice(String instructions, Map<String, String> options) {
+        return Choice.builder().instructions(instructions).options(options).build();
     }
 
     private static <E extends Enum<E>> E choice(SystemOneResponse response, String key, Class<E> type) {

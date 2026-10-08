@@ -50,13 +50,21 @@ public class ConversationDecisionService {
                             && evidence.confidence() < properties.minConfidence())) {
                 throw new IllegalStateException("TypeSafe classification confidence is below the configured threshold");
             }
-            if (classified.toolFamily() == ToolFamily.NONE) {
-                var route = rules.decide(context);
-                if (route.toolFamily().requiresVolatileInformation()) {
-                    log.warn("Conversation volatile tool route corrected: conversationId={} classifiedIntent={} correctedIntent={} correctedToolFamily={}",
-                            context.conversationId(), classified.intent(), route.intent(), route.toolFamily());
-                    return classified.withVolatileToolRoute(route);
-                }
+            var route = rules.decide(context);
+            var deterministicScopeDeniesTools = route.toolFamily() == ToolFamily.NONE
+                    && (route.intent() == ConversationIntent.GENERAL
+                    || route.intent() == ConversationIntent.OUT_OF_SCOPE);
+            var deterministicIntentHasSpecificTool = switch (route.intent()) {
+                case INVENTORY, VEHICLE_DETAILS, FINANCE, OFFERS, APPOINTMENT, SERVICE_SUPPORT -> true;
+                case GENERAL, KNOWLEDGE, HUMAN_REQUEST, TRADE_IN, DEALERSHIP_INFO,
+                        COMPLAINT_STATUS, OUT_OF_SCOPE -> false;
+            };
+            if (route.toolFamily() != classified.toolFamily()
+                    && (deterministicIntentHasSpecificTool || deterministicScopeDeniesTools)) {
+                log.warn("Conversation tool route reconciled: conversationId={} classifiedIntent={} classifiedToolFamily={} deterministicIntent={} deterministicToolFamily={}",
+                        context.conversationId(), classified.intent(), classified.toolFamily(),
+                        route.intent(), route.toolFamily());
+                return classified.withDeterministicRoute(route);
             }
             return classified;
         } catch (RuntimeException ignored) {

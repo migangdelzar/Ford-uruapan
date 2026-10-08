@@ -33,6 +33,7 @@ load_deploy_config() {
   local preserved_cloudflare_api_token="${CLOUDFLARE_API_TOKEN:-}"
   local preserved_cloudflare_account_id="${CLOUDFLARE_ACCOUNT_ID:-}"
   local preserved_openrouter_api_key="${OPENROUTER_API_KEY:-}"
+  local preserved_typesafe_api_key="${TYPESAFE_API_KEY:-}"
   local preserved_ford_mcp_token="${FORD_MCP_TOKEN:-}"
   local preserved_ford_mcp_api_token="${FORD_MCP_API_TOKEN:-}"
   local preserved_mcp_token="${MCP_HTTP_BEARER_TOKEN:-}"
@@ -62,6 +63,7 @@ load_deploy_config() {
   if [[ -n "$preserved_cloudflare_api_token" ]]; then export CLOUDFLARE_API_TOKEN="$preserved_cloudflare_api_token"; fi
   if [[ -n "$preserved_cloudflare_account_id" ]]; then export CLOUDFLARE_ACCOUNT_ID="$preserved_cloudflare_account_id"; fi
   if [[ -n "$preserved_openrouter_api_key" ]]; then export OPENROUTER_API_KEY="$preserved_openrouter_api_key"; fi
+  if [[ -n "$preserved_typesafe_api_key" ]]; then export TYPESAFE_API_KEY="$preserved_typesafe_api_key"; fi
   if [[ -n "$preserved_ford_mcp_token" ]]; then export FORD_MCP_TOKEN="$preserved_ford_mcp_token"; fi
   if [[ -n "$preserved_ford_mcp_api_token" ]]; then export FORD_MCP_API_TOKEN="$preserved_ford_mcp_api_token"; fi
   if [[ -n "$preserved_mcp_token" ]]; then export MCP_HTTP_BEARER_TOKEN="$preserved_mcp_token"; fi
@@ -153,10 +155,10 @@ set_deploy_secret() {
 }
 
 adopt_environment_secret() {
-  local config_file="$(deploy_config_file)" name="$1" current value
+  local config_file="$(deploy_config_file)" name="$1" source_name="${2:-$1}" current value
   current="$(sed -n "s/^${name}=//p" "$config_file" | head -n 1)"
   [[ -n "$current" ]] && return
-  value="${!name:-}"
+  value="${!source_name:-}"
   [[ -n "$value" ]] || return 0
   set_deploy_secret "$name" "$value"
   unset value
@@ -228,6 +230,19 @@ report_ai_fallback_status() {
     printf 'AI fallback %-10s enabled credential=%s capabilities=%s evaluation=%s\n' \
       "$provider" "$key_status" "$capability_status" "$evaluation_status"
   done
+}
+
+report_classification_status() {
+  local enabled="${FORD_AI_CLASSIFICATION_ENABLED:-true}"
+  local provider="${FORD_AI_CLASSIFICATION_PROVIDER:-typesafe}"
+  local mode="${FORD_AI_CLASSIFICATION_MODE:-active}"
+  local key_status=not-required sensitive="${FORD_AI_CLASSIFIER_SENSITIVE_DATA_ENABLED:-false}"
+  if [[ "$provider" == "typesafe" ]]; then
+    key_status=missing
+    [[ -n "${TYPESAFE_API_KEY:-}" ]] && key_status=present
+  fi
+  printf 'classification %s enabled=%s mode=%s credential=%s sensitive_data=%s\n' \
+    "$provider" "$enabled" "$mode" "$key_status" "$sensitive"
 }
 
 ensure_deploy_state_dir() { mkdir -p "$(deploy_state_dir)"; chmod 700 "$(deploy_state_dir)"; }
@@ -306,7 +321,7 @@ render_deploy_inventory() {
   local ford_ai_cloudflare_base_url_yaml
   local ford_ai_openrouter_enabled_yaml ford_ai_openrouter_model_yaml ford_ai_openrouter_tool_calling_verified_yaml ford_ai_openrouter_structured_output_verified_yaml
   local ford_ai_openrouter_base_url_yaml
-  local groq_key_yaml gemini_key_yaml cloudflare_token_yaml cloudflare_account_id_yaml openrouter_key_yaml
+  local groq_key_yaml gemini_key_yaml cloudflare_token_yaml cloudflare_account_id_yaml openrouter_key_yaml typesafe_key_yaml
   local ford_ai_classifier_handoff_enabled_yaml
   local ford_mcp_enabled_yaml ford_mcp_url_yaml ford_mcp_endpoint_yaml mcp_token_yaml
   local ford_ai_ollama_access_id_yaml ford_ai_ollama_access_secret_yaml ford_mcp_access_id_yaml ford_mcp_access_secret_yaml
@@ -381,6 +396,7 @@ render_deploy_inventory() {
   cloudflare_token_yaml="$(yaml_quote "${CLOUDFLARE_API_TOKEN:-}")"
   cloudflare_account_id_yaml="$(yaml_quote "${CLOUDFLARE_ACCOUNT_ID:-}")"
   openrouter_key_yaml="$(yaml_quote "${OPENROUTER_API_KEY:-}")"
+  typesafe_key_yaml="$(yaml_quote "${TYPESAFE_API_KEY:-${FORD_TYPESAFE_JEV_API_KEY:-}}")"
   app_image_yaml="$(yaml_quote "${EMME_APP_IMAGE:-ford-service:deployment}")"
   ghcr_username_yaml="$(yaml_quote "${GHCR_USERNAME:-}")"
   ghcr_token_yaml="$(yaml_quote "${GHCR_TOKEN:-}")"
@@ -476,6 +492,7 @@ all:
     cloudflare_api_token: ${cloudflare_token_yaml}
     cloudflare_account_id: ${cloudflare_account_id_yaml}
     openrouter_api_key: ${openrouter_key_yaml}
+    typesafe_api_key: ${typesafe_key_yaml}
     app_image: ${app_image_yaml}
     ghcr_username: ${ghcr_username_yaml}
     ghcr_token: ${ghcr_token_yaml}

@@ -80,8 +80,8 @@ public record ConversationDecision(
                 toolFamily, sensitiveDataLevel, nextAction, urgencySignal, summary, evidence);
     }
 
-    public ConversationDecision withVolatileToolRoute(ConversationDecision route) {
-        Objects.requireNonNull(route, "volatile tool route is required");
+    public ConversationDecision withDeterministicRoute(ConversationDecision route) {
+        Objects.requireNonNull(route, "deterministic route is required");
         var updatedEvidence = new java.util.ArrayList<>(evidence);
         updatedEvidence.removeIf(item -> item.classifier() == ClassifierType.INTENT
                 || item.classifier() == ClassifierType.TOOL_FAMILY);
