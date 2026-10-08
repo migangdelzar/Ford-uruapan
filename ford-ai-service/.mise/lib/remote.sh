@@ -350,7 +350,7 @@ render_deploy_inventory() {
   ford_ai_cloud_temperature_yaml="$(yaml_quote "${FORD_AI_CLOUD_TEMPERATURE:-0.1}")"
   ford_ai_cloud_base_url_yaml="$(yaml_quote "${FORD_AI_CLOUD_BASE_URL:-https://api.openai.com/v1}")"
   ford_ai_cloud_model_version_yaml="$(yaml_quote "${FORD_AI_CLOUD_MODEL_VERSION:-gpt-4o-mini}")"
-  ford_ai_provider_max_attempts_yaml="$(yaml_quote "${FORD_AI_PROVIDER_MAX_ATTEMPTS:-6}")"
+  ford_ai_provider_max_attempts_yaml="$(yaml_quote "${FORD_AI_PROVIDER_MAX_ATTEMPTS:-5}")"
   ford_ai_provider_max_retry_after_yaml="$(yaml_quote "${FORD_AI_PROVIDER_MAX_RETRY_AFTER:-PT3S}")"
   ford_ai_fallback_order_yaml="$(yaml_quote "${FORD_AI_FALLBACK_ORDER:-cloudflare,groq,gemini,openrouter}")"
   ford_ai_evaluation_mode_yaml="$(yaml_quote "${FORD_AI_EVALUATION_MODE:-false}")"

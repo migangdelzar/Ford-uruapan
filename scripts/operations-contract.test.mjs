@@ -230,6 +230,7 @@ test("Ansible propagates isolated AI fallback credentials and evaluation gates",
   assert.match(spring, /max-attempts:.*:1/);
   assert.match(template, /FORD_AI_PROVIDER_MAX_ATTEMPTS=/);
   assert.match(remote, /ford_ai_provider_max_attempts/);
+  assert.match(remote, /FORD_AI_PROVIDER_MAX_ATTEMPTS:-5/);
   assert.doesNotMatch(terraform, /groq_api_key|gemini_api_key|cloudflare_api_token|openrouter_api_key/,
     "provider API keys must stay out of Terraform variables");
 });
