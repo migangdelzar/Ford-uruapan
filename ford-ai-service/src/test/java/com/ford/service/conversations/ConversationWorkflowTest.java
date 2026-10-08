@@ -199,7 +199,7 @@ class ConversationWorkflowTest {
         assertThat(publisher.events).anySatisfy(event ->
                 assertThat(event).isInstanceOfSatisfying(ConversationMemoryProjectionRefreshRequested.class,
                         projection -> {
-                            assertThat(projection.update().summary()).contains("¿Hay Ranger?");
+                            assertThat(projection.update().summary()).isEmpty();
                             assertThat(projection.expectedVersion()).isZero();
                         }));
         assertThat(memoryPort.invalidated).isEqualTo(conversationId);
@@ -248,11 +248,12 @@ class ConversationWorkflowTest {
     }
 
     @Test
-    void handoffResponsePersistsDecisionAndPublishesOperatorNotification() {
+    void directCustomerRequestPersistsHandoffAndPublishesOperatorNotification() {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
-        var repository = new RecordingConversationRepository(snapshot(
-                tenantId, conversationId, ConversationState.BOT_ACTIVE, 2));
+        var repository = new RecordingConversationRepository(new ConversationSnapshot(tenantId, conversationId,
+                Channel.MESSENGER, "customer-1", ConversationState.BOT_ACTIVE, 2,
+                "Quiero hablar con un especialista de Ford, por favor.", "msg.3"));
         var assistant = new RecordingAssistant(new AssistantReply(
                 "Te comunico con un asesor.", true));
         var publisher = new RecordingPublisher();
@@ -262,14 +263,55 @@ class ConversationWorkflowTest {
                 UUID.randomUUID(), tenantId, conversationId, Channel.MESSENGER,
                 "msg.3", Instant.now()));
 
-        assertThat(repository.handoffDecision).isEqualTo(new HandoffDecision("assistant_requested_handoff"));
+        assertThat(repository.handoffDecision.reason()).contains("Quiero hablar con un especialista de Ford");
         assertThat(repository.handoffExpectedVersion).isEqualTo(2);
         assertThat(publisher.events).singleElement().isInstanceOfSatisfying(HandoffRequested.class, event -> {
             assertThat(event.tenantId()).isEqualTo(tenantId);
             assertThat(event.conversationId()).isEqualTo(conversationId);
-            assertThat(event.reason()).isEqualTo("assistant_requested_handoff");
+            assertThat(event.reason()).contains("Quiero hablar con un especialista de Ford");
+            assertThat(event.payload().arguments()).containsKeys("reason").doesNotContainKeys(
+                    "vehicle", "needs", "unresolvedQuestion");
             assertThat(event.eventId()).isNotNull();
         });
+    }
+
+    @Test
+    void modelHandoffRequestWithoutCustomerAuthorizationStaysInBotConversation() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var repository = new RecordingConversationRepository(snapshot(
+                tenantId, conversationId, ConversationState.BOT_ACTIVE, 2));
+        var publisher = new RecordingPublisher();
+
+        new ConversationWorkflow(repository,
+                new RecordingAssistant(new AssistantReply("Ya le comuniqué con un asesor.", true)), publisher,
+                new HumanHandoffPolicy(true), memoryService()).on(new InboundMessageAccepted(
+                UUID.randomUUID(), tenantId, conversationId, Channel.MESSENGER, "msg.3-unapproved", Instant.now()));
+
+        assertThat(repository.handoffDecision).isNull();
+        assertThat(repository.completedTurn.text()).contains("seguir ayudándole por aquí")
+                .doesNotContain("comuniqué con un asesor");
+        assertThat(publisher.events).noneMatch(HandoffRequested.class::isInstance);
+    }
+
+    @Test
+    void clearBuyingIntentOffersSpecialistHelpButDoesNotQueueSameTurn() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var repository = new RecordingConversationRepository(new ConversationSnapshot(tenantId, conversationId,
+                Channel.MESSENGER, "customer-1", ConversationState.BOT_ACTIVE, 2,
+                "Estoy listo para comprar una Territory este mes. Busco espacio para mi familia.", "msg.buy"));
+        var publisher = new RecordingPublisher();
+
+        new ConversationWorkflow(repository,
+                new RecordingAssistant(new AssistantReply("La Territory tiene estas opciones confirmadas.", false)),
+                publisher, new HumanHandoffPolicy(true), memoryService()).on(new InboundMessageAccepted(
+                UUID.randomUUID(), tenantId, conversationId, Channel.MESSENGER, "msg.buy", Instant.now()));
+
+        assertThat(repository.handoffDecision).isNull();
+        assertThat(repository.completedTurn.text()).contains("opciones confirmadas")
+                .contains("¿Desea que le conecte con un especialista Ford?");
+        assertThat(publisher.events).noneMatch(HandoffRequested.class::isInstance);
     }
 
     @Test
@@ -288,7 +330,8 @@ class ConversationWorkflowTest {
                 "msg.3-disabled", Instant.now()));
 
         assertThat(repository.handoffDecision).isNull();
-        assertThat(repository.completedTurn.text()).contains("No pude generar");
+        assertThat(repository.completedTurn.text()).contains("seguir ayudándole por aquí")
+                .doesNotContain("comunico con un asesor");
         assertThat(publisher.events).noneMatch(OutboundDeliveryRequested.class::isInstance);
     }
 

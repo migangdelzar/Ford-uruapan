@@ -8,11 +8,16 @@ operator handoff.
 ## Architecture decisions
 
 - Spring Boot MVC with Java virtual threads; WebFlux is not used in the MVP.
-- Spring AI only, with independent Ollama/OpenAI chat and embedding policies.
+- Spring AI with a cloud-first chat fallback chain and Ollama as the final
+  fallback; chat and embedding provider policies are configured independently.
 - PostgreSQL + pgvector are canonical; Redis is ephemeral.
 - Conversation transcript memory is durable in PostgreSQL and scoped by tenant,
   channel, provider account, and participant. Optional semantic fact retrieval
   is controlled by `FORD_MEMORY_SEMANTIC_ENABLED`.
+- Conversation turns use a bounded worker pool (one worker by default) and the
+  Spring Modulith JDBC publication registry for durable retry. Lead
+  classification can use Jev when its key is configured; Java retains consent,
+  tenant, and tool authorization.
 - JDBC/`JdbcClient` is used for explicit SQL. JPA is intentionally not used.
 - RAG is reserved for approved documents. Live catalog, inventory, offers,
   finance math and lead scoring are deterministic services/tools.
@@ -191,6 +196,17 @@ emme-1's mode-0600 application environment. Non-empty secret environment
 variables are adopted into the ignored file before prompting, so CI or a
 secret manager can provide them without placing values on a command line. It
 never accepts secret values as command-line arguments.
+
+Optional chat-provider fallback keys exported in your local shell are adopted
+by `mise run deploy:secrets` into the ignored `deployment/config/oci.env`:
+`GROQ_API_KEY`, `GEMINI_API_KEY`, `CLOUDFLARE_API_TOKEN`, and
+`OPENROUTER_API_KEY`; Cloudflare also needs `CLOUDFLARE_ACCOUNT_ID`. Providers
+stay disabled until explicitly enabled and both tool-calling and structured
+output capability flags are verified. Run `mise run test:ai-evaluation`
+before enabling them. OpenRouter's `openrouter/free` model additionally needs
+`FORD_AI_EVALUATION_MODE=true`. Ansible renders these settings and keys to
+emme-1's mode-0600 app environment. Terraform manages OCI resources only and
+does not receive AI provider keys in variables, plans, or state.
 
 Read-only Terraform checks are `mise run infra:check` and
 `mise run infra:plan`. Remote lifecycle tasks include

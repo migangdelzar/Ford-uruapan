@@ -2,6 +2,14 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    command:
+      - postgres
+      - -c
+      - "log_line_prefix=%m [%p] app=%a user=%u db=%d sqlstate=%e "
+      - -c
+      - log_error_verbosity=verbose
+      - -c
+      - log_min_error_statement=panic
     environment:
       POSTGRES_DB: ford_service
       POSTGRES_USER: ford

@@ -66,6 +66,15 @@ class DecisionPolicyTest {
     }
 
     @Test
+    void exposesCombinedVehicleAndOfferSearchForVehicleSearchRequests() {
+        var decision = decision(ToolFamily.VEHICLE_SEARCH);
+
+        assertThat(policy.allowedToolNames(decision, Set.of(
+                "search_vehicles", "search_vehicle_and_offers", "search_offers")))
+                .containsExactlyInAnyOrder("search_vehicles", "search_vehicle_and_offers");
+    }
+
+    @Test
     void exposesTheLocalVehicleSnapshotToolWhenItIsAvailable() {
         var decision = decision(ToolFamily.VEHICLE_SEARCH);
 
@@ -80,6 +89,15 @@ class DecisionPolicyTest {
         assertThat(policy.allowedToolNames(decision, Set.of(
                 "search_offers", "list_promotions", "get_catalog_status", "send_message")))
                 .containsExactlyInAnyOrder("search_offers", "list_promotions", "get_catalog_status");
+    }
+
+    @Test
+    void exposesCombinedVehicleAndOfferSearchForOfferRequests() {
+        var decision = decision(ToolFamily.OFFERS);
+
+        assertThat(policy.allowedToolNames(decision, Set.of(
+                "search_offers", "search_vehicle_and_offers", "search_vehicles")))
+                .containsExactlyInAnyOrder("search_offers", "search_vehicle_and_offers");
     }
 
     @Test

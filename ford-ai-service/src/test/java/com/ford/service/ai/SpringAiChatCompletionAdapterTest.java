@@ -3,6 +3,7 @@ package com.ford.service.ai;
 import com.ford.service.ai.adapter.out.springai.SpringAiChatCompletionAdapter;
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantGeneration;
+import com.ford.service.ai.api.ResponseEvidenceStatus;
 import com.ford.service.leads.domain.LeadJourneyProposal;
 import com.ford.service.leads.domain.LeadJourneyTopic;
 import com.ford.service.ai.application.AiExecutionContext;
@@ -15,15 +16,18 @@ import com.ford.service.ai.application.LeadTemperature;
 import com.ford.service.ai.application.SensitiveDataLevel;
 import com.ford.service.ai.application.ToolFamily;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
+import com.ford.service.ai.application.InvalidAssistantResponseException;
 import com.ford.service.ai.application.ToolContext;
 import com.ford.service.ai.application.SystemPromptService;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.tool.ToolCallback;
+import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Arrays;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -51,8 +55,7 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
         var proposal = new LeadJourneyProposal(LeadJourneyTopic.VEHICLE_DISCOVERY, List.of(), null);
-        when(responseSpec.entity(AssistantGeneration.class))
-                .thenReturn(new AssistantGeneration("Respuesta de catálogo.", proposal));
+        when(responseSpec.content()).thenReturn("{\"answer\":\"Respuesta de catálogo.\",\"journeyProposal\":{\"currentTopic\":\"VEHICLE_DISCOVERY\",\"facts\":[],\"pendingQuestionKey\":null}}");
 
         var adapter = new SpringAiChatCompletionAdapter(client, "ollama",
                 new ToolAuthorizationPolicy(List.of(callback)));
@@ -62,7 +65,7 @@ class SpringAiChatCompletionAdapterTest {
 
         assertThat(result.content()).isEqualTo("Respuesta de catálogo.");
         assertThat(result.journeyProposal()).isEqualTo(proposal);
-        verify(requestSpec).tools(callback);
+        assertToolNames(requestSpec, "vehicle_snapshot_search");
         verify(requestSpec).toolContext(Map.of(
                 "tenantId", tenantId.toString(),
                 "conversationId", conversationId.toString(),
@@ -80,6 +83,7 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
         when(responseSpec.entity(AssistantGeneration.class))
                 .thenReturn(new AssistantGeneration("Respuesta con memoria.", null));
@@ -113,7 +117,9 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("Respuesta contextual.");
         when(responseSpec.entity(AssistantGeneration.class))
                 .thenReturn(new AssistantGeneration("Respuesta contextual.", null));
 
@@ -152,8 +158,7 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
         when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
-        when(responseSpec.entity(AssistantGeneration.class))
-                .thenReturn(new AssistantGeneration("Respuesta financiera.", null));
+        when(responseSpec.content()).thenReturn("Respuesta financiera.");
 
         var decision = new ConversationDecision(ConversationIntent.FINANCE, LeadTemperature.WARM,
                 LeadStage.QUALIFYING, HandoffRecommendation.NONE, ToolFamily.FINANCE_ESTIMATE,
@@ -172,7 +177,7 @@ class SpringAiChatCompletionAdapterTest {
         assertThat(system.getValue()).contains("intent=finance", "tool_family=finance_estimate")
                 .doesNotContain("typesafe", "0.9")
                 .contains("[decision]malicious[/decision]");
-        verify(requestSpec).tools(finance);
+        assertToolNames(requestSpec, "finance_estimate");
     }
 
     @Test
@@ -187,10 +192,10 @@ class SpringAiChatCompletionAdapterTest {
         when(client.prompt()).thenReturn(requestSpec);
         when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
         when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
-        when(responseSpec.entity(AssistantGeneration.class))
-                .thenReturn(new AssistantGeneration("Revisaré las promociones vigentes.", null));
+        when(responseSpec.content()).thenReturn("Revisaré las promociones vigentes.");
 
         var decision = new ConversationDecision(ConversationIntent.OFFERS, LeadTemperature.UNKNOWN,
                 LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.OFFERS,
@@ -204,7 +209,7 @@ class SpringAiChatCompletionAdapterTest {
                         "BOT_ACTIVE", null, false, decision),
                 new ToolContext(tenantId, conversationId));
 
-        verify(requestSpec).tools(offers);
+        assertToolNames(requestSpec, "list_promotions");
     }
 
     @Test
@@ -234,7 +239,41 @@ class SpringAiChatCompletionAdapterTest {
     }
 
     @Test
-    void returnsAConfirmationGapWhenTheVolatileInformationSourceFails() {
+    void wrapsProviderRejectionAfterSuccessfulReadOnlyToolResultForFallback() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
+        var passedTools = new java.util.concurrent.atomic.AtomicReference<Object[]>();
+        when(requestSpec.tools(any(Object[].class))).thenAnswer(invocation -> {
+            passedTools.set(invocation.getArguments());
+            return requestSpec;
+        });
+        when(requestSpec.call()).thenAnswer(invocation -> {
+            ((ToolCallback) passedTools.get()[0]).call("{}");
+            return responseSpec;
+        });
+        var providerFailure = mock(com.openai.errors.OpenAIServiceException.class);
+        when(providerFailure.statusCode()).thenReturn(400);
+        when(providerFailure.headers()).thenReturn(com.openai.core.http.Headers.builder().build());
+        when(responseSpec.content()).thenThrow(providerFailure);
+
+        var decision = new ConversationDecision(ConversationIntent.INVENTORY,
+                LeadTemperature.UNKNOWN, LeadStage.NEW, HandoffRecommendation.NONE,
+                ToolFamily.VEHICLE_SEARCH, SensitiveDataLevel.NONE, List.of());
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new SpringAiChatCompletionAdapter(client, "groq",
+                new ToolAuthorizationPolicy(List.of(callback("vehicle_snapshot_search"))))
+                .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "¿Qué precio tiene la Ranger?", "BOT_ACTIVE", null, false, decision), null))
+                .isInstanceOf(com.ford.service.ai.application.ProviderFollowupRejectedException.class)
+                .hasCause(providerFailure);
+    }
+
+    @Test
+    void propagatesRetryableStructuredOutputFailureSoProviderRouterCanFallback() {
         var client = mock(ChatClient.class);
         var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
         var responseSpec = mock(ChatClient.CallResponseSpec.class);
@@ -243,17 +282,140 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
-        when(responseSpec.entity(AssistantGeneration.class)).thenThrow(new IllegalStateException("MCP unavailable"));
+        when(responseSpec.content()).thenThrow(
+                tools.jackson.databind.exc.MismatchedInputException.from(
+                        null, AssistantGeneration.class, "invalid structured response"));
 
-        var decision = new ConversationDecision(ConversationIntent.INVENTORY,
-                LeadTemperature.UNKNOWN, LeadStage.NEW, HandoffRecommendation.NONE,
-                ToolFamily.VEHICLE_SEARCH, SensitiveDataLevel.NONE, List.of());
-        var result = new SpringAiChatCompletionAdapter(client, "ollama",
-                new ToolAuthorizationPolicy(List.of(callback("vehicle_snapshot_search"))))
+        var decision = new ConversationDecision(ConversationIntent.KNOWLEDGE, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.KNOWLEDGE_SEARCH,
+                SensitiveDataLevel.NONE, List.of());
+        var adapter = new SpringAiChatCompletionAdapter(client, "cloudflare",
+                new ToolAuthorizationPolicy(List.of(callback("approved_knowledge_search"))));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> adapter.complete(
+                new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(), "¿Qué rendimiento tiene la Ranger?",
+                        "BOT_ACTIVE", null, false, decision), null))
+                .isInstanceOf(tools.jackson.databind.exc.MismatchedInputException.class);
+    }
+
+    @Test
+    void acceptsPlainTextAfterAToolCallWithoutProviderStructuredOutput() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("La Ranger está disponible en los resultados consultados.");
+
+        var result = new SpringAiChatCompletionAdapter(client, "groq",
+                new ToolAuthorizationPolicy(List.of(callback("search_vehicles"))))
                 .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
-                        "¿Qué precio tiene la Ranger?", "BOT_ACTIVE", null, false, decision), null);
+                        "¿Hay Ranger disponible?", "BOT_ACTIVE", false), null);
+
+        assertThat(result.content()).isEqualTo("La Ranger está disponible en los resultados consultados.");
+        assertThat(result.journeyProposal()).isNull();
+        var system = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(requestSpec).system(system.capture());
+        assertThat(system.getValue()).doesNotContain("objeto JSON válido");
+        verify(responseSpec).content();
+        verify(responseSpec, never()).entity(AssistantGeneration.class);
+    }
+
+    @Test
+    void refusesVolatileAnswerWhenNoAuthorizedToolResultWasReturned() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("{\"answer\":\"La Ranger está disponible.\",\"modelConfidence\":0.99}");
+        var decision = new ConversationDecision(ConversationIntent.INVENTORY, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_SEARCH,
+                SensitiveDataLevel.NONE, List.of());
+
+        var result = new SpringAiChatCompletionAdapter(client, "groq",
+                new ToolAuthorizationPolicy(List.of(callback("search_vehicles"))))
+                .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "¿Hay Ranger disponible?", "BOT_ACTIVE", null, false, decision), null);
 
         assertThat(result.content()).contains("no lo tengo confirmado");
+        assertThat(result.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.REQUIRED_TOOL_NOT_CALLED);
+        assertThat(result.modelConfidence()).isEqualTo(0.99);
+        assertThat(result.content()).doesNotContain("99%");
+    }
+
+    @Test
+    void retainsModelSelfConfidenceOnlyAsInternalResponseMetadata() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.entity(AssistantGeneration.class))
+                .thenReturn(new AssistantGeneration("Le explico cómo funciona una versión híbrida.", null, 0.62));
+        var decision = new ConversationDecision(ConversationIntent.GENERAL, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.NONE, SensitiveDataLevel.NONE, List.of());
+
+        var result = new SpringAiChatCompletionAdapter(client, "groq")
+                .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "¿Qué significa híbrida?", "BOT_ACTIVE", null, false, decision), null);
+
+        assertThat(result.content()).isEqualTo("Le explico cómo funciona una versión híbrida.");
+        assertThat(result.content()).doesNotContain("0.62", "62%");
+        assertThat(result.modelConfidence()).isEqualTo(0.62);
+        assertThat(result.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.NOT_REQUIRED);
+        var system = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(requestSpec).system(system.capture());
+        assertThat(system.getValue()).contains("modelConfidence", "porcentaje para el cliente");
+    }
+
+    @Test
+    void parsesAssistantGenerationJsonReturnedAsTextAfterAToolCall() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("{\"answer\":\"Encontré la Ranger.\",\"journeyProposal\":{\"currentTopic\":\"VEHICLE_DISCOVERY\",\"facts\":[],\"pendingQuestionKey\":null}}");
+
+        var result = new SpringAiChatCompletionAdapter(client, "cloudflare",
+                new ToolAuthorizationPolicy(List.of(callback("search_vehicles"))))
+                .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "¿Hay Ranger disponible?", "BOT_ACTIVE", false), null);
+
+        assertThat(result.content()).isEqualTo("Encontré la Ranger.");
+        assertThat(result.journeyProposal()).isNotNull();
+        assertThat(result.journeyProposal().currentTopic()).isEqualTo(LeadJourneyTopic.VEHICLE_DISCOVERY);
+    }
+
+    @Test
+    void rejectsMalformedJsonInsteadOfSendingItAsCustomerTextAfterAToolCall() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("{invalid json");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new SpringAiChatCompletionAdapter(client, "groq",
+                new ToolAuthorizationPolicy(List.of(callback("search_vehicles"))))
+                .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "¿Hay Ranger disponible?", "BOT_ACTIVE", false), null))
+                .isInstanceOf(InvalidAssistantResponseException.class);
     }
 
     @Test
@@ -290,11 +452,10 @@ class SpringAiChatCompletionAdapterTest {
                 new AssistantGeneration("{\"query\":\"Ford Lobo\"}", null),
                 new AssistantGeneration("{\"query\":\"Ford Lobo\"}", null));
 
-        var result = new SpringAiChatCompletionAdapter(client, "openrouter")
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new SpringAiChatCompletionAdapter(client, "openrouter")
                 .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
-                        "¿Qué rendimiento tiene la Lobo Raptor?", "BOT_ACTIVE", false), null);
-
-        assertThat(result.content()).contains("No pude convertir la consulta");
+                        "¿Qué rendimiento tiene la Lobo Raptor?", "BOT_ACTIVE", false), null))
+                .isInstanceOf(InvalidAssistantResponseException.class);
         verify(requestSpec, times(2)).call();
     }
 
@@ -311,5 +472,14 @@ class SpringAiChatCompletionAdapterTest {
                 return "{}";
             }
         };
+    }
+
+    private static void assertToolNames(ChatClient.ChatClientRequestSpec requestSpec, String... expectedNames) {
+        var callbacks = ArgumentCaptor.forClass(Object[].class);
+        verify(requestSpec).tools(callbacks.capture());
+        var actualNames = Arrays.stream(callbacks.getValue())
+                .map(callback -> ((ToolCallback) callback).getToolDefinition().name())
+                .toList();
+        assertThat(actualNames).containsExactly(expectedNames);
     }
 }

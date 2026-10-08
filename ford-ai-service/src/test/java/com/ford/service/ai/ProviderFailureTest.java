@@ -2,7 +2,10 @@ package com.ford.service.ai;
 
 import com.ford.service.ai.application.AiProviderFailureDiagnostics;
 import com.ford.service.ai.application.ProviderFailure;
+import com.ford.service.ai.application.InvalidAssistantResponseException;
+import com.ford.service.ai.application.ProviderFollowupRejectedException;
 import com.fasterxml.jackson.core.JsonParseException;
+import com.ford.service.ai.api.AssistantGeneration;
 import com.openai.core.http.Headers;
 import com.openai.errors.OpenAIServiceException;
 import org.junit.jupiter.api.Test;
@@ -58,9 +61,48 @@ class ProviderFailureTest {
         var parseFailure = new JsonParseException("invalid provider response stream");
 
         assertThat(AiProviderFailureDiagnostics.classify(parseFailure).category())
-                .isEqualTo(ProviderFailure.PROVIDER_ERROR);
+                .isEqualTo(ProviderFailure.INVALID_RESPONSE);
         assertThat(AiProviderFailureDiagnostics.describe(parseFailure, false))
-                .contains("category=provider_error");
+                .contains("category=invalid_response");
+    }
+
+    @Test
+    void classifiesSpringAiJacksonThreeOutputConversionFailuresAsInvalidResponses() {
+        var conversionFailure = tools.jackson.databind.exc.MismatchedInputException.from(
+                null, AssistantGeneration.class, "invalid structured provider response");
+
+        assertThat(AiProviderFailureDiagnostics.classify(conversionFailure).category())
+                .isEqualTo(ProviderFailure.INVALID_RESPONSE);
+    }
+
+    @Test
+    void classifiesRejectedAssistantQualityRepairsAsRetryableInvalidResponses() {
+        var failure = AiProviderFailureDiagnostics.classify(
+                new InvalidAssistantResponseException("repeated_response"));
+
+        assertThat(failure.category()).isEqualTo(ProviderFailure.INVALID_RESPONSE);
+        assertThat(failure.retryable()).isTrue();
+    }
+
+    @Test
+    void makesOnlyNonAuthenticationClientRejectionsAfterReadOnlyResultFallbackEligible() {
+        var badRequest = openAiFailure(400, null);
+        var forbidden = openAiFailure(403, null);
+
+        assertThat(AiProviderFailureDiagnostics.afterReadOnlyToolResult(badRequest, true))
+                .isInstanceOf(ProviderFollowupRejectedException.class);
+        assertThat(AiProviderFailureDiagnostics.afterReadOnlyToolResult(badRequest, false))
+                .isSameAs(badRequest);
+        assertThat(AiProviderFailureDiagnostics.afterReadOnlyToolResult(forbidden, true))
+                .isSameAs(forbidden);
+    }
+
+    @Test
+    void classifiesProviderRejectionAfterReadOnlyToolResultAsFallbackEligible() {
+        var rejection = new ProviderFollowupRejectedException(openAiFailure(400, null));
+
+        assertThat(AiProviderFailureDiagnostics.classify(rejection))
+                .isEqualTo(new ProviderFailure(ProviderFailure.PROVIDER_UNAVAILABLE, 400, null));
     }
 
     private static OpenAIServiceException openAiFailure(int status, String retryAfter) {

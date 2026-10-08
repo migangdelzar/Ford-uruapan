@@ -1,0 +1,27 @@
+groups:
+  - name: ford-service-operations
+    rules:
+      - alert: FordCollectorUnavailable
+        expr: up{job="otel-collector"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Ford telemetry collector is unavailable
+          description: Prometheus cannot scrape the local OpenTelemetry Collector exporter.
+      - alert: FordMcpToolFailures
+        expr: increase(ford_ai_tool_attempt_seconds_count{tool=~"catalog|finance|knowledge",outcome="failure"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Ford information tool calls are failing
+          description: One or more read-only information tools failed during the last five minutes.
+      - alert: FordProviderFailures
+        expr: increase(ford_ai_provider_attempt_seconds_count{outcome="failure"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Ford model provider calls are failing
+          description: One or more model provider attempts failed during the last five minutes.

@@ -18,9 +18,10 @@ mise run setup
 ```
 
 Prometheus, Loki, Tempo, the collector, and Alloy are bound to loopback by
-default. The service sends traces to the collector, Prometheus scrapes
-`/actuator/prometheus`, and Alloy discovers all Docker containers and forwards
-their stdout to Loki. Start the optional dashboard with `mise run up-ui`; it is
+default. The service pushes metrics and traces to the collector over OTLP;
+Prometheus scrapes the collector's internal `:9464` exporter, so it does not
+need credentials for the protected app actuator. Alloy discovers all Docker
+containers and forwards their stdout to Loki. Start the optional dashboard with `mise run up-ui`; it is
 available on `http://localhost:3000`. Change the published ports or place
 Grafana behind the OCI reverse proxy for deployment.
 
@@ -90,7 +91,9 @@ catalog synchronization, and outbox publication. Prompt and completion
 logging are disabled by default. Sampling defaults to 10% and can be changed
 with `FORD_OTEL_SAMPLING_PROBABILITY`.
 
-Micrometer metrics are exposed in Prometheus format at `/actuator/prometheus`.
+Micrometer metrics are exposed in Prometheus format at `/actuator/prometheus`
+for authenticated operator diagnostics, and are pushed to the in-network
+Collector for normal monitoring.
 The Micrometer filter removes PII such as prompt/completion text, names, email,
 phone, government identifiers, bank data, exact income, MXN or amount values,
 raw request/response payloads, tool arguments/results, and provider/message
@@ -117,6 +120,13 @@ rate and errors, catalog sync rate, and outbox publication rate. Use Loki for
 operational logs, Tempo for trace inspection, and Prometheus for service health
 and alerting.
 
+Prometheus loads `deployment/observability/prometheus/alerts.yml` for Collector,
+read-only MCP tool, and model provider failures. These rules evaluate locally;
+they do not configure notification delivery or Grafana Cloud alert policies.
+Cloud alert provisioning still requires a Grafana URL and a service account
+with alert rule write permissions; the existing OTLP ingestion token is not
+used for that API.
+
 When traces disappear, check the Collector queue/exporter first, then Tempo.
 When logs disappear, check Alloy's Docker socket access and Loki readiness.
 When AI errors rise, compare the AI error panel with provider health and the
@@ -129,7 +139,8 @@ Ford emits bounded low-cardinality observations at the application boundaries:
 | Observation | Bounded dimensions | How to interpret it |
 | --- | --- | --- |
 | `ford.conversation.inbound` | `channel`, `outcome` (`success`, `failure`) | Accepted inbound processing completed or threw an error. |
-| `ford.ai.provider.attempt` | `provider`, `outcome` (`success`, `failure`, `retry`), `failure_category` | Shows provider attempts, transient retries, and classified failures such as `rate_limited`, `network`, or `authentication`. |
+| `ford.ai.provider.attempt` | `provider`, `outcome` (`success`, `failure`, `fallback`), `failure_category` | Shows provider attempts, transient retries/fallback, and classified failures such as `rate_limited`, `network`, or `authentication`. |
+| `ford.ai.tool.attempt` | bounded tool family (`catalog`, `finance`, `knowledge`, `other`), `outcome`, `failure_category` | Timer and count for read-only information tool calls; logs include only exception class/category/status, never arguments or result content. |
 | `ford.conversation.memory_projection` | `outcome` (`success`, `skipped`, `failure`), `failure_category` | `persistence` failures leave the Modulith publication incomplete for retry. |
 | `ford.outbox.publish` | `outcome` (`success`, `failure`), `failure_category` | Tracks durable delivery-event enqueueing. |
 | `ford.outbox.delivery` | `outcome` (`success`, `retry`, `dead_letter`), `failure_category` | Separates successful delivery, scheduled retry, and exhausted delivery. |

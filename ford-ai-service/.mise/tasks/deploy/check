@@ -5,6 +5,7 @@ cd "$MISE_PROJECT_ROOT"
 source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
 load_deploy_config
 require_deploy_config
+report_ai_fallback_status
 require_command ansible-playbook
 require_command ansible-inventory
 require_command ansible-galaxy

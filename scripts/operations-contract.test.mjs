@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 async function read(path) {
@@ -26,6 +29,68 @@ test("operations documentation describes evidence and safe telemetry", async () 
   assert.match(observability, /PII|personal data/i);
   assert.match(observability, /OTLP/);
   assert.match(observability, /dashboard/i);
+});
+
+test("production telemetry uses internal OTLP push and never exposes a scrape credential", async () => {
+  const appEnv = await read("deployment/ansible/roles/app/templates/app.env.j2");
+  const cloudCollector = await read("deployment/observability/otel-collector/grafana-cloud-config.yaml");
+  const appCompose = await read("deployment/ansible/roles/app/templates/compose.yml.j2");
+
+  assert.match(appEnv, /^FORD_OTEL_METRICS_EXPORT_ENABLED=true$/m);
+  assert.match(appEnv, /^FORD_OTEL_METRICS_ENDPOINT=http:\/\/otel-collector:4318\/v1\/metrics$/m);
+  assert.match(appEnv, /^FORD_OTEL_TRACES_EXPORT_ENABLED=true$/m);
+  assert.match(appCompose, /otel-collector/);
+  assert.match(cloudCollector, /metrics:\n\s+receivers: \[otlp\]/);
+  assert.doesNotMatch(cloudCollector, /targets: \[ford-service:8080\]/);
+  assert.doesNotMatch(cloudCollector, /authorization|bearer_token/i);
+});
+
+test("local Prometheus reads the internal Collector exporter instead of the protected actuator", async () => {
+  const prometheus = await read("deployment/observability/prometheus/prometheus.yml");
+  const collector = await read("deployment/observability/otel-collector/tempo-config.yaml");
+  const compose = await read("ford-ai-service/docker-compose.yml");
+
+  assert.match(prometheus, /targets:\s*\["otel-collector:9464"\]/);
+  assert.doesNotMatch(prometheus, /ford-service:8080/);
+  assert.match(collector, /prometheus:\n\s+endpoint: 0\.0\.0\.0:9464/);
+  assert.match(collector, /receivers: \[otlp\]/);
+  assert.match(collector, /exporters: \[prometheus\]/);
+  assert.match(compose, /FORD_OTEL_METRICS_EXPORT_ENABLED: "true"/);
+  assert.match(compose, /FORD_OTEL_METRICS_ENDPOINT: http:\/\/otel-collector:4318\/v1\/metrics/);
+});
+
+test("PostgreSQL logs identify the service and SQLSTATE without recording statements", async () => {
+  const appEnv = await read("deployment/ansible/roles/app/templates/app.env.j2");
+  const dataCompose = await read("deployment/ansible/roles/data/templates/compose.yml.j2");
+  const localCompose = await read("ford-ai-service/docker-compose.yml");
+
+  assert.match(appEnv, /FORD_DATABASE_URL=.*\?ApplicationName=ford-service/);
+  for (const compose of [dataCompose, localCompose]) {
+    assert.match(compose, /log_line_prefix=.*app=%a.*sqlstate=%e/);
+    assert.match(compose, /log_error_verbosity=verbose/);
+    assert.match(compose, /log_min_error_statement=panic/);
+  }
+});
+
+test("Prometheus alert rules cover service, MCP tool, and model provider failures", async () => {
+  const alerts = await read("deployment/observability/prometheus/alerts.yml");
+  const prometheus = await read("deployment/observability/prometheus/prometheus.yml");
+  const compose = await read("ford-ai-service/docker-compose.yml");
+
+  assert.match(prometheus, /rule_files:[\s\S]*ford-alerts\.yml/);
+  assert.match(compose, /ford-alerts\.yml/);
+  assert.match(alerts, /alert: FordCollectorUnavailable/);
+  assert.match(alerts, /alert: FordMcpToolFailures/);
+  assert.match(alerts, /alert: FordProviderFailures/);
+});
+
+test("database deployment does not implicitly reinstall the separately managed backup role", async () => {
+  const site = await read("deployment/ansible/site.yml");
+  const backupTask = await read("ford-ai-service/.mise/tasks/deploy/backup");
+
+  assert.match(site, /Configure data services[\s\S]*?tags: \[data\][\s\S]*?roles:\n\s+- data/);
+  assert.match(site, /Configure OCI database backups[\s\S]*?tags: \[backup\][\s\S]*?roles:\n\s+- backup/);
+  assert.match(backupTask, /deployment\/ansible\/backup\.yml/);
 });
 
 test("service README links the operational contracts", async () => {
@@ -88,6 +153,9 @@ test("Ansible propagates the complete Meta webhook configuration", async () => {
     "FORD_META_VERIFY_TOKEN",
     "FORD_META_AUTO_BINDING_ENABLED",
     "FORD_META_PROVIDER_ACCOUNT_ID",
+    "FORD_META_PHONE_NUMBER_ID",
+    "FORD_META_WHATSAPP_BUSINESS_ACCOUNT_ID",
+    "FORD_META_DIAGNOSTIC_STACKTRACES_ENABLED",
     "FORD_TENANT_ID"
   ]) {
     assert.match(example, new RegExp(`^${variable}=`, "m"), `${variable} must be documented`);
@@ -97,6 +165,8 @@ test("Ansible propagates the complete Meta webhook configuration", async () => {
   assert.match(remote, /FORD_META_VERIFY_TOKEN/);
   assert.match(remote, /FORD_META_AUTO_BINDING_ENABLED/);
   assert.match(remote, /FORD_META_PROVIDER_ACCOUNT_ID/);
+  assert.match(remote, /FORD_META_PHONE_NUMBER_ID/);
+  assert.match(remote, /FORD_META_WHATSAPP_BUSINESS_ACCOUNT_ID/);
   assert.match(remote, /FORD_TENANT_ID/);
   assert.match(remote, /ford_meta_auto_binding_enabled/);
   assert.match(remote, /ford_meta_provider_account_id/);
@@ -107,6 +177,9 @@ test("Ansible propagates the complete Meta webhook configuration", async () => {
     "FORD_META_VERIFY_TOKEN",
     "FORD_META_AUTO_BINDING_ENABLED",
     "FORD_META_PROVIDER_ACCOUNT_ID",
+    "FORD_META_PHONE_NUMBER_ID",
+    "FORD_META_WHATSAPP_BUSINESS_ACCOUNT_ID",
+    "FORD_META_DIAGNOSTIC_STACKTRACES_ENABLED",
     "FORD_TENANT_ID"
   ]) {
     assert.match(template, new RegExp(`^${variable}=`, "m"), `${variable} must reach app.env.j2`);
@@ -122,6 +195,7 @@ test("Ansible propagates the configured cloud AI provider", async () => {
     "FORD_AI_CHAT_PROVIDER",
     "FORD_AI_CLOUD_PROVIDER",
     "FORD_AI_CLOUD_ENABLED",
+    "FORD_AI_LOG_PROVIDER_ERRORS",
     "FORD_AI_LOCAL_ENABLED",
     "FORD_AI_CLOUD_BASE_URL",
     "FORD_AI_CLOUD_MODEL_VERSION"
@@ -130,6 +204,87 @@ test("Ansible propagates the configured cloud AI provider", async () => {
     assert.match(remote, new RegExp(variable), `${variable} must reach the inventory`);
     assert.match(template, new RegExp(`^${variable}=`, "m"), `${variable} must reach app.env.j2`);
   }
+});
+
+test("Ansible propagates isolated AI fallback credentials and evaluation gates", async () => {
+  const example = await read("deployment/config/oci.env.example");
+  const remote = await read("ford-ai-service/.mise/lib/remote.sh");
+  const secrets = await read("ford-ai-service/.mise/tasks/deploy/secrets");
+  const template = await read("deployment/ansible/roles/app/templates/app.env.j2");
+  const spring = await read("ford-ai-service/src/main/resources/application.yml");
+  const terraform = await read("deployment/terraform/variables.tf");
+
+  for (const variable of [
+    "FORD_AI_FALLBACK_ORDER", "FORD_AI_EVALUATION_MODE",
+    "FORD_AI_GROQ_ENABLED", "FORD_AI_GEMINI_ENABLED", "FORD_AI_CLOUDFLARE_ENABLED", "FORD_AI_OPENROUTER_ENABLED",
+    "GROQ_API_KEY", "GEMINI_API_KEY", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "OPENROUTER_API_KEY"
+  ]) {
+    assert.match(example, new RegExp(`^${variable}=`, "m"), `${variable} must be documented`);
+    assert.match(remote, new RegExp(variable), `${variable} must reach Ansible inventory`);
+    assert.match(template, new RegExp(`^${variable}=`, "m"), `${variable} must reach app.env.j2`);
+  }
+  for (const variable of ["GROQ_API_KEY", "GEMINI_API_KEY", "CLOUDFLARE_API_TOKEN", "OPENROUTER_API_KEY"]) {
+    assert.match(secrets, new RegExp(variable), `${variable} must be adopted from the shell into ignored config`);
+  }
+  assert.match(spring, /provider-max-attempts:.*:5/);
+  assert.match(spring, /max-attempts:.*:1/);
+  assert.match(template, /FORD_AI_PROVIDER_MAX_ATTEMPTS=/);
+  assert.match(remote, /ford_ai_provider_max_attempts/);
+  assert.doesNotMatch(terraform, /groq_api_key|gemini_api_key|cloudflare_api_token|openrouter_api_key/,
+    "provider API keys must stay out of Terraform variables");
+});
+
+test("deploy secret adoption stores exported fallback keys privately without printing them", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "ford-deploy-secret-test-"));
+  try {
+    const configDir = path.join(temporary, "deployment", "config");
+    const miseRoot = path.join(temporary, "ford-ai-service");
+    await mkdir(configDir, { recursive: true });
+    await mkdir(miseRoot, { recursive: true });
+    const configFile = path.join(configDir, "oci.env");
+    await writeFile(configFile, "GROQ_API_KEY=\n", { mode: 0o600 });
+    const library = path.resolve("ford-ai-service/.mise/lib/remote.sh");
+    const stdout = execFileSync("bash", ["-c", `source "${library}"; load_deploy_config; adopt_environment_secret GROQ_API_KEY`], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: { ...process.env, MISE_PROJECT_ROOT: miseRoot, GROQ_API_KEY: "synthetic-test-key" }
+    });
+
+    assert.equal(stdout, "");
+    assert.match(await readFile(configFile, "utf8"), /^GROQ_API_KEY=synthetic-test-key$/m);
+    assert.equal((await stat(configFile)).mode & 0o777, 0o600);
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
+
+test("deployment preflight reports fallback readiness without revealing provider keys", async () => {
+  const library = path.resolve("ford-ai-service/.mise/lib/remote.sh");
+  const output = execFileSync("bash", ["-c", `source "${library}"; report_ai_fallback_status`], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      FORD_AI_GROQ_ENABLED: "true",
+      GROQ_API_KEY: "synthetic-hidden-key",
+      FORD_AI_GROQ_TOOL_CALLING_VERIFIED: "true",
+      FORD_AI_GROQ_STRUCTURED_OUTPUT_VERIFIED: "true"
+    }
+  });
+
+  assert.match(output, /AI fallback groq\s+enabled credential=present capabilities=verified/);
+  assert.match(output, /AI fallback gemini\s+disabled/);
+  assert.doesNotMatch(output, /synthetic-hidden-key/);
+});
+
+test("live provider preflight always executes and requires a synthetic tool call", async () => {
+  const gradle = await read("ford-ai-service/build.gradle.kts");
+  const preflight = await read("ford-ai-service/src/providerPreflight/java/com/ford/service/ai/configuration/LiveProviderPreflightTest.java");
+
+  assert.match(gradle, /tasks\.register<Test>\("providerPreflight"\)[\s\S]*?outputs\.upToDateWhen\s*\{\s*false\s*}/);
+  assert.doesNotMatch(preflight, /toolChoice\("required"\)/);
+  assert.match(preflight, /lookup_demo exactamente una vez/);
+  assert.match(preflight, /tool_call_failed/);
+  assert.match(preflight, /structured_response_empty/);
 });
 
 test("Ansible propagates Meta delivery and outbox runtime settings", async () => {
@@ -176,6 +331,14 @@ test("Ansible accepts the source Ford MCP configuration names", async () => {
   assert.match(secrets, /FORD_MCP_TOKEN/);
 });
 
+test("Ford MCP keeps combined vehicle and financing search in app allowlists", async () => {
+  const application = await read("ford-ai-service/src/main/resources/application.yml");
+  const template = await read("deployment/ansible/roles/app/templates/app.env.j2");
+
+  assert.match(application, /read-only-tool-names:.*search_vehicle_and_offers/);
+  assert.match(template, /^FORD_MCP_READ_ONLY_TOOL_NAMES=.*search_vehicle_and_offers/m);
+});
+
 test("app deployment transfers local images and checks the webhook route", async () => {
   const appTask = await read("ford-ai-service/.mise/tasks/deploy/app");
   const appRole = await read("deployment/ansible/roles/app/tasks/main.yml");
@@ -206,6 +369,10 @@ test("remote image rollback archive is exposed through a Mise task", async () =>
   assert.match(source, /ssh/);
   assert.match(source, /docker save/);
   assert.match(source, /gzip/);
+  assert.match(source, /ServerAliveInterval/);
+  assert.match(source, /mktemp/);
+  assert.match(source, /gzip -t/);
+  assert.match(source, /mv .*archive/);
   assert.match(source, /deploy_state_dir/);
 });
 

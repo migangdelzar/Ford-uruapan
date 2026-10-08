@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
  * single signal window. This keeps the policy deterministic while allowing a
  * customer to express intent over several turns.</p>
  */
-public final class LeadQualificationPolicy {
+public class LeadQualificationPolicy {
 
     private static final Pattern CONTACT_DETAILS = Pattern.compile(
             "\\b\\d{10}\\b|[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}");
@@ -33,12 +33,14 @@ public final class LeadQualificationPolicy {
             "asesor", "asesora", "humano", "persona", "que me llame", "que me llamen");
     private static final Set<String> ACTION_VERBS = Set.of(
             "quiero", "quisiera", "me interesa", "me gustaria", "necesito", "deseo", "puedo",
-            "agendar", "reservar");
+            "agendar", "reservar", "estoy listo", "estoy lista", "listo para", "lista para",
+            "dispuesto a", "dispuesta a");
     private static final Set<String> PURCHASE_ACTION_TERMS = Set.of(
             "comprar", "cotizacion", "cotizacion formal", "cotizar", "apartarlo", "auto a cuenta",
             "toma a cuenta", "trade in");
     private static final Set<String> APPOINTMENT_ACTION_TERMS = Set.of(
-            "agendar", "reservar", "quiero una cita", "necesito una cita", "me gustaria una cita");
+            "agendar", "reservar", "quiero", "quisiera", "me interesa", "me gustaria",
+            "quiero una cita", "necesito una cita", "me gustaria una cita");
 
     public Assessment assess(String message, String memoryContext, ConversationDecision modelDecision) {
         Objects.requireNonNull(modelDecision, "model decision is required");

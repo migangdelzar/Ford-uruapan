@@ -6,9 +6,16 @@ import java.time.Duration;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class McpPropertiesTest {
+
+    @Test
+    void exposesTheCombinedVehicleAndFinancingInformationToolByDefault() {
+        assertThat(new McpProperties().readOnlyToolNames())
+                .contains("search_vehicle_and_offers");
+    }
 
     @Test
     void rejectsEnabledMcpWithoutUrlOrToken() {

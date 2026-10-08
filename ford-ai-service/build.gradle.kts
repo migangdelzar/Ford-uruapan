@@ -59,10 +59,16 @@ sourceSets {
         compileClasspath += sourceSets.main.get().output + configurations.testRuntimeClasspath.get()
         runtimeClasspath += output + compileClasspath
     }
+    create("providerPreflight") {
+        compileClasspath += sourceSets.main.get().output + configurations.testRuntimeClasspath.get()
+        runtimeClasspath += output + compileClasspath
+    }
 }
 
 configurations["integrationTestImplementation"].extendsFrom(configurations.testImplementation.get())
 configurations["integrationTestRuntimeOnly"].extendsFrom(configurations.testRuntimeOnly.get())
+configurations["providerPreflightImplementation"].extendsFrom(configurations.testImplementation.get())
+configurations["providerPreflightRuntimeOnly"].extendsFrom(configurations.testRuntimeOnly.get())
 
 tasks.test {
     useJUnitPlatform()
@@ -93,6 +99,20 @@ val integrationTest = tasks.register<Test>("integrationTest") {
     classpath = sourceSets["integrationTest"].runtimeClasspath
     shouldRunAfter(tasks.test)
     useJUnitPlatform()
+}
+
+tasks.register<Test>("providerPreflight") {
+    description = "Calls enabled real AI providers with synthetic tool and structured-output checks."
+    group = "verification"
+    testClassesDirs = sourceSets["providerPreflight"].output.classesDirs
+    classpath = sourceSets["providerPreflight"].runtimeClasspath
+    useJUnitPlatform()
+    outputs.upToDateWhen { false }
+    testLogging {
+        events("passed", "failed", "skipped")
+        showStandardStreams = true
+    }
+    shouldRunAfter(tasks.test)
 }
 
 tasks.check {

@@ -25,20 +25,21 @@ public class MetaDeliveryConfiguration {
                                                    MetaDeliveryProperties properties,
                                                    CustomerWindowPort customerWindows) {
         var ports = new EnumMap<Channel, ChannelDeliveryPort>(Channel.class);
-        addPort(ports, Channel.WHATSAPP, properties.getWhatsappEndpoint(), properties.getWhatsappAccessToken());
-        addPort(ports, Channel.MESSENGER, properties.getMessengerEndpoint(), properties.getMessengerAccessToken());
-        addPort(ports, Channel.INSTAGRAM, properties.getInstagramEndpoint(), properties.getInstagramAccessToken());
+        addPort(ports, Channel.WHATSAPP, properties.getWhatsappEndpoint(), properties.getWhatsappAccessToken(), properties.isDiagnosticStacktraces());
+        addPort(ports, Channel.MESSENGER, properties.getMessengerEndpoint(), properties.getMessengerAccessToken(), properties.isDiagnosticStacktraces());
+        addPort(ports, Channel.INSTAGRAM, properties.getInstagramEndpoint(), properties.getInstagramAccessToken(), properties.isDiagnosticStacktraces());
         return new MetaOutboxDeliveryRouter(objectMapper, ports, customerWindows);
     }
 
     private static void addPort(Map<Channel, ChannelDeliveryPort> ports, Channel channel,
-                                String endpoint, String accessToken) {
+                                String endpoint, String accessToken, boolean diagnosticStacktraces) {
         if (!endpoint.isBlank()) {
             if (accessToken.isBlank()) {
                 throw new IllegalStateException("Meta access token is required for " + channel);
             }
             ports.put(channel, new MetaRestClientDeliveryAdapter(
-                    RestClient.builder().build(), URI.create(endpoint), accessToken, channel));
+                    RestClient.builder().build(), URI.create(endpoint), accessToken, channel,
+                    new ObjectMapper(), diagnosticStacktraces));
         }
     }
 }

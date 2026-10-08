@@ -51,7 +51,8 @@ class RulesConversationDecisionAdapterTest {
     void classifiesNonToolLeadRequestsWithoutInventingToolFamilies() {
         assertDecision("Quiero dar mi auto a cuenta", ConversationIntent.TRADE_IN, ToolFamily.NONE);
         assertDecision("¿Cuál es el horario de la agencia?", ConversationIntent.DEALERSHIP_INFO, ToolFamily.NONE);
-        assertDecision("Necesito servicio para mi F-150", ConversationIntent.SERVICE_SUPPORT, ToolFamily.NONE);
+        assertDecision("Necesito servicio para mi F-150", ConversationIntent.SERVICE_SUPPORT,
+                ToolFamily.KNOWLEDGE_SEARCH);
         assertDecision("Quiero presentar una queja por la atención", ConversationIntent.COMPLAINT_STATUS,
                 ToolFamily.NONE);
         assertDecision("¿Me recomienda una receta médica?", ConversationIntent.OUT_OF_SCOPE, ToolFamily.NONE);

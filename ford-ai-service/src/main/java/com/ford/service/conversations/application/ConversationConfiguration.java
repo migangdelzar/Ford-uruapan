@@ -1,6 +1,9 @@
 package com.ford.service.conversations.application;
 
 import com.ford.service.ai.application.AssistantService;
+import com.ford.service.ai.application.InputSecurityPolicy;
+import com.ford.service.ai.application.port.out.ChatCompletionPort;
+import com.ford.service.conversations.adapter.out.ai.ProviderRoutedConversationMemoryCompactor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ford.service.conversations.adapter.out.JdbcConversationMemoryRepository;
 import com.ford.service.conversations.adapter.out.PgVectorConversationMemoryAdapter;
@@ -55,12 +58,22 @@ public class ConversationConfiguration {
     }
 
     @Bean
+    ConversationMemoryCompactionPort conversationMemoryCompactionPort(
+            ObjectProvider<ChatCompletionPort> completions, ObjectProvider<InputSecurityPolicy> inputSecurity) {
+        var completion = completions.getIfAvailable();
+        var security = inputSecurity.getIfAvailable();
+        return completion == null || security == null ? ConversationMemoryCompactionPort.unavailable()
+                : new ProviderRoutedConversationMemoryCompactor(completion, security);
+    }
+
+    @Bean
     ConversationMemoryService conversationMemoryService(ConversationMemoryPort memory,
                                                         MemoryProperties properties,
                                                         ConversationMemorySemanticPort semanticMemory,
                                                         ConversationMemoryRecallPort recall,
-                                                        ApplicationEventPublisher publisher) {
-        return new ConversationMemoryService(memory, properties, semanticMemory, recall, publisher);
+                                                        ApplicationEventPublisher publisher,
+                                                        ConversationMemoryCompactionPort compactor) {
+        return new ConversationMemoryService(memory, properties, semanticMemory, recall, publisher, compactor);
     }
 
     @Bean

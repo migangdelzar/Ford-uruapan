@@ -2,7 +2,7 @@ package com.ford.service.ai.application;
 
 import java.util.Locale;
 
-public final class IntentRouter {
+public class IntentRouter {
 
     public Intent route(String text) {
         if (text == null || text.isBlank()) {

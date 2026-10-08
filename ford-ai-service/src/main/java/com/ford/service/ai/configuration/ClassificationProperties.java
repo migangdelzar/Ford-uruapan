@@ -32,9 +32,9 @@ public class ClassificationProperties {
     private String piiPolicy = "redact";
     private boolean intentEnabled = true;
     private boolean leadEnabled = true;
-    private boolean handoffEnabled;
+    private boolean handoffEnabled = true;
     private boolean toolsEnabled = true;
-    private boolean sensitiveDataEnabled = true;
+    private boolean sensitiveDataEnabled;
     private boolean guardrailsEnabled;
     private boolean selfRefineEnabled;
     @Min(1)

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Probe enabled real AI models through Spring AI using synthetic tool data"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+export FORD_AI_LIVE_PROVIDER_TESTS=true
+printf '%s\n' "Real model calls enabled: synthetic prompt/tool only; provider charges may apply."
+exec ./gradlew providerPreflight --no-daemon --no-configuration-cache

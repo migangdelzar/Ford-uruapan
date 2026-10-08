@@ -22,6 +22,6 @@ class HumanHandoffPolicyTest {
 
         assertThat(policy.enabled()).isTrue();
         assertThat(policy.shouldCreateHandoff(true)).isTrue();
-        assertThat(policy.fallbackText()).contains("asesor humano");
+        assertThat(policy.fallbackText()).contains("No pude generar").doesNotContain("asesor humano");
     }
 }

@@ -16,9 +16,9 @@ public class DefaultAiObservationService implements AiObservationService {
 
     private static final Set<String> ALLOWED_KEYS = Set.of(
             "channel", "provider", "model", "tool", "outcome", "lead_band", "operation",
-            "failure_category");
+            "failure_category", "confidence_band", "evidence_status", "quality_outcome");
     private static final Set<String> ALLOWED_OPERATIONS = Set.of(
-            "ford.ai.conversation", "ford.ai.model", "ford.ai.provider.attempt",
+            "ford.ai.conversation", "ford.ai.model", "ford.ai.provider.attempt", "ford.ai.answer.assessment",
             "ford.conversation.inbound", "ford.conversation.memory_projection",
             "ford.outbox.publish", "ford.outbox.delivery");
 
@@ -103,13 +103,25 @@ public class DefaultAiObservationService implements AiObservationService {
             return Set.of("openai", "ollama", "deterministic", "none").contains(normalized) ? normalized : "other";
         }
         if (key.equals("outcome")) {
-            return Set.of("success", "failure", "handoff", "retry", "dead_letter", "unavailable", "skipped")
+            return Set.of("success", "failure", "fallback", "handoff", "retry", "dead_letter", "unavailable", "skipped", "withheld")
                     .contains(normalized)
                     ? normalized : "other";
         }
+        if (key.equals("confidence_band")) {
+            return Set.of("low", "medium", "high", "unknown").contains(normalized) ? normalized : "unknown";
+        }
+        if (key.equals("evidence_status")) {
+            return Set.of("not_required", "read_only_tool_returned", "read_only_tool_returned_empty",
+                    "read_only_tool_failed", "required_tool_not_called")
+                    .contains(normalized) ? normalized : "other";
+        }
+        if (key.equals("quality_outcome")) {
+            return Set.of("accepted", "withheld", "rejected").contains(normalized) ? normalized : "other";
+        }
         if (key.equals("failure_category")) {
             return Set.of("rate_limited", "provider_unavailable", "network", "authentication",
-                    "invalid_request", "provider_error", "source_unavailable", "persistence", "delivery_error")
+                    "invalid_request", "provider_error", "source_unavailable", "persistence", "delivery_error",
+                    "timeout", "tool_error")
                     .contains(normalized) ? normalized : "other";
         }
         if (key.equals("lead_band")) {

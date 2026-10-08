@@ -19,14 +19,15 @@ public class AiProperties {
     private String localChatProvider = "ollama";
     private String cloudChatModelVersion = "configured-cloud-model";
     private String localChatModelVersion = "configured-local-model";
+    private double cloudTemperature = 0.1;
     private String embeddingProvider = "ollama";
     private String embeddingModelVersion = "configured-embedding-model";
-    private boolean cloudEnabled = true;
+    private boolean cloudEnabled = false;
     private boolean localEnabled = true;
     private boolean logProviderErrors;
     @Min(1)
-    @Max(2)
-    private int providerMaxAttempts = 2;
+    @Max(5)
+    private int providerMaxAttempts = 5;
     @NotNull
     private Duration providerMaxRetryAfter = Duration.ofSeconds(3);
     private boolean mediaEnabled;
@@ -79,6 +80,17 @@ public class AiProperties {
         localChatModelVersion = value;
     }
 
+    public double cloudTemperature() {
+        return cloudTemperature;
+    }
+
+    public void setCloudTemperature(double value) {
+        if (!Double.isFinite(value) || value < 0.0 || value > 2.0) {
+            throw new IllegalArgumentException("cloudTemperature must be between 0 and 2");
+        }
+        cloudTemperature = value;
+    }
+
     public String embeddingProvider() {
         return embeddingProvider;
     }
@@ -124,8 +136,8 @@ public class AiProperties {
     }
 
     public void setProviderMaxAttempts(int value) {
-        if (value < 1 || value > 2) {
-            throw new IllegalArgumentException("providerMaxAttempts must be between 1 and 2");
+        if (value < 1 || value > 5) {
+            throw new IllegalArgumentException("providerMaxAttempts must be between 1 and 5");
         }
         providerMaxAttempts = value;
     }

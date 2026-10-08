@@ -13,6 +13,7 @@ import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -48,11 +49,18 @@ class PgVectorKnowledgeIntegrationTest {
                 .build();
         vectorStore.afterPropertiesSet();
         var tenantId = UUID.randomUUID();
-        vectorStore.add(List.of(new Document(
-                "Las comisiones de apertura dependen del producto publicado.",
-                Map.of("tenantId", tenantId.toString(), "locale", "es-MX", "approved", true,
-                        "documentType", "finance"))));
-        retrievalService = new KnowledgeRetrievalService(new PgVectorKnowledgeStore(vectorStore));
+        vectorStore.add(List.of(
+                new Document("Las comisiones de apertura dependen del producto publicado.",
+                        Map.of("tenantId", tenantId.toString(), "locale", "es-MX", "approved", true,
+                                "documentType", "finance")),
+                new Document("Las comisiones de otro distribuidor son distintas.",
+                        Map.of("tenantId", UUID.randomUUID().toString(), "locale", "es-MX", "approved", true,
+                                "documentType", "finance")),
+                new Document("Las comisiones no aprobadas no deben mostrarse.",
+                        Map.of("tenantId", tenantId.toString(), "locale", "es-MX", "approved", false,
+                                "documentType", "finance"))));
+        retrievalService = new KnowledgeRetrievalService(new PgVectorKnowledgeStore(
+                vectorStore, JdbcClient.create(dataSource), new tools.jackson.databind.ObjectMapper()));
         this.tenantId = tenantId;
     }
 
@@ -61,7 +69,11 @@ class PgVectorKnowledgeIntegrationTest {
     private static final class FixedEmbeddingModel implements EmbeddingModel {
         @Override
         public EmbeddingResponse call(EmbeddingRequest request) {
-            return new EmbeddingResponse(List.of(new Embedding(new float[]{1.0f, 0.0f}, 0)));
+            var embeddings = request.getInstructions().stream()
+                    .map(text -> new Embedding(text.contains("uniquephrase")
+                            ? new float[]{0.0f, 1.0f} : new float[]{1.0f, 0.0f}, 0))
+                    .toList();
+            return new EmbeddingResponse(embeddings);
         }
 
         @Override
@@ -71,7 +83,8 @@ class PgVectorKnowledgeIntegrationTest {
 
         @Override
         public float[] embed(Document document) {
-            return new float[]{1.0f, 0.0f};
+            return document.getText().contains("uniquephrase")
+                    ? new float[]{0.0f, 1.0f} : new float[]{1.0f, 0.0f};
         }
 
         @Override
@@ -92,5 +105,35 @@ class PgVectorKnowledgeIntegrationTest {
 
         assertThat(chunks).singleElement().satisfies(chunk ->
                 assertThat(chunk.content()).contains("comisiones de apertura"));
+    }
+
+    @Test
+    void retrievesKeywordMatchOutsideVectorTopTwenty() {
+        var documents = new java.util.ArrayList<Document>();
+        for (int index = 0; index < 25; index++) {
+            documents.add(new Document(String.format("00000000-0000-0000-0000-%012d", index),
+                    "Información general de vehículo " + index,
+                    Map.of("tenantId", tenantId.toString(), "locale", "es-MX", "approved", true,
+                            "documentType", "vehicle")));
+        }
+        var keywordMatch = new Document("00000000-0000-0000-0000-999999999999",
+                "La uniquephrase distingue esta información exacta.",
+                Map.of("tenantId", tenantId.toString(), "locale", "es-MX", "approved", true,
+                        "documentType", "vehicle"));
+        // Add to the same store used by the retriever.
+        var dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        var vectorStore = PgVectorStore.builder(new JdbcTemplate(dataSource), new FixedEmbeddingModel())
+                .dimensions(2).initializeSchema(true).build();
+        vectorStore.afterPropertiesSet();
+        vectorStore.add(documents);
+        vectorStore.add(List.of(keywordMatch));
+        var retrieval = new KnowledgeRetrievalService(new PgVectorKnowledgeStore(
+                vectorStore, JdbcClient.create(dataSource), new tools.jackson.databind.ObjectMapper()));
+
+        var chunks = retrieval.retrieve(new KnowledgeQuery(tenantId, "uniquephrase", "es-MX", "vehicle", false));
+
+        assertThat(chunks).isNotEmpty();
+        assertThat(chunks.getFirst().content()).contains("uniquephrase");
     }
 }

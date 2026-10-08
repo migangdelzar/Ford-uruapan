@@ -13,7 +13,7 @@ docker compose --env-file .env up --build
 
 AI requires one configured provider:
 
-- Local: run Ollama on the host, pull `llama3.2` and `nomic-embed-text`, and
+- Local: run Ollama on the host, pull `qwen2.5:3b` and `nomic-embed-text`, and
   keep `FORD_AI_LOCAL_ENABLED=true`.
 - Cloud: set `FORD_AI_CLOUD_ENABLED=true`, the cloud model name, and
   `OPENAI_API_KEY` through a secret manager. Do not put the key in Git or chat.
@@ -37,7 +37,7 @@ WhatsApp, `provider_account_id` is the phone number ID from
 The Meta app secret is deployment-level configuration and is used to verify
 the raw request before the binding is queried.
 
-For a local WhatsApp binding, add `FORD_TENANT_ID`, `FORD_META_PHONE_ID`, and
+For a local WhatsApp binding, add `FORD_TENANT_ID`, `FORD_META_PHONE_NUMBER_ID` (or legacy `FORD_META_PHONE_ID`), and
 the Meta app secret to `.env`, then run:
 
 ```bash

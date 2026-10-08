@@ -95,8 +95,9 @@ public final class RulesConversationDecisionAdapter implements ConversationDecis
             case OFFERS -> ToolFamily.OFFERS;
             case FINANCE -> ToolFamily.FINANCE_ESTIMATE;
             case KNOWLEDGE -> ToolFamily.KNOWLEDGE_SEARCH;
+            case SERVICE_SUPPORT -> ToolFamily.KNOWLEDGE_SEARCH;
             case APPOINTMENT -> ToolFamily.APPOINTMENT;
-            case LEAD_HANDOFF, TRADE_IN, DEALERSHIP_INFO, SERVICE_SUPPORT, COMPLAINT_STATUS,
+            case LEAD_HANDOFF, TRADE_IN, DEALERSHIP_INFO, COMPLAINT_STATUS,
                     OUT_OF_SCOPE, GENERAL -> ToolFamily.NONE;
         };
     }

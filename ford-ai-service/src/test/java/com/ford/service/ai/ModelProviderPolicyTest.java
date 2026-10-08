@@ -25,10 +25,10 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 class ModelProviderPolicyTest {
 
     @Test
-    void prefersConfiguredCloudProviderForNonSensitiveStructuredToolRequest() {
+    void prefersCloudProviderForNonSensitiveStructuredToolRequest() {
         ModelProviderPolicy policy = new DefaultModelProviderPolicy(List.of(
-                provider("ollama", true, true, true, false),
-                provider("openai", true, true, true, true)));
+                provider("openai", true, true, true, true),
+                provider("ollama", true, true, true, false)));
 
         var selected = policy.select(
                 new AiExecutionContext(UUID.randomUUID(), false),
@@ -38,10 +38,10 @@ class ModelProviderPolicyTest {
     }
 
     @Test
-    void returnsEligibleProvidersInCloudFirstOrderForNonSensitiveRequests() {
+    void returnsEligibleProvidersInConfiguredOrderForNonSensitiveRequests() {
         ModelProviderPolicy policy = new DefaultModelProviderPolicy(List.of(
-                provider("ollama", true, true, true, false),
                 provider("openai", true, true, true, true),
+                provider("ollama", true, true, true, false),
                 provider("unhealthy", false, true, true, true),
                 provider("no-tools", true, false, true, true),
                 provider("no-structured-output", true, true, false, true)));

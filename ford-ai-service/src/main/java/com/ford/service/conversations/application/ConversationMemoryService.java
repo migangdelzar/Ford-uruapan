@@ -40,7 +40,8 @@ public final class ConversationMemoryService {
                                      MemoryProperties properties,
                                      ConversationMemorySemanticPort semanticMemory,
                                      ApplicationEventPublisher eventPublisher) {
-        this(memory, properties, semanticMemory, new NoOpConversationMemoryRecallPort(), eventPublisher);
+        this(memory, properties, semanticMemory, new NoOpConversationMemoryRecallPort(), eventPublisher,
+                ConversationMemoryCompactionPort.unavailable());
     }
 
     public ConversationMemoryService(ConversationMemoryPort memory,
@@ -48,13 +49,23 @@ public final class ConversationMemoryService {
                                      ConversationMemorySemanticPort semanticMemory,
                                      ConversationMemoryRecallPort recall,
                                      ApplicationEventPublisher eventPublisher) {
+        this(memory, properties, semanticMemory, recall, eventPublisher,
+                ConversationMemoryCompactionPort.unavailable());
+    }
+
+    public ConversationMemoryService(ConversationMemoryPort memory,
+                                     MemoryProperties properties,
+                                     ConversationMemorySemanticPort semanticMemory,
+                                     ConversationMemoryRecallPort recall,
+                                     ApplicationEventPublisher eventPublisher,
+                                     ConversationMemoryCompactionPort compactor) {
         this.memory = Objects.requireNonNull(memory);
         this.properties = Objects.requireNonNull(properties);
         this.semanticMemory = Objects.requireNonNull(semanticMemory);
         this.recall = Objects.requireNonNull(recall);
         this.recallPolicy = new ConversationMemoryRecallPolicy();
         this.eventPublisher = Objects.requireNonNull(eventPublisher);
-        this.projector = new ConversationMemoryProjector(properties);
+        this.projector = new ConversationMemoryProjector(properties, Objects.requireNonNull(compactor));
     }
 
     public ConversationMemoryContext load(MemoryQuery query) {
@@ -138,6 +149,11 @@ public final class ConversationMemoryService {
     public MemoryProjectionUpdate project(ConversationMemoryContext context, String latestUserMessage,
                                           UUID sourceMessageId) {
         return projector.project(context, latestUserMessage, sourceMessageId);
+    }
+
+    public MemoryProjectionUpdate project(ConversationMemoryContext context, String latestUserMessage,
+                                          UUID sourceMessageId, String assistantResponse) {
+        return projector.project(context, latestUserMessage, sourceMessageId, assistantResponse);
     }
 
     public void invalidate(ConversationMemoryKey key) {

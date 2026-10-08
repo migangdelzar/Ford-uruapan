@@ -18,15 +18,6 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
-  prometheus:
-    config:
-      scrape_configs:
-        - job_name: ford-service
-          scrape_interval: 30s
-          metrics_path: /actuator/prometheus
-          static_configs:
-            - targets: [ford-service:8080]
-
   file_log/docker:
     include:
       - /var/lib/docker/containers/*/*-json.log
@@ -128,8 +119,8 @@ service:
       processors: [memory_limiter, attributes/redaction, resource/ford, batch]
       exporters: [otlp_http/grafana, otlp_http/langfuse]
     metrics:
-      receivers: [prometheus]
-      processors: [memory_limiter, resource/ford, batch]
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/redaction, resource/ford, batch]
       exporters: [otlp_http/grafana]
     logs:
       receivers: [file_log/docker]

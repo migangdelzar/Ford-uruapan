@@ -9,13 +9,28 @@ public record AssistantResponse(
         boolean handoffRequired,
         String provider,
         List<String> sourceDocumentIds,
-        LeadJourneyProposal journeyProposal) {
+        LeadJourneyProposal journeyProposal,
+        Double modelConfidence,
+        ResponseEvidenceStatus evidenceStatus) {
+
     public AssistantResponse {
         sourceDocumentIds = List.copyOf(sourceDocumentIds == null ? List.of() : sourceDocumentIds);
+        evidenceStatus = evidenceStatus == null ? ResponseEvidenceStatus.NOT_REQUIRED : evidenceStatus;
+        if (modelConfidence != null && (!Double.isFinite(modelConfidence)
+                || modelConfidence < 0.0 || modelConfidence > 1.0)) {
+            throw new IllegalArgumentException("model confidence must be between 0 and 1");
+        }
+    }
+
+    public AssistantResponse(String content, boolean handoffRequired, String provider,
+                             List<String> sourceDocumentIds, LeadJourneyProposal journeyProposal) {
+        this(content, handoffRequired, provider, sourceDocumentIds, journeyProposal,
+                null, ResponseEvidenceStatus.NOT_REQUIRED);
     }
 
     public AssistantResponse(String content, boolean handoffRequired, String provider,
                              List<String> sourceDocumentIds) {
-        this(content, handoffRequired, provider, sourceDocumentIds, null);
+        this(content, handoffRequired, provider, sourceDocumentIds, null,
+                null, ResponseEvidenceStatus.NOT_REQUIRED);
     }
 }

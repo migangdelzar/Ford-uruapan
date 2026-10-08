@@ -7,11 +7,14 @@ load_deploy_config
 require_deploy_config
 render_deploy_inventory
 role="${1:-app}"
+if (( $# > 0 )); then
+  shift
+fi
 case "$role" in
   app) limit=app; project='app';;
   data) limit=data; project='data';;
   *) echo "Usage: mise run deploy:restart -- app|data" >&2; exit 2;;
 esac
-become_args=()
-[[ "$role" == data ]] && become_args=(-b)
-ANSIBLE_CONFIG="$(deploy_repo_root)/deployment/ansible/ansible.cfg" ansible "$limit" "${become_args[@]}" -i "$(deploy_inventory_file)" -m shell -a "docker compose -f '$EMME_REMOTE_ROOT/$project/compose.yml' restart" "$@"
+ansible_args=("$limit" -i "$(deploy_inventory_file)" -m shell -a "docker compose -f '$EMME_REMOTE_ROOT/$project/compose.yml' restart")
+[[ "$role" == data ]] && ansible_args+=(-b)
+ANSIBLE_CONFIG="$(deploy_repo_root)/deployment/ansible/ansible.cfg" ansible "${ansible_args[@]}" "$@"

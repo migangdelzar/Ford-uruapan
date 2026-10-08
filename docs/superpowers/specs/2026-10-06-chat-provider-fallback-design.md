@@ -8,7 +8,7 @@
 
 Add a reproducible, ordered set of cloud chat provider adapters for Groq, Gemini, Cloudflare Workers AI, and OpenRouter. Keep configured OpenAI as the first-choice cloud provider; use Groq, Gemini, Cloudflare Workers AI, and OpenRouter as ordered fallbacks. Use the existing Spring AI OpenAI-compatible adapter path for each provider, preserving the existing application routing and failure policy. Oracle deployment passes provider settings through Ansible-rendered app environment files; Terraform continues to manage OCI infrastructure only and never receives provider API keys.
 
-The approved initial order is `groq,gemini,cloudflare,openrouter`. A provider becomes eligible only when its non-secret settings and API key are present and that provider/model has been enabled after the Ford evals pass. Missing optional credentials omit that provider and are surfaced by safe diagnostics. The variable-model `openrouter/free` target remains testing-only.
+The approved initial order is `cloudflare,groq,gemini,openrouter`. A provider becomes eligible only when its non-secret settings and API key are present and that provider/model has been enabled after the Ford evals pass. Missing optional credentials omit that provider and are surfaced by safe diagnostics. The variable-model `openrouter/free` target remains testing-only.
 
 ## Current Context
 
@@ -41,7 +41,7 @@ Keep OpenAI first when configured. Initial approved fallback preference: Groq, G
 
 Missing API keys disable only their optional provider and surface the missing provider ID in sanitized startup/preflight diagnostics. Invalid endpoint or model configuration for an enabled provider should fail configuration validation rather than silently route to an unintended service. Only enable a provider after its model passes the Ford eval suite. `openrouter/free` is allowed for explicit evaluation, but not in the normal Oracle production fallback order.
 
-Fallback continues to occur only for the existing retryable failure classes: rate limits, provider unavailability, and network failures/timeouts. Authentication, permission, invalid-request, and model-capability errors must not be retried as if transient. Respect the current bounded attempt and Retry-After behavior; do not increase retry limits as part of this work.
+Fallback continues to occur only for the existing retryable failure classes: rate limits, provider unavailability, and network failures/timeouts. Authentication, permission, invalid-request, and model-capability errors must not be retried as if transient. Attempt each eligible provider at most once per request and cap the chain at six total attempts (OpenAI, four configured cloud fallbacks, and optional Ollama). Honor Retry-After only as a bounded delay before trying another provider; when it exceeds the configured wait budget, skip the delay and continue to the next provider. This adjustment is required because the previous two-attempt total could never traverse the approved provider list.
 
 ## Alternatives Considered
 
@@ -59,7 +59,7 @@ Fallback continues to occur only for the existing retryable failure classes: rat
 
 ## Test and Evaluation Requirements
 
-- Unit tests cover allowlisted provider binding, provider ordering, missing-key omission, invalid configuration, capability/privacy filtering, and retryable versus nonretryable fallback.
+- Unit tests cover allowlisted provider binding, provider ordering, missing-key omission, invalid configuration, capability/privacy filtering, retryable versus nonretryable fallback, and full-chain traversal under the six-provider cap.
 - Spring configuration tests verify one adapter is created per enabled-and-keyed provider and no adapter is created for a missing key.
 - Ansible/Mise contract tests verify provider variables are carried into the app env template, rendered with secure permissions, and never printed.
 - Ford app conversation/eval runs use mocked providers for deterministic tests; report deterministic policy results separately from any LLM/Ragas score.

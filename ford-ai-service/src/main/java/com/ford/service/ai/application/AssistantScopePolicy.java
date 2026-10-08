@@ -3,34 +3,46 @@ package com.ford.service.ai.application;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.text.Normalizer;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 /** Deterministic domain boundary for the Ford vehicle-shopping assistant. */
-public final class AssistantScopePolicy {
-
-    private static final List<String> ALLOWED_TERMS = List.of(
-            "ford", "auto", "autos", "coche", "coches", "carro", "carros", "vehículo", "vehiculo",
-            "camioneta", "ranger", "bronco", "maverick", "territory", "explorer", "mustang", "f-150",
-            "lobo", "raptor", "pickup", "pick-up",
-            "precio", "oferta", "promoción", "promocion", "bono", "modelo", "versión", "version", "motor",
-            "opciones", "consumo", "rendimiento", "kilómetro", "kilometro", "km/l", "litro", "potencia",
-            "caballos", "equipamiento", "seguridad", "tracción", "traccion", "detalles", "información", "informacion",
-            "garantía", "garantia", "disponible", "inventario", "financiamiento", "financiación", "financiacion",
-            "crédito", "credito", "enganche", "mensualidad", "cita", "asesor", "agencia", "sucursal",
-            "horario", "teléfono", "telefono", "comprar", "prueba de manejo", "persona", "humano",
-            "que me llame", "que me llamen");
+public class AssistantScopePolicy {
 
     private static final List<String> GREETING_TERMS = List.of(
-            "hola", "hi", "hello", "buenas", "buen día", "buen dia", "buenos días", "buenos dias", "gracias", "adiós", "adios");
+            "hola", "hola buen dia", "hola buenos dias", "hi", "hello", "buenas", "buen dia", "buenos dias",
+            "gracias", "muchas gracias", "adios");
 
     private static final List<String> CLEARLY_UNRELATED_TERMS = List.of(
-            "poema", "escribe una canción", "escribe una cancion", "receta", "clima", "pronóstico del tiempo",
-            "pronostico del tiempo", "capital de", "código para", "codigo para", "write a poem", "poem",
-            "recipe", "weather", "write a song");
+            "poema", "escribe una cancion", "receta", "clima", "pronostico del tiempo",
+            "capital de", "capital of", "teoria de la relatividad", "hackear", "hack account", "codigo para",
+            "write a poem", "poem", "recipe", "weather", "write a song", "medical diagnosis");
+
+    private static final List<String> CONTEXTUAL_FOLLOW_UPS = List.of(
+            "y cuanto", "y que precio", "y el precio", "cuanto cuesta", "explicame eso", "explicame mejor",
+            "que incluye", "que opciones", "mas informacion", "y esa version", "y ese modelo", "la otra version",
+            "el otro modelo");
+
+    private static final Set<Intent> SUPPORTED_FORD_INTENTS = Set.of(
+            Intent.INVENTORY, Intent.CATALOG, Intent.OFFERS, Intent.FINANCE, Intent.KNOWLEDGE,
+            Intent.LEAD_HANDOFF, Intent.APPOINTMENT, Intent.TRADE_IN, Intent.DEALERSHIP_INFO);
+
+    private static final Pattern PUNCTUATION = Pattern.compile("[^\\p{L}\\p{N}/-]+");
 
     private final IntentRouter intentRouter;
+    private final Set<String> availableReadOnlyTools;
 
     public AssistantScopePolicy(IntentRouter intentRouter) {
+        this(intentRouter, Set.of());
+    }
+
+    public AssistantScopePolicy(IntentRouter intentRouter, Set<String> availableReadOnlyTools) {
         this.intentRouter = Objects.requireNonNull(intentRouter);
+        this.availableReadOnlyTools = Objects.requireNonNull(availableReadOnlyTools).stream()
+                .filter(Objects::nonNull)
+                .map(name -> name.toLowerCase(Locale.ROOT))
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     public boolean allows(String userText, ConversationDecision decision) {
@@ -41,18 +53,27 @@ public final class AssistantScopePolicy {
         if (userText == null || userText.isBlank()) {
             return false;
         }
-        var normalized = userText.toLowerCase(Locale.ROOT);
-        if (decision != null && decision.intent() == ConversationIntent.OUT_OF_SCOPE
-                || intentRouter.route(userText) == Intent.OUT_OF_SCOPE) {
+        var normalized = normalize(userText);
+        var routedIntent = intentRouter.route(userText);
+        if ((decision != null && decision.intent() == ConversationIntent.OUT_OF_SCOPE)
+                || routedIntent == Intent.OUT_OF_SCOPE) {
             return false;
         }
-        var hasFordContext = containsAny(normalized, ALLOWED_TERMS)
-                || intentRouter.route(userText) != Intent.GENERAL
-                || hasFordContext(memoryContext);
-        if (containsAny(normalized, CLEARLY_UNRELATED_TERMS) && !hasFordContext) {
+        if (containsAny(normalized, CLEARLY_UNRELATED_TERMS)) {
             return false;
         }
-        return true;
+        if (SUPPORTED_FORD_INTENTS.contains(routedIntent)) {
+            return true;
+        }
+        if (routedIntent == Intent.SERVICE_SUPPORT
+                && availableReadOnlyTools.contains("approved_knowledge_search")) {
+            return true;
+        }
+        if (routedIntent != Intent.GENERAL) {
+            return false;
+        }
+        return isGreeting(normalized)
+                || hasFordContext(memoryContext) && containsAny(normalized, CONTEXTUAL_FOLLOW_UPS);
     }
 
     public String scopeResponse() {
@@ -62,6 +83,16 @@ public final class AssistantScopePolicy {
 
     private static boolean containsAny(String value, List<String> terms) {
         return terms.stream().anyMatch(value::contains);
+    }
+
+    private static boolean isGreeting(String normalized) {
+        return GREETING_TERMS.contains(normalized);
+    }
+
+    private static String normalize(String value) {
+        var withoutAccents = Normalizer.normalize(value, Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+        return PUNCTUATION.matcher(withoutAccents.toLowerCase(Locale.ROOT))
+                .replaceAll(" ").replaceAll("\\s+", " ").strip();
     }
 
     private static boolean hasFordContext(String memoryContext) {

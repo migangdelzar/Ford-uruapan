@@ -39,6 +39,8 @@ Instance Principal; do not copy an OCI API key to it.
 `create_instances`, `manage_data_volume`, and `manage_backup_bucket` remain
 false during adoption. Existing instance OCIDs are recorded in the ignored
 local OCI config and are used by Ansible/operations; they are not committed.
+Third-party chat-provider API keys use the separate private Mise/Ansible
+application-environment path; they are not Terraform variables or state.
 Before Terraform owns an existing instance, import it into a reviewed state
 using its exact resource address and a reviewed configuration. Do not enable
 creation or destroy plans until the image, subnet, compartment, and

@@ -5,6 +5,7 @@ import com.ford.service.ai.configuration.AiProperties;
 import com.ford.service.ai.application.ModelProviderPolicy;
 import com.ford.service.ai.application.ProviderCapabilities;
 import com.ford.service.ai.application.ProviderDescriptor;
+import com.ford.service.ai.configuration.ChatProviderProperties;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.audio.transcription.TranscriptionModel;
@@ -14,13 +15,15 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.util.List;
+import java.util.ArrayList;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(AiProperties.class)
+@EnableConfigurationProperties({AiProperties.class, ChatProviderProperties.class})
 public class SpringAiProviderConfiguration {
 
     @Bean
     ModelProviderPolicy modelProviderPolicy(AiProperties properties,
+                                            ChatProviderProperties chatProviders,
                                             ObjectProvider<OpenAiChatModel> cloudModel,
                                             ObjectProvider<OllamaChatModel> localModel,
                                             ObjectProvider<TranscriptionModel> transcriptionModel) {
@@ -29,19 +32,26 @@ public class SpringAiProviderConfiguration {
         var cloud = cloudModel.getIfAvailable();
         var local = localModel.getIfAvailable();
         var transcriptionAvailable = transcriptionModel.getIfAvailable() != null;
-        return new DefaultModelProviderPolicy(List.of(
-                new ProviderDescriptor(
-                        cloudId,
-                        capabilities(properties, cloudId, cloud != null, transcriptionAvailable),
-                        properties.cloudEnabled() && cloud != null,
-                        true,
-                        properties.cloudChatModelVersion()),
-                new ProviderDescriptor(
-                        localId,
-                        capabilities(properties, localId, local != null, false),
-                        properties.localEnabled() && local != null,
-                        false,
-                        properties.localChatModelVersion())));
+        var providers = new ArrayList<ProviderDescriptor>();
+        for (var providerId : chatProviders.eligibleFallbackIds()) {
+            var provider = chatProviders.catalog().get(providerId);
+            providers.add(new ProviderDescriptor(providerId,
+                    new ProviderCapabilities(provider.toolCallingVerified(), provider.structuredOutputVerified(), true),
+                    true, true, provider.model()));
+        }
+        providers.add(new ProviderDescriptor(
+                cloudId,
+                capabilities(properties, cloudId, cloud != null, transcriptionAvailable),
+                properties.cloudEnabled() && cloud != null,
+                true,
+                properties.cloudChatModelVersion()));
+        providers.add(new ProviderDescriptor(
+                localId,
+                capabilities(properties, localId, local != null, false),
+                properties.localEnabled() && local != null,
+                false,
+                properties.localChatModelVersion()));
+        return new DefaultModelProviderPolicy(providers);
     }
 
     private static ProviderCapabilities capabilities(AiProperties properties, String providerId,

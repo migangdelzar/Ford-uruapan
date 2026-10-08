@@ -26,6 +26,7 @@ public final class SpringAiAssistantService implements AssistantService {
     private final DecisionPolicy decisionPolicy;
     private final AssistantScopePolicy scopePolicy;
     private final LeadQualificationPolicy leadQualificationPolicy;
+    private final InputSecurityPolicy inputSecurityPolicy;
 
     public SpringAiAssistantService(AssistantOrchestrator orchestrator,
                                     ModelProviderPolicy providerPolicy) {
@@ -86,6 +87,19 @@ public final class SpringAiAssistantService implements AssistantService {
                                     DecisionPolicy decisionPolicy,
                                     AssistantScopePolicy scopePolicy,
                                     LeadQualificationPolicy leadQualificationPolicy) {
+        this(orchestrator, handoffPolicy, providerPolicy, logProviderErrors, decisionService, decisionPolicy,
+                scopePolicy, leadQualificationPolicy, new InputSecurityPolicy(new ClassificationProperties()));
+    }
+
+    public SpringAiAssistantService(AssistantOrchestrator orchestrator,
+                                    HumanHandoffPolicy handoffPolicy,
+                                    ModelProviderPolicy providerPolicy,
+                                    boolean logProviderErrors,
+                                    ConversationDecisionService decisionService,
+                                    DecisionPolicy decisionPolicy,
+                                    AssistantScopePolicy scopePolicy,
+                                    LeadQualificationPolicy leadQualificationPolicy,
+                                    InputSecurityPolicy inputSecurityPolicy) {
         this.orchestrator = Objects.requireNonNull(orchestrator);
         this.handoffPolicy = Objects.requireNonNull(handoffPolicy);
         this.providerPolicy = Objects.requireNonNull(providerPolicy);
@@ -94,6 +108,7 @@ public final class SpringAiAssistantService implements AssistantService {
         this.decisionPolicy = Objects.requireNonNull(decisionPolicy);
         this.scopePolicy = Objects.requireNonNull(scopePolicy);
         this.leadQualificationPolicy = Objects.requireNonNull(leadQualificationPolicy);
+        this.inputSecurityPolicy = Objects.requireNonNull(inputSecurityPolicy);
     }
 
     @Override
@@ -104,39 +119,41 @@ public final class SpringAiAssistantService implements AssistantService {
         }
 
         var conversationId = context.conversationId() == null ? UUID.randomUUID() : context.conversationId();
+        var securedInput = inputSecurityPolicy.apply(userText, context.memoryContext(),
+                context.leadJourneyContext(), context.containsSensitiveData());
         var started = System.nanoTime();
-        log.info("AI turn started: conversationId={} memoryChars={} sensitiveData={}",
+        log.info("AI turn started: conversationId={} memoryChars={} sensitiveData={} inputGuardrail={} piiRedacted={} untrustedContextOmitted={}",
                 conversationId, context.memoryContext() == null ? 0 : context.memoryContext().length(),
-                context.containsSensitiveData());
+                securedInput.containsSensitiveData(), securedInput.reason(), securedInput.piiRedacted(),
+                securedInput.untrustedContextOmitted());
+        if (securedInput.blocked()) {
+            log.warn("AI turn blocked by input security policy: conversationId={} reason={}",
+                    conversationId, securedInput.reason());
+            return new AssistantTurn(inputSecurityResponse(securedInput.reason()), Intent.GENERAL, false,
+                    List.of(), "input-security-guard", "none", ConversationDecision.deterministicDefault());
+        }
         var decision = decisionService.decide(new ClassificationContext(
-                context.tenantId(), conversationId, userText, context.memoryContext(),
-                "BOT_ACTIVE", context.containsSensitiveData()));
-        var leadAssessment = leadQualificationPolicy.assess(userText, context.memoryContext(), decision);
-        decision = leadQualificationPolicy.enrich(decision, leadAssessment);
-        if (leadAssessment.shouldEscalate() && decision.handoffRecommendation() == HandoffRecommendation.NONE) {
-            decision = decision.withHandoffRecommendation(HandoffRecommendation.ASSISTANT_RECOMMENDED);
+                context.tenantId(), conversationId, securedInput.message(), securedInput.memoryContext(),
+                "BOT_ACTIVE", securedInput.containsSensitiveData()));
+        if (!decisionService.hasConfidentLeadEvidence(decision)) {
+            var leadAssessment = leadQualificationPolicy.assess(
+                    securedInput.message(), securedInput.memoryContext(), decision);
+            decision = leadQualificationPolicy.enrich(decision, leadAssessment);
         }
         log.info("AI turn classified: conversationId={} intent={} leadTemperature={} leadStage={} toolFamily={} handoff={} nextAction={} evidenceCount={}",
                 conversationId, decision.intent(), decision.leadTemperature(), decision.leadStage(),
                 decision.toolFamily(), decision.handoffRecommendation(), decision.nextAction(), decision.evidence().size());
-        if (!scopePolicy.allows(userText, decision, context.memoryContext())) {
+        if (!scopePolicy.allows(securedInput.message(), decision, securedInput.memoryContext())) {
             log.info("AI turn completed by scope guard: conversationId={} durationMs={}",
                     conversationId, elapsedMs(started));
             return new AssistantTurn(scopePolicy.scopeResponse(), decision.toLegacyIntent(), false,
                     List.of(), "scope-guard", "none", decision);
         }
-        if (handoffPolicy.enabled()
-                && (leadAssessment.shouldEscalate() || decisionPolicy.mayCreateHandoff(decision, true))) {
-            log.info("AI turn routed to handoff policy: conversationId={} reason=lead_policy handoffEnabled=true durationMs={}",
-                    conversationId, elapsedMs(started));
-            return new AssistantTurn(handoffPolicy.fallbackText(), decision.toLegacyIntent(), true,
-                    List.of(), "lead-policy", "none", decision);
-        }
         try {
             AssistantResponse response = orchestrator.respond(new AssistantRequest(
-                    context.tenantId(), conversationId, userText, "BOT_ACTIVE",
-                    context.memoryContext(),
-                    context.containsSensitiveData(), decision, context.leadJourneyContext()));
+                    context.tenantId(), conversationId, securedInput.message(), "BOT_ACTIVE",
+                    securedInput.memoryContext(),
+                    securedInput.containsSensitiveData(), decision, securedInput.leadJourneyContext()));
             var requestsHuman = response.handoffRequired()
                     || decisionPolicy.mayCreateHandoff(decision, handoffPolicy.enabled());
             log.info("AI turn completed: conversationId={} provider={} model={} requestsHuman={} sourceCount={} journeyProposal={} durationMs={}",
@@ -154,6 +171,14 @@ public final class SpringAiAssistantService implements AssistantService {
             return new AssistantTurn(handoffPolicy.fallbackText(), decision.toLegacyIntent(),
                     false, List.of(), "fallback", "none", decision);
         }
+    }
+
+    private static String inputSecurityResponse(InputSecurityPolicy.Reason reason) {
+        return switch (reason) {
+            case PROMPT_INJECTION -> "Puedo ayudarte con información de vehículos, ofertas y financiamiento Ford. ¿Qué te gustaría consultar?";
+            case SENSITIVE_DATA_BLOCKED -> "Por seguridad, elimina los datos personales o financieros del mensaje y vuelve a enviarlo. Puedo ayudarte con tu consulta Ford.";
+            case NONE -> "Puedo ayudarte con información de Ford. ¿Qué te gustaría consultar?";
+        };
     }
 
     private static long elapsedMs(long started) {

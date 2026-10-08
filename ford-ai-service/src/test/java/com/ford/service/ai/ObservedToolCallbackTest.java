@@ -9,6 +9,9 @@ import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+
+import java.net.SocketTimeoutException;
 
 import java.util.Map;
 
@@ -42,7 +45,7 @@ class ObservedToolCallbackTest {
                 return "promotion-result";
             }
         };
-        var callback = new ObservedToolCallback(delegate);
+        var callback = new ObservedToolCallback(delegate, new SimpleMeterRegistry());
 
         assertThat(callback.getToolDefinition().name()).isEqualTo("list_promotions");
         assertThat(callback.getToolMetadata()).isEqualTo(delegate.getToolMetadata());
@@ -65,7 +68,7 @@ class ObservedToolCallbackTest {
             }
         };
 
-        assertThatThrownBy(() -> new ObservedToolCallback(delegate).call("{}"))
+        assertThatThrownBy(() -> new ObservedToolCallback(delegate, new SimpleMeterRegistry()).call("{}"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("source unavailable");
     }
@@ -85,7 +88,8 @@ class ObservedToolCallbackTest {
             }
         };
 
-        var callback = new ObservedToolCallback(delegate);
+        var registry = new SimpleMeterRegistry();
+        var callback = new ObservedToolCallback(delegate, registry);
         assertThat(callback.call("private-tool-arguments"))
                 .isEqualTo("private-promotion-result");
 
@@ -93,7 +97,42 @@ class ObservedToolCallbackTest {
                 .contains("MCP tool call started")
                 .contains("tool=list_promotions")
                 .contains("MCP tool call completed")
+                .contains("outcome=success")
                 .doesNotContain("private-tool-arguments")
                 .doesNotContain("private-promotion-result");
+        assertThat(registry.get("ford.ai.tool.attempt")
+                .tags("tool", "finance", "outcome", "success")
+                .timer().count()).isEqualTo(1);
+    }
+
+    @Test
+    void classifiesAndCountsToolFailureWithoutLoggingCauseMessage(CapturedOutput output) {
+        var registry = new SimpleMeterRegistry();
+        var delegate = new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return DefaultToolDefinition.builder().name("search_vehicles")
+                        .description("catalog").inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String input) {
+                throw new IllegalStateException("outer private value",
+                        new SocketTimeoutException("private endpoint and query"));
+            }
+        };
+
+        assertThatThrownBy(() -> new ObservedToolCallback(delegate, registry).call("private arguments"))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(output.getOut())
+                .contains("failureCategory=timeout")
+                .contains("rootCauseType=SocketTimeoutException")
+                .doesNotContain("outer private value")
+                .doesNotContain("private endpoint and query")
+                .doesNotContain("private arguments");
+        assertThat(registry.get("ford.ai.tool.attempt")
+                .tags("tool", "catalog", "outcome", "failure", "failure_category", "timeout")
+                .timer().count()).isEqualTo(1);
     }
 }

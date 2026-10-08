@@ -71,6 +71,10 @@ public class ApiExceptionHandler {
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ProblemDetail> handleConflict(IllegalStateException exception,
                                                          HttpServletRequest request) {
+        var traceId = MDC.get("traceId");
+        log.warn("HTTP state conflict: method={} path={} exceptionType={} traceId={} reason={}",
+                request.getMethod(), request.getRequestURI(), exception.getClass().getSimpleName(),
+                traceId == null ? "-" : traceId, safeReason(exception));
         return problem(HttpStatus.CONFLICT, "State conflict", "state_conflict", exception, request);
     }
 
@@ -97,5 +101,10 @@ public class ApiExceptionHandler {
             detail.setProperty("correlationId", correlationId);
         }
         return ResponseEntity.status(status).body(detail);
+    }
+
+    private static String safeReason(RuntimeException exception) {
+        var message = exception.getMessage();
+        return message == null || message.isBlank() ? exception.getClass().getSimpleName() : message;
     }
 }

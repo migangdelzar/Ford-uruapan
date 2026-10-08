@@ -52,6 +52,8 @@ exporters:
     retry_on_failure:
       enabled: true
       max_elapsed_time: 30s
+  prometheus:
+    endpoint: 0.0.0.0:9464
 
 service:
   extensions: [health_check]
@@ -60,3 +62,7 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, attributes/redaction, batch]
       exporters: [otlphttp/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]

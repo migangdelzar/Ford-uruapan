@@ -1,6 +1,14 @@
 services:
   postgres:
     image: pgvector/pgvector:pg16
+    command:
+      - postgres
+      - -c
+      - "log_line_prefix=%m [%p] app=%a user=%u db=%d sqlstate=%e "
+      - -c
+      - log_error_verbosity=verbose
+      - -c
+      - log_min_error_statement=panic
     environment:
       POSTGRES_DB: ford_service
       POSTGRES_USER: ford
@@ -36,6 +44,10 @@ services:
       FORD_META_VERIFY_TOKEN: ${FORD_META_VERIFY_TOKEN:-}
       FORD_META_AUTO_BINDING_ENABLED: ${FORD_META_AUTO_BINDING_ENABLED:-true}
       FORD_META_PROVIDER_ACCOUNT_ID: ${FORD_META_PROVIDER_ACCOUNT_ID:-${FORD_META_PHONE_ID:-}}
+      FORD_META_PHONE_NUMBER_ID: ${FORD_META_PHONE_NUMBER_ID:-${FORD_META_PROVIDER_ACCOUNT_ID:-${FORD_META_PHONE_ID:-}}}
+      FORD_META_WHATSAPP_BUSINESS_ACCOUNT_ID: ${FORD_META_WHATSAPP_BUSINESS_ACCOUNT_ID:-${FORD_META_WABA_ID:-}}
+      FORD_META_PHONE_NUMBER: ${FORD_META_PHONE_NUMBER:-}
+      FORD_META_DIAGNOSTIC_STACKTRACES_ENABLED: ${FORD_META_DIAGNOSTIC_STACKTRACES_ENABLED:-false}
       FORD_META_PHONE_ID: ${FORD_META_PHONE_ID:-}
       FORD_META_DELIVERY_ENABLED: ${FORD_META_DELIVERY_ENABLED:-false}
       FORD_META_WHATSAPP_DELIVERY_ENDPOINT: ${FORD_META_WHATSAPP_DELIVERY_ENDPOINT:-}
@@ -45,10 +57,12 @@ services:
       FORD_META_INSTAGRAM_DELIVERY_ENDPOINT: ${FORD_META_INSTAGRAM_DELIVERY_ENDPOINT:-}
       FORD_META_INSTAGRAM_ACCESS_TOKEN: ${FORD_META_INSTAGRAM_ACCESS_TOKEN:-}
       FORD_AI_LOCAL_BASE_URL: ${FORD_AI_LOCAL_BASE_URL_DOCKER:-http://host.docker.internal:11434}
-      FORD_AI_LOCAL_MODEL_VERSION: ${FORD_AI_LOCAL_MODEL_VERSION:-llama3.2}
+      FORD_AI_LOCAL_MODEL_VERSION: ${FORD_AI_LOCAL_MODEL_VERSION:-qwen3.5:4b}
+      FORD_AI_LOCAL_TEMPERATURE: ${FORD_AI_LOCAL_TEMPERATURE:-0.1}
       FORD_AI_EMBEDDING_MODEL_VERSION: ${FORD_AI_EMBEDDING_MODEL_VERSION:-nomic-embed-text}
       FORD_AI_CLOUD_BASE_URL: ${FORD_AI_CLOUD_BASE_URL:-https://api.openai.com/v1}
       FORD_AI_CLOUD_MODEL_VERSION: ${FORD_AI_CLOUD_MODEL_VERSION:-gpt-4o-mini}
+      FORD_AI_CLOUD_TEMPERATURE: ${FORD_AI_CLOUD_TEMPERATURE:-0.1}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       FORD_AI_CLOUD_ENABLED: ${FORD_AI_CLOUD_ENABLED:-false}
       FORD_AI_LOCAL_ENABLED: ${FORD_AI_LOCAL_ENABLED:-true}
@@ -59,8 +73,10 @@ services:
       FORD_SCRAPER_ENDPOINT: ${FORD_SCRAPER_ENDPOINT:-}
       FORD_MANUAL_CSV_PATH: ${FORD_MANUAL_CSV_PATH:-}
       FORD_OUTBOX_ENABLED: ${FORD_OUTBOX_ENABLED:-false}
-      FORD_OTEL_TRACES_EXPORT_ENABLED: ${FORD_OTEL_TRACES_EXPORT_ENABLED:-false}
+      FORD_OTEL_TRACES_EXPORT_ENABLED: ${FORD_OTEL_TRACES_EXPORT_ENABLED:-true}
       FORD_OTEL_TRACES_ENDPOINT: ${FORD_OTEL_TRACES_ENDPOINT_DOCKER:-http://host.docker.internal:4318/v1/traces}
+      FORD_OTEL_METRICS_EXPORT_ENABLED: "true"
+      FORD_OTEL_METRICS_ENDPOINT: http://otel-collector:4318/v1/metrics
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -77,6 +93,7 @@ services:
       - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ../deployment/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../deployment/observability/prometheus/alerts.yml:/etc/prometheus/ford-alerts.yml:ro
       - ford-prometheus:/prometheus
 
   loki:

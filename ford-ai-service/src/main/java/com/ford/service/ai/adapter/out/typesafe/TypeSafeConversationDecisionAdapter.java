@@ -130,17 +130,27 @@ public final class TypeSafeConversationDecisionAdapter implements ConversationDe
                 .replace("[/DECISION CONTEXT]", "[/DECISION_CONTEXT]");
     }
 
-    private static Map<String, org.springaicommunity.typesafe.question.Question> questions() {
+    private Map<String, org.springaicommunity.typesafe.question.Question> questions() {
         var questions = new LinkedHashMap<String, org.springaicommunity.typesafe.question.Question>();
-        questions.put("intent", Choice.of("Clasifica la intención principal.", enumLabels(ConversationIntent.class)));
-        questions.put("lead_stage", Choice.of("Clasifica la etapa del lead.", enumLabels(LeadStage.class)));
-        questions.put("lead_temperature", Score.of("Clasifica la temperatura comercial.",
-                "UNKNOWN", "COLD", "WARM", "HOT"));
-        questions.put("user_requests_human", Noul.of("El usuario solicita explícitamente hablar con una persona."));
-        questions.put("negative_sentiment", Noul.of("El mensaje expresa frustración, queja o sentimiento negativo."));
-        questions.put("complex_request", Noul.of("La solicitud requiere coordinación o juicio humano complejo."));
-        questions.put("tool_family", Choice.of("Selecciona la familia de herramienta necesaria.", enumLabels(ToolFamily.class)));
-        questions.put("has_sensitive_data", Noul.of("El usuario incluye o solicita credenciales, secretos o datos financieros sensibles."));
+        if (properties.intentEnabled()) {
+            questions.put("intent", Choice.of("Clasifica la intención principal.", enumLabels(ConversationIntent.class)));
+        }
+        if (properties.leadEnabled()) {
+            questions.put("lead_stage", Choice.of("Clasifica la etapa del lead.", enumLabels(LeadStage.class)));
+            questions.put("lead_temperature", Score.of("Clasifica la temperatura comercial.",
+                    "UNKNOWN", "COLD", "WARM", "HOT"));
+        }
+        if (properties.handoffEnabled()) {
+            questions.put("user_requests_human", Noul.of("El usuario solicita explícitamente hablar con una persona."));
+            questions.put("negative_sentiment", Noul.of("El mensaje expresa frustración, queja o sentimiento negativo."));
+            questions.put("complex_request", Noul.of("La solicitud requiere coordinación o juicio humano complejo."));
+        }
+        if (properties.toolsEnabled()) {
+            questions.put("tool_family", Choice.of("Selecciona la familia de herramienta necesaria.", enumLabels(ToolFamily.class)));
+        }
+        if (properties.sensitiveDataEnabled()) {
+            questions.put("has_sensitive_data", Noul.of("El usuario incluye o solicita credenciales, secretos o datos financieros sensibles."));
+        }
         return Map.copyOf(questions);
     }
 

@@ -10,6 +10,14 @@ the schema. Do not edit production tables manually; create a new YAML changeSet.
 Use environment variables or a deployment profile; keep secrets outside Git.
 
 - `FORD_DATABASE_URL`, `FORD_DATABASE_USERNAME`, `FORD_DATABASE_PASSWORD`
+- Production JDBC URLs add `ApplicationName=ford-service`; PostgreSQL logs
+  include that application name and SQLSTATE with verbose error detail while
+  suppressing SQL text from error logs.
+- Metrics and traces push to the in-network OpenTelemetry Collector using
+  `FORD_OTEL_METRICS_EXPORT_ENABLED`, `FORD_OTEL_METRICS_ENDPOINT`,
+  `FORD_OTEL_TRACES_EXPORT_ENABLED`, `FORD_OTEL_TRACES_ENDPOINT`, and
+  `FORD_OTEL_SAMPLING_PROBABILITY`. Prometheus scrapes the Collector exporter,
+  not the authenticated `/actuator/prometheus` endpoint.
 - `FORD_SECURITY_JWT_ENABLED`, `FORD_SECURITY_ISSUER_URI`, `FORD_SECURITY_AUDIENCE`
 - `FORD_META_APP_SECRET`, `FORD_META_VERIFY_TOKEN`
 - `FORD_META_DELIVERY_ENABLED`, channel delivery endpoints and access tokens
@@ -19,7 +27,7 @@ Use environment variables or a deployment profile; keep secrets outside Git.
   supported by the Meta app. The Graph base URL defaults to
   `https://graph.facebook.com`; overrides are accepted only for that official
   HTTPS host.
-- `FORD_HUMAN_HANDOFF_ENABLED` (`false` enables bot-only mode)
+- `FORD_HUMAN_HANDOFF_ENABLED` (enabled by default; a queued request does not mean an advisor accepted it)
 - `FORD_MEMORY_ENABLED`, `FORD_MEMORY_RECENT_MESSAGE_LIMIT`, and
   `FORD_MEMORY_PROMPT_RECENT_MESSAGE_LIMIT` (default `8`). The first setting
   preserves the durable recent-memory bound; the second controls how many
@@ -28,7 +36,50 @@ Use environment variables or a deployment profile; keep secrets outside Git.
 - `FORD_MEMORY_SEMANTIC_ENABLED`, `FORD_MEMORY_SEMANTIC_LIMIT`, `FORD_MEMORY_CACHE_ENABLED`
 - `FORD_AI_CHAT_PROVIDER`, `FORD_AI_EMBEDDING_PROVIDER`
 - `FORD_AI_CLOUD_ENABLED`, `FORD_AI_LOCAL_ENABLED`, provider base URLs and model names
+- `FORD_CONVERSATION_TURN_CONCURRENCY` (start at `1`; raise to `2` then `5` only
+  after the corresponding isolation and idempotency gates pass),
+  `FORD_CONVERSATION_TURN_QUEUE_CAPACITY` (default `8`), and
+  `FORD_CONVERSATION_PUBLICATION_RETRY_AGE` (default `PT1M`). Inbound turns use
+  a dedicated bounded executor; Spring Modulith JDBC publications remain the
+  durable queue and are retried when worker capacity returns. Watch
+  `ford.conversation.worker.active`, `ford.conversation.worker.pool.size`,
+  `ford.conversation.worker.queue.size`,
+  `ford.conversation.publication.incomplete`, and
+  `ford.conversation.publication.oldest.wait.seconds`; advance from one worker
+  to two and then five only after tenant isolation, duplicate delivery, and
+  optimistic-lock/idempotency gates pass.
+- `FORD_AI_FALLBACK_ORDER` (default `cloudflare,groq,gemini,openrouter`) and
+  `FORD_AI_PROVIDER_MAX_ATTEMPTS` (default/maximum `5`). Eligible order is
+  Cloudflare, Groq, Gemini, OpenRouter, then local Ollama. OpenAI is disabled by
+  default. Each eligible provider
+  is called once; rate limits, service outages, and network errors can advance
+  to the next provider. Retry-After waits are capped by
+  `FORD_AI_PROVIDER_MAX_RETRY_AFTER` (default `PT3S`); longer waits are skipped.
+- `FORD_AI_GROQ_ENABLED`, `FORD_AI_GEMINI_ENABLED`,
+  `FORD_AI_CLOUDFLARE_ENABLED`, and `FORD_AI_OPENROUTER_ENABLED` are all false
+  by default. Each also requires its API key and both capability declarations
+  (`*_TOOL_CALLING_VERIFIED`, `*_STRUCTURED_OUTPUT_VERIFIED`) before it enters
+  the routing chain. Set those declarations only after the provider passes
+  the deterministic and provider-specific evaluation cases.
+- Provider secrets are `GROQ_API_KEY`, `GEMINI_API_KEY`,
+  `CLOUDFLARE_API_TOKEN` plus `CLOUDFLARE_ACCOUNT_ID`, and
+  `OPENROUTER_API_KEY`. `openrouter/free` is evaluation-only unless
+  `FORD_AI_EVALUATION_MODE=true`; it is not eligible by default.
+- The ten Ford lead flows are covered by the deterministic main-app fixture:
+  `./gradlew test --tests '*MultistepLeadHandoffFixtureTest'`. It checks only
+  application authorization and payload fields; it does not test model quality
+  or real provider compatibility. Keep those results separate from the
+  historical LLM/Ragas traces in `docs/ford-specialist-handoff.md`. The current
+  `mise run test:ai-evaluation --live` path calls OpenRouter only. Do not set a
+  provider's capability flags until its own live tool/structured-output eval
+  passes; no provider live eval ran as part of this config change.
+- For Oracle, `mise run deploy:secrets` adopts exported keys into the ignored
+  config, `mise run deploy:check` reports provider readiness without values,
+  and `mise run deploy:app` renders the settings to emme-1. Do not put keys in
+  Terraform variables or state.
 - `FORD_AI_LOG_PROVIDER_ERRORS` (opt-in bounded provider error details)
+- `mise run ai:provider-preflight` (opt-in live smoke test for every enabled catalog provider). It loads the ignored deployment config, calls providers through Spring AI with synthetic input and a read-only fake tool, checks conversion into the app's `AssistantGeneration` type, and reports safe provider/model/error details. Set `FORD_AI_PREFLIGHT_PROVIDER_IDS=groq` to probe a subset or `FORD_AI_PREFLIGHT_MODEL_GROQ=<model-id>` to try another model without changing deployment config. It can incur provider charges and never contacts WhatsApp, CRM, or customer data.
+- The live preflight prompts for exactly one synthetic tool call and always runs; Gradle must not reuse a prior result because provider models and quotas can change. It uses the same automatic tool choice as production and fails unless the callback runs exactly once. Verified testing models: Cloudflare `@cf/meta/llama-3.3-70b-instruct-fp8-fast`, Groq `openai/gpt-oss-20b`, Gemini `gemini-3.8-flash`, and OpenRouter `openai/gpt-oss-120b`. Groq GPT-OSS also requires `include_reasoning=false` so Groq does not receive unsupported `reasoning_content` on the tool-result turn. Re-run preflight after changing a provider, model, or provider capability flags.
 - `FORD_AI_MEDIA_ENABLED` (defaults to `false`), `FORD_AI_MEDIA_APPROVED_PROVIDERS`,
   `FORD_AI_MEDIA_IMAGE_PROVIDERS`, and `FORD_AI_MEDIA_AUDIO_PROVIDERS`. Media is
   sent only to an ID present in the approved and matching modality lists, with
@@ -38,11 +89,15 @@ Use environment variables or a deployment profile; keep secrets outside Git.
 - `FORD_AI_MEDIA_MAX_BYTES` (default 10 MiB, hard cap 10 MiB) and
   `FORD_AI_MEDIA_TIMEOUT` (default and maximum 8s, covering download plus
   interpretation). The normal conversation worker deadline still applies.
-- `TYPESAFE_API_KEY` (optional Jev classification key; never log or commit it)
+- `TYPESAFE_API_KEY` (optional Jev classification key; inject only through
+  private deployment config; never log or commit it). If missing, startup logs
+  that rules are the effective classifier.
 - `FORD_AI_CLASSIFICATION_ENABLED`, `FORD_AI_CLASSIFICATION_MODE` (`active`,
   `shadow`, or `disabled`), and `FORD_AI_CLASSIFICATION_PROVIDER`
 - `FORD_AI_CLASSIFICATION_MIN_CONFIDENCE`, classifier-specific `FORD_AI_CLASSIFIER_*`
-  toggles, and `FORD_AI_CLASSIFICATION_FALLBACK=rules`
+  toggles, and `FORD_AI_CLASSIFICATION_FALLBACK=rules`. Lead/handoff questions
+  are enabled; sensitive-data classification is disabled while PII redaction
+  and deterministic authorization remain enabled.
 - `FORD_AI_GUARDRAILS_ENABLED` and `FORD_AI_SELF_REFINE_ENABLED` (both default
   to `false`); self-refinement is bounded by `FORD_AI_SELF_REFINE_MAX_ATTEMPTS`
 
@@ -97,8 +152,12 @@ tenant binding as a separate lookup. With the current single-app configuration,
 adding a `/ford` path segment would not add isolation because there is only one
 app-secret/verify-token configuration.
 
-WhatsApp keeps its existing `FORD_META_AUTO_BINDING_ENABLED` and
-`FORD_META_PROVIDER_ACCOUNT_ID` (falling back to `FORD_META_PHONE_ID`). Optional
+WhatsApp uses `FORD_META_PHONE_NUMBER_ID` for binding and delivery. It falls back
+to `FORD_META_PROVIDER_ACCOUNT_ID` and then `FORD_META_PHONE_ID` for older
+deployments. Keep `FORD_META_WHATSAPP_BUSINESS_ACCOUNT_ID` (or legacy
+`FORD_META_WABA_ID`) separate: the WABA ID is not the inbound binding key or
+the Graph `/messages` endpoint ID. `FORD_META_PHONE_NUMBER` is a human-readable
+reference only. Optional
 startup bindings for Messenger and Instagram use
 `FORD_META_MESSENGER_AUTO_BINDING_ENABLED` + `FORD_META_MESSENGER_PAGE_ID` and
 `FORD_META_INSTAGRAM_AUTO_BINDING_ENABLED` + `FORD_META_INSTAGRAM_ACCOUNT_ID`.
@@ -115,6 +174,12 @@ product and account. Only text delivery is implemented for Messenger and
 Instagram; their inbound media is acknowledged as unsupported without storing
 or forwarding provider media URLs. WhatsApp's existing typed-message handling
 is unchanged.
+
+For development diagnostics, set `FORD_META_DIAGNOSTIC_STACKTRACES_ENABLED=true`
+to emit a synthetic stack trace for outbound Meta API rejections. Rejection logs
+include HTTP status and allowlisted Meta error fields (`type`, `code`,
+`error_subcode`, `fbtrace_id`); provider messages, message bodies, recipients,
+access tokens, and query strings are not logged.
 
 The outbox checks the persisted conversation's 24-hour customer-service window
 before calling a configured provider port. Missing, mismatched, or expired
@@ -150,15 +215,14 @@ Bot-only mode is controlled by:
 FORD_HUMAN_HANDOFF_ENABLED=false
 ```
 
-This prevents assistant-created `handoff_ticket` rows and `HandoffRequested`
-events. The workflow persists the deterministic bot fallback and publishes the
-normal outbound delivery request instead. Set it back to `true` to restore
-human escalation behavior.
+This disables internal handoff queue creation. The workflow continues with a
+truthful bot response and does not claim an advisor was contacted. Set it back
+to `true` to restore authorized handoff behavior.
 
 ## Conversation graph and sales escalation
 
 `FORD_CONVERSATION_GRAPH_ENABLED` selects the bounded LangGraph4j inbound
-workflow. It defaults to `false` for rollback compatibility. The graph runs one
+workflow. It defaults to `true` and is the canonical active path. The graph runs one
 accepted inbound turn at a time and invokes the existing Spring AI assistant
 once; the model, authorized Ford MCP/RAG tools, conversation transcript, lead
 journey, and outbox remain owned by their existing application services and
@@ -168,10 +232,13 @@ metadata. They are execution checkpoints, not conversation memory or the
 system of record. Disable the flag and redeploy to return to the legacy
 workflow; do not drop checkpoint or business tables as part of rollback.
 
-With `FORD_HUMAN_HANDOFF_ENABLED=true`, direct requests for a person and HOT
-leads enter the high-priority `/api/v1/handoffs` queue. A queued ticket means
-the request is waiting; only a successful operator claim means an advisor has
-taken the conversation, at which point automated replies pause. Operators need
+With `FORD_HUMAN_HANDOFF_ENABLED=true`, a direct customer request can enter the
+internal `/api/v1/handoffs` queue. A HOT lead receives an offer; HOT status alone
+never creates a queue item. An affirmative reply to the persisted offer creates
+one internal request. A decline suppresses later proactive offers, while a
+later direct request remains valid. A queued ticket means the request is waiting;
+only a successful operator claim means an advisor has taken the conversation,
+at which point automated replies pause. Operators need
 `operator:read` to list tickets and `handoff:manage` to claim, pause, resume, or
 hand back a conversation. Claims are tenant-scoped and version-checked.
 
@@ -201,13 +268,15 @@ accepted inbound message and successful bot reply is written to the canonical
 the source of truth; the working-memory projection expires after 90 days of
 inactivity.
 
-Each model request receives a controlled context: the bounded rolling summary,
-up to `FORD_MEMORY_PROMPT_RECENT_MESSAGE_LIMIT` recent messages (8 by
-default), and durable facts. The database transcript is not deleted when this
-window is reached, so it remains available for audit and future retrieval.
-The summary is deterministic and bounded: it carries forward recent customer
-requests and the current request without spending a second model call. This
-is the safe first stage of long-conversation compaction.
+Each model request receives a controlled context: the compact summary, up to
+`FORD_MEMORY_PROMPT_RECENT_MESSAGE_LIMIT` recent messages (8 by default), and
+durable facts. When the recent window rolls over, the provider chain compacts
+expired messages into a bounded summary. The database transcript is never
+deleted. PII redaction and prompt-injection checks run before compaction;
+empty or oversized summaries are rejected. If compaction fails, the last valid
+summary is retained and the full transcript remains durable, though expired
+turns may not be present in that request's prompt. Projection version checks
+prevent stale compaction results from replacing newer state.
 
 Semantic retrieval is disabled by default. The current pgvector adapter
 retrieves semantic facts, not archived message turns; enabling it does not yet
@@ -216,15 +285,50 @@ redacted transcript turns and retrieve only the top 2-3 relevant turns under a
 token budget. Memory read, embedding, and provider failures are fail-open for
 webhook processing.
 
+Approved knowledge retrieval combines Spring AI pgvector similarity with
+PostgreSQL full-text ranking over the same `public.vector_store` rows. Both
+paths apply tenant, locale, document type, and approval constraints before
+fusion; reciprocal-rank fusion combines the top 20 candidates from each path
+and returns at most 8 chunks. This applies to approved knowledge only; vehicle
+catalog matching remains structured and exact. It does not index archived chat
+messages or require a graph database. The keyword path currently expects the
+Spring AI default table name and schema (`public.vector_store`). PostgreSQL
+full-text currently evaluates an unindexed expression; add a GIN expression
+index after validating the expected knowledge corpus size and deployment
+migration procedure.
+
 Jev classification is a separate structured decision step, not the response
 generation model. When enabled with a real `TYPESAFE_API_KEY`, it classifies
-intent, lead stage/temperature, handoff signals, tool family, and sensitive
-data. The application passes only a sanitized decision context to generation,
+intent, lead stage/temperature, handoff signals, and tool family. Sensitive-data
+classification is disabled; the application still redacts recognized PII and
+keeps it out of remote Jev classification. The application passes only a
+sanitized decision context to generation,
 keeps authorization and handoff policy in Java, and persists normalized
 evidence in `conversation_decision`. If Jev is unavailable, malformed, or
 below the configured confidence floor, deterministic rules continue the turn.
+A confident Jev lead stage/temperature is not replaced by a second deterministic
+score. Jev handoff output is advisory; Java enforces direct requests or clear
+consent after an offer.
 Use `FORD_AI_CLASSIFICATION_MODE=shadow` to exercise the provider while
 retaining rules decisions.
+
+The input security policy runs before Jev and response generation. It blocks
+common direct attempts to override or reveal system instructions, redacts
+recognized email, Mexican phone, payment-card, credential, CURP/RFC/CLABE
+values from the current request and model context by default, and marks such
+turns sensitive. Sensitive turns skip remote Jev classification and cloud model routing; they use
+the local model only when it is available. `FORD_AI_CLASSIFICATION_PII_POLICY` accepts
+`redact` (default), `block` (return a safe request to remove the data), or
+`allow` (preserve the text but keep it out of remote classifiers and cloud chat
+providers). Recognized injection text inside historical memory or journey
+context causes that context block to be omitted. These deterministic patterns
+are defense in depth, not a complete prompt-injection detector; keep scope and
+tool authorization enforced in Java and extend the synthetic adversarial evals.
+
+Output repetition remains handled by `AssistantResponseQualityPolicy`: it
+rejects repeated answers, requests one repair attempt, then returns a safe
+fallback if the repaired answer still fails. The similarity check is
+heuristic; it does not guarantee detection of every paraphrase.
 
 The optional Jev self-refine advisor evaluates groundedness and safety and may
 retry a generated answer up to the configured bounded attempt count. The Jev

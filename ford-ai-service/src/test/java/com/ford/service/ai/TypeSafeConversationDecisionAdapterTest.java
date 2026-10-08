@@ -77,6 +77,25 @@ class TypeSafeConversationDecisionAdapterTest {
     }
 
     @Test
+    void doesNotAskJevToClassifySensitiveDataWhenThatQuestionIsDisabled() {
+        var client = mock(TypeSafeClient.class);
+        when(client.systemOne(anyString(), anyMap())).thenReturn(response());
+        var properties = new ClassificationProperties();
+        properties.setSensitiveDataEnabled(false);
+        properties.setHandoffEnabled(true);
+        var adapter = new TypeSafeConversationDecisionAdapter(client, properties);
+
+        adapter.decide(new ClassificationContext(
+                UUID.randomUUID(), UUID.randomUUID(), "Me interesa una Ranger", null, "BOT_ACTIVE", false));
+
+        var questions = org.mockito.ArgumentCaptor.forClass(Map.class);
+        verify(client).systemOne(anyString(), questions.capture());
+        assertThat(questions.getValue()).containsKeys("intent", "lead_stage", "lead_temperature", "tool_family",
+                "user_requests_human", "negative_sentiment", "complex_request")
+                .doesNotContainKey("has_sensitive_data");
+    }
+
+    @Test
     void classifiesTradeInAsARequestCategoryWithoutAssigningAnUnregisteredTool() {
         var client = mock(TypeSafeClient.class);
         when(client.systemOne(anyString(), anyMap())).thenReturn(response("TRADE_IN", "NONE"));

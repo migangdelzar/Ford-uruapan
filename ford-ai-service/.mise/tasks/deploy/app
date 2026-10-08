@@ -63,6 +63,9 @@ else
     --exclude=bin \
     --exclude=.mise \
     --exclude=.env \
+    --exclude='.env.*' \
+    --exclude=.docker-build-cache \
+    --exclude=secrets \
     -czf - \
     -C "$MISE_PROJECT_ROOT" . | ssh \
     -o BatchMode=yes \

@@ -13,14 +13,17 @@ import com.ford.service.ai.application.port.out.ProviderChatCompletionPort;
 import com.ford.service.ai.application.port.out.ProviderRoutingChatCompletionPort;
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantResponse;
+import com.ford.service.ai.api.AssistantGeneration;
 import com.ford.service.observability.AiObservationService;
 import com.openai.core.http.Headers;
 import com.openai.errors.OpenAIServiceException;
+import com.fasterxml.jackson.core.JsonParseException;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.time.Duration;
 import java.net.SocketTimeoutException;
+import java.io.IOException;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -77,6 +80,116 @@ class ProviderRoutingChatCompletionPortTest {
     }
 
     @Test
+    void fallsBackToTheNextEligibleProviderAfterStructuredResponseParsingFails() {
+        var primary = new RecordingPort("openrouter",
+                new RuntimeException("invalid provider response", new JsonParseException("invalid provider response stream")));
+        var fallback = new StubPort("cloudflare", "recovered-with-verified-provider");
+        var policy = new DefaultModelProviderPolicy(List.of(
+                provider("openrouter", true), provider("cloudflare", true)));
+        var port = new ProviderRoutingChatCompletionPort(
+                List.of(primary, fallback), policy, 6, Duration.ZERO, ignored -> { });
+
+        var response = port.complete(request(false), new ToolContext(UUID.randomUUID(), UUID.randomUUID()));
+
+        assertThat(response.provider()).isEqualTo("cloudflare");
+        assertThat(response.content()).isEqualTo("recovered-with-verified-provider");
+        assertThat(primary.calls).isEqualTo(1);
+    }
+
+    @Test
+    void fallsBackAfterSpringAiJacksonThreeStructuredResponseConversionFails() {
+        var primary = new RecordingPort("cloudflare",
+                tools.jackson.databind.exc.MismatchedInputException.from(
+                        null, AssistantGeneration.class, "invalid structured response"));
+        var fallback = new StubPort("groq", "recovered-with-verified-provider");
+        var policy = new DefaultModelProviderPolicy(List.of(
+                provider("cloudflare", true), provider("groq", true)));
+        var port = new ProviderRoutingChatCompletionPort(
+                List.of(primary, fallback), policy, 6, Duration.ZERO, ignored -> { });
+
+        var response = port.complete(request(false), new ToolContext(UUID.randomUUID(), UUID.randomUUID()));
+
+        assertThat(response.provider()).isEqualTo("groq");
+        assertThat(response.content()).isEqualTo("recovered-with-verified-provider");
+        assertThat(primary.calls).isEqualTo(1);
+    }
+
+    @Test
+    void returnsSafeInformationGapOnlyAfterAllProvidersFailForVolatileInformation() {
+        var primary = new RecordingPort("cloudflare",
+                tools.jackson.databind.exc.MismatchedInputException.from(
+                        null, AssistantGeneration.class, "invalid structured response"));
+        var fallback = new RecordingPort("groq", new RateLimitException());
+        var policy = new DefaultModelProviderPolicy(List.of(
+                provider("cloudflare", true), provider("groq", true)));
+        var port = new ProviderRoutingChatCompletionPort(
+                List.of(primary, fallback), policy, 6, Duration.ZERO, ignored -> { });
+
+        var response = port.complete(volatileRequest(), new ToolContext(UUID.randomUUID(), UUID.randomUUID()));
+
+        assertThat(primary.calls).isEqualTo(1);
+        assertThat(fallback.calls).isEqualTo(1);
+        assertThat(response.content()).contains("no lo tengo confirmado");
+        assertThat(response.provider()).isEqualTo("fallback");
+    }
+
+    @Test
+    void walksTheWholeOrderedProviderListUntilAProviderSucceeds() {
+        var ids = List.of("openai", "groq", "gemini", "cloudflare", "openrouter", "ollama");
+        var descriptors = ids.stream().map(id -> provider(id, !id.equals("ollama"))).toList();
+        var ports = List.<ProviderChatCompletionPort>of(
+                new RecordingPort("openai", new RateLimitException()),
+                new RecordingPort("groq", new RuntimeException("temporary network issue", new IOException("connection reset"))),
+                new RecordingPort("gemini", new RuntimeException("temporary network timeout",
+                        new SocketTimeoutException("temporary network timeout"))),
+                new StubPort("cloudflare", "recovered"),
+                new StubPort("openrouter", "must-not-run"),
+                new StubPort("ollama", "must-not-run"));
+        var port = new ProviderRoutingChatCompletionPort(ports, new DefaultModelProviderPolicy(descriptors),
+                6, Duration.ZERO, ignored -> { });
+
+        var response = port.complete(request(false), new ToolContext(UUID.randomUUID(), UUID.randomUUID()));
+
+        assertThat(response.provider()).isEqualTo("cloudflare");
+        assertThat(response.content()).isEqualTo("recovered");
+        assertThat(((RecordingPort) ports.get(0)).calls).isEqualTo(1);
+        assertThat(((RecordingPort) ports.get(1)).calls).isEqualTo(1);
+        assertThat(((RecordingPort) ports.get(2)).calls).isEqualTo(1);
+    }
+
+    @Test
+    void fallsBackWhenRetryAfterExceedsTheWaitBudgetInsteadOfStoppingTheChain() {
+        var primary = new RecordingPort("openai", openAiFailure(429, "30"));
+        var fallback = new StubPort("groq", "recovered-without-waiting");
+        var delays = new java.util.ArrayList<Duration>();
+        var port = new ProviderRoutingChatCompletionPort(
+                List.of(primary, fallback),
+                new DefaultModelProviderPolicy(List.of(provider("openai", true), provider("groq", true))),
+                6, Duration.ofSeconds(3), delays::add);
+
+        var response = port.complete(request(false), new ToolContext(UUID.randomUUID(), UUID.randomUUID()));
+
+        assertThat(response.provider()).isEqualTo("groq");
+        assertThat(delays).isEmpty();
+    }
+
+    @Test
+    void fallsBackAfterProviderRejectsCompletionFollowingReadOnlyToolResult() {
+        var primary = new RecordingPort("groq",
+                new com.ford.service.ai.application.ProviderFollowupRejectedException(openAiFailure(400)));
+        var qwen = new StubPort("ollama", "respuesta local qwen");
+        var policy = new DefaultModelProviderPolicy(List.of(provider("groq", true), provider("ollama", false)));
+        var port = new ProviderRoutingChatCompletionPort(List.of(primary, qwen), policy,
+                6, Duration.ZERO, ignored -> { });
+
+        var response = port.complete(volatileRequest(), new ToolContext(UUID.randomUUID(), UUID.randomUUID()));
+
+        assertThat(response.provider()).isEqualTo("ollama");
+        assertThat(response.content()).isEqualTo("respuesta local qwen");
+        assertThat(primary.calls).isEqualTo(1);
+    }
+
+    @Test
     void doesNotFallBackAfterAuthenticationOrInvalidRequestFailures() {
         for (var status : List.of(401, 400)) {
             var cloud = provider("openai", true);
@@ -95,7 +208,7 @@ class ProviderRoutingChatCompletionPortTest {
     }
 
     @Test
-    void retriesTransientFailureOnceAndHonorsRetryAfterWithinTheConfiguredBudget() {
+    void fallsBackAfterRateLimitAndHonorsRetryAfterWithinTheConfiguredBudget() {
         var cloud = provider("openai", true);
         var delays = new java.util.ArrayList<Duration>();
         var observations = mock(AiObservationService.class);
@@ -111,11 +224,11 @@ class ProviderRoutingChatCompletionPortTest {
         assertThat(primary.calls).isEqualTo(1);
         assertThat(delays).containsExactly(Duration.ofMillis(100));
         verify(observations).event("ford.ai.provider.attempt", java.util.Map.of(
-                "provider", "openai", "outcome", "retry", "failure_category", "rate_limited"));
+                "provider", "openai", "outcome", "fallback", "failure_category", "rate_limited"));
     }
 
     @Test
-    void retriesTransientNetworkFailureOnceWithBoundedBackoff() {
+    void fallsBackAfterTransientNetworkFailureWithBoundedBackoff() {
         var cloud = provider("openai", true);
         var delays = new java.util.ArrayList<Duration>();
         var primary = new SequencedPort(cloud.id(),
@@ -133,7 +246,7 @@ class ProviderRoutingChatCompletionPortTest {
     }
 
     @Test
-    void skipsSameProviderRetryWhenRetryAfterExceedsBudgetAndFallsBack() {
+    void skipsOverBudgetRetryAfterAndContinuesToFallback() {
         var cloud = provider("openrouter-free", true);
         var local = provider("ollama", false);
         var delays = new java.util.ArrayList<Duration>();
@@ -150,7 +263,7 @@ class ProviderRoutingChatCompletionPortTest {
     }
 
     @Test
-    void limitsFreeProviderToTwoCallsBeforeFallbackWhenItReturnsRepeated429() {
+    void doesNotRepeatFreeProviderAfterRateLimitBeforeFallback() {
         var cloud = provider("openrouter-free", true);
         var local = provider("ollama", false);
         var primary = new RecordingPort(cloud.id(), new RateLimitException());
@@ -198,6 +311,18 @@ class ProviderRoutingChatCompletionPortTest {
     private static AssistantRequest request(boolean sensitive) {
         return new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(), "¿Qué vehículo tienen?",
                 "BOT_ACTIVE", sensitive);
+    }
+
+    private static AssistantRequest volatileRequest() {
+        var decision = new com.ford.service.ai.application.ConversationDecision(
+                com.ford.service.ai.application.ConversationIntent.KNOWLEDGE,
+                com.ford.service.ai.application.LeadTemperature.UNKNOWN,
+                com.ford.service.ai.application.LeadStage.NEW,
+                com.ford.service.ai.application.HandoffRecommendation.NONE,
+                com.ford.service.ai.application.ToolFamily.KNOWLEDGE_SEARCH,
+                com.ford.service.ai.application.SensitiveDataLevel.NONE, List.of());
+        return new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(), "¿Qué rendimiento tiene la Ranger?",
+                "BOT_ACTIVE", null, false, decision);
     }
 
     private record StubPort(String providerId, String value) implements ProviderChatCompletionPort {

@@ -88,6 +88,32 @@ class MetaRestClientDeliveryAdapterTest {
         throttleServer.verify();
     }
 
+    @Test
+    void includesStructuredMetaErrorDetailsButRedactsUnapprovedResponseFields() {
+        var builder = RestClient.builder();
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://graph.example/messages"))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {"error":{"message":"Invalid parameter for recipient-1","type":"OAuthException",
+                                 "code":100,"error_subcode":33,"fbtrace_id":"fb-trace-123"},
+                                 "debug_token":"must-not-be-logged"}
+                                """));
+        var adapter = new MetaRestClientDeliveryAdapter(builder.build(),
+                URI.create("https://graph.example/messages"), "meta-access-token", Channel.WHATSAPP);
+
+        var result = adapter.send(new OutboundMessage(
+                UUID.randomUUID(), Channel.WHATSAPP, "recipient-1", "customer message", "key"));
+
+        assertThat(result.accepted()).isFalse();
+        assertThat(result.permanent()).isTrue();
+        assertThat(result.error()).contains("HTTP 400", "OAuthException", "100", "33", "fb-trace-123");
+        assertThat(result.error()).doesNotContain("recipient-1", "must-not-be-logged", "meta-access-token", "customer message");
+        assertThat(result.error()).doesNotContain("Invalid parameter");
+        server.verify();
+    }
+
     private static void assertMetaTextDelivery(Channel channel, String endpoint, String messageId, String body) {
         var builder = RestClient.builder();
         var server = MockRestServiceServer.bindTo(builder).build();

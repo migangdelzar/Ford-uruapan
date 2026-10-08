@@ -25,6 +25,7 @@ import com.ford.service.observability.DefaultAiObservationService;
 import io.micrometer.observation.ObservationRegistry;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.modulith.events.ApplicationModuleListener;
+import org.springframework.scheduling.annotation.Async;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -38,6 +39,10 @@ public class ConversationWorkflow {
 
     private static final Logger log = LoggerFactory.getLogger(ConversationWorkflow.class);
     private static final Duration TURN_LEASE_DURATION = Duration.ofMinutes(15);
+    private static final String UNAUTHORIZED_HANDOFF_TEXT =
+            "Puedo seguir ayudándole por aquí. ¿Qué información desea revisar?";
+    private static final String HANDOFF_UNAVAILABLE_TEXT =
+            "No se pudo completar el traspaso a un especialista. Puedo seguir ayudándole por aquí.";
 
     private final ConversationRepository repository;
     private final ConversationAssistant assistant;
@@ -50,6 +55,10 @@ public class ConversationWorkflow {
     private final AcceptedInboundMessageRepository inboundTurns;
     private final ConversationTurnLeasePort turnLeases;
     private final String leaseOwner = UUID.randomUUID().toString();
+    private final CustomerHandoffAuthorizationPolicy customerAuthorization =
+            new CustomerHandoffAuthorizationPolicy();
+    private final SpecialistHandoffPayloadFactory handoffPayloadFactory = new SpecialistHandoffPayloadFactory();
+    private final CustomerHandoffOfferPolicy handoffOfferPolicy = new CustomerHandoffOfferPolicy();
 
     /**
      * Compatibility constructor for lightweight callers that do not provide
@@ -164,6 +173,7 @@ public class ConversationWorkflow {
     }
 
     @ApplicationModuleListener
+    @Async("conversationTurnExecutor")
     public void on(InboundMessageAccepted event) {
         var started = System.nanoTime();
         var previousConversationId = MDC.get("conversationId");
@@ -262,18 +272,26 @@ public class ConversationWorkflow {
                     snapshot.conversationId(), event.providerMessageId(), exception.getClass().getSimpleName());
         }
 
-        if (reply.handoffRequired() && handoffPolicy.shouldCreateHandoff(true)) {
+        var customerAuthorized = customerAuthorization.isAuthorized(currentMessage, memory);
+        if (customerAuthorized && handoffPolicy.shouldCreateHandoff(true)) {
+            var payload = handoffPayloadFactory.create(currentMessage, memory, reply.text());
             var accepted = repository.requestHumanHandoff(snapshot.conversationId(), snapshot.version(),
-                    new HandoffDecision("assistant_requested_handoff"));
+                    new HandoffDecision(payload.reason()));
             if (accepted) {
                 eventPublisher.publishEvent(new HandoffRequested(
                         UUID.randomUUID(), snapshot.tenantId(), snapshot.conversationId(),
-                        "assistant_requested_handoff", Instant.now()));
+                        payload.reason(), Instant.now(), payload));
             }
             return;
         }
 
-        var text = reply.handoffRequired() ? handoffPolicy.fallbackText() : reply.text();
+        var shouldOffer = handoffPolicy.enabled()
+                && handoffOfferPolicy.shouldOffer(currentMessage, reply.text(),
+                        reply.decision() == null ? com.ford.service.ai.application.LeadTemperature.UNKNOWN
+                                : reply.decision().leadTemperature(), memory);
+        var text = customerAuthorized && !handoffPolicy.enabled() ? HANDOFF_UNAVAILABLE_TEXT
+                : reply.handoffRequired() ? shouldOffer ? handoffOfferPolicy.offerAfter(null) : UNAUTHORIZED_HANDOFF_TEXT
+                : shouldOffer ? handoffOfferPolicy.offerAfter(reply.text()) : reply.text();
         var accepted = repository.completeBotTurn(snapshot.conversationId(), snapshot.version(),
                 new ConversationTurn(text));
         if (accepted) {
@@ -283,7 +301,7 @@ public class ConversationWorkflow {
                     "outbound:" + event.providerMessageId(), text, Instant.now());
             eventPublisher.publishEvent(new ConversationMemoryProjectionRefreshRequested(
                     memoryKey,
-                    memoryService.project(memory, currentMessage, event.receiptId()),
+                    memoryService.project(memory, currentMessage, event.receiptId(), text),
                     memory.memoryVersion()));
             memoryService.invalidate(memoryKey);
         }

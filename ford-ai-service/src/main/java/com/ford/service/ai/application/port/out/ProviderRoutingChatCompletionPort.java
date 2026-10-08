@@ -11,6 +11,8 @@ import com.ford.service.ai.application.ToolContext;
 import com.ford.service.observability.AiObservationService;
 import com.ford.service.observability.DefaultAiObservationService;
 import io.micrometer.observation.ObservationRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantResponse;
 
@@ -24,17 +26,22 @@ import java.time.Duration;
 /** Applies the application provider policy to the concrete Spring AI adapters. */
 public final class ProviderRoutingChatCompletionPort implements ChatCompletionPort {
 
+    private static final Logger log = LoggerFactory.getLogger(ProviderRoutingChatCompletionPort.class);
+    private static final String VOLATILE_SOURCE_UNAVAILABLE =
+            "Ese dato no lo tengo confirmado ahora; prefiero no darle información incompleta.";
+
     private final Map<String, ProviderChatCompletionPort> ports;
     private final ModelProviderPolicy policy;
     private final int maxAttempts;
     private final Duration maxRetryAfter;
     private final ProviderRetryDelay retryDelay;
     private final AiObservationService observations;
+    private final boolean logProviderErrors;
 
     public ProviderRoutingChatCompletionPort(List<? extends ProviderChatCompletionPort> ports,
                                              ModelProviderPolicy policy) {
         this(ports, policy, 2, Duration.ofSeconds(3), new ThreadBasedProviderRetryDelay(),
-                new DefaultAiObservationService(ObservationRegistry.NOOP));
+                new DefaultAiObservationService(ObservationRegistry.NOOP), false);
     }
 
     public ProviderRoutingChatCompletionPort(List<? extends ProviderChatCompletionPort> ports,
@@ -43,7 +50,7 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
                                              Duration maxRetryAfter,
                                              ProviderRetryDelay retryDelay) {
         this(ports, policy, maxAttempts, maxRetryAfter, retryDelay,
-                new DefaultAiObservationService(ObservationRegistry.NOOP));
+                new DefaultAiObservationService(ObservationRegistry.NOOP), false);
     }
 
     public ProviderRoutingChatCompletionPort(List<? extends ProviderChatCompletionPort> ports,
@@ -52,6 +59,16 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
                                              Duration maxRetryAfter,
                                              ProviderRetryDelay retryDelay,
                                              AiObservationService observations) {
+        this(ports, policy, maxAttempts, maxRetryAfter, retryDelay, observations, false);
+    }
+
+    public ProviderRoutingChatCompletionPort(List<? extends ProviderChatCompletionPort> ports,
+                                             ModelProviderPolicy policy,
+                                             int maxAttempts,
+                                             Duration maxRetryAfter,
+                                             ProviderRetryDelay retryDelay,
+                                             AiObservationService observations,
+                                             boolean logProviderErrors) {
         Objects.requireNonNull(ports, "ports must not be null");
         this.ports = ports.stream().collect(Collectors.toUnmodifiableMap(
                 ProviderChatCompletionPort::providerId, Function.identity(), (left, right) -> left));
@@ -66,6 +83,7 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
         }
         this.retryDelay = Objects.requireNonNull(retryDelay, "retryDelay must not be null");
         this.observations = Objects.requireNonNull(observations, "observations must not be null");
+        this.logProviderErrors = logProviderErrors;
         if (this.ports.isEmpty()) {
             throw new IllegalArgumentException("At least one provider port is required");
         }
@@ -79,6 +97,11 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
                         request.memoryContext(), request.decision()),
                 new ModelRequirements(true, true));
         if (candidates.isEmpty()) {
+            log.warn("No AI provider eligible for request: conversationId={} toolCallingRequired=true structuredOutputRequired=true sensitiveData={}",
+                    request.conversationId(), request.containsSensitiveData());
+            if (request.decision().toolFamily().requiresVolatileInformation()) {
+                return new AssistantResponse(VOLATILE_SOURCE_UNAVAILABLE, false, "fallback", List.of());
+            }
             throw new IllegalStateException("No provider satisfies the request policy");
         }
         RuntimeException lastFailure = null;
@@ -91,21 +114,35 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
                 throw new IllegalStateException("Selected AI provider is not configured: " + candidate.id());
             }
             calls++;
+            log.info("AI provider attempt started: conversationId={} provider={} model={} attempt={} maxAttempts={} toolCallingRequired=true structuredOutputRequired=true",
+                    request.conversationId(), candidate.id(), candidate.modelVersion(), calls, maxAttempts);
             try {
                 var response = port.complete(request, context);
+                log.info("AI provider attempt succeeded: conversationId={} provider={} model={} attempt={}",
+                        request.conversationId(), candidate.id(), candidate.modelVersion(), calls);
                 observations.event("ford.ai.provider.attempt", Map.of(
                         "provider", candidate.id(), "outcome", "success"));
                 return response;
             } catch (RuntimeException failure) {
                 lastFailure = failure;
                 var classified = AiProviderFailureDiagnostics.classify(failure);
-                if (!isRetryable(classified)) {
+                var willFallback = isRetryable(classified)
+                        && calls < maxAttempts && candidateIndex < candidates.size() - 1;
+                log.warn("AI provider attempt failed: conversationId={} provider={} model={} attempt={} category={} exceptionType={} fallback={}",
+                        request.conversationId(), candidate.id(), candidate.modelVersion(), calls,
+                        classified.category(), failure.getClass().getSimpleName(), willFallback);
+                if (logProviderErrors) {
+                    log.error("AI provider failure stack (sanitized): conversationId={} provider={} model={} category={}",
+                            request.conversationId(), candidate.id(), candidate.modelVersion(), classified.category(),
+                            sanitizedStackTrace(failure));
+                }
+                if (!willFallback && !isRetryable(classified)) {
                     observations.event("ford.ai.provider.attempt", Map.of(
                             "provider", candidate.id(), "outcome", "failure",
                             "failure_category", classified.category()));
                     throw failure;
                 }
-                if (calls >= maxAttempts || candidateIndex == candidates.size() - 1) {
+                if (!willFallback) {
                     observations.event("ford.ai.provider.attempt", Map.of(
                             "provider", candidate.id(), "outcome", "failure",
                             "failure_category", classified.category()));
@@ -113,18 +150,18 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
                 }
                 var delay = retryDelay(classified, calls);
                 if (delay.compareTo(maxRetryAfter) > 0) {
-                    observations.event("ford.ai.provider.attempt", Map.of(
-                            "provider", candidate.id(), "outcome", "failure",
-                            "failure_category", classified.category()));
-                    break;
+                    delay = Duration.ZERO;
                 }
                 observations.event("ford.ai.provider.attempt", Map.of(
-                        "provider", candidate.id(), "outcome", "retry",
+                        "provider", candidate.id(), "outcome", "fallback",
                         "failure_category", classified.category()));
                 if (!delay.isZero()) {
                     retryDelay.delay(delay);
                 }
             }
+        }
+        if (lastFailure != null && request.decision().toolFamily().requiresVolatileInformation()) {
+            return new AssistantResponse(VOLATILE_SOURCE_UNAVAILABLE, false, "fallback", List.of());
         }
         if (lastFailure != null) {
             throw lastFailure;
@@ -141,9 +178,24 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
     }
 
     private static boolean isRetryable(ProviderFailure failure) {
-        return ProviderFailure.RATE_LIMITED.equals(failure.category())
-                || ProviderFailure.PROVIDER_UNAVAILABLE.equals(failure.category())
-                || ProviderFailure.NETWORK.equals(failure.category());
+        return failure.retryable();
+    }
+
+    private static Throwable sanitizedStackTrace(Throwable failure) {
+        var sanitized = new IllegalStateException("Sanitized provider exception type="
+                + failure.getClass().getSimpleName());
+        sanitized.setStackTrace(failure.getStackTrace());
+        var parent = sanitized;
+        var cause = failure.getCause();
+        while (cause != null) {
+            var safeCause = new IllegalStateException("Sanitized cause type="
+                    + cause.getClass().getSimpleName());
+            safeCause.setStackTrace(cause.getStackTrace());
+            parent.addSuppressed(safeCause);
+            parent = safeCause;
+            cause = cause.getCause();
+        }
+        return sanitized;
     }
 
 }

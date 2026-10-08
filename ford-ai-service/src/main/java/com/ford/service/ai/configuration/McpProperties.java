@@ -12,13 +12,15 @@ import java.util.Set;
 public class McpProperties {
 
     private static final Set<String> DEFAULT_READ_ONLY_TOOLS = Set.of(
-            "search_vehicles", "get_vehicle", "compare_vehicles", "search_offers",
+            "search_vehicles", "search_vehicle_and_offers", "get_vehicle", "compare_vehicles", "search_offers",
             "list_promotions", "get_vehicle_provenance", "get_catalog_status");
 
     private boolean enabled;
     private String url = "http://127.0.0.1:3001";
     private String endpoint = "/mcp";
     private String token = "";
+    private String accessClientId = "";
+    private String accessClientSecret = "";
     private Duration requestTimeout = Duration.ofSeconds(30);
     private boolean requiredForVolatileInformation = true;
     private Set<String> readOnlyToolNames = DEFAULT_READ_ONLY_TOOLS;
@@ -61,6 +63,10 @@ public class McpProperties {
     }
     public String token() { return token; }
     public void setToken(String token) { this.token = token; }
+    public String accessClientId() { return accessClientId; }
+    public void setAccessClientId(String accessClientId) { this.accessClientId = accessClientId; }
+    public String accessClientSecret() { return accessClientSecret; }
+    public void setAccessClientSecret(String accessClientSecret) { this.accessClientSecret = accessClientSecret; }
     public Duration requestTimeout() { return requestTimeout; }
     public void setRequestTimeout(Duration requestTimeout) { this.requestTimeout = requestTimeout; }
     public boolean requiredForVolatileInformation() { return requiredForVolatileInformation; }

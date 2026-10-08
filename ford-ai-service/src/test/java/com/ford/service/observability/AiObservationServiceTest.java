@@ -72,6 +72,30 @@ class AiObservationServiceTest {
     }
 
     @Test
+    void recordsBoundedAnswerConfidenceAndSourceEvidenceSignals() {
+        var observations = new ArrayList<Observation.Context>();
+        var service = new DefaultAiObservationService(registry(observations));
+
+        service.event("ford.ai.answer.assessment", Map.of(
+                "provider", "groq",
+                "confidence_band", "high",
+                "evidence_status", "read_only_tool_returned",
+                "quality_outcome", "accepted",
+                "customer_text", "private answer"));
+
+        assertThat(observations).singleElement().satisfies(context -> {
+            assertThat(context.getName()).isEqualTo("ford.ai.answer.assessment");
+            assertThat(context.getLowCardinalityKeyValue("provider").getValue()).isEqualTo("other");
+            assertThat(context.getLowCardinalityKeyValue("confidence_band").getValue()).isEqualTo("high");
+            assertThat(context.getLowCardinalityKeyValue("evidence_status").getValue())
+                    .isEqualTo("read_only_tool_returned");
+            assertThat(context.getLowCardinalityKeyValue("quality_outcome").getValue()).isEqualTo("accepted");
+            assertThat(context.getAllKeyValues().stream().map(io.micrometer.common.KeyValue::getKey))
+                    .containsExactlyInAnyOrder("provider", "confidence_band", "evidence_status", "quality_outcome");
+        });
+    }
+
+    @Test
     void observationInfrastructureFailureNeverChangesBusinessBehavior() {
         var registry = ObservationRegistry.create();
         registry.observationConfig().observationHandler(new ObservationHandler<>() {

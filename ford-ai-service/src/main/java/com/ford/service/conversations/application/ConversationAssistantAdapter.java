@@ -15,7 +15,7 @@ import java.util.function.Supplier;
 
 public class ConversationAssistantAdapter implements ConversationAssistant {
 
-    private static final String FALLBACK_TEXT = "En este momento te comunicaré con un asesor humano.";
+    private static final String FALLBACK_TEXT = com.ford.service.shared.HumanHandoffPolicy.BOT_FALLBACK;
 
     private final Supplier<AssistantService> assistantProvider;
 
@@ -32,7 +32,7 @@ public class ConversationAssistantAdapter implements ConversationAssistant {
     public AssistantReply respond(ConversationTurnRequest request) {
         var assistant = assistantProvider.get();
         if (assistant == null) {
-            return new AssistantReply(FALLBACK_TEXT, true);
+            return new AssistantReply(FALLBACK_TEXT, false);
         }
         var turn = assistant.respond(new AiExecutionContext(
                 request.tenantId(), false, request.conversationId(), memoryPrompt(request.memory()), null,

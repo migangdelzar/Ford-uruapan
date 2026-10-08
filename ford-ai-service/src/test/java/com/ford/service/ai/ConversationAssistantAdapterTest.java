@@ -88,7 +88,7 @@ class ConversationAssistantAdapterTest {
                 UUID.randomUUID(), UUID.randomUUID(), "Hola", ConversationState.BOT_ACTIVE));
 
         assertThat(reply.text()).isNotBlank();
-        assertThat(reply.handoffRequired()).isTrue();
+        assertThat(reply.handoffRequired()).isFalse();
     }
 
     @Test

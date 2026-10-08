@@ -16,17 +16,25 @@ image="${1:-ford-service:deployment}"
 }
 
 archive="$(deploy_state_dir)/emme-1-image-before-deploy.tar.gz"
+archive_tmp="$(mktemp "${archive}.XXXXXX")"
 key="${EMME_1_SSH_KEY:-${OCI_SSH_PRIVATE_KEY}}"
 host="${OCI_SSH_USER}@${EMME_1_SSH_HOST}"
 umask 077
+trap 'rm -f "$archive_tmp"' EXIT
 
 ssh \
   -o BatchMode=yes \
   -o ConnectTimeout=10 \
+  -o ServerAliveInterval=15 \
+  -o ServerAliveCountMax=12 \
   -o StrictHostKeyChecking=accept-new \
   -i "$key" \
   "$host" \
-  "docker image inspect '$image' >/dev/null && docker save '$image' | gzip" \
-  > "$archive"
+  "set -o pipefail; docker image inspect '$image' >/dev/null && docker save '$image' | gzip -1" \
+  > "$archive_tmp"
+
+gzip -t "$archive_tmp"
+mv "$archive_tmp" "$archive"
+trap - EXIT
 
 printf 'Saved rollback image archive: %s\n' "$archive"

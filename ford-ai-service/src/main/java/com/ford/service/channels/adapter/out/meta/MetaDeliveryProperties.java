@@ -11,6 +11,7 @@ public class MetaDeliveryProperties {
     private String whatsappAccessToken = "";
     private String messengerAccessToken = "";
     private String instagramAccessToken = "";
+    private boolean diagnosticStacktraces;
 
     public boolean isEnabled() {
         return enabled;
@@ -66,5 +67,11 @@ public class MetaDeliveryProperties {
 
     public void setInstagramAccessToken(String instagramAccessToken) {
         this.instagramAccessToken = instagramAccessToken;
+    }
+
+    public boolean isDiagnosticStacktraces() { return diagnosticStacktraces; }
+
+    public void setDiagnosticStacktraces(boolean diagnosticStacktraces) {
+        this.diagnosticStacktraces = diagnosticStacktraces;
     }
 }

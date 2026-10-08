@@ -25,3 +25,8 @@ ford:
         enabled: false
   outbox:
     enabled: false
+    recovery-delay-ms: 86400000
+    fixed-delay-ms: 86400000
+  conversations:
+    workflow:
+      checkpoint-cleanup-delay-ms: 86400000

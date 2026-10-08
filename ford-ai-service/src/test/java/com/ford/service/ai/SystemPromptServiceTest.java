@@ -66,7 +66,9 @@ class SystemPromptServiceTest {
                 .contains("Valentina Ramírez")
                 .contains("¿En qué puedo ayudarle?")
                 .contains("aunque no incluya fechas de vigencia")
-                .contains("promoción sigue vigente");
+                .contains("promoción sigue vigente")
+                .contains("Atienda únicamente solicitudes Ford Uruapan autorizadas")
+                .contains("No responda preguntas generales o ajenas a Ford");
     }
 
     private static final class InMemoryPromptRepository implements SystemPromptRepository {

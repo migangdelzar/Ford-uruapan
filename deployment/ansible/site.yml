@@ -12,6 +12,12 @@
   tags: [data]
   roles:
     - data
+
+- name: Configure OCI database backups
+  hosts: data
+  become: true
+  tags: [backup]
+  roles:
     - backup
 
 - name: Configure application service

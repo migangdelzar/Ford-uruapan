@@ -53,7 +53,7 @@ class SpringAiConfigurationSliceTest {
     void configuresProviderRetryBudgetAndDisablesNestedSpringAiRetries() {
         var properties = context.getBean(AiProperties.class);
 
-        assertThat(properties.providerMaxAttempts()).isEqualTo(2);
+        assertThat(properties.providerMaxAttempts()).isEqualTo(5);
         assertThat(properties.providerMaxRetryAfter()).isEqualTo(java.time.Duration.ofSeconds(3));
         assertThat(context.getEnvironment().getProperty("spring.ai.retry.max-attempts", Integer.class)).isEqualTo(1);
         assertThat(context.getEnvironment().getProperty("spring.ai.openai.max-retries", Integer.class)).isZero();

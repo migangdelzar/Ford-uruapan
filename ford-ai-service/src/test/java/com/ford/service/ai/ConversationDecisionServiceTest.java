@@ -25,6 +25,25 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ConversationDecisionServiceTest {
 
     @Test
+    void usesDeterministicRulesInsteadOfSendingSensitiveTextToPrimaryClassifier() {
+        var primaryCalled = new boolean[1];
+        ConversationDecisionPort primary = context -> {
+            primaryCalled[0] = true;
+            throw new AssertionError("Sensitive text must not reach the primary classifier");
+        };
+        ConversationDecisionPort rules = context -> new ConversationDecision(
+                ConversationIntent.GENERAL, LeadTemperature.UNKNOWN, LeadStage.NEW,
+                HandoffRecommendation.NONE, ToolFamily.NONE, SensitiveDataLevel.CONFIRMED, List.of());
+        var context = new ClassificationContext(UUID.randomUUID(), UUID.randomUUID(), "masked input", null,
+                "BOT_ACTIVE", true);
+
+        var decision = new ConversationDecisionService(primary, rules, new ClassificationProperties()).decide(context);
+
+        assertThat(primaryCalled[0]).isFalse();
+        assertThat(decision.sensitiveDataLevel()).isEqualTo(SensitiveDataLevel.CONFIRMED);
+    }
+
+    @Test
     void restoresVolatileToolRouteWhenPrimaryClassifierMissesAnOffersQuestion() {
         var primaryDecision = new ConversationDecision(ConversationIntent.GENERAL,
                 LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE, ToolFamily.NONE,

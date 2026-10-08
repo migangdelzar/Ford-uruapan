@@ -3,12 +3,14 @@ package com.ford.service.ai;
 import com.ford.service.ai.application.AiExecutionContext;
 import com.ford.service.ai.application.ToolFamily;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
+import com.ford.service.ai.application.ToolResultTracker;
 import org.springframework.ai.tool.ToolCallback;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.UUID;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -49,7 +51,57 @@ class ToolAuthorizationPolicyTest {
                 .containsExactly("finance_estimate");
     }
 
+    @Test
+    void allowsOnlyOneCallPerInformationToolInAnAssistantTurn() {
+        var calls = new AtomicInteger();
+        var delegate = callback("search_offers", calls);
+        var policy = new ToolAuthorizationPolicy(List.of(delegate));
+        var tool = policy.readOnlyTools(new AiExecutionContext(UUID.randomUUID(), false)).getFirst();
+
+        assertThat(tool.call("{}" )).isEqualTo("{}");
+        assertThat(tool.call("{\"different\":true}" )).contains("ya se intentó en este turno");
+        assertThat(calls).hasValue(1);
+    }
+
+    @Test
+    void recordsOnlyNonEmptyResultsFromAuthorizedReadOnlyTools() {
+        var tracker = new ToolResultTracker();
+        var policy = new ToolAuthorizationPolicy(List.of(callback("search_vehicles")));
+        var tool = policy.readOnlyTools(new AiExecutionContext(UUID.randomUUID(), false),
+                Set.of("search_vehicles"), tracker).getFirst();
+
+        assertThat(tool.call("{}")).isEqualTo("{}");
+        assertThat(tracker.hasReturnedResult()).isTrue();
+        assertThat(tracker.returnedToolNames()).containsExactly("search_vehicles");
+    }
+
+    @Test
+    void distinguishesEmptyAndFailedToolCallsFromReturnedData() {
+        var emptyTracker = new ToolResultTracker();
+        var emptyTool = new ToolAuthorizationPolicy(List.of(callbackReturning("search_vehicles", " ")))
+                .readOnlyTools(new AiExecutionContext(UUID.randomUUID(), false), Set.of("search_vehicles"),
+                        emptyTracker).getFirst();
+        emptyTool.call("{}");
+        assertThat(emptyTracker.hasAttempted()).isTrue();
+        assertThat(emptyTracker.hasReturnedResult()).isFalse();
+        assertThat(emptyTracker.hasFailed()).isFalse();
+
+        var failedTracker = new ToolResultTracker();
+        var failedTool = new ToolAuthorizationPolicy(List.of(callbackThrowing("search_vehicles")))
+                .readOnlyTools(new AiExecutionContext(UUID.randomUUID(), false), Set.of("search_vehicles"),
+                        failedTracker).getFirst();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> failedTool.call("{}"))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(failedTracker.hasAttempted()).isTrue();
+        assertThat(failedTracker.hasFailed()).isTrue();
+        assertThat(failedTracker.hasReturnedResult()).isFalse();
+    }
+
     private static ToolCallback callback(String name) {
+        return callback(name, new AtomicInteger());
+    }
+
+    private static ToolCallback callback(String name, AtomicInteger calls) {
         return new ToolCallback() {
             @Override
             public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
@@ -61,7 +113,38 @@ class ToolAuthorizationPolicyTest {
 
             @Override
             public String call(String toolInput) {
+                calls.incrementAndGet();
                 return "{}";
+            }
+        };
+    }
+
+    private static ToolCallback callbackReturning(String name, String value) {
+        return new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return org.springframework.ai.tool.definition.DefaultToolDefinition.builder()
+                        .name(name).description(name).inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String toolInput) {
+                return value;
+            }
+        };
+    }
+
+    private static ToolCallback callbackThrowing(String name) {
+        return new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return org.springframework.ai.tool.definition.DefaultToolDefinition.builder()
+                        .name(name).description(name).inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String toolInput) {
+                throw new IllegalStateException("source unavailable");
             }
         };
     }

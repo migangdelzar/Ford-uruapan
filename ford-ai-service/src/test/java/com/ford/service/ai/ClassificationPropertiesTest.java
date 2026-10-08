@@ -50,8 +50,10 @@ class ClassificationPropertiesTest {
     }
 
     @Test
-    void keepsHandoffClassificationDisabledByDefault() {
-        assertThat(new ClassificationProperties().handoffEnabled()).isFalse();
+    void enablesLeadHandoffClassificationButKeepsSensitiveClassificationOffByDefault() {
+        var defaults = new ClassificationProperties();
+        assertThat(defaults.handoffEnabled()).isTrue();
+        assertThat(defaults.sensitiveDataEnabled()).isFalse();
     }
 
     @TestConfiguration(proxyBeanMethods = false)

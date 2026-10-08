@@ -1,8 +1,14 @@
 # Enterprise Agentic Conversation Runtime Design
 
-**Status:** Approved design; implementation not started
+**Status:** Historical approved design (2026-09-25); some implementation/status statements are superseded
 
 **Date:** 2026-09-25
+
+> Current architecture and operational status are maintained in
+> [Ford Service Enterprise Architecture](../../architecture/ford-service-enterprise-architecture.md).
+> This document preserves the original runtime decisions and target assumptions;
+> statements such as “implementation not started” and “human handoff remains
+> disabled” describe the design date and are not the current system status.
 
 ## Goal
 
