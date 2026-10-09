@@ -32,4 +32,17 @@ class OpenApiContractTest {
         assertThat(yaml).doesNotContain("rawResponse:");
         assertThat(yaml).doesNotContain("contextWindowSent:");
     }
+
+    @Test
+    void declaresSpringAuthorizationServerAsThePasskeyAndOneTimeTokenIssuer() throws Exception {
+        var yaml = Files.readString(CONTRACT);
+
+        assertThat(yaml).contains("providerType: spring-authorization-server");
+        assertThat(yaml).contains("issuer: https://ford.emme.business");
+        assertThat(yaml).contains("passkeyPrimary: true");
+        assertThat(yaml).contains("emailOneTimeTokenFallback: true");
+        assertThat(yaml).contains("registrationOptions: /webauthn/register/options");
+        assertThat(yaml).contains("generate: /ott/generate");
+        assertThat(yaml).doesNotContain("external OIDC provider");
+    }
 }

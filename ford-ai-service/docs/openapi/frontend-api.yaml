@@ -9,8 +9,9 @@ info:
     provider-only Meta webhook routes. Operations marked with
     `x-implementation-status: planned` are not available until their backend
     implementation is released.
-    Authentication is provided by the deployment's external OIDC provider;
-    this backend is a resource server and does not issue login tokens.
+    Ford-service owns operator authentication and token issuance through Spring
+    Authorization Server. Spring Security WebAuthn passkeys are primary;
+    Spring one-time-token email login is the recovery path.
   contact:
     name: Ford AI Service
 servers:
@@ -19,11 +20,30 @@ servers:
   - url: http://localhost:8080
     description: Local backend origin
 x-authentication:
-  providerType: oidc
-  discoveryUrl: ${FORD_SECURITY_ISSUER_URI}/.well-known/openid-configuration
-  audience: ${FORD_SECURITY_AUDIENCE}
+  providerType: spring-authorization-server
+  issuer: https://ford.emme.business
+  discoveryUrl: https://ford.emme.business/.well-known/openid-configuration
   browserFlow: authorization_code_pkce
   recommendedDeployment: bff
+  passkeyPrimary: true
+  emailOneTimeTokenFallback: true
+  passkeyRelyingParty:
+    id: ford.emme.business
+    allowedOrigins: [https://ford.emme.business]
+  persistence: PostgreSQL
+  protocolEndpoints:
+    openidConfiguration: /.well-known/openid-configuration
+    jwks: /oauth2/jwks
+    authorization: /oauth2/authorize
+    token: /oauth2/token
+  passkeyEndpoints:
+    registrationOptions: /webauthn/register/options
+    registration: /webauthn/register
+    authenticationOptions: /webauthn/authenticate/options
+    authentication: /login/webauthn
+  emailOneTimeTokenEndpoints:
+    generate: /ott/generate
+    submit: /login/ott
   requiredJwtClaims:
     - iss
     - aud
@@ -35,10 +55,10 @@ x-authentication:
   roleValues: [OPERATOR, MANAGER, ADMIN]
   currentScopes: [openid, profile, email, 'operator:read', 'operator:write', 'handoff:manage']
   tokenHandling: |
-    The frontend or BFF obtains the access token from the OIDC provider.
-    It sends only the short-lived access token to this API as a Bearer token.
-    Refresh tokens and client secrets must stay in the BFF or identity
-    provider; they must never be embedded in frontend JavaScript.
+    The BFF uses authorization code with PKCE and keeps access and refresh
+    tokens server-side. The browser receives only an opaque Secure, HttpOnly,
+    SameSite session cookie. Never embed signing keys or OAuth client secrets
+    in frontend JavaScript.
 tags:
   - name: Health
   - name: AI
@@ -1433,6 +1453,12 @@ components:
           type: string
           format: uuid
           nullable: true
+          description: Stable test session ID. History is loaded from server storage.
+        tenantId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Required only when the validated operator token has multiple tenants.
         containsSensitiveData:
           type: boolean
           default: false
@@ -1455,9 +1481,12 @@ components:
           maxLength: 10000
     AiRespondResponse:
       type: object
-      required: [replyText, suggestedTemperature, handoffSuggested,
+      required: [conversationId, replyText, suggestedTemperature, handoffSuggested,
                  handoffReason, intent, leadStage, toolFamily, sourceDocumentIds]
       properties:
+        conversationId:
+          type: string
+          format: uuid
         replyText:
           type: string
         suggestedTemperature:
