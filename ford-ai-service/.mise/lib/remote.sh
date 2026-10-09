@@ -46,6 +46,11 @@ require_deploy_config() {
   if [[ "${EMME_APP_IMAGE:-}" == ghcr.io/* && -n "${GHCR_TOKEN:-}" && -z "${GHCR_USERNAME:-}" ]]; then
     missing+=("GHCR_USERNAME")
   fi
+  if [[ "${FORD_MCP_ENABLED:-false}" == "true" ]]; then
+    for name in FORD_MCP_SERVER_URL FORD_MCP_TENANT_ID MCP_HTTP_BEARER_TOKEN; do
+      [[ -n "${!name:-}" ]] || missing+=("$name")
+    done
+  fi
   if (( ${#missing[@]} > 0 )); then
     printf 'Missing deployment configuration: %s\n' "${missing[*]}" >&2
     return 1
@@ -127,6 +132,7 @@ render_deploy_inventory() {
   local meta_secret_yaml verify_token_yaml openai_key_yaml app_image_yaml ghcr_username_yaml ghcr_token_yaml
   local backup_bucket_yaml backup_namespace_yaml backup_prefix_yaml backup_region_yaml
   local grafana_endpoint_yaml grafana_instance_yaml grafana_token_yaml langfuse_endpoint_yaml langfuse_public_yaml langfuse_secret_yaml
+  local mcp_enabled_yaml mcp_url_yaml mcp_tenant_yaml mcp_token_yaml mcp_timeout_yaml
   ansible_user_yaml="$(yaml_quote "$OCI_SSH_USER")"
   ansible_host_1_yaml="$(yaml_quote "$EMME_1_SSH_HOST")"
   ansible_host_2_yaml="$(yaml_quote "$EMME_2_SSH_HOST")"
@@ -153,6 +159,11 @@ render_deploy_inventory() {
   langfuse_endpoint_yaml="$(yaml_quote "${LANGFUSE_OTLP_ENDPOINT:-${LANGFUSE_BASE_URL:-https://us.cloud.langfuse.com}/api/public/otel}")"
   langfuse_public_yaml="$(yaml_quote "$LANGFUSE_PUBLIC_KEY")"
   langfuse_secret_yaml="$(yaml_quote "$LANGFUSE_SECRET_KEY")"
+  mcp_enabled_yaml="$(yaml_quote "${FORD_MCP_ENABLED:-false}")"
+  mcp_url_yaml="$(yaml_quote "${FORD_MCP_SERVER_URL:-http://127.0.0.1:3001}")"
+  mcp_tenant_yaml="$(yaml_quote "${FORD_MCP_TENANT_ID:-}")"
+  mcp_token_yaml="$(yaml_quote "${MCP_HTTP_BEARER_TOKEN:-}")"
+  mcp_timeout_yaml="$(yaml_quote "${FORD_MCP_REQUEST_TIMEOUT:-8s}")"
   backup_bucket_yaml="$(yaml_quote "${OCI_BACKUP_BUCKET:-emme-business}")"
   backup_namespace_yaml="$(yaml_quote "${OCI_OBJECT_STORAGE_NAMESPACE:-}")"
   backup_prefix_yaml="$(yaml_quote "${OCI_BACKUP_PREFIX:-ford/backups}")"
@@ -175,6 +186,11 @@ all:
     ford_meta_app_secret: ${meta_secret_yaml}
     ford_meta_verify_token: ${verify_token_yaml}
     openai_api_key: ${openai_key_yaml}
+    ford_mcp_enabled: ${mcp_enabled_yaml}
+    ford_mcp_server_url: ${mcp_url_yaml}
+    ford_mcp_tenant_id: ${mcp_tenant_yaml}
+    mcp_http_bearer_token: ${mcp_token_yaml}
+    ford_mcp_request_timeout: ${mcp_timeout_yaml}
     app_image: ${app_image_yaml}
     ghcr_username: ${ghcr_username_yaml}
     ghcr_token: ${ghcr_token_yaml}

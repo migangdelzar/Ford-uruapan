@@ -10,6 +10,8 @@ import com.ford.service.ai.application.LeadStage;
 import com.ford.service.ai.application.LeadTemperature;
 import com.ford.service.ai.application.SensitiveDataLevel;
 import com.ford.service.ai.application.ToolFamily;
+import com.ford.service.ai.application.IntentRouter;
+import com.ford.service.ai.adapter.out.rules.RulesConversationDecisionAdapter;
 import com.ford.service.ai.configuration.ClassificationProperties;
 import org.junit.jupiter.api.Test;
 
@@ -71,6 +73,20 @@ class ConversationDecisionServiceTest {
                 .decide(context("mensualidad"));
 
         assertThat(decision.intent()).isEqualTo(ConversationIntent.GENERAL);
+    }
+
+    @Test
+    void deterministicComparisonRouteOverridesClassifierToolFamily() {
+        var modelDecision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
+                LeadTemperature.UNKNOWN, LeadStage.NEW, HandoffRecommendation.NONE,
+                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, List.of());
+        var rules = new RulesConversationDecisionAdapter(new IntentRouter());
+
+        var decision = new ConversationDecisionService(context -> modelDecision, rules,
+                new ClassificationProperties()).decide(context("Compara Expedition 2026 vs 2027"));
+
+        assertThat(decision.intent()).isEqualTo(ConversationIntent.YEAR_COMPARISON);
+        assertThat(decision.toolFamily()).isEqualTo(ToolFamily.YEAR_COMPARISON);
     }
 
     private static ClassificationContext context(String message) {

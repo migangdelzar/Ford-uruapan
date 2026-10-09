@@ -37,6 +37,15 @@ spring:
     enabled: true
     change-log: classpath:/db/changelog/db.changelog-master.yaml
   ai:
+    mcp:
+      client:
+        enabled: ${FORD_MCP_ENABLED:false}
+        type: SYNC
+        request-timeout: ${FORD_MCP_REQUEST_TIMEOUT:8s}
+        streamable-http:
+          connections:
+            ford-catalog:
+              url: ${FORD_MCP_SERVER_URL:http://127.0.0.1:3001}
     chat:
       client:
         observations:
@@ -142,6 +151,11 @@ ford:
     backoff-base-seconds: ${FORD_OUTBOX_BACKOFF_BASE_SECONDS:2}
     backoff-max-seconds: ${FORD_OUTBOX_BACKOFF_MAX_SECONDS:300}
   ai:
+    mcp:
+      enabled: ${FORD_MCP_ENABLED:false}
+      tenant-id: ${FORD_MCP_TENANT_ID:}
+      bearer-token: ${MCP_HTTP_BEARER_TOKEN:}
+      server-url: ${FORD_MCP_SERVER_URL:}
     cloud-chat-provider: ${FORD_AI_CLOUD_PROVIDER:openai}
     local-chat-provider: ${FORD_AI_LOCAL_PROVIDER:ollama}
     cloud-chat-model-version: ${FORD_AI_CLOUD_MODEL_VERSION:configured-cloud-model}

@@ -23,6 +23,20 @@ class IntentRouterTest {
     }
 
     @Test
+    void separatesPaymentCalculationFromFordCreditPlanLookup() {
+        assertThat(router.route("Calcula una mensualidad estimada"))
+                .isEqualTo(Intent.FINANCE);
+        assertThat(router.route("¿Qué tasa ofrece Ford Credit?"))
+                .isEqualTo(Intent.FINANCE_PLANS);
+    }
+
+    @Test
+    void usesOneCombinedToolForVehicleOptionsAndFinancing() {
+        assertThat(router.route("Busco una SUV con financiamiento y mensualidad"))
+                .isEqualTo(Intent.VEHICLE_FINANCE);
+    }
+
+    @Test
     void routesAmbiguousQuestionToGeneralAssistant() {
         assertThat(router.route("Hola, tengo una duda"))
                 .isEqualTo(Intent.GENERAL);
@@ -32,5 +46,27 @@ class IntentRouterTest {
     void routesExplicitHumanPurchaseRequestToLeadHandoff() {
         assertThat(router.route("Quiero comprarla este mes, que me llame un asesor"))
                 .isEqualTo(Intent.LEAD_HANDOFF);
+    }
+
+    @Test
+    void routesTrimAndCompetitorComparisonsSeparatelyFromCatalogSearch() {
+        assertThat(router.route("Compara Territory Trend vs Titanium 2027"))
+                .isEqualTo(Intent.TRIM_COMPARISON);
+        assertThat(router.route("Expedition King Ranch contra Chevrolet Tahoe"))
+                .isEqualTo(Intent.COMPETITOR_COMPARISON);
+    }
+
+    @Test
+    void routesYearAndModelComparisons() {
+        assertThat(router.route("¿Qué cambió entre Expedition 2026 y 2027?"))
+                .isEqualTo(Intent.YEAR_COMPARISON);
+        assertThat(router.route("Compara Territory con Bronco Sport"))
+                .isEqualTo(Intent.MODEL_COMPARISON);
+    }
+
+    @Test
+    void routesPromotionsBeforeGeneralVehicleLookup() {
+        assertThat(router.route("¿Qué promociones vigentes hay para Bronco?"))
+                .isEqualTo(Intent.OFFERS);
     }
 }

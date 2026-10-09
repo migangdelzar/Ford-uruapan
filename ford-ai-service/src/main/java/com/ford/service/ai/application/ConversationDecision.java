@@ -33,7 +33,13 @@ public record ConversationDecision(
             case INVENTORY -> Intent.INVENTORY;
             case VEHICLE_DETAILS -> Intent.CATALOG;
             case FINANCE -> Intent.FINANCE;
+            case FINANCE_PLANS -> Intent.FINANCE_PLANS;
+            case VEHICLE_FINANCE -> Intent.VEHICLE_FINANCE;
             case OFFERS -> Intent.OFFERS;
+            case TRIM_COMPARISON -> Intent.TRIM_COMPARISON;
+            case MODEL_COMPARISON -> Intent.MODEL_COMPARISON;
+            case YEAR_COMPARISON -> Intent.YEAR_COMPARISON;
+            case COMPETITOR_COMPARISON -> Intent.COMPETITOR_COMPARISON;
             case KNOWLEDGE -> Intent.KNOWLEDGE;
             case HUMAN_REQUEST -> Intent.LEAD_HANDOFF;
             case GENERAL, APPOINTMENT -> Intent.GENERAL;

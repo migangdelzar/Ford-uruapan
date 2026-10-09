@@ -39,6 +39,40 @@ class DecisionPolicyTest {
     }
 
     @Test
+    void routesEachComparisonIntentToExactlyItsMatchingTool() {
+        var available = Set.of("compare_trims", "compare_vehicles", "compare_model_years", "get_variant_comparisons");
+
+        assertThat(policy.allowedToolNames(decision(ToolFamily.TRIM_COMPARISON), available))
+                .containsExactly("compare_trims");
+        assertThat(policy.allowedToolNames(decision(ToolFamily.MODEL_COMPARISON), available))
+                .containsExactly("compare_vehicles");
+        assertThat(policy.allowedToolNames(decision(ToolFamily.YEAR_COMPARISON), available))
+                .containsExactly("compare_model_years");
+        assertThat(policy.allowedToolNames(decision(ToolFamily.COMPETITOR_COMPARISON), available))
+                .containsExactly("get_variant_comparisons");
+    }
+
+    @Test
+    void routesPromotionIntentOnlyToDealerPromotionLookup() {
+        assertThat(policy.allowedToolNames(decision(ToolFamily.PROMOTIONS),
+                Set.of("list_promotions", "search_offers", "search_vehicles")))
+                .containsExactly("list_promotions");
+    }
+
+    @Test
+    void keepsCreditPlanLookupSeparateFromPaymentCalculation() {
+        assertThat(policy.allowedToolNames(decision(ToolFamily.FINANCE_PLANS),
+                Set.of("search_offers", "finance_estimate")))
+                .containsExactly("search_offers");
+        assertThat(policy.allowedToolNames(decision(ToolFamily.FINANCE_ESTIMATE),
+                Set.of("search_offers", "finance_estimate")))
+                .containsExactly("finance_estimate");
+        assertThat(policy.allowedToolNames(decision(ToolFamily.VEHICLE_FINANCE),
+                Set.of("search_vehicle_and_offers", "search_vehicles", "search_offers")))
+                .containsExactly("search_vehicle_and_offers");
+    }
+
+    @Test
     void restrictsProviderForConfirmedSensitiveData() {
         assertThat(policy.shouldUseRestrictedProvider(decision(SensitiveDataLevel.CONFIRMED)))
                 .isTrue();

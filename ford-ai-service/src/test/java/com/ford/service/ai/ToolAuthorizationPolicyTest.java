@@ -38,6 +38,44 @@ class ToolAuthorizationPolicyTest {
                 .containsExactly("finance_estimate");
     }
 
+    @Test
+    void exposesFordMcpToolsOnlyToConfiguredTenant() {
+        var fordTenant = UUID.randomUUID();
+        var otherTenant = UUID.randomUUID();
+        var policy = new ToolAuthorizationPolicy(
+                List.of(callback("search_vehicles"), callback("vehicle_snapshot_search")), fordTenant);
+
+        assertThat(policy.readOnlyTools(new AiExecutionContext(fordTenant, false)))
+                .extracting(tool -> tool.getToolDefinition().name())
+                .containsExactly("search_vehicles");
+        assertThat(policy.readOnlyTools(new AiExecutionContext(otherTenant, false)))
+                .extracting(tool -> tool.getToolDefinition().name())
+                .containsExactly("vehicle_snapshot_search");
+    }
+
+    @Test
+    void removesDuplicateLegacySearchWhenMcpIsReadyForFordTenant() {
+        var fordTenant = UUID.randomUUID();
+        var policy = new ToolAuthorizationPolicy(
+                List.of(callback("search_vehicles"), callback("vehicle_snapshot_search")), fordTenant);
+
+        assertThat(policy.readOnlyTools(new AiExecutionContext(fordTenant, false)))
+                .extracting(tool -> tool.getToolDefinition().name())
+                .containsExactly("search_vehicles");
+    }
+
+    @Test
+    void exposesOnlyTheGeneralVehicleSearchWhenNoIntentWasClassified() {
+        var fordTenant = UUID.randomUUID();
+        var policy = new ToolAuthorizationPolicy(
+                List.of(callback("search_vehicles"), callback("get_vehicle"), callback("list_promotions")),
+                fordTenant);
+
+        assertThat(policy.readOnlyTools(new AiExecutionContext(fordTenant, false)))
+                .extracting(tool -> tool.getToolDefinition().name())
+                .containsExactly("search_vehicles");
+    }
+
     private static ToolCallback callback(String name) {
         return new ToolCallback() {
             @Override

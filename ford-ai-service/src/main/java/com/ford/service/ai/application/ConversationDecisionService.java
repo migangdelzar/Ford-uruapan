@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Locale;
+import java.util.ArrayList;
 import java.util.Objects;
 
 public final class ConversationDecisionService {
@@ -38,11 +39,28 @@ public final class ConversationDecisionService {
                             && evidence.confidence() < properties.minConfidence())) {
                 throw new IllegalStateException("TypeSafe classification confidence is below the configured threshold");
             }
-            return classified;
+            return applyDeterministicToolRoute(context, classified);
         } catch (RuntimeException ignored) {
             log.warn("Conversation classification failed; using rules fallback: exceptionType={}",
                     ignored.getClass().getSimpleName());
             return rules.decide(context);
         }
+    }
+
+    private ConversationDecision applyDeterministicToolRoute(ClassificationContext context,
+                                                               ConversationDecision classified) {
+        var routed = rules.decide(context);
+        if (routed.toolFamily() == ToolFamily.NONE) {
+            return classified;
+        }
+        var evidence = new ArrayList<>(classified.evidence());
+        evidence.removeIf(item -> item.classifier() == ClassifierType.INTENT
+                || item.classifier() == ClassifierType.TOOL_FAMILY);
+        routed.evidence().stream()
+                .filter(item -> item.classifier() == ClassifierType.INTENT
+                        || item.classifier() == ClassifierType.TOOL_FAMILY)
+                .forEach(evidence::add);
+        return new ConversationDecision(routed.intent(), classified.leadTemperature(), classified.leadStage(),
+                classified.handoffRecommendation(), routed.toolFamily(), classified.sensitiveDataLevel(), evidence);
     }
 }

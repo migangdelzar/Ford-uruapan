@@ -27,6 +27,10 @@ Use environment variables or a deployment profile; keep secrets outside Git.
   toggles, and `FORD_AI_CLASSIFICATION_FALLBACK=rules`
 - `FORD_AI_GUARDRAILS_ENABLED` and `FORD_AI_SELF_REFINE_ENABLED` (both default
   to `false`); self-refinement is bounded by `FORD_AI_SELF_REFINE_MAX_ATTEMPTS`
+- `FORD_MCP_ENABLED`, `FORD_MCP_SERVER_URL`, `MCP_HTTP_BEARER_TOKEN`, and
+  `FORD_MCP_TENANT_ID` for the optional Ford Uruapan MCP client. Keep it disabled
+  until the service can reach the endpoint. MCP tools are only exposed for the
+  configured tenant; other tenants keep the local catalog tools.
 
 For OpenAI-compatible providers, `FORD_AI_CLOUD_BASE_URL` must include the
 provider API version because the Spring AI SDK appends `/chat/completions`

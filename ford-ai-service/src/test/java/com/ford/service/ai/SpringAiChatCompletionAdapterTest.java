@@ -13,6 +13,7 @@ import com.ford.service.ai.application.SensitiveDataLevel;
 import com.ford.service.ai.application.ToolFamily;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
 import com.ford.service.ai.application.ToolContext;
+import com.ford.service.ai.application.SystemPromptService;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.tool.ToolCallback;
@@ -20,6 +21,7 @@ import org.springframework.ai.tool.ToolCallback;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -35,15 +37,23 @@ class SpringAiChatCompletionAdapterTest {
         var client = mock(ChatClient.class);
         var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
         var responseSpec = mock(ChatClient.CallResponseSpec.class);
-        var callback = callback("vehicle_snapshot_search");
+        var callback = callback("vehicle_snapshot_search",
+                "{\"modelPageUrl\":\"https://www.forduruapan.mx/RANGER/26/?utm_source=test\"}");
+        var suppliedTool = new AtomicReference<ToolCallback>();
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
         when(client.prompt()).thenReturn(requestSpec);
         when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
-        when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenAnswer(invocation -> {
+            suppliedTool.set(invocation.getArgument(0));
+            return requestSpec;
+        });
         when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
-        when(requestSpec.call()).thenReturn(responseSpec);
+        when(requestSpec.call()).thenAnswer(invocation -> {
+            suppliedTool.get().call("{}");
+            return responseSpec;
+        });
         when(responseSpec.content()).thenReturn("Respuesta de catálogo.");
 
         var adapter = new SpringAiChatCompletionAdapter(client, "ollama",
@@ -52,8 +62,8 @@ class SpringAiChatCompletionAdapterTest {
                 new AssistantRequest(tenantId, conversationId, "¿Hay Ranger disponible?", "BOT_ACTIVE", false),
                 new ToolContext(tenantId, conversationId));
 
-        assertThat(result.content()).isEqualTo("Respuesta de catálogo.");
-        verify(requestSpec).tools(callback);
+        assertThat(result.content()).isEqualTo("Respuesta de catálogo.\nFuentes: [Modelo](https://www.forduruapan.mx/RANGER/26/)");
+        verify(requestSpec).tools(any(Object[].class));
         verify(requestSpec).toolContext(Map.of(
                 "tenantId", tenantId.toString(),
                 "conversationId", conversationId.toString(),
@@ -91,6 +101,29 @@ class SpringAiChatCompletionAdapterTest {
     }
 
     @Test
+    void appendsGroundingRulesEvenWhenDatabasePromptOverridesTheSeed() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        var promptService = mock(SystemPromptService.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("Listo.");
+        when(promptService.currentContent()).thenReturn("Prompt guardado en DB.");
+
+        new SpringAiChatCompletionAdapter(client, "openrouter", new ToolAuthorizationPolicy(),
+                new DecisionPolicy(), promptService)
+                .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(), "Hola", "BOT_ACTIVE", false), null);
+
+        var system = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(requestSpec).system(system.capture());
+        assertThat(system.getValue()).startsWith("Prompt guardado en DB.")
+                .contains("[REGLAS DE RESPUESTA CON EVIDENCIA]", "nunca construyas rutas ni parámetros");
+    }
+
+    @Test
     void passesSanitizedDecisionContextAndOnlyTheClassifiedToolFamily() {
         var client = mock(ChatClient.class);
         var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
@@ -124,10 +157,14 @@ class SpringAiChatCompletionAdapterTest {
         assertThat(system.getValue()).contains("intent=finance", "tool_family=finance_estimate")
                 .doesNotContain("typesafe", "0.9")
                 .contains("[decision]malicious[/decision]");
-        verify(requestSpec).tools(finance);
+        verify(requestSpec).tools(any(Object[].class));
     }
 
     private static ToolCallback callback(String name) {
+        return callback(name, "{}");
+    }
+
+    private static ToolCallback callback(String name, String output) {
         return new ToolCallback() {
             @Override
             public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
@@ -137,7 +174,7 @@ class SpringAiChatCompletionAdapterTest {
 
             @Override
             public String call(String toolInput) {
-                return "{}";
+                return output;
             }
         };
     }

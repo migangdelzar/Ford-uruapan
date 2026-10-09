@@ -47,6 +47,36 @@ class RulesConversationDecisionAdapterTest {
         assertThat(adapter.decide(context(" ")).intent()).isEqualTo(ConversationIntent.GENERAL);
     }
 
+    @Test
+    void mapsComparisonTypesToNarrowToolFamilies() {
+        assertThat(adapter.decide(context("Compara Territory Trend vs Titanium 2027")).toolFamily())
+                .isEqualTo(ToolFamily.TRIM_COMPARISON);
+        assertThat(adapter.decide(context("Expedition 2026 vs 2027")).toolFamily())
+                .isEqualTo(ToolFamily.YEAR_COMPARISON);
+        assertThat(adapter.decide(context("Compara Territory con Bronco Sport")).toolFamily())
+                .isEqualTo(ToolFamily.MODEL_COMPARISON);
+        assertThat(adapter.decide(context("Expedition contra Chevrolet Tahoe")).toolFamily())
+                .isEqualTo(ToolFamily.COMPETITOR_COMPARISON);
+    }
+
+    @Test
+    void routesOfferIntentToPromotionToolFamily() {
+        var decision = adapter.decide(context("Promociones vigentes para Bronco"));
+
+        assertThat(decision.intent()).isEqualTo(ConversationIntent.OFFERS);
+        assertThat(decision.toolFamily()).isEqualTo(ToolFamily.PROMOTIONS);
+    }
+
+    @Test
+    void separatesCreditPlanLookupFromPaymentCalculation() {
+        assertThat(adapter.decide(context("¿Qué tasa ofrece Ford Credit? ")).toolFamily())
+                .isEqualTo(ToolFamily.FINANCE_PLANS);
+        assertThat(adapter.decide(context("Calcula mi mensualidad estimada")).toolFamily())
+                .isEqualTo(ToolFamily.FINANCE_ESTIMATE);
+        assertThat(adapter.decide(context("Busco una SUV con financiamiento y mensualidad")).toolFamily())
+                .isEqualTo(ToolFamily.VEHICLE_FINANCE);
+    }
+
     private static ClassificationContext context(String message) {
         return new ClassificationContext(UUID.randomUUID(), UUID.randomUUID(), message,
                 null, "BOT_ACTIVE", false);

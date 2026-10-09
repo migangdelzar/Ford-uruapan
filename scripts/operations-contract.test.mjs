@@ -28,6 +28,21 @@ test("operations documentation describes evidence and safe telemetry", async () 
   assert.match(observability, /dashboard/i);
 });
 
+test("Ford MCP deployment is disabled by default and validates tenant credentials", async () => {
+  const example = await read("deployment/config/oci.env.example");
+  const template = await read("deployment/ansible/roles/app/templates/app.env.j2");
+  const remote = await read("ford-ai-service/.mise/lib/remote.sh");
+  const serviceProperties = await read("ford-ai-service/src/main/java/com/ford/service/ai/configuration/McpToolProperties.java");
+
+  assert.match(example, /^FORD_MCP_ENABLED=false$/m);
+  assert.match(template, /FORD_MCP_SERVER_URL=/);
+  assert.match(template, /FORD_MCP_TENANT_ID=/);
+  assert.match(template, /MCP_HTTP_BEARER_TOKEN=/);
+  assert.match(remote, /if \[\[ "\$\{FORD_MCP_ENABLED:-false\}" == "true" \]\]/);
+  assert.match(remote, /FORD_MCP_SERVER_URL FORD_MCP_TENANT_ID MCP_HTTP_BEARER_TOKEN/);
+  assert.match(serviceProperties, /must use HTTPS except for local development/);
+});
+
 test("service README links the operational contracts", async () => {
   const readme = await read("ford-ai-service/README.md");
   assert.match(readme, /docs\/ci-cd\.md/);

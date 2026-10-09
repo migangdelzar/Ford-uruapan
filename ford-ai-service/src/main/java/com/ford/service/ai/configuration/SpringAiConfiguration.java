@@ -43,6 +43,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.ai.support.ToolCallbacks;
+import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 
 import java.util.ArrayList;
@@ -50,7 +51,7 @@ import java.util.List;
 
 /** Composition root marker for Spring AI adapters and read-only tool wiring. */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({ClassificationProperties.class, TypeSafeProperties.class})
+@EnableConfigurationProperties({ClassificationProperties.class, TypeSafeProperties.class, McpToolProperties.class})
 public class SpringAiConfiguration {
 
     @Bean
@@ -115,7 +116,9 @@ public class SpringAiConfiguration {
     ToolAuthorizationPolicy toolAuthorizationPolicy(ObjectProvider<VehicleCatalog> catalog,
                                                     ObjectProvider<FinanceOperations> finance,
                                                     ObjectProvider<FinanceTermsRepository> terms,
-                                                    ObjectProvider<KnowledgeRetrieval> knowledge) {
+                                                    ObjectProvider<KnowledgeRetrieval> knowledge,
+                                                    ObjectProvider<ToolCallbackProvider> mcpProviders,
+                                                    McpToolProperties mcpProperties) {
         var toolObjects = new ArrayList<Object>();
         var vehicleCatalog = catalog.getIfAvailable();
         if (vehicleCatalog != null) {
@@ -130,10 +133,20 @@ public class SpringAiConfiguration {
         if (knowledgeRetrieval != null) {
             toolObjects.add(new KnowledgeTools(knowledgeRetrieval));
         }
-        if (toolObjects.isEmpty()) {
+        var tools = new ArrayList<org.springframework.ai.tool.ToolCallback>();
+        if (!toolObjects.isEmpty()) {
+            tools.addAll(List.of(ToolCallbacks.from(toolObjects.toArray())));
+        }
+        if (mcpProperties.enabled()) {
+            mcpProviders.orderedStream().forEach(provider -> tools.addAll(List.of(provider.getToolCallbacks())));
+            if (tools.stream().noneMatch(tool -> "search_vehicles".equals(tool.getToolDefinition().name()))) {
+                throw new IllegalStateException("Ford MCP is enabled but its vehicle tools are unavailable");
+            }
+        }
+        if (tools.isEmpty()) {
             return new ToolAuthorizationPolicy();
         }
-        return new ToolAuthorizationPolicy(List.of(ToolCallbacks.from(toolObjects.toArray())));
+        return new ToolAuthorizationPolicy(tools, mcpProperties.requiredTenantId());
     }
 
     @Bean

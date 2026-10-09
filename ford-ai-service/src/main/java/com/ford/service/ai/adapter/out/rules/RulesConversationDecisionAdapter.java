@@ -50,7 +50,13 @@ public final class RulesConversationDecisionAdapter implements ConversationDecis
         return switch (intent) {
             case INVENTORY -> ConversationIntent.INVENTORY;
             case FINANCE -> ConversationIntent.FINANCE;
+            case FINANCE_PLANS -> ConversationIntent.FINANCE_PLANS;
+            case VEHICLE_FINANCE -> ConversationIntent.VEHICLE_FINANCE;
             case OFFERS -> ConversationIntent.OFFERS;
+            case TRIM_COMPARISON -> ConversationIntent.TRIM_COMPARISON;
+            case MODEL_COMPARISON -> ConversationIntent.MODEL_COMPARISON;
+            case YEAR_COMPARISON -> ConversationIntent.YEAR_COMPARISON;
+            case COMPETITOR_COMPARISON -> ConversationIntent.COMPETITOR_COMPARISON;
             case KNOWLEDGE -> ConversationIntent.KNOWLEDGE;
             case CATALOG -> ConversationIntent.VEHICLE_DETAILS;
             case LEAD_HANDOFF -> ConversationIntent.HUMAN_REQUEST;
@@ -63,6 +69,13 @@ public final class RulesConversationDecisionAdapter implements ConversationDecis
             case INVENTORY -> ToolFamily.VEHICLE_SEARCH;
             case CATALOG -> ToolFamily.VEHICLE_DETAILS;
             case FINANCE -> ToolFamily.FINANCE_ESTIMATE;
+            case FINANCE_PLANS -> ToolFamily.FINANCE_PLANS;
+            case VEHICLE_FINANCE -> ToolFamily.VEHICLE_FINANCE;
+            case OFFERS -> ToolFamily.PROMOTIONS;
+            case TRIM_COMPARISON -> ToolFamily.TRIM_COMPARISON;
+            case MODEL_COMPARISON -> ToolFamily.MODEL_COMPARISON;
+            case YEAR_COMPARISON -> ToolFamily.YEAR_COMPARISON;
+            case COMPETITOR_COMPARISON -> ToolFamily.COMPETITOR_COMPARISON;
             case KNOWLEDGE -> ToolFamily.KNOWLEDGE_SEARCH;
             default -> ToolFamily.NONE;
         };

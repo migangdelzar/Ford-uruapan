@@ -57,8 +57,8 @@ class SpringAiAssistantServiceTest {
 
         var request = org.mockito.ArgumentCaptor.forClass(com.ford.service.ai.api.AssistantRequest.class);
         verify(orchestrator).respond(request.capture());
-        assertThat(request.getValue().decision()).isSameAs(decision);
-        assertThat(turn.decision()).isSameAs(decision);
+        assertThat(request.getValue().decision()).isEqualTo(decision);
+        assertThat(turn.decision()).isEqualTo(decision);
         assertThat(turn.intent()).isEqualTo(Intent.FINANCE);
     }
 
