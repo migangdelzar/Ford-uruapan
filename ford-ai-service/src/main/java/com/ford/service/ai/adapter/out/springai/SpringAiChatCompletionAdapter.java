@@ -47,6 +47,8 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
     private final AssistantResponseQualityPolicy qualityPolicy;
     private final ObjectMapper objectMapper;
     private final AiObservationService observations;
+    private final com.ford.service.ai.application.GroundedSourceLinkRenderer sourceLinkRenderer =
+            new com.ford.service.ai.application.GroundedSourceLinkRenderer();
 
     public SpringAiChatCompletionAdapter(ChatClient client, String provider) {
         this(client, provider, new ToolAuthorizationPolicy(), new DecisionPolicy(), null,
@@ -160,7 +162,8 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                     new java.util.TreeSet<>(toolResults.returnedToolNames()),
                     confidenceForLog(generation.modelConfidence()));
             recordAssessment(evidenceStatus, generation.modelConfidence(), "accepted");
-            return new AssistantResponse(generation.answer().strip(), false, provider, List.of(),
+            var groundedAnswer = sourceLinkRenderer.render(generation.answer().strip(), toolResults.sourceUrls());
+            return new AssistantResponse(groundedAnswer, false, provider, List.of(),
                     generation.journeyProposal(), generation.modelConfidence(), evidenceStatus);
         } catch (RuntimeException exception) {
             var routedFailure = AiProviderFailureDiagnostics.afterReadOnlyToolResult(

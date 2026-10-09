@@ -66,6 +66,17 @@ class DecisionPolicyTest {
     }
 
     @Test
+    void exposesTrimYearAndPageLinkToolsForVehicleComparisons() {
+        var decision = decision(ToolFamily.VEHICLE_DETAILS);
+
+        assertThat(policy.allowedToolNames(decision, Set.of(
+                "compare_trims", "compare_model_years", "get_variant_comparisons", "get_page_links",
+                "list_promotions", "calculate_credit_financing")))
+                .containsExactlyInAnyOrder("compare_trims", "compare_model_years",
+                        "get_variant_comparisons", "get_page_links");
+    }
+
+    @Test
     void exposesCombinedVehicleAndOfferSearchForVehicleSearchRequests() {
         var decision = decision(ToolFamily.VEHICLE_SEARCH);
 

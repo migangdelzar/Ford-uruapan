@@ -41,6 +41,16 @@ class IntentRouterTest {
     }
 
     @Test
+    void routesTrimYearAndCompetitorComparisonsToVehicleDetails() {
+        assertThat(router.route("Compara Expedition 2027 Active vs Platinum"))
+                .isEqualTo(Intent.CATALOG);
+        assertThat(router.route("¿Qué cambia entre Expedition 2025 y 2027?"))
+                .isEqualTo(Intent.CATALOG);
+        assertThat(router.route("Expedition contra Chevrolet Tahoe"))
+                .isEqualTo(Intent.CATALOG);
+    }
+
+    @Test
     void routesFuelEconomyQuestionsToVehicleKnowledge() {
         assertThat(router.route("¿Cuántos kilómetros por litro da?"))
                 .isEqualTo(Intent.KNOWLEDGE);

@@ -13,6 +13,7 @@ public class McpProperties {
 
     private static final Set<String> DEFAULT_READ_ONLY_TOOLS = Set.of(
             "search_vehicles", "search_vehicle_and_offers", "get_vehicle", "compare_vehicles", "search_offers",
+            "compare_trims", "compare_model_years", "get_variant_comparisons", "get_page_links",
             "list_promotions", "get_vehicle_provenance", "get_catalog_status");
 
     private boolean enabled;

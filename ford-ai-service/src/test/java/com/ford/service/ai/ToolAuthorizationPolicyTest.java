@@ -97,6 +97,20 @@ class ToolAuthorizationPolicyTest {
         assertThat(failedTracker.hasReturnedResult()).isFalse();
     }
 
+    @Test
+    void stripsTrackingParametersFromToolOutputAndTracksGroundedSourceLinks() {
+        var tracker = new ToolResultTracker();
+        var policy = new ToolAuthorizationPolicy(List.of(callbackReturning("get_vehicle",
+                "{\"sourceUrl\":\"https://www.forduruapan.mx/RANGER/26/?utm_source=chat#specs\"}")));
+        var tool = policy.readOnlyTools(new AiExecutionContext(UUID.randomUUID(), false), null, tracker).getFirst();
+
+        var result = tool.call("{}");
+
+        assertThat(result).contains("https://www.forduruapan.mx/RANGER/26/")
+                .doesNotContain("utm_source", "#specs");
+        assertThat(tracker.sourceUrls()).containsExactly("https://www.forduruapan.mx/RANGER/26/");
+    }
+
     private static ToolCallback callback(String name) {
         return callback(name, new AtomicInteger());
     }

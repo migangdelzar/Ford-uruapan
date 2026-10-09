@@ -14,7 +14,8 @@ class McpPropertiesTest {
     @Test
     void exposesTheCombinedVehicleAndFinancingInformationToolByDefault() {
         assertThat(new McpProperties().readOnlyToolNames())
-                .contains("search_vehicle_and_offers");
+                .contains("search_vehicle_and_offers", "compare_trims", "compare_model_years",
+                        "get_variant_comparisons", "get_page_links");
     }
 
     @Test

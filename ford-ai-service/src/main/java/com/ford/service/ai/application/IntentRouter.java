@@ -40,6 +40,11 @@ public class IntentRouter {
                 "dónde están", "donde estan", "sucursal", "agencia")) {
             return Intent.DEALERSHIP_INFO;
         }
+        if (containsAny(normalized, "comparar", "compara", "compare", "comparativa", "comparación", "comparacion",
+                "diferencia entre", "diferencias entre", "qué cambia entre", "que cambia entre",
+                "qué cambió", "que cambio", "cambios del modelo", "versus", "vs.", " vs ", " contra ")) {
+            return Intent.CATALOG;
+        }
         if (containsAny(normalized, "disponible", "inventario", "stock", "unidades", "color")) {
             return Intent.INVENTORY;
         }

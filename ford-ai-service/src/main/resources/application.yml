@@ -127,7 +127,7 @@ ford:
     access-client-secret: ${FORD_MCP_ACCESS_CLIENT_SECRET:}
     request-timeout: ${FORD_MCP_REQUEST_TIMEOUT:30s}
     required-for-volatile-information: ${FORD_MCP_REQUIRED_FOR_VOLATILE_INFORMATION:true}
-    read-only-tool-names: ${FORD_MCP_READ_ONLY_TOOL_NAMES:search_vehicles,search_vehicle_and_offers,get_vehicle,compare_vehicles,search_offers,list_promotions,get_vehicle_provenance,get_catalog_status}
+    read-only-tool-names: ${FORD_MCP_READ_ONLY_TOOL_NAMES:search_vehicles,search_vehicle_and_offers,get_vehicle,compare_vehicles,compare_trims,compare_model_years,get_variant_comparisons,get_page_links,search_offers,list_promotions,get_vehicle_provenance,get_catalog_status}
   security:
     jwt:
       enabled: ${FORD_SECURITY_JWT_ENABLED:false}

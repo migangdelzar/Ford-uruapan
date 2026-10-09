@@ -73,6 +73,40 @@ class SpringAiChatCompletionAdapterTest {
     }
 
     @Test
+    void rendersOnlyToolReturnedFordSourceLinksOnTheFinalAnswer() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        var passedTools = new java.util.concurrent.atomic.AtomicReference<Object[]>();
+        var sourceTool = callbackReturning("get_vehicle",
+                "{\"sourceUrl\":\"https://www.forduruapan.mx/EXPEDITION/27/?utm_source=chat#specs\"}");
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenAnswer(invocation -> {
+            passedTools.set(invocation.getArguments());
+            return requestSpec;
+        });
+        when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
+        when(requestSpec.call()).thenAnswer(invocation -> {
+            ((ToolCallback) passedTools.get()[0]).call("{}");
+            return responseSpec;
+        });
+        when(responseSpec.content()).thenReturn("Encontré la ficha de Expedition 2027.");
+        var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_DETAILS,
+                SensitiveDataLevel.NONE, List.of());
+        var adapter = new SpringAiChatCompletionAdapter(client, "ollama",
+                new ToolAuthorizationPolicy(List.of(sourceTool)));
+
+        var result = adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "Muéstrame la ficha de Expedition 2027", "BOT_ACTIVE", null, false, decision), null);
+
+        assertThat(result.content()).contains("Fuentes:", "https://www.forduruapan.mx/EXPEDITION/27/")
+                .doesNotContain("utm_source", "#specs", "example.com");
+    }
+
+    @Test
     void includesDurableMemoryBeforeTheCurrentUserMessage() {
         var client = mock(ChatClient.class);
         var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
@@ -470,6 +504,21 @@ class SpringAiChatCompletionAdapterTest {
             @Override
             public String call(String toolInput) {
                 return "{}";
+            }
+        };
+    }
+
+    private static ToolCallback callbackReturning(String name, String result) {
+        return new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return org.springframework.ai.tool.definition.DefaultToolDefinition.builder()
+                        .name(name).description(name).inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String toolInput) {
+                return result;
             }
         };
     }

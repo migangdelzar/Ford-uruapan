@@ -86,7 +86,7 @@ public class ToolAuthorizationPolicy {
             var name = getToolDefinition().name();
             resultTracker.attempted(name);
             try {
-                var result = delegate.call(input);
+                var result = resultTracker.sanitizeSourceUrls(delegate.call(input));
                 resultTracker.resultReturned(name, result);
                 return result;
             } catch (RuntimeException exception) {
@@ -101,7 +101,7 @@ public class ToolAuthorizationPolicy {
             var name = getToolDefinition().name();
             resultTracker.attempted(name);
             try {
-                var result = delegate.call(input, context);
+                var result = resultTracker.sanitizeSourceUrls(delegate.call(input, context));
                 resultTracker.resultReturned(name, result);
                 return result;
             } catch (RuntimeException exception) {
