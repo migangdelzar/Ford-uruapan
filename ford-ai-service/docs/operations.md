@@ -34,7 +34,7 @@ Use environment variables or a deployment profile; keep secrets outside Git.
   messages are injected into each model prompt.
 - `FORD_MEMORY_SUMMARY_MAX_CHARS`, `FORD_MEMORY_FACT_LIMIT`, `FORD_MEMORY_FACT_MAX_CHARS`
 - `FORD_MEMORY_SEMANTIC_ENABLED`, `FORD_MEMORY_SEMANTIC_LIMIT`, `FORD_MEMORY_CACHE_ENABLED`
-- `FORD_AI_CHAT_PROVIDER`, `FORD_AI_EMBEDDING_PROVIDER`
+- `FORD_AI_MODEL_PROFILE` selects DeepSeek or local Qwen; `FORD_AI_EMBEDDING_PROVIDER`
 - `FORD_AI_CLOUD_ENABLED`, `FORD_AI_LOCAL_ENABLED`, provider base URLs and model names
 - `FORD_CONVERSATION_TURN_CONCURRENCY` (start at `1`; raise to `2` then `5` only
   after the corresponding isolation and idempotency gates pass),
@@ -48,23 +48,21 @@ Use environment variables or a deployment profile; keep secrets outside Git.
   `ford.conversation.publication.oldest.wait.seconds`; advance from one worker
   to two and then five only after tenant isolation, duplicate delivery, and
   optimistic-lock/idempotency gates pass.
-- `FORD_AI_FALLBACK_ORDER` (default `cloudflare,groq,gemini,openrouter`) and
-  `FORD_AI_PROVIDER_MAX_ATTEMPTS` (default/maximum `5`). Eligible order is
-  Cloudflare, Groq, Gemini, OpenRouter, then local Ollama. OpenAI is disabled by
-  default. Each eligible provider
+- `FORD_AI_MODEL_PROFILE` (`deepseek` by default, or `local` to select local Qwen)
+  chooses the primary chat model at startup. `FORD_AI_FALLBACK_ORDER` defaults
+  to `openrouter`, and `FORD_AI_PROVIDER_MAX_ATTEMPTS=2` permits one primary
+  attempt and one OpenRouter fallback attempt. Each provider
   is called once; rate limits, service outages, and network errors can advance
   to the next provider. Retry-After waits are capped by
   `FORD_AI_PROVIDER_MAX_RETRY_AFTER` (default `PT3S`); longer waits are skipped.
-- `FORD_AI_GROQ_ENABLED`, `FORD_AI_GEMINI_ENABLED`,
-  `FORD_AI_CLOUDFLARE_ENABLED`, and `FORD_AI_OPENROUTER_ENABLED` are all false
-  by default. Each also requires its API key and both capability declarations
+- `FORD_AI_OPENROUTER_ENABLED` requires its API key and both capability declarations
   (`*_TOOL_CALLING_VERIFIED`, `*_STRUCTURED_OUTPUT_VERIFIED`) before it enters
-  the routing chain. Set those declarations only after the provider passes
+  the fallback chain. Set those declarations only after the provider passes
   the deterministic and provider-specific evaluation cases.
-- Provider secrets are `GROQ_API_KEY`, `GEMINI_API_KEY`,
-  `CLOUDFLARE_API_TOKEN` plus `CLOUDFLARE_ACCOUNT_ID`, and
-  `OPENROUTER_API_KEY`. `openrouter/free` is evaluation-only unless
-  `FORD_AI_EVALUATION_MODE=true`; it is not eligible by default.
+- DeepSeek uses `FORD_DEEPSEEK_API_KEY`; OpenRouter uses `OPENROUTER_API_KEY`.
+  The selected OpenRouter model is `xiaomi/mimo-v2.6-flash`.
+- `FORD_AI_MAX_OUTPUT_TOKENS=1024` caps generated output for DeepSeek, local
+  Qwen, and OpenRouter.
 - The ten Ford lead flows are covered by the deterministic main-app fixture:
   `./gradlew test --tests '*MultistepLeadHandoffFixtureTest'`. It checks only
   application authorization and payload fields; it does not test model quality
@@ -79,7 +77,7 @@ Use environment variables or a deployment profile; keep secrets outside Git.
   Terraform variables or state.
 - `FORD_AI_LOG_PROVIDER_ERRORS` (opt-in bounded provider error details)
 - `mise run ai:provider-preflight` (opt-in live smoke test for every enabled catalog provider). It loads the ignored deployment config, calls providers through Spring AI with synthetic input and a read-only fake tool, checks conversion into the app's `AssistantGeneration` type, and reports safe provider/model/error details. Set `FORD_AI_PREFLIGHT_PROVIDER_IDS=groq` to probe a subset or `FORD_AI_PREFLIGHT_MODEL_GROQ=<model-id>` to try another model without changing deployment config. It can incur provider charges and never contacts WhatsApp, CRM, or customer data.
-- The live preflight prompts for exactly one synthetic tool call and always runs; Gradle must not reuse a prior result because provider models and quotas can change. It uses the same automatic tool choice as production and fails unless the callback runs exactly once. Verified testing models: Cloudflare `@cf/meta/llama-3.3-70b-instruct-fp8-fast`, Groq `openai/gpt-oss-20b`, Gemini `gemini-3.8-flash`, and OpenRouter `openai/gpt-oss-120b`. Groq GPT-OSS also requires `include_reasoning=false` so Groq does not receive unsupported `reasoning_content` on the tool-result turn. Re-run preflight after changing a provider, model, or provider capability flags.
+- The live preflight prompts for exactly one synthetic tool call and always runs; Gradle must not reuse a prior result because provider models and quotas can change. It uses the same automatic tool choice as production and fails unless the callback runs exactly once. Re-run preflight after changing a provider, model, or provider capability flags.
 - `FORD_AI_MEDIA_ENABLED` (defaults to `false`), `FORD_AI_MEDIA_APPROVED_PROVIDERS`,
   `FORD_AI_MEDIA_IMAGE_PROVIDERS`, and `FORD_AI_MEDIA_AUDIO_PROVIDERS`. Media is
   sent only to an ID present in the approved and matching modality lists, with
@@ -100,14 +98,15 @@ Use environment variables or a deployment profile; keep secrets outside Git.
   `shadow`, or `disabled`), and `FORD_AI_CLASSIFICATION_PROVIDER`
 - `FORD_AI_CLASSIFICATION_MIN_CONFIDENCE`, classifier-specific `FORD_AI_CLASSIFIER_*`
   toggles, and `FORD_AI_CLASSIFICATION_FALLBACK=rules`. Lead/handoff questions
-  are enabled; sensitive-data classification is disabled while PII redaction
-  and deterministic authorization remain enabled.
+  are enabled. `FORD_AI_CLASSIFICATION_PII_POLICY=allow` sends supplied personal
+  data to the selected cloud model; deterministic injection checks and tool
+  authorization remain enabled.
 - `FORD_AI_GUARDRAILS_ENABLED` and `FORD_AI_SELF_REFINE_ENABLED` (both default
   to `false`); self-refinement is bounded by `FORD_AI_SELF_REFINE_MAX_ATTEMPTS`
 
-For OpenAI-compatible providers, `FORD_AI_CLOUD_BASE_URL` must include the
-provider API version because the Spring AI SDK appends `/chat/completions`
-directly to it. For example, OpenRouter uses:
+For OpenAI-compatible providers, the Spring AI SDK appends `/chat/completions`
+directly to the configured base URL. DeepSeek uses `https://api.deepseek.com`;
+OpenRouter uses:
 
 ```dotenv
 FORD_AI_CLOUD_BASE_URL=https://openrouter.ai/api/v1
@@ -276,7 +275,7 @@ Each model request receives a controlled context: the compact summary, up to
 `FORD_MEMORY_PROMPT_RECENT_MESSAGE_LIMIT` recent messages (8 by default), and
 durable facts. When the recent window rolls over, the provider chain compacts
 expired messages into a bounded summary. The database transcript is never
-deleted. PII redaction and prompt-injection checks run before compaction;
+deleted. PII handling follows `FORD_AI_CLASSIFICATION_PII_POLICY`; prompt-injection checks run before compaction;
 empty or oversized summaries are rejected. If compaction fails, the last valid
 summary is retained and the full transcript remains durable, though expired
 turns may not be present in that request's prompt. Projection version checks
@@ -304,9 +303,9 @@ migration procedure.
 Jev classification is a separate structured decision step, not the response
 generation model. When enabled with a real `TYPESAFE_API_KEY`, it classifies
 intent, lead stage/temperature, handoff signals, and tool family. Sensitive-data
-classification is disabled; the application still redacts recognized PII and
-keeps it out of remote Jev classification. The application passes only a
-sanitized decision context to generation,
+classification is disabled; flagged turns bypass remote Jev classification.
+With the default PII policy, the request and context pass intact to the
+selected generation model. The application passes a structured decision context to generation,
 keeps authorization and handoff policy in Java, and persists normalized
 evidence in `conversation_decision`. If Jev is unavailable, malformed, or
 below the configured confidence floor, deterministic rules continue the turn.
@@ -331,14 +330,12 @@ only and is recorded in [the Jev evaluation note](../../docs/jev-spanish-smoke-e
 It is a routing check, not a broad accuracy benchmark.
 
 The input security policy runs before Jev and response generation. It blocks
-common direct attempts to override or reveal system instructions, redacts
-recognized email, Mexican phone, payment-card, credential, CURP/RFC/CLABE
-values from the current request and model context by default, and marks such
-turns sensitive. Sensitive turns skip remote Jev classification and cloud model routing; they use
-the local model only when it is available. `FORD_AI_CLASSIFICATION_PII_POLICY` accepts
-`redact` (default), `block` (return a safe request to remove the data), or
-`allow` (preserve the text but keep it out of remote classifiers and cloud chat
-providers). Recognized injection text inside historical memory or journey
+common direct attempts to override or reveal system instructions and marks
+recognized email, Mexican phone, payment-card, credential, CURP/RFC/CLABE data
+as sensitive. The default `FORD_AI_CLASSIFICATION_PII_POLICY=allow` preserves
+that data for the selected DeepSeek or OpenRouter model; sensitive turns skip
+remote Jev classification. Set `block` to stop a turn or `redact` to mask it.
+Recognized injection text inside historical memory or journey
 context causes that context block to be omitted. These deterministic patterns
 are defense in depth, not a complete prompt-injection detector; keep scope and
 tool authorization enforced in Java and extend the synthetic adversarial evals.
@@ -613,10 +610,10 @@ or send a customer test message as part of release verification.
 
 ## Provider and safety controls
 
-Cloud/local model choice is policy-driven and never silently falls back across
-privacy boundaries. Sensitive requests stay local when a local provider is
-enabled. Models receive read-only tools only; finance calculations and lead
-scores remain deterministic.
+The selected profile and one OpenRouter fallback define the model route.
+Sensitive text is preserved according to the configured PII policy. Models
+receive read-only tools only; finance calculations and lead scores remain
+deterministic.
 
 To disable AI while keeping webhook acknowledgement and operator access,
 disable both AI provider flags and route the conversation to the human queue.

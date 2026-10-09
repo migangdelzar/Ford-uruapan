@@ -14,12 +14,15 @@ import java.util.List;
 @ConfigurationProperties(prefix = "ford.ai")
 public class AiProperties {
 
-    private String chatProvider = "ollama";
+    private String modelProfile = "deepseek";
     private String cloudChatProvider = "openai";
     private String localChatProvider = "ollama";
     private String cloudChatModelVersion = "configured-cloud-model";
     private String localChatModelVersion = "configured-local-model";
     private double cloudTemperature = 0.1;
+    @Min(1)
+    @Max(8192)
+    private int maxOutputTokens = 1024;
     private String embeddingProvider = "ollama";
     private String embeddingModelVersion = "configured-embedding-model";
     private boolean cloudEnabled = false;
@@ -39,14 +42,6 @@ public class AiProperties {
     private long mediaMaxBytes = 10 * 1024 * 1024;
     @NotNull
     private Duration mediaTimeout = Duration.ofSeconds(8);
-
-    public String chatProvider() {
-        return chatProvider;
-    }
-
-    public void setChatProvider(String value) {
-        chatProvider = value;
-    }
 
     public String cloudChatProvider() {
         return cloudChatProvider;
@@ -184,6 +179,20 @@ public class AiProperties {
     public boolean isMediaTimeoutValid() {
         return mediaTimeout == null || (!mediaTimeout.isNegative() && !mediaTimeout.isZero()
                 && mediaTimeout.compareTo(Duration.ofSeconds(8)) <= 0);
+    }
+
+    public String modelProfile() { return modelProfile; }
+    public void setModelProfile(String value) {
+        if (value == null || !(value.equalsIgnoreCase("deepseek") || value.equalsIgnoreCase("local"))) {
+            throw new IllegalArgumentException("modelProfile must be deepseek or local");
+        }
+        modelProfile = value.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    public int maxOutputTokens() { return maxOutputTokens; }
+    public void setMaxOutputTokens(int value) {
+        if (value < 1 || value > 8192) throw new IllegalArgumentException("maxOutputTokens must be between 1 and 8192");
+        maxOutputTokens = value;
     }
 
     private static List<String> safeList(List<String> value) {

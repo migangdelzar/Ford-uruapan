@@ -29,7 +29,7 @@ public class ClassificationProperties {
     private String fallback = "rules";
     @NotBlank
     @Pattern(regexp = "(?i)redact|block|allow")
-    private String piiPolicy = "redact";
+    private String piiPolicy = "allow";
     private boolean intentEnabled = true;
     private boolean leadEnabled = true;
     private boolean handoffEnabled = true;

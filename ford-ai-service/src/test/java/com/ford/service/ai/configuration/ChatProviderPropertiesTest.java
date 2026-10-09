@@ -14,7 +14,7 @@ class ChatProviderPropertiesTest {
     void defaultsFallbackOrderToTheApprovedProviderSequence() {
         var properties = new ChatProviderProperties();
 
-        assertThat(properties.fallbackOrder()).containsExactly("cloudflare", "groq", "gemini", "openrouter");
+        assertThat(properties.fallbackOrder()).containsExactly("openrouter");
     }
 
     @Test
@@ -27,6 +27,7 @@ class ChatProviderPropertiesTest {
         groq.setToolCallingVerified(true);
         groq.setStructuredOutputVerified(true);
         properties.setCatalog(new LinkedHashMap<>(java.util.Map.of("groq", groq)));
+        properties.setFallbackOrder(List.of("groq"));
 
         assertThat(properties.eligibleFallbackIds()).isEmpty();
         assertThat(properties.providerStatus()).containsEntry("groq", "missing_api_key");
@@ -38,6 +39,7 @@ class ChatProviderPropertiesTest {
         var properties = new ChatProviderProperties();
         var groq = provider("secret-value");
         properties.setCatalog(new LinkedHashMap<>(java.util.Map.of("groq", groq)));
+        properties.setFallbackOrder(List.of("groq"));
 
         assertThat(properties.eligibleFallbackIds()).containsExactly("groq");
         assertThat(properties.providerStatus()).containsEntry("groq", "ready");
@@ -54,6 +56,7 @@ class ChatProviderPropertiesTest {
         groq.setApiKey("secret-value");
         groq.setToolCallingVerified(true);
         properties.setCatalog(new LinkedHashMap<>(java.util.Map.of("groq", groq)));
+        properties.setFallbackOrder(List.of("groq"));
 
         assertThat(properties.eligibleFallbackIds()).isEmpty();
         assertThat(properties.providerStatus()).containsEntry("groq", "capabilities_unverified");
@@ -66,6 +69,7 @@ class ChatProviderPropertiesTest {
         openRouter.setModel("openrouter/free");
         openRouter.setBaseUrl("https://openrouter.ai/api/v1");
         properties.setCatalog(new LinkedHashMap<>(java.util.Map.of("openrouter", openRouter)));
+        properties.setFallbackOrder(List.of("openrouter"));
 
         assertThat(properties.eligibleFallbackIds()).isEmpty();
         assertThat(properties.providerStatus()).containsEntry("openrouter", "evaluation_only");

@@ -150,6 +150,9 @@ public final class AiProviderFailureDiagnostics {
             if (status == 401 || status == 403) {
                 return ProviderFailure.AUTHENTICATION;
             }
+            if (status == 402) {
+                return ProviderFailure.PAYMENT_REQUIRED;
+            }
             if (status == 429) {
                 return ProviderFailure.RATE_LIMITED;
             }

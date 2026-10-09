@@ -49,20 +49,20 @@ spring:
       max-retries: 0
       # Spring AI 2.x passes this value directly to the OpenAI-compatible SDK,
       # which appends /chat/completions. Keep the provider API version here.
-      base-url: ${FORD_AI_CLOUD_BASE_URL:https://api.openai.com/v1}
-      api-key: ${OPENAI_API_KEY:}
+      base-url: ${FORD_AI_CLOUD_BASE_URL:${FORD_DEEPSEEK_BASE_URL:https://api.deepseek.com}}
+      api-key: ${FORD_DEEPSEEK_API_KEY:${OPENAI_API_KEY:}}
       chat:
         options:
-          model: ${FORD_AI_CLOUD_MODEL_VERSION:gpt-4o-mini}
+          model: ${FORD_AI_CLOUD_MODEL_VERSION:${FORD_DEEPSEEK_MODEL:deepseek-flash}}
           temperature: ${FORD_AI_CLOUD_TEMPERATURE:0.1}
           top-p: ${FORD_AI_CLOUD_TOP_P:0.9}
-          max-tokens: ${FORD_AI_CLOUD_MAX_TOKENS:500}
+          max-tokens: ${FORD_AI_MAX_OUTPUT_TOKENS:1024}
           frequency-penalty: ${FORD_AI_CLOUD_FREQUENCY_PENALTY:0.1}
     typesafe:
       api-key: ${TYPESAFE_API_KEY:}
       timeout: ${FORD_AI_CLASSIFICATION_TIMEOUT_MS:1500}ms
     model:
-      chat: ${FORD_AI_CHAT_PROVIDER:ollama}
+      chat: openai
       embedding: ${FORD_AI_EMBEDDING_PROVIDER:ollama}
     ollama:
       base-url: ${FORD_AI_LOCAL_BASE_URL:http://localhost:11434}
@@ -72,7 +72,7 @@ spring:
           temperature: ${FORD_AI_LOCAL_TEMPERATURE:0.1}
           top-k: ${FORD_AI_LOCAL_TOP_K:40}
           top-p: ${FORD_AI_LOCAL_TOP_P:0.9}
-          num-predict: ${FORD_AI_LOCAL_MAX_TOKENS:500}
+          num-predict: ${FORD_AI_MAX_OUTPUT_TOKENS:1024}
       embedding:
         options:
           model: ${FORD_AI_EMBEDDING_MODEL_VERSION:nomic-embed-text}
@@ -199,23 +199,25 @@ ford:
     backoff-base-seconds: ${FORD_OUTBOX_BACKOFF_BASE_SECONDS:2}
     backoff-max-seconds: ${FORD_OUTBOX_BACKOFF_MAX_SECONDS:300}
   ai:
+    model-profile: ${FORD_AI_MODEL_PROFILE:deepseek}
+    max-output-tokens: ${FORD_AI_MAX_OUTPUT_TOKENS:1024}
     ollama-access:
       client-id: ${FORD_AI_OLLAMA_ACCESS_CLIENT_ID:}
       client-secret: ${FORD_AI_OLLAMA_ACCESS_CLIENT_SECRET:}
-    cloud-chat-provider: ${FORD_AI_CLOUD_PROVIDER:openai}
+    cloud-chat-provider: ${FORD_AI_CLOUD_PROVIDER:deepseek}
     local-chat-provider: ${FORD_AI_LOCAL_PROVIDER:ollama}
-    cloud-chat-model-version: ${FORD_AI_CLOUD_MODEL_VERSION:configured-cloud-model}
+    cloud-chat-model-version: ${FORD_AI_CLOUD_MODEL_VERSION:${FORD_DEEPSEEK_MODEL:deepseek-flash}}
     local-chat-model-version: ${FORD_AI_LOCAL_MODEL_VERSION:configured-local-model}
     cloud-temperature: ${FORD_AI_CLOUD_TEMPERATURE:0.1}
     embedding-provider: ${FORD_AI_EMBEDDING_PROVIDER:ollama}
     embedding-model-version: ${FORD_AI_EMBEDDING_MODEL_VERSION:configured-embedding-model}
-    cloud-enabled: ${FORD_AI_CLOUD_ENABLED:false}
+    cloud-enabled: ${FORD_AI_CLOUD_ENABLED:true}
     local-enabled: ${FORD_AI_LOCAL_ENABLED:true}
     log-provider-errors: ${FORD_AI_LOG_PROVIDER_ERRORS:false}
-    provider-max-attempts: ${FORD_AI_PROVIDER_MAX_ATTEMPTS:5}
+    provider-max-attempts: ${FORD_AI_PROVIDER_MAX_ATTEMPTS:2}
     provider-max-retry-after: ${FORD_AI_PROVIDER_MAX_RETRY_AFTER:PT3S}
     providers:
-      fallback-order: ${FORD_AI_FALLBACK_ORDER:cloudflare,groq,gemini,openrouter}
+      fallback-order: ${FORD_AI_FALLBACK_ORDER:openrouter}
       evaluation-mode: ${FORD_AI_EVALUATION_MODE:false}
       catalog:
         groq:
@@ -242,7 +244,7 @@ ford:
         openrouter:
           enabled: ${FORD_AI_OPENROUTER_ENABLED:false}
           base-url: ${FORD_AI_OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}
-          model: ${FORD_AI_OPENROUTER_MODEL:openrouter/free}
+          model: ${FORD_AI_OPENROUTER_MODEL:xiaomi/mimo-v2.6-flash}
           api-key: ${OPENROUTER_API_KEY:}
           tool-calling-verified: ${FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED:false}
           structured-output-verified: ${FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED:false}
@@ -253,7 +255,7 @@ ford:
       timeout-ms: ${FORD_AI_CLASSIFICATION_TIMEOUT_MS:1500}
       min-confidence: ${FORD_AI_CLASSIFICATION_MIN_CONFIDENCE:0.70}
       fallback: ${FORD_AI_CLASSIFICATION_FALLBACK:rules}
-      pii-policy: ${FORD_AI_CLASSIFICATION_PII_POLICY:redact}
+      pii-policy: ${FORD_AI_CLASSIFICATION_PII_POLICY:allow}
       intent-enabled: ${FORD_AI_CLASSIFIER_INTENT_ENABLED:true}
       lead-enabled: ${FORD_AI_CLASSIFIER_LEAD_ENABLED:true}
       handoff-enabled: ${FORD_AI_CLASSIFIER_HANDOFF_ENABLED:true}

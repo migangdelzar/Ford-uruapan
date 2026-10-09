@@ -264,7 +264,9 @@ public class SpringAiConfiguration {
         var typeSafeConfigured = usableTypeSafeConfiguration(typeSafeClient, typeSafeProperties.getIfAvailable(),
                 classificationProperties);
         var openAi = cloudModel.getIfAvailable();
-        if (properties.cloudEnabled() && openAi != null) {
+        var ollama = localModel.getIfAvailable();
+        var deepseekPrimary = "deepseek".equals(properties.modelProfile());
+        if (deepseekPrimary && properties.cloudEnabled() && openAi != null) {
             providers.add(new SpringAiChatCompletionAdapter(
                     chatClient(openAi, classificationProperties,
                             typeSafeConfigured ? typeSafeClient : null, scopePolicy),
@@ -277,7 +279,7 @@ public class SpringAiConfiguration {
                 .filter(id -> !id.equals(properties.cloudChatProvider())).toList()) {
             var fallbackModel = OpenAiCompatibleChatModelFactory.create(providerId,
                     chatProviders.catalog().get(providerId), springAiObservationRegistry,
-                    properties.cloudTemperature());
+                    properties.cloudTemperature(), properties.maxOutputTokens());
             providers.add(new SpringAiChatCompletionAdapter(
                     chatClient(fallbackModel, classificationProperties,
                             typeSafeConfigured ? typeSafeClient : null, scopePolicy),
@@ -285,8 +287,7 @@ public class SpringAiConfiguration {
                     new com.ford.service.ai.application.AssistantResponseQualityPolicy(), objectMapper,
                     observations));
         }
-        var ollama = localModel.getIfAvailable();
-        if (properties.localEnabled() && ollama != null) {
+        if (!deepseekPrimary && properties.localEnabled() && ollama != null) {
             providers.add(new SpringAiChatCompletionAdapter(
                     chatClient(ollama, classificationProperties,
                             typeSafeConfigured ? typeSafeClient : null, scopePolicy),

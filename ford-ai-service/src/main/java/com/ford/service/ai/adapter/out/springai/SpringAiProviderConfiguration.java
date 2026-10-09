@@ -33,24 +33,21 @@ public class SpringAiProviderConfiguration {
         var local = localModel.getIfAvailable();
         var transcriptionAvailable = transcriptionModel.getIfAvailable() != null;
         var providers = new ArrayList<ProviderDescriptor>();
+        if ("local".equals(properties.modelProfile())) {
+            providers.add(new ProviderDescriptor(localId,
+                    capabilities(properties, localId, local != null, false),
+                    properties.localEnabled() && local != null, false, properties.localChatModelVersion()));
+        } else {
+            providers.add(new ProviderDescriptor(cloudId,
+                    capabilities(properties, cloudId, cloud != null, transcriptionAvailable),
+                    properties.cloudEnabled() && cloud != null, true, properties.cloudChatModelVersion()));
+        }
         for (var providerId : chatProviders.eligibleFallbackIds()) {
             var provider = chatProviders.catalog().get(providerId);
             providers.add(new ProviderDescriptor(providerId,
                     new ProviderCapabilities(provider.toolCallingVerified(), provider.structuredOutputVerified(), true),
                     true, true, provider.model()));
         }
-        providers.add(new ProviderDescriptor(
-                cloudId,
-                capabilities(properties, cloudId, cloud != null, transcriptionAvailable),
-                properties.cloudEnabled() && cloud != null,
-                true,
-                properties.cloudChatModelVersion()));
-        providers.add(new ProviderDescriptor(
-                localId,
-                capabilities(properties, localId, local != null, false),
-                properties.localEnabled() && local != null,
-                false,
-                properties.localChatModelVersion()));
         return new DefaultModelProviderPolicy(providers);
     }
 

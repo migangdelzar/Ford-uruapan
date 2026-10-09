@@ -19,6 +19,7 @@ class OpenAiCompatibleChatModelFactoryTest {
         assertThat(model.getOptions().getBaseUrl()).isEqualTo("https://api.groq.com/openai/v1");
         assertThat(model.getOptions().getModel()).isEqualTo("openai/gpt-oss-20b");
         assertThat(model.getOptions().getMaxRetries()).isZero();
+        assertThat(model.getOptions().getMaxTokens()).isEqualTo(1024);
         assertThat(model.getOptions().getExtraBody()).containsEntry("include_reasoning", false);
     }
 

@@ -50,7 +50,7 @@ class ProviderRoutingChatCompletionPortTest {
     }
 
     @Test
-    void routesSensitiveRequestsToTheLocalProvider() {
+    void routesSensitiveRequestsToTheConfiguredPrimaryEvenWhenTextIsSensitive() {
         var cloud = provider("openai", true);
         var local = provider("ollama", false);
         var port = new ProviderRoutingChatCompletionPort(
@@ -59,8 +59,8 @@ class ProviderRoutingChatCompletionPortTest {
 
         var response = port.complete(request(true), new ToolContext(UUID.randomUUID(), UUID.randomUUID()));
 
-        assertThat(response.content()).isEqualTo("local");
-        assertThat(response.provider()).isEqualTo("ollama");
+        assertThat(response.content()).isEqualTo("cloud");
+        assertThat(response.provider()).isEqualTo("openai");
     }
 
     @Test
@@ -190,21 +190,37 @@ class ProviderRoutingChatCompletionPortTest {
     }
 
     @Test
-    void doesNotFallBackAfterAuthenticationOrInvalidRequestFailures() {
-        for (var status : List.of(401, 400)) {
-            var cloud = provider("openai", true);
-            var local = provider("ollama", false);
-            var failure = openAiFailure(status);
-            var primary = new RecordingPort(cloud.id(), failure);
-            var fallback = new StubPort(local.id(), "must-not-run");
+    void usesFallbackAfterProviderAuthenticationOrBillingFailureButNotMalformedRequest() {
+        for (var status : List.of(401, 402)) {
+            var primaryDescriptor = provider("deepseek", true);
+            var fallbackDescriptor = provider("openrouter", true);
+            var primaryFailure = openAiFailure(status);
+            var primary = new RecordingPort(primaryDescriptor.id(), primaryFailure);
+            var fallback = new SequencedPort(fallbackDescriptor.id(), List.of(), "fallback answer");
             var port = new ProviderRoutingChatCompletionPort(List.of(primary, fallback),
-                    new DefaultModelProviderPolicy(List.of(cloud, local)));
+                    new DefaultModelProviderPolicy(List.of(primaryDescriptor, fallbackDescriptor)),
+                    2, Duration.ZERO, ignored -> { });
 
-            assertThatThrownBy(() -> port.complete(request(false),
-                    new ToolContext(UUID.randomUUID(), UUID.randomUUID())))
-                    .isSameAs(failure);
+            var response = port.complete(request(false), new ToolContext(UUID.randomUUID(), UUID.randomUUID()));
+
+            assertThat(response.content()).isEqualTo("fallback answer");
             assertThat(primary.calls).isEqualTo(1);
+            assertThat(fallback.calls).isEqualTo(1);
         }
+
+        var primaryDescriptor = provider("deepseek", true);
+        var fallbackDescriptor = provider("openrouter", true);
+        var badRequest = openAiFailure(400);
+        var primary = new RecordingPort(primaryDescriptor.id(), badRequest);
+        var fallback = new SequencedPort(fallbackDescriptor.id(), List.of(), "must-not-run");
+        var port = new ProviderRoutingChatCompletionPort(List.of(primary, fallback),
+                new DefaultModelProviderPolicy(List.of(primaryDescriptor, fallbackDescriptor)),
+                2, Duration.ZERO, ignored -> { });
+
+        assertThatThrownBy(() -> port.complete(request(false),
+                new ToolContext(UUID.randomUUID(), UUID.randomUUID()))).isSameAs(badRequest);
+        assertThat(primary.calls).isEqualTo(1);
+        assertThat(fallback.calls).isZero();
     }
 
     @Test
@@ -282,7 +298,7 @@ class ProviderRoutingChatCompletionPortTest {
         var openAi = provider("openai", true);
         var port = new ProviderRoutingChatCompletionPort(
                 List.of(new StubPort(openAi.id(), "cloud")),
-                new DefaultModelProviderPolicy(List.of(openAi, provider("ollama", false))));
+                new DefaultModelProviderPolicy(List.of(provider("ollama", false))));
 
         assertThatIllegalStateException().isThrownBy(() ->
                 port.complete(request(true), new ToolContext(UUID.randomUUID(), UUID.randomUUID())))

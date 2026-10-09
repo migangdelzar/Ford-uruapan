@@ -14,16 +14,22 @@ final class OpenAiCompatibleChatModelFactory {
 
     static OpenAiChatModel create(String providerId, ChatProviderProperties.Provider provider,
                                   ObservationRegistry registry) {
-        return create(providerId, provider, registry, 0.1);
+        return create(providerId, provider, registry, 0.1, 1024);
     }
 
     static OpenAiChatModel create(String providerId, ChatProviderProperties.Provider provider,
                                   ObservationRegistry registry, double temperature) {
+        return create(providerId, provider, registry, temperature, 1024);
+    }
+
+    static OpenAiChatModel create(String providerId, ChatProviderProperties.Provider provider,
+                                  ObservationRegistry registry, double temperature, int maxTokens) {
         var builder = OpenAiChatOptions.builder()
                 .baseUrl(provider.baseUrl())
                 .apiKey(provider.apiKey())
                 .model(provider.model())
                 .temperature(temperature)
+                .maxTokens(maxTokens)
                 .maxRetries(0);
         if ("groq".equals(providerId)
                 && (provider.model().startsWith("openai/gpt-oss-")

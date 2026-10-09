@@ -9,6 +9,8 @@ import org.springframework.modulith.Modulithic;
 public class FordServiceApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(FordServiceApplication.class, args);
+        var application = new SpringApplication(FordServiceApplication.class);
+        application.addInitializers(new SpringAiModelProfileInitializer());
+        application.run(args);
     }
 }

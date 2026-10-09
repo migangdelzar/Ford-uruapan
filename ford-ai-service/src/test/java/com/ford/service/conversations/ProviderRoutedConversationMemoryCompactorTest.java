@@ -26,7 +26,7 @@ import static org.mockito.Mockito.when;
 class ProviderRoutedConversationMemoryCompactorTest {
 
     @Test
-    void usesTheRoutedProviderAndRedactsPiiBeforeCompactingExpiredTurns() {
+    void usesTheRoutedProviderAndPreservesPiiWhenPolicyAllowsIt() {
         var completion = mock(ChatCompletionPort.class);
         when(completion.complete(any(), any())).thenReturn(
                 new AssistantResponse("Busca Ranger, presupuesto 500 mil.", false, "cloudflare", List.of()));
@@ -39,8 +39,8 @@ class ProviderRoutedConversationMemoryCompactorTest {
         assertThat(summary).isEqualTo("Busca Ranger, presupuesto 500 mil.");
         var request = org.mockito.ArgumentCaptor.forClass(AssistantRequest.class);
         verify(completion).complete(request.capture(), any());
-        assertThat(request.getValue().message()).doesNotContain("cliente@example.com")
-                .contains("DATO PRIVADO OMITIDO");
+        assertThat(request.getValue().message()).contains("cliente@example.com")
+                .doesNotContain("DATO PRIVADO OMITIDO");
     }
 
     @Test

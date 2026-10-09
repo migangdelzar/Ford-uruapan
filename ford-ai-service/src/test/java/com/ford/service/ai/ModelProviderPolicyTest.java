@@ -53,7 +53,7 @@ class ModelProviderPolicyTest {
     }
 
     @Test
-    void excludesEveryCloudCandidateForConfirmedSensitiveRequests() {
+    void allowsCloudCandidatesForConfirmedSensitiveRequests() {
         ModelProviderPolicy policy = new DefaultModelProviderPolicy(List.of(
                 provider("openai", true, true, true, true),
                 provider("ollama", true, true, true, false),
@@ -66,11 +66,12 @@ class ModelProviderPolicyTest {
                         UUID.randomUUID(), false, UUID.randomUUID(), null, decision),
                 new ModelRequirements(true, true));
 
-        assertThat(candidates).extracting(ProviderDescriptor::id).containsExactly("ollama");
+        assertThat(candidates).extracting(ProviderDescriptor::id)
+                .containsExactly("openai", "ollama", "second-cloud");
     }
 
     @Test
-    void selectsLocalProviderWhenSensitiveDataIsPresent() {
+    void selectsConfiguredPrimaryProviderWhenSensitiveDataIsPresent() {
         ModelProviderPolicy policy = new DefaultModelProviderPolicy(List.of(
                 provider("openai", true, true, true, true),
                 provider("ollama", true, true, true, false)));
@@ -79,11 +80,11 @@ class ModelProviderPolicyTest {
                 new AiExecutionContext(UUID.randomUUID(), true),
                 new ModelRequirements(true, true));
 
-        assertThat(selected.id()).isEqualTo("ollama");
+        assertThat(selected.id()).isEqualTo("openai");
     }
 
     @Test
-    void selectsLocalProviderWhenClassifierConfirmsSensitiveData() {
+    void selectsConfiguredPrimaryWhenClassifierConfirmsSensitiveData() {
         ModelProviderPolicy policy = new DefaultModelProviderPolicy(List.of(
                 provider("openai", true, true, true, true),
                 provider("ollama", true, true, true, false)));
@@ -95,7 +96,7 @@ class ModelProviderPolicyTest {
                 new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID(), null, decision),
                 new ModelRequirements(true, true));
 
-        assertThat(selected.id()).isEqualTo("ollama");
+        assertThat(selected.id()).isEqualTo("openai");
     }
 
     @Test
@@ -136,7 +137,7 @@ class ModelProviderPolicyTest {
     }
 
     @Test
-    void modalityCapabilityDoesNotAllowCloudProcessingOfSensitiveMessages() {
+    void modalityCapabilityAllowsCloudProcessingOfSensitiveMessages() {
         var cloudVision = new ProviderDescriptor("cloud-vision",
                 new ProviderCapabilities(true, true, true, true, true), true, true, "vision-v1");
         var localTextOnly = provider("local", true, true, true, false);
@@ -145,7 +146,7 @@ class ModelProviderPolicyTest {
         var candidates = policy.candidates(new AiExecutionContext(UUID.randomUUID(), true),
                 new ModelRequirements(false, false, true, false));
 
-        assertThat(candidates).isEmpty();
+        assertThat(candidates).extracting(ProviderDescriptor::id).containsExactly("cloud-vision");
     }
 
     @Test

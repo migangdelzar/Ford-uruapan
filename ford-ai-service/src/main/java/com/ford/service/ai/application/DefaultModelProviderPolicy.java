@@ -20,11 +20,8 @@ public final class DefaultModelProviderPolicy implements ModelProviderPolicy {
 
     @Override
     public List<ProviderDescriptor> candidates(AiExecutionContext context, ModelRequirements requirements) {
-        var restricted = context.containsSensitiveData()
-                || context.decision().sensitiveDataLevel() == SensitiveDataLevel.CONFIRMED;
         return providers.stream()
                 .filter(ProviderDescriptor::healthy)
-                .filter(provider -> !restricted || !provider.cloud())
                 .filter(provider -> !requirements.toolCalling() || provider.capabilities().toolCalling())
                 .filter(provider -> !requirements.structuredOutput() || provider.capabilities().structuredOutput())
                 .filter(provider -> !requirements.imageInput() || provider.capabilities().imageInput())

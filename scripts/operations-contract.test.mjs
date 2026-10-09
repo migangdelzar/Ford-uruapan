@@ -186,13 +186,13 @@ test("Ansible propagates the complete Meta webhook configuration", async () => {
   }
 });
 
-test("Ansible propagates the configured cloud AI provider", async () => {
+test("Ansible propagates the selected AI model profile", async () => {
   const example = await read("deployment/config/oci.env.example");
   const remote = await read("ford-ai-service/.mise/lib/remote.sh");
   const template = await read("deployment/ansible/roles/app/templates/app.env.j2");
 
   for (const variable of [
-    "FORD_AI_CHAT_PROVIDER",
+    "FORD_AI_MODEL_PROFILE",
     "FORD_AI_CLOUD_PROVIDER",
     "FORD_AI_CLOUD_ENABLED",
     "FORD_AI_LOG_PROVIDER_ERRORS",
@@ -204,6 +204,8 @@ test("Ansible propagates the configured cloud AI provider", async () => {
     assert.match(remote, new RegExp(variable), `${variable} must reach the inventory`);
     assert.match(template, new RegExp(`^${variable}=`, "m"), `${variable} must reach app.env.j2`);
   }
+  assert.equal((remote.match(/^\s+ford_ai_model_profile:/gm) ?? []).length, 1,
+    "the generated Ansible inventory must define the model profile exactly once");
 });
 
 test("Ansible propagates isolated AI fallback credentials and evaluation gates", async () => {
@@ -215,22 +217,24 @@ test("Ansible propagates isolated AI fallback credentials and evaluation gates",
   const terraform = await read("deployment/terraform/variables.tf");
 
   for (const variable of [
+    "FORD_AI_MODEL_PROFILE", "FORD_AI_MAX_OUTPUT_TOKENS", "FORD_AI_CLASSIFICATION_PII_POLICY",
     "FORD_AI_FALLBACK_ORDER", "FORD_AI_EVALUATION_MODE",
     "FORD_AI_GROQ_ENABLED", "FORD_AI_GEMINI_ENABLED", "FORD_AI_CLOUDFLARE_ENABLED", "FORD_AI_OPENROUTER_ENABLED",
-    "GROQ_API_KEY", "GEMINI_API_KEY", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "OPENROUTER_API_KEY"
+    "FORD_DEEPSEEK_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY", "CLOUDFLARE_API_TOKEN",
+    "CLOUDFLARE_ACCOUNT_ID", "OPENROUTER_API_KEY"
   ]) {
     assert.match(example, new RegExp(`^${variable}=`, "m"), `${variable} must be documented`);
     assert.match(remote, new RegExp(variable), `${variable} must reach Ansible inventory`);
     assert.match(template, new RegExp(`^${variable}=`, "m"), `${variable} must reach app.env.j2`);
   }
-  for (const variable of ["GROQ_API_KEY", "GEMINI_API_KEY", "CLOUDFLARE_API_TOKEN", "OPENROUTER_API_KEY"]) {
+  for (const variable of ["FORD_DEEPSEEK_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY", "CLOUDFLARE_API_TOKEN", "OPENROUTER_API_KEY"]) {
     assert.match(secrets, new RegExp(variable), `${variable} must be adopted from the shell into ignored config`);
   }
-  assert.match(spring, /provider-max-attempts:.*:5/);
+  assert.match(spring, /provider-max-attempts:.*:2/);
   assert.match(spring, /max-attempts:.*:1/);
   assert.match(template, /FORD_AI_PROVIDER_MAX_ATTEMPTS=/);
   assert.match(remote, /ford_ai_provider_max_attempts/);
-  assert.match(remote, /FORD_AI_PROVIDER_MAX_ATTEMPTS:-5/);
+  assert.match(remote, /FORD_AI_PROVIDER_MAX_ATTEMPTS:-2/);
   assert.doesNotMatch(terraform, /groq_api_key|gemini_api_key|cloudflare_api_token|openrouter_api_key/,
     "provider API keys must stay out of Terraform variables");
 });

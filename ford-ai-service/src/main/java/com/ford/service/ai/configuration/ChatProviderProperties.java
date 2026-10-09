@@ -19,7 +19,7 @@ public class ChatProviderProperties {
 
     private static final Set<String> ALLOWED_FALLBACK_PROVIDERS = Set.of("groq", "gemini", "cloudflare", "openrouter");
 
-    private List<String> fallbackOrder = new ArrayList<>(List.of("cloudflare", "groq", "gemini", "openrouter"));
+    private List<String> fallbackOrder = new ArrayList<>(List.of("openrouter"));
 
     @Valid
     private Map<String, Provider> catalog = new LinkedHashMap<>();

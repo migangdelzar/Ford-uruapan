@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 /** Opt-in, real-provider smoke checks. Inputs and tool results are synthetic. */
 class LiveProviderPreflightTest {
 
-    private static final List<String> PROVIDER_IDS = List.of("cloudflare", "groq", "gemini", "openrouter");
+    private static final List<String> PROVIDER_IDS = List.of("deepseek", "cloudflare", "groq", "gemini", "openrouter");
 
     @TestFactory
     Stream<DynamicTest> enabledProvidersConvertTheAppSchemaAndCallAReadOnlyTool() {
@@ -68,7 +68,9 @@ class LiveProviderPreflightTest {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
         var request = new AssistantRequest(tenantId, conversationId,
-                "Usa lookup_demo exactamente una vez con query DEMO_ITEM. Después responde en español e incluye el resultado DEMO_RESULT_OK.",
+                "Usa lookup_demo exactamente una vez con query DEMO_ITEM. Después responde solo con JSON válido "
+                        + "que cumpla este esquema: {\"answer\":\"texto en español que incluya DEMO_RESULT_OK\","
+                        + "\"journeyProposal\":null}. No agregues markdown.",
                 "BOT_ACTIVE", false);
         var started = System.nanoTime();
         try {
@@ -78,6 +80,9 @@ class LiveProviderPreflightTest {
             }
             if (result.content() == null || result.content().isBlank()) {
                 fail("provider=" + config.id() + " structured_response_empty");
+            }
+            if (!result.content().contains("DEMO_RESULT_OK") || result.content().startsWith("{")) {
+                fail("provider=" + config.id() + " structured_response_not_converted");
             }
             System.out.printf("provider-preflight provider=%s model=%s outcome=pass toolCalls=%d durationMs=%d%n",
                     config.id(), config.model(), toolCalls.get(), elapsedMs(started));
@@ -105,6 +110,7 @@ class LiveProviderPreflightTest {
         }
         if (blank(model)) {
             model = switch (id) {
+                case "deepseek" -> "deepseek-flash";
                 case "cloudflare" -> "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
                 case "groq" -> "openai/gpt-oss-20b";
                 case "gemini" -> "gemini-3.8-flash";
@@ -115,6 +121,7 @@ class LiveProviderPreflightTest {
         var baseUrl = env(prefix + "_BASE_URL");
         if (blank(baseUrl)) {
             baseUrl = switch (id) {
+                case "deepseek" -> "https://api.deepseek.com";
                 case "cloudflare" -> "https://api.cloudflare.com/client/v4/accounts/"
                         + env("CLOUDFLARE_ACCOUNT_ID") + "/ai/v1";
                 case "groq" -> "https://api.groq.com/openai/v1";
@@ -124,6 +131,7 @@ class LiveProviderPreflightTest {
             };
         }
         var apiKey = switch (id) {
+            case "deepseek" -> env("FORD_DEEPSEEK_API_KEY");
             case "cloudflare" -> env("CLOUDFLARE_API_TOKEN");
             case "groq" -> env("GROQ_API_KEY");
             case "gemini" -> env("GEMINI_API_KEY");

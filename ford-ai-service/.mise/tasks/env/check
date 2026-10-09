@@ -18,13 +18,20 @@ if [[ "$profile" == "development" ]]; then
   fi
   if [[ "${FORD_AI_CLOUD_ENABLED:-false}" == "true" ]]; then
     cloud_base_url="${FORD_AI_CLOUD_BASE_URL:-}"
-    case "$cloud_base_url" in
-      */v1|*/v1/) ;;
-      *)
-        printf 'FORD_AI_CLOUD_BASE_URL must include the provider API version (expected a /v1 suffix) when cloud AI is enabled.\n' >&2
+    if [[ "${FORD_AI_CLOUD_PROVIDER:-deepseek}" == "deepseek" ]]; then
+      [[ "$cloud_base_url" == https://api.deepseek.com || "$cloud_base_url" == https://api.deepseek.com/v1 ]] || {
+        printf 'FORD_AI_CLOUD_BASE_URL must use the approved DeepSeek API endpoint.\n' >&2
         exit 1
-        ;;
-    esac
+      }
+    else
+      case "$cloud_base_url" in
+        */v1|*/v1/) ;;
+        *)
+          printf 'FORD_AI_CLOUD_BASE_URL must include the provider API version (expected a /v1 suffix) when cloud AI is enabled.\n' >&2
+          exit 1
+          ;;
+      esac
+    fi
   fi
 elif [[ "$profile" == "production" ]]; then
   missing=()

@@ -41,8 +41,12 @@ class ProviderFailureTest {
     void classifiesAuthenticationAndUnavailableResponses() {
         assertThat(AiProviderFailureDiagnostics.classify(openAiFailure(401, null)).category())
                 .isEqualTo(ProviderFailure.AUTHENTICATION);
+        assertThat(AiProviderFailureDiagnostics.classify(openAiFailure(402, null)).category())
+                .isEqualTo(ProviderFailure.PAYMENT_REQUIRED);
         assertThat(AiProviderFailureDiagnostics.classify(openAiFailure(503, null)).category())
                 .isEqualTo(ProviderFailure.PROVIDER_UNAVAILABLE);
+        assertThat(AiProviderFailureDiagnostics.classify(openAiFailure(401, null)).retryable()).isTrue();
+        assertThat(AiProviderFailureDiagnostics.classify(openAiFailure(402, null)).retryable()).isTrue();
     }
 
     @Test

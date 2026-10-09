@@ -71,7 +71,7 @@ class SpringAiAssistantServiceTest {
     }
 
     @Test
-    void passesOnlyRedactedSensitiveTextAndContextToRulesAndGeneration() {
+    void preservesSensitiveTextAndContextForRulesAndGenerationWhenPiiPolicyAllowsIt() {
         var orchestrator = mock(AssistantOrchestrator.class);
         when(orchestrator.respond(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new AssistantResponse("Reviso las ofertas para la Ranger.", false, "ollama", List.of()));
@@ -97,13 +97,13 @@ class SpringAiAssistantServiceTest {
                         "Dato del cliente persona@example.com"),
                 "¿Qué ofertas hay para Ranger? Mi correo es persona@example.com");
 
-        assertThat(observedRulesContext[0].message()).doesNotContain("persona@example.com");
-        assertThat(observedRulesContext[0].memoryContext()).doesNotContain("persona@example.com");
+        assertThat(observedRulesContext[0].message()).contains("persona@example.com");
+        assertThat(observedRulesContext[0].memoryContext()).contains("persona@example.com");
         var request = org.mockito.ArgumentCaptor.forClass(com.ford.service.ai.api.AssistantRequest.class);
         verify(orchestrator).respond(request.capture());
-        assertThat(request.getValue().message()).doesNotContain("persona@example.com");
-        assertThat(request.getValue().memoryContext()).doesNotContain("persona@example.com");
-        assertThat(request.getValue().leadJourneyContext()).doesNotContain("persona@example.com");
+        assertThat(request.getValue().message()).contains("persona@example.com");
+        assertThat(request.getValue().memoryContext()).contains("persona@example.com");
+        assertThat(request.getValue().leadJourneyContext()).contains("persona@example.com");
         assertThat(request.getValue().containsSensitiveData()).isTrue();
     }
 
