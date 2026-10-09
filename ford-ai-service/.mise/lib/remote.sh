@@ -34,6 +34,7 @@ load_deploy_config() {
   local preserved_cloudflare_account_id="${CLOUDFLARE_ACCOUNT_ID:-}"
   local preserved_openrouter_api_key="${OPENROUTER_API_KEY:-}"
   local preserved_typesafe_api_key="${TYPESAFE_API_KEY:-}"
+  local preserved_resend_api_key="${FORD_RESEND_API_KEY:-}"
   local preserved_ford_mcp_token="${FORD_MCP_TOKEN:-}"
   local preserved_ford_mcp_api_token="${FORD_MCP_API_TOKEN:-}"
   local preserved_mcp_token="${MCP_HTTP_BEARER_TOKEN:-}"
@@ -64,6 +65,7 @@ load_deploy_config() {
   if [[ -n "$preserved_cloudflare_account_id" ]]; then export CLOUDFLARE_ACCOUNT_ID="$preserved_cloudflare_account_id"; fi
   if [[ -n "$preserved_openrouter_api_key" ]]; then export OPENROUTER_API_KEY="$preserved_openrouter_api_key"; fi
   if [[ -n "$preserved_typesafe_api_key" ]]; then export TYPESAFE_API_KEY="$preserved_typesafe_api_key"; fi
+  if [[ -n "$preserved_resend_api_key" ]]; then export FORD_RESEND_API_KEY="$preserved_resend_api_key"; fi
   if [[ -n "$preserved_ford_mcp_token" ]]; then export FORD_MCP_TOKEN="$preserved_ford_mcp_token"; fi
   if [[ -n "$preserved_ford_mcp_api_token" ]]; then export FORD_MCP_API_TOKEN="$preserved_ford_mcp_api_token"; fi
   if [[ -n "$preserved_mcp_token" ]]; then export MCP_HTTP_BEARER_TOKEN="$preserved_mcp_token"; fi
@@ -113,6 +115,11 @@ require_deploy_config() {
     [[ "${FORD_MCP_URL:-}" == https://* ]] || missing+=("https:FORD_MCP_URL")
     [[ -n "${FORD_MCP_ENDPOINT:-}" ]] || missing+=("FORD_MCP_ENDPOINT")
     [[ -n "${FORD_MCP_TOKEN:-${FORD_MCP_API_TOKEN:-${MCP_HTTP_BEARER_TOKEN:-}}}" ]] || missing+=("FORD_MCP_TOKEN")
+  fi
+  if [[ "${FORD_SECURITY_AUTH_ENABLED:-true}" == "true" ]]; then
+    for name in FORD_BFF_OIDC_CLIENT_SECRET FORD_SECURITY_JWK_PRIVATE_KEY FORD_RESEND_API_KEY RESEND_FROM; do
+      [[ -n "${!name:-}" ]] || missing+=("$name")
+    done
   fi
   if (( ${#missing[@]} > 0 )); then
     printf 'Missing deployment configuration: %s\n' "${missing[*]}" >&2
