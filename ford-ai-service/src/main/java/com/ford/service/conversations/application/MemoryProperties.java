@@ -9,7 +9,7 @@ public class MemoryProperties {
 
     private boolean enabled = true;
     private int recentMessageLimit = 20;
-    private int promptRecentMessageLimit = 8;
+    private int promptRecentMessageLimit = 20;
     private int summaryMaxChars = 4000;
     private int factLimit = 12;
     private int factMaxChars = 500;

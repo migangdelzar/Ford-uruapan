@@ -18,7 +18,9 @@ Use environment variables or a deployment profile; keep secrets outside Git.
   `FORD_OTEL_TRACES_EXPORT_ENABLED`, `FORD_OTEL_TRACES_ENDPOINT`, and
   `FORD_OTEL_SAMPLING_PROBABILITY`. Prometheus scrapes the Collector exporter,
   not the authenticated `/actuator/prometheus` endpoint.
-- `FORD_SECURITY_JWT_ENABLED`, `FORD_SECURITY_ISSUER_URI`, `FORD_SECURITY_AUDIENCE`
+- `FORD_SECURITY_AUTH_ENABLED`, `FORD_SECURITY_JWT_ENABLED`, `FORD_SECURITY_ISSUER_URI`, `FORD_SECURITY_AUDIENCE`
+- `FORD_SECURITY_JWK_PRIVATE_KEY`, `FORD_BFF_OIDC_CLIENT_SECRET`, `FORD_BFF_OIDC_REDIRECT_URI`
+- `FORD_RESEND_API_KEY`, `RESEND_FROM` (operator email one-time-token fallback)
 - `FORD_META_APP_SECRET`, `FORD_META_VERIFY_TOKEN`
 - `FORD_META_DELIVERY_ENABLED`, channel delivery endpoints and access tokens
 - `FORD_META_WHATSAPP_ACCESS_TOKEN` is reused for authenticated WhatsApp Graph
@@ -29,7 +31,7 @@ Use environment variables or a deployment profile; keep secrets outside Git.
   HTTPS host.
 - `FORD_HUMAN_HANDOFF_ENABLED` (enabled by default; a queued request does not mean an advisor accepted it)
 - `FORD_MEMORY_ENABLED`, `FORD_MEMORY_RECENT_MESSAGE_LIMIT`, and
-  `FORD_MEMORY_PROMPT_RECENT_MESSAGE_LIMIT` (default `8`). The first setting
+  `FORD_MEMORY_PROMPT_RECENT_MESSAGE_LIMIT` (default `20`). The first setting
   preserves the durable recent-memory bound; the second controls how many
   messages are injected into each model prompt.
 - `FORD_MEMORY_SUMMARY_MAX_CHARS`, `FORD_MEMORY_FACT_LIMIT`, `FORD_MEMORY_FACT_MAX_CHARS`
@@ -273,7 +275,7 @@ the source of truth; the working-memory projection expires after 90 days of
 inactivity.
 
 Each model request receives a controlled context: the compact summary, up to
-`FORD_MEMORY_PROMPT_RECENT_MESSAGE_LIMIT` recent messages (8 by default), and
+`FORD_MEMORY_PROMPT_RECENT_MESSAGE_LIMIT` recent messages (20 by default), and
 durable facts. When the recent window rolls over, the provider chain compacts
 expired messages into a bounded summary. The database transcript is never
 deleted. PII redaction and prompt-injection checks run before compaction;
@@ -315,6 +317,14 @@ score. Jev handoff output is advisory; Java enforces direct requests or clear
 consent after an offer.
 Use `FORD_AI_CLASSIFICATION_MODE=shadow` to exercise the provider while
 retaining rules decisions.
+
+Lead follow-up keeps an explicit pending question. A clear affirmative after a
+single-option test-drive offer is handled locally: the app records the
+`TEST_DRIVE_APPOINTMENT` topic and asks for one preferred day. Ambiguous
+multi-option offers do not auto-select an appointment. This is interest capture;
+it does not book a slot or claim advisor confirmation. Generated replies asking
+multiple questions or combining multiple requested details get one repair
+attempt through `AssistantResponseQualityPolicy`.
 
 Jev's published rate is $0.042 per million input tokens; output tokens are
 free. The app makes a classification request per eligible customer turn, so

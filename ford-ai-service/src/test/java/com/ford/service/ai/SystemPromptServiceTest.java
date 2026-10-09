@@ -49,26 +49,27 @@ class SystemPromptServiceTest {
     }
 
     @Test
-    void documentsTheRuntimeToolContractAndConversationRules() throws IOException {
+    void documentsTheRuntimeToolContractAndCsvAlignedConversationRules() throws IOException {
         var resource = new ClassPathResource("prompts/ford-uruapan-system.md");
-        var prompt = new String(resource.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        var prompt = new String(resource.getInputStream().readAllBytes(), StandardCharsets.UTF_8)
+                .replaceAll("\\s+", " ");
 
         assertThat(prompt)
                 .contains("search_vehicles", "get_vehicle", "compare_vehicles", "get_vehicle_provenance",
                         "get_catalog_status", "list_promotions", "search_offers",
                         "vehicle_snapshot_search", "approved_knowledge_search")
-                .contains("Usted es Valentina")
-                .contains("Resuelva primero la pregunta más reciente")
-                .contains("No invente precios")
-                .contains("No salude de nuevo")
-                .contains("No muestre nombres de herramientas, JSON")
+                .contains("Usted es MÍA")
+                .contains("Resuelva primero lo que la persona acaba de pedir")
+                .contains("No comunique precios, bonos")
+                .contains("No repita el saludo")
+                .contains("No mencione herramientas, MCP, proveedores, JSON")
                 .contains("No repita una respuesta")
-                .contains("Valentina Ramírez")
+                .contains("nombre y apellido")
                 .contains("¿En qué puedo ayudarle?")
-                .contains("aunque no incluya fechas de vigencia")
-                .contains("promoción sigue vigente")
-                .contains("Atienda únicamente solicitudes Ford Uruapan autorizadas")
-                .contains("No responda preguntas generales o ajenas a Ford");
+                .contains("Horario informado por la agencia: lunes a viernes")
+                .contains("sábado de 9:00 a.m. a 2:00 p.m.")
+                .contains("siga la autorización que exija la aplicación")
+                .contains("Nunca prometa llamada, seguimiento, cita o contacto a primera hora");
     }
 
     private static final class InMemoryPromptRepository implements SystemPromptRepository {

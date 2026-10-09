@@ -42,7 +42,8 @@ x-authentication:
     authenticationOptions: /webauthn/authenticate/options
     authentication: /login/webauthn
   emailOneTimeTokenEndpoints:
-    generate: /ott/generate
+    csrf: /api/auth/csrf
+    generate: /api/auth/one-time-token
     submit: /login/ott
   requiredJwtClaims:
     - iss
@@ -60,6 +61,7 @@ x-authentication:
     SameSite session cookie. Never embed signing keys or OAuth client secrets
     in frontend JavaScript.
 tags:
+  - name: Authentication
   - name: Health
   - name: AI
   - name: Conversations
@@ -124,6 +126,27 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '503':
           $ref: '#/components/responses/UpstreamUnavailable'
+
+  /api/v1/operator/me:
+    get:
+      tags: [Authentication]
+      summary: Get the authenticated operator profile
+      description: Returns the enabled operator identity and tenant memberships from the backend registry.
+      operationId: getCurrentOperatorProfile
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current operator profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /api/v1/conversations:
     get:
@@ -265,6 +288,7 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ConversationId'
+        - $ref: '#/components/parameters/TenantId'
       requestBody:
         required: false
         content:
@@ -294,12 +318,7 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ConversationId'
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/HandbackRequest'
+        - $ref: '#/components/parameters/ExpectedVersion'
       responses:
         '200':
           description: Closed handoff
@@ -1095,6 +1114,29 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /api/v1/operator/events/stream:
+    get:
+      tags: [Events]
+      operationId: streamOperatorEvents
+      summary: Stream tenant-scoped operator events
+      description: Streams realtime events only for a tenant present in the authenticated operator token.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Realtime operator event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /api/v1/test-lab/faults:
     get:
       tags: [Test lab]
@@ -1506,6 +1548,19 @@ components:
           type: array
           items:
             type: string
+    OperatorSession:
+      type: object
+      required: [operatorId, displayName, email, roles, tenantIds]
+      properties:
+        operatorId: { type: string, format: uuid }
+        displayName: { type: string }
+        email: { type: string, format: email }
+        roles:
+          type: array
+          items: { type: string, enum: [OPERATOR, MANAGER, ADMIN] }
+        tenantIds:
+          type: array
+          items: { type: string, format: uuid }
     ProblemDetail:
       type: object
       required: [type, title, status, detail]
@@ -1830,20 +1885,6 @@ components:
         reason:
           type: string
           maxLength: 500
-        expectedVersion:
-          type: integer
-          format: int64
-          minimum: 0
-    HandbackRequest:
-      type: object
-      properties:
-        summary:
-          type: string
-          maxLength: 4000
-        expectedVersion:
-          type: integer
-          format: int64
-          minimum: 0
     HandoffRequest:
       type: object
       required: [tenantId, conversationId, reason]

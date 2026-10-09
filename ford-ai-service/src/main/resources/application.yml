@@ -133,6 +133,21 @@ ford:
       enabled: ${FORD_SECURITY_JWT_ENABLED:false}
       issuer-uri: ${FORD_SECURITY_ISSUER_URI:}
       audience: ${FORD_SECURITY_AUDIENCE:ford-ai-service}
+    auth:
+      enabled: ${FORD_SECURITY_AUTH_ENABLED:false}
+      issuer-uri: ${FORD_SECURITY_ISSUER_URI:https://ford.emme.business}
+      audience: ${FORD_SECURITY_AUDIENCE:ford-ai-service}
+      relying-party-id: ${FORD_SECURITY_RP_ID:ford.emme.business}
+      relying-party-name: ${FORD_SECURITY_RP_NAME:Ford Uruapan}
+      allowed-origins: ${FORD_SECURITY_ALLOWED_ORIGINS:https://ford.emme.business}
+      bff-client-id: ${FORD_BFF_OIDC_CLIENT_ID:ford-web-bff}
+      bff-client-secret: ${FORD_BFF_OIDC_CLIENT_SECRET:}
+      bff-redirect-uri: ${FORD_BFF_OIDC_REDIRECT_URI:https://ford.emme.business/api/auth/callback}
+      signing-key-pkcs8-base64: ${FORD_SECURITY_JWK_PRIVATE_KEY:}
+      public-base-url: ${FORD_PUBLIC_BASE_URL:https://ford.emme.business}
+      csrf-cookie-secure: ${FORD_SECURITY_COOKIE_SECURE:false}
+      email-api-key: ${FORD_RESEND_API_KEY:}
+      email-from: ${RESEND_FROM:}
   conversations:
     workflow:
       graph-enabled: ${FORD_CONVERSATION_GRAPH_ENABLED:true}
@@ -145,7 +160,7 @@ ford:
   memory:
     enabled: ${FORD_MEMORY_ENABLED:true}
     recent-message-limit: ${FORD_MEMORY_RECENT_MESSAGE_LIMIT:20}
-    prompt-recent-message-limit: ${FORD_MEMORY_PROMPT_RECENT_MESSAGE_LIMIT:8}
+    prompt-recent-message-limit: ${FORD_MEMORY_PROMPT_RECENT_MESSAGE_LIMIT:20}
     summary-max-chars: ${FORD_MEMORY_SUMMARY_MAX_CHARS:4000}
     fact-limit: ${FORD_MEMORY_FACT_LIMIT:12}
     fact-max-chars: ${FORD_MEMORY_FACT_MAX_CHARS:500}

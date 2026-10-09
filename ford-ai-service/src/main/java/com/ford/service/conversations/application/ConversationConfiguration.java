@@ -101,8 +101,14 @@ public class ConversationConfiguration {
     }
 
     @Bean
-    ConversationAssistant conversationAssistant(AssistantService assistantService) {
-        return new ConversationAssistantAdapter(assistantService);
+    PendingTestDriveReplyPolicy pendingTestDriveReplyPolicy() {
+        return new PendingTestDriveReplyPolicy();
+    }
+
+    @Bean
+    ConversationAssistant conversationAssistant(AssistantService assistantService,
+                                                PendingTestDriveReplyPolicy pendingTestDriveReplyPolicy) {
+        return new ConversationAssistantAdapter(assistantService, pendingTestDriveReplyPolicy);
     }
 
     @Bean

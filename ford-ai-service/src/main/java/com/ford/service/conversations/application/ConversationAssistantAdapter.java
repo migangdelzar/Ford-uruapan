@@ -18,18 +18,25 @@ public class ConversationAssistantAdapter implements ConversationAssistant {
     private static final String FALLBACK_TEXT = com.ford.service.shared.HumanHandoffPolicy.BOT_FALLBACK;
 
     private final Supplier<AssistantService> assistantProvider;
+    private final PendingTestDriveReplyPolicy pendingTestDriveReplyPolicy;
 
-    public ConversationAssistantAdapter(AssistantService assistant) {
-        this(() -> Objects.requireNonNull(assistant));
+    public ConversationAssistantAdapter(AssistantService assistant,
+                                        PendingTestDriveReplyPolicy pendingTestDriveReplyPolicy) {
+        this(() -> Objects.requireNonNull(assistant), pendingTestDriveReplyPolicy);
     }
 
-    public ConversationAssistantAdapter(Supplier<AssistantService> assistantProvider) {
+    public ConversationAssistantAdapter(Supplier<AssistantService> assistantProvider,
+                                        PendingTestDriveReplyPolicy pendingTestDriveReplyPolicy) {
         this.assistantProvider = Objects.requireNonNull(assistantProvider);
+        this.pendingTestDriveReplyPolicy = Objects.requireNonNull(pendingTestDriveReplyPolicy);
     }
 
     @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public AssistantReply respond(ConversationTurnRequest request) {
+        var pendingReply = pendingTestDriveReplyPolicy.replyFor(
+                request.message(), request.memory(), request.leadJourney());
+        if (pendingReply.isPresent()) return pendingReply.get();
         var assistant = assistantProvider.get();
         if (assistant == null) {
             return new AssistantReply(FALLBACK_TEXT, false);

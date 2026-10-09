@@ -37,6 +37,9 @@ public final class AssistantResponseQualityPolicy {
                 && !isGreeting(currentMessage)) {
             return rejected("generic_scope_response");
         }
+        if (asksForMultipleDetails(response)) {
+            return rejected("multiple_questions");
+        }
         if (repeatsAssistantMessage(memory, normalizedResponse)) {
             return rejected("repeated_response");
         }
@@ -51,6 +54,8 @@ public final class AssistantResponseQualityPolicy {
                     "Redacta una respuesta nueva que avance la conversación y responda exactamente el último mensaje. No repitas la respuesta anterior.";
             case "generic_scope_response" ->
                     "Responde la pregunta actual. No uses una respuesta genérica de alcance ni vuelvas a preguntar qué modelo interesa si ya existe una pregunta concreta.";
+            case "multiple_questions" ->
+                    "Responde directamente y pide solo un dato para avanzar, con una sola pregunta. No combines dos datos ni ofrezcas un menú.";
             default ->
                     "Entrega una respuesta breve, natural y útil en español de México a la pregunta actual.";
         };
@@ -79,6 +84,17 @@ public final class AssistantResponseQualityPolicy {
             return true;
         }
         return false;
+    }
+
+    private static boolean asksForMultipleDetails(String response) {
+        var questionStarts = response.chars().filter(character -> character == '¿').count();
+        if (questionStarts > 1) return true;
+        if (questionStarts == 0) return false;
+        var questionStart = response.lastIndexOf('¿');
+        var questionEnd = response.indexOf('?', questionStart);
+        if (questionEnd < 0) questionEnd = response.length();
+        var question = normalize(response.substring(questionStart, questionEnd));
+        return question.contains(" y ") || question.contains(" o ");
     }
 
     private static boolean repeatsAssistantMessage(String memory, String response) {

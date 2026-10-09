@@ -65,7 +65,7 @@ class ConversationScenarioIntegrationTest {
                 .toArriveAndVerify(event -> {
                     org.assertj.core.api.Assertions.assertThat(event.key().tenantId()).isEqualTo(tenantId);
                     org.assertj.core.api.Assertions.assertThat(event.key().conversationId()).isEqualTo(conversationId);
-                    org.assertj.core.api.Assertions.assertThat(event.update().summary()).contains("¿Hay Ranger?");
+                    org.assertj.core.api.Assertions.assertThat(event.update().summary()).isBlank();
                 });
     }
 

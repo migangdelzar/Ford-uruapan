@@ -51,9 +51,11 @@ public class ConversationDecisionService {
                 throw new IllegalStateException("TypeSafe classification confidence is below the configured threshold");
             }
             var route = rules.decide(context);
+            var contextHasFordVehicle = context.memoryContext() != null
+                    && context.memoryContext().toLowerCase(Locale.ROOT).matches("(?s).*(ford|ranger|bronco|maverick|lobo|raptor|territory|explorer).*" );
             var deterministicScopeDeniesTools = route.toolFamily() == ToolFamily.NONE
-                    && (route.intent() == ConversationIntent.GENERAL
-                    || route.intent() == ConversationIntent.OUT_OF_SCOPE);
+                    && (route.intent() == ConversationIntent.OUT_OF_SCOPE
+                    || route.intent() == ConversationIntent.GENERAL && !contextHasFordVehicle);
             var deterministicIntentHasSpecificTool = switch (route.intent()) {
                 case INVENTORY, VEHICLE_DETAILS, FINANCE, OFFERS, APPOINTMENT, SERVICE_SUPPORT -> true;
                 case GENERAL, KNOWLEDGE, HUMAN_REQUEST, TRADE_IN, DEALERSHIP_INFO,

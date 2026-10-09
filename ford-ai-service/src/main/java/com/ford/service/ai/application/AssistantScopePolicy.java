@@ -69,6 +69,9 @@ public class AssistantScopePolicy {
                 && availableReadOnlyTools.contains("approved_knowledge_search")) {
             return true;
         }
+        if (decision != null && SUPPORTED_FORD_INTENTS.contains(decision.toLegacyIntent())) {
+            return true;
+        }
         if (routedIntent != Intent.GENERAL) {
             return false;
         }

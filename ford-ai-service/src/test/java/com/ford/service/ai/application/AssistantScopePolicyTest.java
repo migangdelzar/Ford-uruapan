@@ -115,6 +115,15 @@ class AssistantScopePolicyTest {
     }
 
     @Test
+    void allowsSupportedClassifierRouteForAShortVehicleTrimAnswer() {
+        var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
+                LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE,
+                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, java.util.List.of());
+
+        assertThat(policy.allows("La XLT", decision, "Historial reciente: Ranger")) .isTrue();
+    }
+
+    @Test
     void allowsCommonVehicleTechnicalTermsWithoutRequiringTheBrandAgain() {
         assertThat(policy.allows("¿Qué rendimiento tiene la Raptor?", null)).isTrue();
     }

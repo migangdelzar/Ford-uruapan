@@ -32,13 +32,14 @@ import java.util.List;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-@EnableConfigurationProperties(SecurityProperties.class)
+@EnableConfigurationProperties({SecurityProperties.class, AuthenticationProperties.class})
 public class SecurityConfiguration {
 
     @Bean
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             SecurityProperties properties,
+            AuthenticationProperties authenticationProperties,
             JwtAuthenticationConverter jwtAuthenticationConverter) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
@@ -50,7 +51,7 @@ public class SecurityConfiguration {
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)));
 
-        if (properties.jwt().enabled()) {
+        if (properties.jwt().enabled() || authenticationProperties.enabled()) {
             http.oauth2ResourceServer(oauth2 -> oauth2
                     .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
         }
@@ -76,6 +77,7 @@ public class SecurityConfiguration {
 
     @Bean
     @ConditionalOnProperty(prefix = "ford.security.jwt", name = "enabled", havingValue = "true")
+    @ConditionalOnProperty(prefix = "ford.security.auth", name = "enabled", havingValue = "false", matchIfMissing = true)
     JwtDecoder jwtDecoder(SecurityProperties properties) {
         var jwtProperties = properties.jwt();
         if (jwtProperties.issuerUri() == null || jwtProperties.issuerUri().isBlank()) {

@@ -15,7 +15,7 @@ class MemoryPropertiesTest {
 
         assertThat(properties.enabled()).isTrue();
         assertThat(properties.recentMessageLimit()).isEqualTo(20);
-        assertThat(properties.promptRecentMessageLimit()).isEqualTo(8);
+        assertThat(properties.promptRecentMessageLimit()).isEqualTo(20);
         assertThat(properties.summaryMaxChars()).isEqualTo(4000);
         assertThat(properties.factLimit()).isEqualTo(12);
         assertThat(properties.factMaxChars()).isEqualTo(500);

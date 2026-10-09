@@ -1,7 +1,10 @@
 package com.ford.service.channels;
 
 import com.ford.service.channels.api.InboundMessageAccepted;
+import com.ford.service.conversations.api.AssistantReply;
+import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -10,6 +13,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -25,6 +29,9 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -66,12 +73,20 @@ class MetaInboundWorkflowIntegrationTest {
     @Autowired
     JdbcClient jdbc;
 
+    @MockitoBean
+    ConversationAssistant assistant;
+
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("ford.channels.meta.app-secret", () -> APP_SECRET);
+    }
+
+    @BeforeEach
+    void stubAssistant() {
+        when(assistant.respond(any())).thenReturn(new AssistantReply("Test reply", false));
     }
 
     @AfterEach

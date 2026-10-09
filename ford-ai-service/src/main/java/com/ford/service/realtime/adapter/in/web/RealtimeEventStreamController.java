@@ -1,10 +1,12 @@
 package com.ford.service.realtime.adapter.in.web;
 
-import com.ford.service.channels.adapter.in.meta.MetaWebhookProperties;
 import com.ford.service.realtime.application.RealtimeEventHub;
 import com.ford.service.realtime.domain.FrontendEvent;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.ford.service.operator.application.AuthenticatedOperator;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -26,30 +28,35 @@ public class RealtimeEventStreamController {
     private static final Logger log = LoggerFactory.getLogger(RealtimeEventStreamController.class);
 
     private final RealtimeEventHub hub;
-    private final UUID defaultTenantId;
 
     public RealtimeEventStreamController(RealtimeEventHub hub) {
-        this(hub, new MetaWebhookProperties());
-    }
-
-    @Autowired
-    public RealtimeEventStreamController(RealtimeEventHub hub, MetaWebhookProperties properties) {
         this.hub = hub;
-        this.defaultTenantId = properties.getAutoBinding().getTenantId();
     }
 
-    public SseEmitter stream() {
-        return stream(null);
+    public SseEmitter stream(Authentication authentication) {
+        return stream(null, authentication);
     }
 
+    @PreAuthorize("hasAuthority('SCOPE_operator:read')")
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@RequestParam(required = false) UUID tenantId) {
-        var resolvedTenantId = tenantId == null ? defaultTenantId : tenantId;
+    public SseEmitter stream(@RequestParam(required = false) UUID tenantId, Authentication authentication) {
+        var operator = AuthenticatedOperator.from(authentication);
+        var resolvedTenantId = tenantId;
+        if (resolvedTenantId == null) {
+            if (operator.tenantIds().size() != 1) {
+                throw new IllegalArgumentException("tenantId is required when operator has multiple tenants");
+            }
+            resolvedTenantId = operator.tenantIds().iterator().next();
+        }
+        if (!operator.canAccess(resolvedTenantId)) {
+            throw new AccessDeniedException("operator is not authorized for tenant");
+        }
+        var authorizedTenantId = resolvedTenantId;
         var emitter = new SseEmitter(EMITTER_TIMEOUT_MILLIS);
         var registration = new AtomicReference<AutoCloseable>();
         var cleanup = (Runnable) () -> closeQuietly(registration.getAndSet(null));
 
-        var subscription = hub.subscribe(resolvedTenantId, event -> send(emitter, event, cleanup));
+        var subscription = hub.subscribe(authorizedTenantId, event -> send(emitter, event, cleanup));
         registration.set(subscription);
         emitter.onCompletion(cleanup);
         emitter.onTimeout(() -> {
@@ -63,7 +70,7 @@ public class RealtimeEventStreamController {
             cleanup.run();
         });
         log.info("Operator event stream connected");
-        sendConnected(emitter, resolvedTenantId, cleanup);
+        sendConnected(emitter, authorizedTenantId, cleanup);
         return emitter;
     }
 

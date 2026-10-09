@@ -108,6 +108,22 @@ class ConversationDecisionServiceTest {
     }
 
     @Test
+    void keepsJeVVehicleToolForShortTrimFollowUpWhenMemoryEstablishesFordContext() {
+        var primaryDecision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
+                LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE,
+                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, List.of());
+        var rules = new RulesConversationDecisionAdapter(new IntentRouter());
+        var classificationContext = new ClassificationContext(UUID.randomUUID(), UUID.randomUUID(), "La XLT",
+                "Historial reciente: ¿Qué promociones tienen para Ranger?", "BOT_ACTIVE", false);
+
+        var decision = new ConversationDecisionService(context -> primaryDecision, rules,
+                new ClassificationProperties()).decide(classificationContext);
+
+        assertThat(decision.intent()).isEqualTo(ConversationIntent.VEHICLE_DETAILS);
+        assertThat(decision.toolFamily()).isEqualTo(ToolFamily.VEHICLE_DETAILS);
+    }
+
+    @Test
     void recordsRulesFallbackWhenThePrimaryClassifierFails() {
         ConversationDecisionPort primary = context -> { throw new IllegalStateException("provider unavailable"); };
         ConversationDecision fallback = new ConversationDecision(ConversationIntent.GENERAL,

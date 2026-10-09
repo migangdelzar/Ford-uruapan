@@ -3,6 +3,7 @@
 .github
 .worktrees
 .superpowers
+.tgrep
 
 # Gradle caches and generated output
 .gradle

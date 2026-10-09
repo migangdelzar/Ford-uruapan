@@ -2,6 +2,8 @@ package com.ford.service.ai;
 
 import com.ford.service.ai.adapter.in.web.AiResponseController;
 import com.ford.service.ai.application.AssistantService;
+import com.ford.service.ai.application.AiTestSessionStore;
+import com.ford.service.ai.application.AiExecutionContext;
 import com.ford.service.ai.api.AssistantTurn;
 import com.ford.service.config.SecurityConfiguration;
 import com.ford.service.ai.application.ConversationDecision;
@@ -20,8 +22,10 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doNothing;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -40,9 +44,13 @@ class AiResponseControllerTest {
     @MockitoBean
     AssistantService assistant;
 
+    @MockitoBean
+    AiTestSessionStore sessions;
+
     @Test
     void respondsUsingTheAuthenticatedTenantAndLatestUserMessage() throws Exception {
         var conversationId = UUID.randomUUID();
+        when(sessions.recentMessages(TENANT, "operator-1", conversationId, 40)).thenReturn(List.of());
         when(assistant.respond(any(), anyString())).thenReturn(new AssistantTurn(
                 "Tenemos Explorer disponible.", Intent.INVENTORY, false, List.of(),
                 "openai", "configured-model", ConversationDecision.deterministicDefault()));
@@ -58,6 +66,7 @@ class AiResponseControllerTest {
                                 ]}
                                 """.formatted(conversationId)))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conversationId").value(conversationId.toString()))
                 .andExpect(jsonPath("$.replyText").value("Tenemos Explorer disponible."))
                 .andExpect(jsonPath("$.handoffSuggested").value(false))
                 .andExpect(jsonPath("$.intent").value("INVENTORY"))
@@ -69,6 +78,8 @@ class AiResponseControllerTest {
                 .andExpect(jsonPath("$.rawResponse").doesNotExist());
 
         verify(assistant).respond(any(), eq("Explorer disponible?"));
+        verify(sessions).saveTurn(eq(TENANT), eq("operator-1"), eq(conversationId),
+                eq("Explorer disponible?"), eq("Tenemos Explorer disponible."));
     }
 
     @Test
@@ -90,5 +101,32 @@ class AiResponseControllerTest {
                         .contentType("application/json")
                         .content("{\"messages\":[{\"role\":\"user\",\"content\":\"Hola\"}]}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void reusesStoredRecentTurnsForTheSameConversation() throws Exception {
+        var conversationId = UUID.randomUUID();
+        when(sessions.recentMessages(TENANT, "operator-1", conversationId, 40)).thenReturn(List.of(
+                new AiTestSessionStore.StoredMessage("user", "Busco una SUV familiar"),
+                new AiTestSessionStore.StoredMessage("assistant", "¿Cuántas plazas necesitas?")));
+        when(assistant.respond(any(), anyString())).thenReturn(new AssistantTurn(
+                "La Explorer tiene tres filas.", Intent.CATALOG, false, List.of(),
+                "deepseek", "deepseek-chat", ConversationDecision.deterministicDefault()));
+
+        mockMvc.perform(post("/api/v1/ai/respond")
+                        .with(jwt().jwt(token -> token.subject("operator-1")
+                                .claim("tenant_id", TENANT.toString()))
+                                .authorities(() -> "SCOPE_operator:write"))
+                        .contentType("application/json")
+                        .content("""
+                                {"conversationId":"%s","messages":[{"role":"user","content":"Somos cinco"}]}
+                                """.formatted(conversationId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conversationId").value(conversationId.toString()));
+
+        verify(assistant).respond(argThat(context -> context.memoryContext().contains("Busco una SUV familiar")
+                && context.memoryContext().contains("¿Cuántas plazas necesitas?")), eq("Somos cinco"));
+        verify(sessions).saveTurn(TENANT, "operator-1", conversationId,
+                "Somos cinco", "La Explorer tiene tres filas.");
     }
 }

@@ -60,6 +60,39 @@ import static org.mockito.Mockito.verify;
 class ConversationWorkflowTest {
 
     @Test
+    void doesNotFailWhenTestDriveDecisionHasNoHandoffRecommendation() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var providerMessageId = "wamid.test-drive-confirmed";
+        var decision = new ConversationDecision(ConversationIntent.APPOINTMENT, LeadTemperature.HOT,
+                LeadStage.QUALIFIED, com.ford.service.ai.application.HandoffRecommendation.NONE,
+                com.ford.service.ai.application.ToolFamily.APPOINTMENT,
+                com.ford.service.ai.application.SensitiveDataLevel.NONE,
+                com.ford.service.ai.application.LeadNextAction.SCHEDULE_TEST_DRIVE, true,
+                "confirmed test drive", List.of());
+        var repository = new RecordingConversationRepository(snapshot(
+                tenantId, conversationId, ConversationState.BOT_ACTIVE, 1));
+        var reply = new AssistantReply("¿Qué día te funciona para la prueba de manejo?", false,
+                decision, new com.ford.service.leads.domain.LeadJourneyProposal(
+                com.ford.service.leads.domain.LeadJourneyTopic.TEST_DRIVE_APPOINTMENT,
+                List.of(), "TEST_DRIVE_DATE"));
+        var decisionRows = new ArrayList<ConversationDecision>();
+        var workflow = new ConversationWorkflow(repository, new RecordingAssistant(reply),
+                new RecordingPublisher(), new HumanHandoffPolicy(false), memoryService(),
+                (id, messageId, savedDecision) -> decisionRows.add(savedDecision),
+                new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP),
+                (tenant, conversation, receipt) -> Optional.of(new AcceptedInboundMessage(
+                        providerMessageId, "customer-1", "Sí, me gustaría", Instant.now())));
+
+        workflow.on(new InboundMessageAccepted(UUID.randomUUID(), tenantId, conversationId,
+                Channel.WHATSAPP, providerMessageId, Instant.now()));
+
+        assertThat(repository.completedTurn.text()).isEqualTo(reply.text());
+        assertThat(decisionRows).containsExactly(decision);
+    }
+
+    @Test
     void leavesInboundEventIncompleteWhenConversationLeaseIsBusy() {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();

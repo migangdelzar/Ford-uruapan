@@ -1,0 +1,69 @@
+databaseChangeLog:
+  - changeSet:
+      id: 020-operator-identities
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              create table operator_identity (
+                  id uuid primary key,
+                  email_normalized varchar(320) not null unique,
+                  display_name varchar(150) not null,
+                  enabled boolean not null default true,
+                  created_at timestamptz not null default current_timestamp,
+                  updated_at timestamptz not null default current_timestamp,
+                  check (email_normalized = lower(btrim(email_normalized)))
+              );
+              create table operator_identity_role (
+                  operator_id uuid not null references operator_identity(id) on delete cascade,
+                  role varchar(16) not null check (role in ('OPERATOR', 'MANAGER', 'ADMIN')),
+                  primary key (operator_id, role)
+              );
+              create table operator_identity_tenant (
+                  operator_id uuid not null references operator_identity(id) on delete cascade,
+                  tenant_id uuid not null,
+                  primary key (operator_id, tenant_id)
+              );
+              create index idx_operator_identity_tenant on operator_identity_tenant (tenant_id, operator_id);
+              create table operator_identity_scope (
+                  operator_id uuid not null references operator_identity(id) on delete cascade,
+                  scope varchar(64) not null check (scope in ('openid', 'profile', 'email', 'operator:read', 'operator:write', 'handoff:manage', 'leads:read', 'leads:write', 'metrics:read', 'events:read', 'inventory:read', 'finance:quote', 'appointments:read', 'appointments:write', 'bot:manage', 'testlab:run')),
+                  primary key (operator_id, scope)
+              );
+              create table operator_invitation (
+                  id uuid primary key,
+                  token_hash char(64) not null unique,
+                  email_normalized varchar(320) not null,
+                  display_name varchar(150) not null,
+                  expires_at timestamptz not null,
+                  accepted_at timestamptz,
+                  created_at timestamptz not null default current_timestamp,
+                  check (email_normalized = lower(btrim(email_normalized)))
+              );
+              create index idx_operator_invitation_email on operator_invitation (email_normalized, expires_at desc);
+              create table operator_invitation_role (
+                  invitation_id uuid not null references operator_invitation(id) on delete cascade,
+                  role varchar(16) not null check (role in ('OPERATOR', 'MANAGER', 'ADMIN')),
+                  primary key (invitation_id, role)
+              );
+              create table operator_invitation_tenant (
+                  invitation_id uuid not null references operator_invitation(id) on delete cascade,
+                  tenant_id uuid not null,
+                  primary key (invitation_id, tenant_id)
+              );
+              create table operator_invitation_scope (
+                  invitation_id uuid not null references operator_invitation(id) on delete cascade,
+                  scope varchar(64) not null check (scope in ('openid', 'profile', 'email', 'operator:read', 'operator:write', 'handoff:manage', 'leads:read', 'leads:write', 'metrics:read', 'events:read', 'inventory:read', 'finance:quote', 'appointments:read', 'appointments:write', 'bot:manage', 'testlab:run')),
+                  primary key (invitation_id, scope)
+              );
+      rollback:
+        - sql:
+            sql: |
+              drop table if exists operator_invitation_tenant;
+              drop table if exists operator_invitation_scope;
+              drop table if exists operator_invitation_role;
+              drop table if exists operator_invitation;
+              drop table if exists operator_identity_tenant;
+              drop table if exists operator_identity_scope;
+              drop table if exists operator_identity_role;
+              drop table if exists operator_identity;

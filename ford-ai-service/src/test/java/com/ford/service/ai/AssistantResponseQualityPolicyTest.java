@@ -77,6 +77,25 @@ class AssistantResponseQualityPolicyTest {
     }
 
     @Test
+    void rejectsRepliesThatAskMoreThanOneQuestion() {
+        var verdict = policy.evaluate("Me interesa el vehículo", null,
+                "¿Qué modelo le interesa? ¿Y qué precio busca?");
+
+        assertThat(verdict.accepted()).isFalse();
+        assertThat(verdict.reason()).isEqualTo("multiple_questions");
+        assertThat(policy.repairInstruction(verdict.reason())).contains("una sola pregunta");
+    }
+
+    @Test
+    void rejectsAQuestionThatCombinesTwoLeadDetails() {
+        var verdict = policy.evaluate("Me interesa cotizar", null,
+                "¿Qué modelo le interesa y qué precio aproximado busca?");
+
+        assertThat(verdict.accepted()).isFalse();
+        assertThat(verdict.reason()).isEqualTo("multiple_questions");
+    }
+
+    @Test
     void acceptsAConciseGroundedSpanishAnswer() {
         var verdict = policy.evaluate("¿Cuántos kilómetros por litro da la Raptor?", null,
                 "La ficha disponible indica un rendimiento aproximado de 7.1 km/l. Puede variar según el uso.");

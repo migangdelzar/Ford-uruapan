@@ -62,6 +62,7 @@ else
     --exclude=build \
     --exclude=bin \
     --exclude=.mise \
+    --exclude=.tgrep \
     --exclude=.env \
     --exclude='.env.*' \
     --exclude=.docker-build-cache \

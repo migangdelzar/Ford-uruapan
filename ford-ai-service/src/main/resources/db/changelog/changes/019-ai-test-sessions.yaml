@@ -1,0 +1,28 @@
+databaseChangeLog:
+  - changeSet:
+      id: 019-ai-test-sessions
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              create table ai_test_session (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  operator_subject varchar(255) not null,
+                  created_at timestamptz not null default current_timestamp,
+                  updated_at timestamptz not null default current_timestamp
+              );
+              create index idx_ai_test_session_owner on ai_test_session (tenant_id, operator_subject, updated_at desc);
+              create table ai_test_message (
+                  id bigserial primary key,
+                  session_id uuid not null references ai_test_session(id) on delete cascade,
+                  role varchar(16) not null check (role in ('user', 'assistant')),
+                  content text not null,
+                  created_at timestamptz not null default current_timestamp
+              );
+              create index idx_ai_test_message_recent on ai_test_message (session_id, created_at desc, id desc);
+      rollback:
+        - sql:
+            sql: |
+              drop table if exists ai_test_message;
+              drop table if exists ai_test_session;

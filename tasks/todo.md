@@ -1,5 +1,48 @@
 # Jev classification implementation
 
+## Multi-phase workflow and memory/MCP/classifier evaluation (2026-10-08)
+
+- [x] Add structured pending-question confirmation independent of transcript/cache availability.
+- [x] Fix classifier reconciliation for short Ford-context follow-ups.
+- [x] Add PostgreSQL + Redis synthetic workflows covering vehicle lookup, offer lookup, appointment confirmation/decline, finance, and topic switching.
+- [x] Exercise read-only MCP tool authorization/callback invocation and verify appointment decisions do not invoke tools.
+- [x] Run focused regressions, deterministic offline AI evaluations, unit suite, and requested integration workflows.
+- [x] Document unrelated integration-suite failures; do not claim the full integration suite is green.
+
+### Results
+
+- Three synthetic multi-turn workflows exercise durable lead journey, PostgreSQL message/decision evidence, Redis-cached conversation memory, decision/classifier reconciliation, read-only tool authorization, and topic changes. Provider/classifier and model reply data are deterministic fixtures; no paid LLM API or live tunnel/MCP call is made.
+- Added a regression proving an affirmative uses durable `TEST_DRIVE_CONFIRMATION` state even when recent transcript memory is absent. Short follow-up “La XLT” can follow an established Ford context through Jev vehicle routing.
+- Focused policy/scope/decision tests pass; `mise run test:ai-evaluation` passes (9 Node flow/eval checks plus Java regression suite); all unit tests pass.
+- New workflow integration tests passed against PostgreSQL and Redis Testcontainers. The complete integration suite has three failures: two `MetaInboundWorkflowIntegrationTest` failures caused by its fixed `phone-number-1` binding conflicting across tests, and `ConversationScenarioIntegrationTest` expecting a projection-refresh event not received by the scenario. These failures reproduce in the wider integration run including the new test.
+- Deployment preflight and operations contract checks passed. Deployed the ARM64 app image to emme-1 via the supported remote-build path; Ansible reported 20 successful tasks, zero failed/unreachable hosts, and verified app health, Meta route, plus PostgreSQL/Redis connectivity. emme-2 data services were not restarted and no database or conversation data was reset.
+- `mise run test:check` remains red from the same three unrelated integration failures. The later live evaluation used only synthetic conversations and free OpenRouter routes; the real MCP tunnel and deployed inbound conversation flow remain untested.
+- Follow-up free-model evaluation is recorded in `ford-ai-service/docs/evaluations/2026-10-08-free-model-evaluation.md`: `openrouter/free` passed 3/8 app-level synthetic scenarios and passed the Spring AI synthetic tool-call preflight. The pinned Qwen and Gemma runs were unavailable (HTTP 404/429), not quality failures. No persistent production conversation or database row was created.
+
+## Pending-question lead flow repair (2026-10-08)
+
+- [x] Trace the production conversation and confirm it remained in one conversation.
+- [x] Identify the rules fallback, stale lead-journey pending question, and compound prompts.
+- [x] Add regression coverage for affirmative test-drive continuation and multi-question replies.
+- [x] Implement a deterministic reply to an unambiguous affirmative test-drive offer and persist the next pending slot.
+- [x] Tighten the one-information-request-per-turn prompt and quality repair rule.
+- [x] Verify focused behavior, full service build/tests, and update results below.
+
+### Acceptance criteria
+
+- A clear affirmative answer to a single recent test-drive offer continues appointment flow; it never returns to generic model discovery.
+- Ambiguous answers or multi-option assistant offers do not auto-select an appointment.
+- The continuation persists `TEST_DRIVE_APPOINTMENT` and one next pending question.
+- Generated replies with multiple questions are rejected and repaired.
+- Follow-up wording requests one missing piece of information at a time.
+
+### Results
+
+- `PendingTestDriveReplyPolicy` maps a clear affirmative to a single recent test-drive offer to `TEST_DRIVE_APPOINTMENT`, persists `TEST_DRIVE_DATE` as the next pending question, and replies with one date question without calling a chat model or Jev.
+- Ambiguous/multi-option offers and unclear replies continue through the normal classifier/generator path.
+- `AssistantResponseQualityPolicy` rejects multiple interrogatives and questions joined by `y`/`o`, then requests one repair; the system prompt also forbids combining details or presenting lead-flow menus.
+- Focused regressions, full `./gradlew test --no-daemon`, and `./gradlew bootJar --no-daemon` passed. The code is local only; it has not been committed, pushed, or deployed.
+
 ## TypeSafe Jev activation wiring (2026-10-08)
 
 - [x] Verify the exported workstation key and identify the app/deployment variable mismatch.
@@ -171,3 +214,30 @@
 - [x] Add HOT-lead offers with remembered decline state, compact-summary rollover, and synthetic conversation routing fixtures.
 - [x] Run focused and full test suites; record actual results in `docs/superpowers/plans/2026-10-08-gradual-chat-and-lead-routing.md`.
 - [x] Reconcile operations and README docs against effective configuration; inspect diff for unrelated and sensitive-file leakage.
+
+# Ford-web Test Lab authentication rollback (2026-10-09)
+
+- [x] Remove the newly added OIDC client/BFF and restore Ford-web's prior demo login flow.
+- [x] Keep `/api/testlab/respond` fail-closed and forward only a caller-supplied bearer token to Ford-service.
+- [x] Record the contract: Spring Security validates external JWTs; Ford-service has no login/token-issuing endpoint; the demo JWT is not valid for it.
+- [x] Keep Test Lab PostgreSQL session persistence scoped by tenant + operator + stable conversation ID, with bounded context and owner isolation.
+- [ ] Provide a valid access-token source to the Test Lab UI before claiming live authenticated end-to-end connectivity.
+
+# Ford CRM backend auth and Pages integration (2026-10-09)
+
+- [x] Confirm Spring Authorization Server in Ford-service issues operator JWTs; passkeys primary; email one-time-token recovery.
+- [x] Create feature branches in Ford-service and Ford-web while preserving existing dirty changes.
+- [x] Add contract drift tests, BFF OpenAPI overlay, and generated contract synchronization.
+- [x] Align canonical OpenAPI auth metadata and endpoint routes with Spring's passkey/OTT flow.
+- [ ] Add persistent invited operator identities and claims.
+- [ ] Configure persistent Spring Security passkey and one-time-token login.
+- [ ] Add Spring Authorization Server and JWT resource-server chains.
+- [ ] Add Ford-web BFF sessions and same-origin Pages routing.
+- [ ] Connect UI login and Test Lab; migrate only implemented CRM API families.
+- [ ] Verify temporary-origin deployment, then present production cutover preflight.
+
+### Working notes
+
+- Use Spring Security's JDBC WebAuthn repositories and JDBC one-time-token service; persist browser auth sessions in Redis.
+- Preserve unrelated existing edits in both repos. Never stage `deployment/config/oci.env*`, `.tgrep/`, or other prior user work for this task.
+- Production DNS/Tunnel cutover remains gated on a concrete preflight and approval.

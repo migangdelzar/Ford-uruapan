@@ -38,6 +38,8 @@ class ConversationMemoryProjectorTest {
 
     @Test
     void compactsOnlyMessagesThatLeaveTheEightMessageWindow() {
+        var properties = new MemoryProperties();
+        properties.setPromptRecentMessageLimit(8);
         var receivedMessages = new AtomicReference<List<ConversationMessage>>();
         var previousSummary = new AtomicReference<String>();
         ConversationMemoryCompactionPort compactor = (tenant, conversation, summary, expired, maxChars) -> {
@@ -48,7 +50,7 @@ class ConversationMemoryProjectorTest {
         var recent = eightTurns();
         var memory = context("compacto previo", recent, List.of());
 
-        var update = new ConversationMemoryProjector(new MemoryProperties(), compactor)
+        var update = new ConversationMemoryProjector(properties, compactor)
                 .project(memory, "¿Cuánto queda por mes?", UUID.randomUUID());
 
         assertThat(previousSummary.get()).isEqualTo("compacto previo");

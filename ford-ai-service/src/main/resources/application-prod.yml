@@ -7,6 +7,9 @@ ford:
   security:
     jwt:
       enabled: ${FORD_SECURITY_JWT_ENABLED:true}
+    auth:
+      enabled: ${FORD_SECURITY_AUTH_ENABLED:true}
+      csrf-cookie-secure: ${FORD_SECURITY_COOKIE_SECURE:true}
   conversations:
     workflow:
       graph-enabled: ${FORD_CONVERSATION_GRAPH_ENABLED:true}

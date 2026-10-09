@@ -9,6 +9,7 @@ import com.ford.service.leads.domain.LeadJourneyProposal;
 import com.ford.service.leads.domain.LeadJourneySnapshot;
 import com.ford.service.leads.domain.LeadJourneyTopic;
 import com.ford.service.conversations.application.ConversationAssistantAdapter;
+import com.ford.service.conversations.application.PendingTestDriveReplyPolicy;
 import com.ford.service.conversations.api.AssistantReply;
 import com.ford.service.conversations.api.ConversationTurnRequest;
 import com.ford.service.conversations.domain.ConversationState;
@@ -49,7 +50,7 @@ class ConversationAssistantAdapterTest {
                 "Te comparto las promociones vigentes.", Intent.GENERAL, false, List.of(),
                 "openrouter", "openrouter/free", null, proposal));
 
-        var reply = new ConversationAssistantAdapter(ai).respond(new ConversationTurnRequest(
+        var reply = adapter(ai).respond(new ConversationTurnRequest(
                 tenantId, conversationId, "¿Qué promociones tienen?", ConversationState.BOT_ACTIVE,
                 null, snapshot));
 
@@ -69,7 +70,7 @@ class ConversationAssistantAdapterTest {
         var conversationId = UUID.randomUUID();
         when(ai.respond(any(), any())).thenReturn(new AssistantTurn(
                 "Te apoyo con la Ranger.", Intent.CATALOG, true, List.of(), "ollama", "llama3.2"));
-        var adapter = new ConversationAssistantAdapter(ai);
+        var adapter = adapter(ai);
 
         AssistantReply reply = adapter.respond(new ConversationTurnRequest(
                 tenantId, conversationId, "Quiero comprar una Ranger", ConversationState.BOT_ACTIVE));
@@ -82,7 +83,7 @@ class ConversationAssistantAdapterTest {
 
     @Test
     void requestsHumanHandoffWhenTheAiServiceIsUnavailable() {
-        var adapter = new ConversationAssistantAdapter(() -> null);
+        var adapter = new ConversationAssistantAdapter(() -> null, new PendingTestDriveReplyPolicy());
 
         AssistantReply reply = adapter.respond(new ConversationTurnRequest(
                 UUID.randomUUID(), UUID.randomUUID(), "Hola", ConversationState.BOT_ACTIVE));
@@ -109,7 +110,7 @@ class ConversationAssistantAdapterTest {
                                 "¡Hola! ¿En qué te apoyo?", Instant.now())),
                 List.of(), 1);
 
-        new ConversationAssistantAdapter(ai).respond(new ConversationTurnRequest(
+        adapter(ai).respond(new ConversationTurnRequest(
                 tenantId, conversationId, "Quiero ver promociones", ConversationState.BOT_ACTIVE, memory));
 
         var context = org.mockito.ArgumentCaptor.forClass(com.ford.service.ai.application.AiExecutionContext.class);
@@ -120,5 +121,28 @@ class ConversationAssistantAdapterTest {
                 .contains("pregunta actual")
                 .contains("asistente: ¡Hola! ¿En qué te apoyo?")
                 .contains("FIN DEL HISTORIAL");
+    }
+
+    @Test
+    void affirmativeAnswerToTestDriveOfferDoesNotCallTheModelAndPersistsTheNextStep() {
+        var ai = mock(AssistantService.class);
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var memoryKey = new ConversationMemoryKey(tenantId,
+                com.ford.service.channels.domain.Channel.WHATSAPP, "phone-1", "customer-1", conversationId);
+        var memory = new ConversationMemoryContext(memoryKey, "", List.of(new ConversationMessage(
+                UUID.randomUUID(), conversationId, ConversationMessage.Direction.OUTBOUND, "outbound-1",
+                "Bronco Base 2026. ¿Le gustaría agendar una prueba de manejo?", Instant.now())), List.of(), 1);
+
+        var reply = adapter(ai).respond(new ConversationTurnRequest(tenantId, conversationId,
+                "Sí, me gustaría", ConversationState.BOT_ACTIVE, memory, null));
+
+        assertThat(reply.text()).isEqualTo("¡Perfecto! ¿Qué día te funciona para la prueba de manejo?");
+        assertThat(reply.journeyProposal().pendingQuestionKey()).isEqualTo("TEST_DRIVE_DATE");
+        org.mockito.Mockito.verifyNoInteractions(ai);
+    }
+
+    private static ConversationAssistantAdapter adapter(AssistantService assistant) {
+        return new ConversationAssistantAdapter(assistant, new PendingTestDriveReplyPolicy());
     }
 }
