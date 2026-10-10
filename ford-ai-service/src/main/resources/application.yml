@@ -154,7 +154,6 @@ ford:
       turn-concurrency: ${FORD_CONVERSATION_TURN_CONCURRENCY:1}
       turn-queue-capacity: ${FORD_CONVERSATION_TURN_QUEUE_CAPACITY:8}
       publication-retry-age: ${FORD_CONVERSATION_PUBLICATION_RETRY_AGE:PT1M}
-      reset-checkpoints-on-startup: ${FORD_CONVERSATION_RESET_CHECKPOINTS_ON_STARTUP:false}
     human-handoff:
       enabled: ${FORD_HUMAN_HANDOFF_ENABLED:true}
   memory:

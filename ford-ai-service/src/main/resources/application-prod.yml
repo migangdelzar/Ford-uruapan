@@ -13,7 +13,6 @@ ford:
   conversations:
     workflow:
       graph-enabled: ${FORD_CONVERSATION_GRAPH_ENABLED:true}
-      reset-checkpoints-on-startup: ${FORD_CONVERSATION_RESET_CHECKPOINTS_ON_STARTUP:false}
     human-handoff:
       enabled: ${FORD_HUMAN_HANDOFF_ENABLED:false}
   ai:

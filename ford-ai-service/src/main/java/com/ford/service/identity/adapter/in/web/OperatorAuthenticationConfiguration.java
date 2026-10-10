@@ -9,6 +9,7 @@ import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
 import com.ford.service.identity.api.OperatorIdentity;
 import com.ford.service.identity.application.OperatorIdentityService;
+import com.ford.service.identity.application.OperatorUserDetailsService;
 import com.ford.service.identity.application.OperatorTokenClaimsFactory;
 import com.ford.service.identity.application.IdentityCheckedOneTimeTokenService;
 import com.ford.service.identity.application.OneTimeTokenRequestLimiter;
@@ -23,6 +24,7 @@ import org.springframework.jdbc.core.JdbcOperations;
 import org.springframework.security.authentication.ott.JdbcOneTimeTokenService;
 import org.springframework.security.authentication.ott.OneTimeTokenService;
 import org.springframework.security.authentication.ott.GenerateOneTimeTokenRequest;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.web.authentication.ott.OneTimeTokenGenerationSuccessHandler;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.oauth2.server.authorization.OAuth2AuthorizationServerConfigurer;
@@ -73,6 +75,15 @@ import static org.springframework.security.config.Customizer.withDefaults;
 @ConditionalOnProperty(prefix = "ford.security.auth", name = "enabled", havingValue = "true")
 @EnableConfigurationProperties(AuthenticationProperties.class)
 public class OperatorAuthenticationConfiguration {
+
+    @Bean
+    DaoAuthenticationProvider operatorPasswordAuthenticationProvider(
+            OperatorUserDetailsService userDetailsService,
+            PasswordEncoder passwordEncoder) {
+        var provider = new DaoAuthenticationProvider(userDetailsService);
+        provider.setPasswordEncoder(passwordEncoder);
+        return provider;
+    }
 
     @Bean
     JdbcPublicKeyCredentialUserEntityRepository jdbcPublicKeyCredentialUserEntityRepository(JdbcOperations jdbc) {
@@ -225,7 +236,8 @@ public class OperatorAuthenticationConfiguration {
             HttpSecurity http,
             AuthenticationProperties properties,
             OneTimeTokenService oneTimeTokenService,
-            OneTimeTokenGenerationSuccessHandler tokenGenerationSuccessHandler) throws Exception {
+            OneTimeTokenGenerationSuccessHandler tokenGenerationSuccessHandler,
+            DaoAuthenticationProvider operatorPasswordAuthenticationProvider) throws Exception {
         http.securityMatcher("/login/**", "/logout", "/webauthn/**", "/api/auth/**")
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository(properties)))
@@ -233,6 +245,7 @@ public class OperatorAuthenticationConfiguration {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/webauthn/register/**").authenticated()
                         .anyRequest().permitAll())
+                .authenticationProvider(operatorPasswordAuthenticationProvider)
                 .formLogin(withDefaults())
                 .logout(logout -> logout.logoutSuccessHandler((request, response, authentication) ->
                         response.setStatus(org.springframework.http.HttpStatus.NO_CONTENT.value())))
