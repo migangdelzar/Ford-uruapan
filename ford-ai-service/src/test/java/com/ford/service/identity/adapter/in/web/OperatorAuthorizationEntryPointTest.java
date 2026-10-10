@@ -4,6 +4,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.InsufficientAuthenticationException;
+import org.springframework.web.filter.ForwardedHeaderFilter;
+
+import jakarta.servlet.ServletException;
+import java.io.IOException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -19,5 +23,26 @@ class OperatorAuthorizationEntryPointTest {
 
         assertThat(response.getStatus()).isEqualTo(302);
         assertThat(response.getRedirectedUrl()).isEqualTo("/login");
+    }
+
+    @Test
+    void usesThePublicHttpsHostWhenRedirectingBehindThePagesProxy() throws ServletException, IOException {
+        var request = new MockHttpServletRequest("GET", "/oauth2/authorize");
+        request.setScheme("http");
+        request.setServerName("ford-origin.emme.business");
+        request.setServerPort(80);
+        request.addHeader("X-Forwarded-Host", "ford.emme.business");
+        request.addHeader("X-Forwarded-Proto", "https");
+        var response = new MockHttpServletResponse();
+        var filter = new ForwardedHeaderFilter();
+        var entryPoint = new OperatorAuthenticationConfiguration().authorizationServerLoginEntryPoint();
+
+        filter.doFilter(request, response, (filteredRequest, filteredResponse) ->
+                entryPoint.commence((jakarta.servlet.http.HttpServletRequest) filteredRequest,
+                        (jakarta.servlet.http.HttpServletResponse) filteredResponse,
+                        new InsufficientAuthenticationException("operator login required")));
+
+        assertThat(response.getStatus()).isEqualTo(302);
+        assertThat(response.getRedirectedUrl()).isEqualTo("https://ford.emme.business/login");
     }
 }
