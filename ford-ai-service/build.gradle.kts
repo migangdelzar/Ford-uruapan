@@ -85,6 +85,8 @@ tasks.withType<org.gradle.api.tasks.JavaExec>().configureEach {
 
 tasks.withType<Test>().configureEach {
     jvmArgs(java25NativeAccessArgs)
+    environment("FORD_OPERATOR_USERNAME", "")
+    environment("FORD_OPERATOR_PASSWORD", "")
 }
 
 val testcontainersSocketOverride = providers.environmentVariable("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE")

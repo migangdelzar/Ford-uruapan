@@ -25,6 +25,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 import java.util.Arrays;
 import java.util.Collection;
@@ -54,6 +58,7 @@ public class SecurityConfiguration {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/webhooks/meta/**", "/api/v1/health", "/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/api/**", "/actuator/**").authenticated()
+                        .requestMatchers(uiRequestMatcher()).permitAll()
                         .anyRequest().denyAll())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)));
@@ -64,6 +69,23 @@ public class SecurityConfiguration {
         }
 
         return http.build();
+    }
+
+    private static org.springframework.security.web.util.matcher.RequestMatcher uiRequestMatcher() {
+        var excluded = new OrRequestMatcher(
+                PathPatternRequestMatcher.withDefaults().matcher("/api/**"),
+                PathPatternRequestMatcher.withDefaults().matcher("/oauth2/**"),
+                PathPatternRequestMatcher.withDefaults().matcher("/.well-known/**"),
+                PathPatternRequestMatcher.withDefaults().matcher("/logout"),
+                PathPatternRequestMatcher.withDefaults().matcher("/webauthn/**"),
+                PathPatternRequestMatcher.withDefaults().matcher("/actuator/**"),
+                PathPatternRequestMatcher.withDefaults().matcher("/webhooks/**"),
+                PathPatternRequestMatcher.withDefaults().matcher("/error"));
+        var uiMethodAndPath = new OrRequestMatcher(
+                PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/**"),
+                PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.HEAD, "/**"));
+        return new org.springframework.security.web.util.matcher.AndRequestMatcher(
+                uiMethodAndPath, new NegatedRequestMatcher(excluded));
     }
 
     @Bean

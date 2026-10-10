@@ -237,16 +237,17 @@ public class OperatorAuthenticationConfiguration {
             AuthenticationProperties properties,
             OneTimeTokenService oneTimeTokenService,
             OneTimeTokenGenerationSuccessHandler tokenGenerationSuccessHandler,
-            DaoAuthenticationProvider operatorPasswordAuthenticationProvider) throws Exception {
+            DaoAuthenticationProvider operatorPasswordAuthenticationProvider,
+            CsrfTokenRepository csrfTokenRepository) throws Exception {
         http.securityMatcher("/login/**", "/logout", "/webauthn/**", "/api/auth/**")
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
-                .csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository(properties)))
+                .csrf(csrf -> csrf.spa().csrfTokenRepository(csrfTokenRepository))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/webauthn/register/**").authenticated()
                         .anyRequest().permitAll())
                 .authenticationProvider(operatorPasswordAuthenticationProvider)
-                .formLogin(withDefaults())
+                .formLogin(form -> form.loginPage("/login"))
                 .logout(logout -> logout.logoutSuccessHandler((request, response, authentication) ->
                         response.setStatus(org.springframework.http.HttpStatus.NO_CONTENT.value())))
                 .webAuthn(webAuthn -> webAuthn
@@ -254,6 +255,7 @@ public class OperatorAuthenticationConfiguration {
                         .rpName(properties.relyingPartyName())
                         .allowedOrigins(properties.allowedOrigins()))
                 .oneTimeTokenLogin(ott -> ott
+                        .loginPage("/login")
                         .tokenService(oneTimeTokenService)
                         .tokenGeneratingUrl("/api/auth/one-time-token")
                         .generateRequestResolver(request -> {
@@ -269,6 +271,7 @@ public class OperatorAuthenticationConfiguration {
     @Bean
     CsrfTokenRepository csrfTokenRepository(AuthenticationProperties properties) {
         var repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        repository.setHeaderName("X-XSRF-TOKEN");
         repository.setCookieCustomizer(cookie -> cookie.path("/").secure(properties.csrfCookieSecure()).sameSite("Lax"));
         return repository;
     }

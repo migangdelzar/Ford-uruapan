@@ -22,6 +22,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -45,6 +46,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "ford.outbox.enabled=false",
         "ford.conversations.workflow.graph-enabled=false",
         "ford.security.auth.csrf-cookie-secure=false",
+        "ford.security.auth.password-login-email=operator@example.test",
+        "ford.security.auth.password-login-password=test-only-password",
         "spring.session.redis.namespace=ford:test:operator-auth"
 })
 @AutoConfigureMockMvc
@@ -54,6 +57,8 @@ class OperatorAuthenticationConfigurationIntegrationTest {
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new FordPostgresContainer();
+    @Container
+    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
     static final String SIGNING_KEY = createSigningKey();
 
     @Autowired MockMvc mvc;
@@ -83,6 +88,8 @@ class OperatorAuthenticationConfigurationIntegrationTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+        registry.add("spring.data.redis.host", REDIS::getHost);
+        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
         registry.add("ford.security.auth.signing-key-pkcs8-base64", () -> SIGNING_KEY);
         registry.add("ford.security.auth.bff-client-secret", () -> "test-only-bff-secret");
         registry.add("ford.security.auth.email-api-key", () -> "test-only-resend-key");
@@ -110,16 +117,18 @@ class OperatorAuthenticationConfigurationIntegrationTest {
     }
 
     @Test
-    void servesSpringPasskeyLoginPageForAuthorizationRedirects() throws Exception {
-        mvc.perform(get("/login"))
+    void passwordLoginFailureReturnsToTheSharedUiRoute() throws Exception {
+        var csrf = mvc.perform(get("/api/auth/csrf"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("/login/webauthn.js")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("id=\"passkey-signin\"")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("/api/auth/one-time-token")));
-        mvc.perform(get("/login/webauthn.js"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("/webauthn/authenticate/options")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("/login/webauthn")));
+                .andReturn();
+        var token = com.jayway.jsonpath.JsonPath.read(csrf.getResponse().getContentAsString(), "$.token");
+
+        mvc.perform(post("/login")
+                        .cookie(csrf.getResponse().getCookie("XSRF-TOKEN"))
+                        .header("X-XSRF-TOKEN", token)
+                        .param("username", "unknown@example.test").param("password", "wrong"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl("/login?error"));
     }
 
     @Test
