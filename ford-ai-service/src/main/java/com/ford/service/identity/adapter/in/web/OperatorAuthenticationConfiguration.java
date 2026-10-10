@@ -28,7 +28,6 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.oauth2.server.authorization.OAuth2AuthorizationServerConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
@@ -74,11 +73,6 @@ import static org.springframework.security.config.Customizer.withDefaults;
 @ConditionalOnProperty(prefix = "ford.security.auth", name = "enabled", havingValue = "true")
 @EnableConfigurationProperties(AuthenticationProperties.class)
 public class OperatorAuthenticationConfiguration {
-
-    @Bean
-    PasswordEncoder operatorClientPasswordEncoder() {
-        return PasswordEncoderFactories.createDelegatingPasswordEncoder();
-    }
 
     @Bean
     JdbcPublicKeyCredentialUserEntityRepository jdbcPublicKeyCredentialUserEntityRepository(JdbcOperations jdbc) {

@@ -21,6 +21,8 @@ public class AuthenticationProperties {
     private String emailApiKey = "";
     private String emailFrom = "";
     private boolean csrfCookieSecure;
+    private String passwordLoginEmail = "";
+    private String passwordLoginPassword = "";
 
     public boolean enabled() { return enabled; }
     public void setEnabled(boolean value) { enabled = value; }
@@ -50,4 +52,8 @@ public class AuthenticationProperties {
     public void setEmailFrom(String value) { emailFrom = value; }
     public boolean csrfCookieSecure() { return csrfCookieSecure; }
     public void setCsrfCookieSecure(boolean value) { csrfCookieSecure = value; }
+    public String passwordLoginEmail() { return passwordLoginEmail; }
+    public void setPasswordLoginEmail(String value) { passwordLoginEmail = value; }
+    public String passwordLoginPassword() { return passwordLoginPassword; }
+    public void setPasswordLoginPassword(String value) { passwordLoginPassword = value; }
 }

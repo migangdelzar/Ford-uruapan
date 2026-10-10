@@ -29,11 +29,6 @@ spring:
     redis:
       host: ${FORD_REDIS_HOST:localhost}
       port: ${FORD_REDIS_PORT:6379}
-  security:
-    user:
-      name: ${FORD_OPERATOR_USERNAME:operator}
-      password: ${FORD_OPERATOR_PASSWORD:}
-      roles: ${FORD_OPERATOR_ROLES:OPERATOR}
   liquibase:
     enabled: true
     change-log: classpath:/db/changelog/db.changelog-master.yaml
@@ -151,6 +146,8 @@ ford:
       csrf-cookie-secure: ${FORD_SECURITY_COOKIE_SECURE:false}
       email-api-key: ${FORD_RESEND_API_KEY:}
       email-from: ${RESEND_FROM:}
+      password-login-email: ${FORD_OPERATOR_USERNAME:}
+      password-login-password: ${FORD_OPERATOR_PASSWORD:}
   conversations:
     workflow:
       graph-enabled: ${FORD_CONVERSATION_GRAPH_ENABLED:true}
