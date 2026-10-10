@@ -46,17 +46,17 @@ public record AuthenticatedOperator(
                 .filter(value -> value.startsWith("ROLE_"))
                 .map(value -> value.substring("ROLE_".length()))
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        if (!(authentication instanceof JwtAuthenticationToken jwtAuthentication)) {
-            throw new IllegalArgumentException("validated JWT is required for operator API access");
+        if (authentication instanceof JwtAuthenticationToken jwtAuthentication) {
+            var token = jwtAuthentication.getToken();
+            var tenantIds = new LinkedHashSet<UUID>();
+            addTenantClaim(tenantIds, token.getClaims().get("tenant_id"));
+            addTenantClaim(tenantIds, token.getClaims().get("tenant_ids"));
+            if (tenantIds.isEmpty()) {
+                throw new IllegalArgumentException("JWT tenant claim is required");
+            }
+            return new AuthenticatedOperator(token.getSubject(), authorities, roles, tenantIds);
         }
-        var token = jwtAuthentication.getToken();
-        var tenantIds = new LinkedHashSet<UUID>();
-        addTenantClaim(tenantIds, token.getClaims().get("tenant_id"));
-        addTenantClaim(tenantIds, token.getClaims().get("tenant_ids"));
-        if (tenantIds.isEmpty()) {
-            throw new IllegalArgumentException("JWT tenant claim is required");
-        }
-        return new AuthenticatedOperator(token.getSubject(), authorities, roles, tenantIds);
+        throw new IllegalArgumentException("validated JWT is required for operator API access");
     }
 
     public boolean hasAuthority(String authority) {

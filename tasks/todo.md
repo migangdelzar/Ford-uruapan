@@ -241,3 +241,13 @@
 - Use Spring Security's JDBC WebAuthn repositories and JDBC one-time-token service; persist browser auth sessions in Redis.
 - Preserve unrelated existing edits in both repos. Never stage `deployment/config/oci.env*`, `.tgrep/`, or other prior user work for this task.
 - Production DNS/Tunnel cutover remains gated on a concrete preflight and approval.
+
+# Spring UI proxy and BFF consolidation (2026-10-10)
+
+- [x] Approve the Spring-owned UI proxy + Redis-backed browser-session design; keep bearer JWT clients and the OpenTelemetry Collector.
+- [x] Write and review the implementation plan in `ford-ai-service/docs/superpowers/plans/2026-10-10-bff-consolidation.md`.
+- [ ] Make Spring session auth work for protected APIs with active identity refresh and CSRF; preserve stateless bearer JWT.
+- [ ] Switch Ford-web login/session calls to same-origin Spring auth endpoints.
+- [ ] Deploy compatible versions while BFF stays available; verify all login/API/webhook flows.
+- [ ] Cut `ford.emme.business` over to emme-1; requires Cloudflare Zone DNS Edit permission.
+- [ ] Remove BFF container and `ford-origin` route only after public hostname verification; retain Collector.

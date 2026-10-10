@@ -19,21 +19,3 @@ services:
       - otel-collector
     env_file: [.env]
     ports: ["127.0.0.1:8080:8080"]
-
-  ford-bff:
-    image: "{{ ford_bff_image }}"
-    restart: unless-stopped
-    depends_on:
-      - ford-service
-    env_file: [.env]
-    environment:
-      PORT: "3001"
-      FORD_PUBLIC_ORIGIN: https://ford.emme.business
-      FORD_SERVICE_API_URL: http://ford-service:8080
-      FORD_BFF_REDIS_URL: redis://:${SPRING_DATA_REDIS_PASSWORD}@${FORD_REDIS_HOST}:${FORD_REDIS_PORT}/0
-    ports: ["127.0.0.1:3001:3001"]
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-      interval: 15s
-      timeout: 5s
-      retries: 5

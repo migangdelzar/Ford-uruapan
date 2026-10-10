@@ -91,20 +91,13 @@ class OperatorAuthenticationConfigurationIntegrationTest {
         registry.add("spring.data.redis.host", REDIS::getHost);
         registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
         registry.add("ford.security.auth.signing-key-pkcs8-base64", () -> SIGNING_KEY);
-        registry.add("ford.security.auth.bff-client-secret", () -> "test-only-bff-secret");
         registry.add("ford.security.auth.email-api-key", () -> "test-only-resend-key");
         registry.add("ford.security.auth.email-from", () -> "Ford Test <noreply@example.com>");
     }
 
     @Test
-    void registersOnlyThePkceBffClientWithExactRedirectUri() {
-        var client = clients.findByClientId("ford-web-bff");
-
-        assertThat(client).isNotNull();
-        assertThat(client.getRedirectUris()).containsExactly("https://ford.emme.business/api/auth/callback");
-        assertThat(client.getClientSettings().isRequireProofKey()).isTrue();
-        assertThat(client.getAuthorizationGrantTypes()).extracting(org.springframework.security.oauth2.core.AuthorizationGrantType::getValue)
-                .containsExactlyInAnyOrder("authorization_code", "refresh_token");
+    void doesNotRegisterASeparateBffOAuthClient() {
+        assertThat(clients.findByClientId("ford-web-bff")).isNull();
     }
 
     @Test
@@ -150,7 +143,8 @@ class OperatorAuthenticationConfigurationIntegrationTest {
                 .param("id", operator).param("scope", "email").update();
 
         mvc.perform(get("/api/v1/operator/me").with(jwt()
-                        .jwt(token -> token.subject(operator.toString()))
+                        .jwt(token -> token.subject(operator.toString())
+                                .claim("tenant_ids", java.util.List.of(tenant.toString())))
                         .authorities(new SimpleGrantedAuthority("SCOPE_operator:read"),
                                 new SimpleGrantedAuthority("SCOPE_profile"),
                                 new SimpleGrantedAuthority("SCOPE_email"))))
@@ -213,6 +207,94 @@ class OperatorAuthenticationConfigurationIntegrationTest {
                         .cookie(csrf.getResponse().getCookie("XSRF-TOKEN"))
                         .header("X-XSRF-TOKEN", token))
                 .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void authenticatesCrmApiCallsWithTheSpringSessionAndInvalidatesItOnLogout() throws Exception {
+        var operator = createPasswordOperator();
+        var csrf = mvc.perform(get("/api/auth/csrf"))
+                .andExpect(status().isOk())
+                .andReturn();
+        var token = com.jayway.jsonpath.JsonPath.read(csrf.getResponse().getContentAsString(), "$.token");
+
+        var login = mvc.perform(post("/login")
+                        .cookie(csrf.getResponse().getCookie("XSRF-TOKEN"))
+                        .header("X-XSRF-TOKEN", token)
+                        .param("username", "operator@example.test")
+                        .param("password", "test-only-password"))
+                .andExpect(status().is3xxRedirection())
+                .andReturn();
+        var sessionCookie = login.getResponse().getCookie("SESSION");
+        assertThat(sessionCookie).isNotNull();
+
+        mvc.perform(get("/api/auth/me").cookie(sessionCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.operatorId").value(operator.id().toString()));
+        mvc.perform(get("/api/v1/operator/me").cookie(sessionCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.operatorId").value(operator.id().toString()));
+
+        mvc.perform(post("/api/auth/logout")
+                        .cookie(sessionCookie, csrf.getResponse().getCookie("XSRF-TOKEN"))
+                        .header("X-XSRF-TOKEN", token))
+                .andExpect(status().isNoContent());
+        mvc.perform(get("/api/auth/me").cookie(sessionCookie)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void refreshesSessionAuthoritiesFromTheActiveDatabaseIdentity() throws Exception {
+        var operator = createPasswordOperator();
+        var csrf = mvc.perform(get("/api/auth/csrf")).andReturn();
+        var token = com.jayway.jsonpath.JsonPath.read(csrf.getResponse().getContentAsString(), "$.token");
+        var login = mvc.perform(post("/login")
+                        .cookie(csrf.getResponse().getCookie("XSRF-TOKEN"))
+                        .header("X-XSRF-TOKEN", token)
+                        .param("username", "operator@example.test")
+                        .param("password", "test-only-password"))
+                .andExpect(status().is3xxRedirection())
+                .andReturn();
+        var sessionCookie = login.getResponse().getCookie("SESSION");
+
+        jdbc.sql("update operator_identity set enabled = false where id = :id")
+                .param("id", operator.id()).update();
+
+        mvc.perform(get("/api/v1/operator/me").cookie(sessionCookie)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void keepsBearerApiRequestsStatelessAndExemptFromBrowserCsrf() throws Exception {
+        var result = mvc.perform(post("/api/v1/conversations/" + java.util.UUID.randomUUID() + "/messages")
+                        .with(jwt().jwt(token -> token.subject(java.util.UUID.randomUUID().toString())
+                                        .claim("tenant_ids", java.util.List.of(java.util.UUID.randomUUID().toString())))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_operator:write")))
+                        .header("Idempotency-Key", "test-request")
+                        .header("If-Match", "v1")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+
+        assertThat(result.getResponse().getCookie("SESSION")).isNull();
+    }
+
+    private com.ford.service.identity.api.OperatorIdentity createPasswordOperator() {
+        var operatorId = java.util.UUID.randomUUID();
+        var tenantId = java.util.UUID.randomUUID();
+        jdbc.sql("delete from operator_identity where email_normalized = 'operator@example.test'").update();
+        jdbc.sql("insert into operator_identity (id, email_normalized, display_name, enabled) values (:id, :email, :name, true)")
+                .param("id", operatorId).param("email", "operator@example.test")
+                .param("name", "Test Operator").update();
+        jdbc.sql("insert into operator_identity_role (operator_id, role) values (:id, 'MANAGER')")
+                .param("id", operatorId).update();
+        jdbc.sql("insert into operator_identity_tenant (operator_id, tenant_id) values (:id, :tenant)")
+                .param("id", operatorId).param("tenant", tenantId).update();
+        for (var scope : java.util.List.of("operator:read", "operator:write", "profile", "email")) {
+            jdbc.sql("insert into operator_identity_scope (operator_id, scope) values (:id, :scope)")
+                    .param("id", operatorId).param("scope", scope).update();
+        }
+        return new com.ford.service.identity.api.OperatorIdentity(operatorId, "operator@example.test", "Test Operator",
+                true, java.util.Set.of("MANAGER"), java.util.Set.of(tenantId),
+                java.util.Set.of("operator:read", "operator:write", "profile", "email"));
     }
 
     private static String createSigningKey() {

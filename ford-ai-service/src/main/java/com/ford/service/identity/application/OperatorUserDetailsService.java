@@ -2,6 +2,7 @@ package com.ford.service.identity.application;
 
 import com.ford.service.config.AuthenticationProperties;
 import com.ford.service.identity.api.OperatorIdentity;
+import com.ford.service.identity.api.OperatorIdentityPrincipal;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -40,7 +41,7 @@ public class OperatorUserDetailsService implements UserDetailsService {
         return new OperatorDetails(identity, password);
     }
 
-    private record OperatorDetails(OperatorIdentity identity, String password) implements UserDetails {
+    private record OperatorDetails(OperatorIdentity identity, String password) implements OperatorIdentityPrincipal {
         @Override public String getUsername() { return identity.email(); }
         @Override public String getPassword() { return password; }
         @Override public java.util.Collection<SimpleGrantedAuthority> getAuthorities() {

@@ -29,6 +29,8 @@ spring:
     redis:
       host: ${FORD_REDIS_HOST:localhost}
       port: ${FORD_REDIS_PORT:6379}
+  session:
+    timeout: ${FORD_SESSION_TIMEOUT:8h}
   liquibase:
     enabled: true
     change-log: classpath:/db/changelog/db.changelog-master.yaml
@@ -142,9 +144,6 @@ ford:
       relying-party-id: ${FORD_SECURITY_RP_ID:ford.emme.business}
       relying-party-name: ${FORD_SECURITY_RP_NAME:Ford Uruapan}
       allowed-origins: ${FORD_SECURITY_ALLOWED_ORIGINS:https://ford.emme.business}
-      bff-client-id: ${FORD_BFF_OIDC_CLIENT_ID:ford-web-bff}
-      bff-client-secret: ${FORD_BFF_OIDC_CLIENT_SECRET:}
-      bff-redirect-uri: ${FORD_BFF_OIDC_REDIRECT_URI:https://ford.emme.business/api/auth/callback}
       signing-key-pkcs8-base64: ${FORD_SECURITY_JWK_PRIVATE_KEY:}
       public-base-url: ${FORD_PUBLIC_BASE_URL:https://ford.emme.business}
       csrf-cookie-secure: ${FORD_SECURITY_COOKIE_SECURE:false}

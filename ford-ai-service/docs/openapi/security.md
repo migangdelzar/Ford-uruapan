@@ -1,9 +1,9 @@
 # Frontend authentication contract
 
-Ford-service owns operator authentication. Spring Authorization Server issues
-tokens; Spring Security WebAuthn handles passkeys, and Spring one-time-token
-(OTT) login sends a single-use email link as the recovery path. The Ford-web
-BFF uses authorization code with PKCE and keeps OAuth tokens server-side.
+Ford-service owns operator authentication. Spring Security handles passkeys,
+password login, and one-time-token (OTT) email recovery. Browser requests use a
+same-origin Spring Security session stored in Redis. Spring Authorization
+Server remains available for external clients that need bearer JWTs.
 
 ## Configuration
 
@@ -14,32 +14,26 @@ FORD_SECURITY_AUTH_ENABLED=true
 FORD_SECURITY_ISSUER_URI=https://ford.emme.business
 FORD_SECURITY_AUDIENCE=ford-ai-service
 FORD_SECURITY_JWK_PRIVATE_KEY=<base64-encoded PKCS#8 RSA private key>
-FORD_BFF_OIDC_CLIENT_ID=ford-web-bff
-FORD_BFF_OIDC_CLIENT_SECRET=<server-side secret>
-FORD_BFF_OIDC_REDIRECT_URI=https://ford.emme.business/api/auth/callback
+FORD_SESSION_TIMEOUT=8h
 FORD_RESEND_API_KEY=<Resend API key>
 RESEND_FROM=<verified sender>
 ```
 
 The provider metadata is at
 `https://ford.emme.business/.well-known/openid-configuration`. Production
-serves the UI and API under `ford.emme.business`; the reverse proxy sends
-`/api/**` to ford-service and the remaining UI paths to Ford-web.
+serves the UI and API under `ford.emme.business`. Spring proxies UI asset
+requests to the static Pages deployment; browser auth and API requests stay on
+the same host and go directly to Spring.
 
 ## Browser login
 
-Use the registered Ford-web BFF confidential client with Authorization Code
-and PKCE:
-
-1. Generate a `code_verifier` and `code_challenge` in the BFF.
-2. Redirect the operator to `/oauth2/authorize` with `response_type=code`,
-   `client_id`, `redirect_uri`, `scope`, `state`, and the PKCE challenge.
-3. Exchange the authorization code at `/oauth2/token` from the BFF.
-4. The BFF stores access and refresh tokens server-side and gives the browser
-   only an opaque Secure, HttpOnly, SameSite session cookie.
-
-Never put a client secret or signing key in browser code. The API accepts
-access tokens as bearer tokens from the BFF.
+The browser signs in directly through Spring Security's passkey, password, or
+OTT endpoints. Spring stores the authenticated context in Redis and sends the
+browser an opaque HttpOnly `SESSION` cookie. `GET /api/auth/me` returns the
+current enabled operator profile; `POST /api/auth/logout` invalidates the
+session and requires the CSRF header. External/service clients continue using
+validated bearer JWTs. Never put a signing key or server credential in browser
+code.
 
 ## Passkey and email recovery endpoints
 
@@ -81,7 +75,7 @@ scopes placed in tokens.
 
 ## API security responses
 
-- `401`: missing, expired, malformed, or invalid access token.
+- `401`: missing or invalid browser session, or missing, expired, malformed, or invalid bearer token.
 - `403`: valid token without the required role, scope, or tenant access.
 - `409`: authorized request conflicts with current resource state.
 

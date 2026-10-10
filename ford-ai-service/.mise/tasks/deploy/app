@@ -7,11 +7,6 @@ load_deploy_config
 require_deploy_config
 render_deploy_inventory
 
-if [[ ! "${EMME_BFF_IMAGE:-}" =~ ^ghcr\.io/[A-Za-z0-9._/-]+(@sha256:[a-f0-9]{64}|:[A-Za-z0-9._-]+)$ ]]; then
-  echo "EMME_BFF_IMAGE must be a valid GHCR image reference." >&2
-  exit 2
-fi
-
 ensure_deploy_state_dir
 image="${EMME_APP_IMAGE:-ford-service:deployment}"
 if [[ "${1:-}" == ghcr.io/* ]]; then
@@ -26,7 +21,7 @@ if [[ "$image" == ghcr.io/* ]]; then
   ansible_command "$(deploy_repo_root)/deployment/ansible/site.yml" \
     --tags common,app,verify --limit app \
     -e "app_image=$image" \
-    -e "ford_bff_image=${EMME_BFF_IMAGE}" "$@"
+    "$@"
 else
   local_docker_available=0
   local_image_ready=0
@@ -87,7 +82,6 @@ else
     --tags common,app,verify
     --limit app
     -e "app_image=$image"
-    -e "ford_bff_image=${EMME_BFF_IMAGE}"
   )
   if [[ "$app_image_preloaded" == true ]]; then
     ansible_args+=(-e "app_image_preloaded=true")

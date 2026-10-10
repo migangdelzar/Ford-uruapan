@@ -11,7 +11,7 @@ public record OperatorIdentity(
         boolean enabled,
         Set<String> roles,
         Set<UUID> tenantIds,
-        Set<String> scopes) {
+        Set<String> scopes) implements java.io.Serializable {
 
     private static final Set<String> ALLOWED_ROLES = Set.of("OPERATOR", "MANAGER", "ADMIN");
     public static final Set<String> ALLOWED_SCOPES = Set.of(

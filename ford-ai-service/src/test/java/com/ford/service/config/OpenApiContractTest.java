@@ -56,9 +56,13 @@ class OpenApiContractTest {
         assertThat(yaml).contains("issuer: https://ford.emme.business");
         assertThat(yaml).contains("passkeyPrimary: true");
         assertThat(yaml).contains("emailOneTimeTokenFallback: true");
+        assertThat(yaml).contains("recommendedDeployment: same_origin_spring_proxy");
         assertThat(yaml).contains("registrationOptions: /webauthn/register/options");
         assertThat(yaml).contains("csrf: /api/auth/csrf");
         assertThat(yaml).contains("generate: /api/auth/one-time-token");
+        assertThat(yaml).contains("  /api/auth/me:");
+        assertThat(yaml).contains("  /api/auth/logout:");
+        assertThat(yaml).contains("name: SESSION");
         assertThat(yaml).doesNotContain("external OIDC provider");
     }
 }

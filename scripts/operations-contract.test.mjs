@@ -409,9 +409,10 @@ test("app deployment transfers local images and checks the webhook route", async
   assert.match(appTask, /ghcr\.io\/\*/);
   assert.match(appRole, /docker pull/);
   assert.match(appRole, /ghcr\.io/);
-  assert.match(appRole, /ford_bff_image/);
-  assert.match(appCompose, /FORD_BFF_REDIS_URL/);
-  assert.match(appCompose, /ford-service:8080/);
+  assert.doesNotMatch(appRole, /ford_bff_image|ford-bff/i);
+  assert.doesNotMatch(appCompose, /ford_bff|FORD_BFF/);
+  assert.match(appCompose, /otel-collector/);
+  assert.match(appCompose, /127\.0\.0\.1:8080:8080/);
   assert.match(playbook, /webhooks\/meta\/whatsapp/);
   assert.match(playbook, /status_code: 400/);
 });

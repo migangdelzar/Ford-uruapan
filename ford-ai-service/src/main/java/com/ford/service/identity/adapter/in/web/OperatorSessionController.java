@@ -2,10 +2,11 @@ package com.ford.service.identity.adapter.in.web;
 
 import com.ford.service.identity.api.OperatorSessionResponse;
 import com.ford.service.identity.application.OperatorIdentityService;
+import com.ford.service.identity.api.OperatorIdentityPrincipal;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,15 +26,21 @@ public class OperatorSessionController {
 
     @GetMapping("/me")
     @PreAuthorize("hasAuthority('SCOPE_operator:read') and hasAuthority('SCOPE_profile') and hasAuthority('SCOPE_email')")
-    public OperatorSessionResponse current(@AuthenticationPrincipal Jwt jwt) {
+    public OperatorSessionResponse current(Authentication authentication) {
         UUID operatorId;
         try {
-            operatorId = UUID.fromString(jwt.getSubject());
+            if (authentication.getPrincipal() instanceof OperatorIdentityPrincipal principal) {
+                operatorId = principal.identity().id();
+            } else if (authentication instanceof JwtAuthenticationToken jwt) {
+                operatorId = UUID.fromString(jwt.getToken().getSubject());
+            } else {
+                throw new IllegalArgumentException("operator identity is unavailable");
+            }
         } catch (RuntimeException exception) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         }
         var identity = identities.findActiveById(operatorId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
         return OperatorSessionResponse.from(identity);
     }
 }

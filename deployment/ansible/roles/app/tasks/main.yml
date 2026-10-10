@@ -1,8 +1,8 @@
 ---
 - name: Require an application image
   ansible.builtin.assert:
-    that: [app_image is defined, app_image | length > 0, ford_bff_image is defined, ford_bff_image | length > 0]
-    fail_msg: "Pass app_image and ford_bff_image from the deployment task."
+    that: [app_image is defined, app_image | length > 0]
+    fail_msg: "Pass app_image from the deployment task."
 
 - name: Detect the Docker data directory
   ansible.builtin.command:
@@ -20,7 +20,7 @@
     stdin: "{{ ghcr_token }}"
   no_log: true
   changed_when: false
-  when: ghcr_token | default('') | length > 0 and (app_image is match('^ghcr[.]io/') or ford_bff_image is match('^ghcr[.]io/'))
+  when: ghcr_token | default('') | length > 0 and app_image is match('^ghcr[.]io/')
 
 - name: Pull application image from registry
   ansible.builtin.command:
@@ -28,12 +28,6 @@
   register: image_pull
   changed_when: true
   when: app_image is match('^ghcr[.]io/') and not (app_image_preloaded | default(false) | bool)
-
-- name: Pull Ford-web BFF image from registry
-  ansible.builtin.command:
-    cmd: docker pull "{{ ford_bff_image }}"
-  changed_when: true
-  when: ford_bff_image is match('^ghcr[.]io/')
 
 - name: Copy application image archive for local fallback
   ansible.builtin.copy:
@@ -104,14 +98,3 @@
   retries: 30
   delay: 5
   until: app_health.status == 200
-
-- name: Wait for Ford-web BFF health
-  ansible.builtin.uri:
-    url: http://127.0.0.1:3001/api/v1/health
-    status_code: 200
-    return_content: false
-    timeout: 10
-  register: ford_bff_health
-  retries: 30
-  delay: 5
-  until: ford_bff_health.status == 200

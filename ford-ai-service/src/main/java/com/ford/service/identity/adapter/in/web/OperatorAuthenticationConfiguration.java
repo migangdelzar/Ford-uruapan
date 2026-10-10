@@ -7,14 +7,12 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
-import com.ford.service.identity.api.OperatorIdentity;
 import com.ford.service.identity.application.OperatorIdentityService;
 import com.ford.service.identity.application.OperatorUserDetailsService;
 import com.ford.service.identity.application.OperatorTokenClaimsFactory;
 import com.ford.service.identity.application.IdentityCheckedOneTimeTokenService;
 import com.ford.service.identity.application.OneTimeTokenRequestLimiter;
 import com.ford.service.config.AuthenticationProperties;
-import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -27,11 +25,11 @@ import org.springframework.security.authentication.ott.GenerateOneTimeTokenReque
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.web.authentication.ott.OneTimeTokenGenerationSuccessHandler;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.configurers.oauth2.server.authorization.OAuth2AuthorizationServerConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.oauth2.core.AuthorizationGrantType;
-import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -48,15 +46,18 @@ import org.springframework.security.oauth2.server.authorization.client.JdbcRegis
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
-import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
-import org.springframework.security.oauth2.server.authorization.settings.TokenSettings;
 import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
-import org.springframework.security.web.util.matcher.RequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.webauthn.management.JdbcPublicKeyCredentialUserEntityRepository;
 import org.springframework.security.web.webauthn.management.JdbcUserCredentialRepository;
 
@@ -67,7 +68,6 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.RSAPublicKeySpec;
 import java.time.Duration;
 import java.util.List;
-import java.util.UUID;
 
 import static org.springframework.security.config.Customizer.withDefaults;
 
@@ -174,45 +174,6 @@ public class OperatorAuthenticationConfiguration {
     }
 
     @Bean
-    ApplicationRunner registerFordWebBffClient(
-            RegisteredClientRepository clients,
-            PasswordEncoder passwordEncoder,
-            AuthenticationProperties properties) {
-        return arguments -> {
-            require(properties.bffClientSecret(), "FORD_BFF_OIDC_CLIENT_SECRET");
-            require(properties.signingKeyPkcs8Base64(), "FORD_SECURITY_JWK_PRIVATE_KEY");
-            require(properties.emailApiKey(), "FORD_RESEND_API_KEY");
-            require(properties.emailFrom(), "RESEND_FROM");
-
-            var existing = clients.findByClientId(properties.bffClientId());
-            if (existing != null) {
-                if (!existing.getRedirectUris().contains(properties.bffRedirectUri())) {
-                    throw new IllegalStateException("Registered Ford-web callback URI does not match configured URI");
-                }
-                return;
-            }
-
-            var client = RegisteredClient.withId(UUID.randomUUID().toString())
-                    .clientId(properties.bffClientId())
-                    .clientSecret(passwordEncoder.encode(properties.bffClientSecret()))
-                    .clientName("Ford CRM BFF")
-                    .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
-                    .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
-                    .authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
-                    .redirectUri(properties.bffRedirectUri())
-                    .scopes(scopes -> scopes.addAll(OperatorIdentity.ALLOWED_SCOPES))
-                    .clientSettings(ClientSettings.builder().requireProofKey(true).requireAuthorizationConsent(false).build())
-                    .tokenSettings(TokenSettings.builder()
-                            .accessTokenTimeToLive(Duration.ofMinutes(10))
-                            .refreshTokenTimeToLive(Duration.ofHours(8))
-                            .reuseRefreshTokens(false)
-                            .build())
-                    .build();
-            clients.save(client);
-        };
-    }
-
-    @Bean
     @Order(1)
     SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
         var authorizationServer = new OAuth2AuthorizationServerConfigurer();
@@ -243,13 +204,23 @@ public class OperatorAuthenticationConfiguration {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .csrf(csrf -> csrf.spa().csrfTokenRepository(csrfTokenRepository))
                 .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers("/api/auth/csrf", "/api/auth/one-time-token").permitAll()
+                        .requestMatchers("/api/auth/me").authenticated()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/webauthn/register/**").authenticated()
                         .anyRequest().permitAll())
+                .exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
+                        new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
+                        PathPatternRequestMatcher.withDefaults().matcher("/api/auth/me")))
                 .authenticationProvider(operatorPasswordAuthenticationProvider)
                 .formLogin(form -> form.loginPage("/login"))
-                .logout(logout -> logout.logoutSuccessHandler((request, response, authentication) ->
-                        response.setStatus(org.springframework.http.HttpStatus.NO_CONTENT.value())))
+                .logout(logout -> logout
+                        .logoutRequestMatcher(new OrRequestMatcher(
+                                PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/logout"),
+                                PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/api/auth/logout")))
+                        .deleteCookies("SESSION", "JSESSIONID", "XSRF-TOKEN")
+                        .logoutSuccessHandler((request, response, authentication) ->
+                                response.setStatus(org.springframework.http.HttpStatus.NO_CONTENT.value())))
                 .webAuthn(webAuthn -> webAuthn
                         .rpId(properties.relyingPartyId())
                         .rpName(properties.relyingPartyName())
@@ -269,6 +240,31 @@ public class OperatorAuthenticationConfiguration {
     }
 
     @Bean
+    @Order(3)
+    SecurityFilterChain operatorApiSecurityFilterChain(
+            HttpSecurity http,
+            CsrfTokenRepository csrfTokenRepository,
+            JwtAuthenticationConverter jwtAuthenticationConverter,
+            OperatorUserDetailsService userDetailsService) throws Exception {
+        http.securityMatcher("/api/**")
+                .csrf(csrf -> csrf
+                        .csrfTokenRepository(csrfTokenRepository)
+                        .ignoringRequestMatchers(request -> {
+                            var authorization = request.getHeader("Authorization");
+                            return authorization != null && authorization.startsWith("Bearer ");
+                        }))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers("/api/v1/health").permitAll()
+                        .anyRequest().authenticated())
+                .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(
+                        new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
+                .addFilterAfter(new OperatorSessionRefreshFilter(userDetailsService), BearerTokenAuthenticationFilter.class);
+        return http.build();
+    }
+
+    @Bean
     CsrfTokenRepository csrfTokenRepository(AuthenticationProperties properties) {
         var repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
         repository.setHeaderName("X-XSRF-TOKEN");
@@ -276,7 +272,4 @@ public class OperatorAuthenticationConfiguration {
         return repository;
     }
 
-    private static void require(String value, String variable) {
-        if (value == null || value.isBlank()) throw new IllegalStateException(variable + " is required when Ford auth is enabled");
-    }
 }

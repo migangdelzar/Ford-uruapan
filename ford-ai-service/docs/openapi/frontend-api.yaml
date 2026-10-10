@@ -23,14 +23,15 @@ x-authentication:
   providerType: spring-authorization-server
   issuer: https://ford.emme.business
   discoveryUrl: https://ford.emme.business/.well-known/openid-configuration
-  browserFlow: authorization_code_pkce
-  recommendedDeployment: bff
+  browserFlow: spring_security_session
+  recommendedDeployment: same_origin_spring_proxy
   passkeyPrimary: true
   emailOneTimeTokenFallback: true
   passkeyRelyingParty:
     id: ford.emme.business
     allowedOrigins: [https://ford.emme.business]
-  persistence: PostgreSQL
+  persistence: PostgreSQL_identity_and_redis_session
+  browserSessionCookie: SESSION
   protocolEndpoints:
     openidConfiguration: /.well-known/openid-configuration
     jwks: /oauth2/jwks
@@ -56,10 +57,10 @@ x-authentication:
   roleValues: [OPERATOR, MANAGER, ADMIN]
   currentScopes: [openid, profile, email, 'operator:read', 'operator:write', 'handoff:manage']
   tokenHandling: |
-    The BFF uses authorization code with PKCE and keeps access and refresh
-    tokens server-side. The browser receives only an opaque Secure, HttpOnly,
-    SameSite session cookie. Never embed signing keys or OAuth client secrets
-    in frontend JavaScript.
+    Spring Security keeps browser authentication in a Redis-backed server
+    session and returns only an opaque HttpOnly session cookie. External and
+    service clients continue to use validated bearer JWTs. Never put signing
+    keys or server credentials in frontend JavaScript.
 tags:
   - name: Authentication
   - name: Health
@@ -79,7 +80,87 @@ tags:
   - name: Meta webhooks
 security:
   - bearerAuth: []
+  - operatorSessionCookie: []
 paths:
+  /api/auth/csrf:
+    get:
+      tags: [Authentication]
+      summary: Initialize browser CSRF protection
+      operationId: getBrowserCsrfToken
+      security: []
+      responses:
+        '200':
+          description: CSRF token and request header name; XSRF-TOKEN cookie is set.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, headerName]
+                properties:
+                  token: { type: string }
+                  headerName: { type: string, const: X-XSRF-TOKEN }
+
+  /api/auth/one-time-token:
+    post:
+      tags: [Authentication]
+      summary: Request an email one-time-token link
+      operationId: requestOperatorOneTimeToken
+      description: Returns an enumeration-neutral accepted response for eligible and unknown emails.
+      security: []
+      parameters:
+        - name: X-XSRF-TOKEN
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '202':
+          description: Request accepted.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/auth/me:
+    get:
+      tags: [Authentication]
+      summary: Get the authenticated browser operator
+      operationId: getBrowserOperatorSession
+      security:
+        - operatorSessionCookie: []
+      responses:
+        '200':
+          description: Current enabled operator profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperatorSession' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/logout:
+    post:
+      tags: [Authentication]
+      summary: End the Spring browser session
+      operationId: logoutBrowserOperator
+      security:
+        - operatorSessionCookie: []
+      parameters:
+        - name: X-XSRF-TOKEN
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Session invalidated and session cookies cleared.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /api/v1/health:
     get:
       tags: [Health]
@@ -1288,6 +1369,11 @@ components:
         JWT must contain the configured audience, tenant_id or tenant_ids,
         a role such as OPERATOR/MANAGER/ADMIN, and the operation scope needed
         by the endpoint.
+    operatorSessionCookie:
+      type: apiKey
+      in: cookie
+      name: SESSION
+      description: Opaque HttpOnly Spring Session cookie. Unsafe requests also require the X-XSRF-TOKEN header.
     oidcAuthorizationCode:
       type: oauth2
       description: |
