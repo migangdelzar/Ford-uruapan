@@ -54,6 +54,7 @@ import org.springframework.security.oauth2.server.authorization.token.OAuth2Toke
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
+import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.security.web.webauthn.management.JdbcPublicKeyCredentialUserEntityRepository;
 import org.springframework.security.web.webauthn.management.JdbcUserCredentialRepository;
@@ -213,9 +214,15 @@ public class OperatorAuthenticationConfiguration {
         RequestMatcher endpoints = authorizationServer.getEndpointsMatcher();
         http.securityMatcher(endpoints)
                 .with(authorizationServer, server -> server.oidc(withDefaults()))
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint(authorizationServerLoginEntryPoint()))
                 .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
                 .csrf(csrf -> csrf.ignoringRequestMatchers(endpoints));
         return http.build();
+    }
+
+    LoginUrlAuthenticationEntryPoint authorizationServerLoginEntryPoint() {
+        return new LoginUrlAuthenticationEntryPoint("/login");
     }
 
     @Bean
