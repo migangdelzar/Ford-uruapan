@@ -43,6 +43,7 @@ load_deploy_config() {
   local preserved_grafana_token="${GRAFANA_CLOUD_API_TOKEN:-}"
   local preserved_langfuse_secret="${LANGFUSE_SECRET_KEY:-}"
   local preserved_oci_namespace="${OCI_OBJECT_STORAGE_NAMESPACE:-}"
+  local preserved_bff_image="${EMME_BFF_IMAGE:-}"
   if [[ ! -f "$config_file" ]]; then
     echo "Missing $config_file; copy deployment/config/oci.env.example first." >&2
     return 1
@@ -74,6 +75,7 @@ load_deploy_config() {
   if [[ -n "$preserved_grafana_token" ]]; then export GRAFANA_CLOUD_API_TOKEN="$preserved_grafana_token"; fi
   if [[ -n "$preserved_langfuse_secret" ]]; then export LANGFUSE_SECRET_KEY="$preserved_langfuse_secret"; fi
   if [[ -n "$preserved_oci_namespace" ]]; then export OCI_OBJECT_STORAGE_NAMESPACE="$preserved_oci_namespace"; fi
+  if [[ -n "$preserved_bff_image" ]]; then export EMME_BFF_IMAGE="$preserved_bff_image"; fi
 }
 
 is_valid_tenant_id() {
@@ -98,6 +100,10 @@ require_deploy_config() {
   [[ -r "${EMME_2_SSH_KEY:-${OCI_SSH_PRIVATE_KEY:-}}" ]] || missing+=("readable:EMME_2_SSH_KEY")
   if [[ "${EMME_APP_IMAGE:-}" == ghcr.io/* && -n "${GHCR_TOKEN:-}" && -z "${GHCR_USERNAME:-}" ]]; then
     missing+=("GHCR_USERNAME")
+  fi
+  if [[ "${FORD_SECURITY_AUTH_ENABLED:-true}" == "true" ]]; then
+    [[ -n "${EMME_BFF_IMAGE:-}" ]] || missing+=("EMME_BFF_IMAGE")
+    [[ "${EMME_BFF_IMAGE:-}" == ghcr.io/* ]] || missing+=("ghcr.io:EMME_BFF_IMAGE")
   fi
   if [[ "${FORD_META_AUTO_BINDING_ENABLED:-false}" == "true" ]]; then
     [[ -n "${FORD_META_PHONE_NUMBER_ID:-${FORD_META_PROVIDER_ACCOUNT_ID:-${FORD_META_PHONE_ID:-}}}" ]] || missing+=("FORD_META_PHONE_NUMBER_ID")
@@ -308,7 +314,7 @@ render_deploy_inventory() {
   local ansible_user_yaml ansible_host_1_yaml ansible_host_2_yaml key_1_yaml key_2_yaml
   local private_1_yaml private_2_yaml root_yaml mount_yaml data_bind_yaml
   local postgres_yaml redis_yaml operator_user_yaml operator_password_yaml
-  local meta_secret_yaml verify_token_yaml openai_key_yaml app_image_yaml ghcr_username_yaml ghcr_token_yaml
+  local meta_secret_yaml verify_token_yaml openai_key_yaml app_image_yaml bff_image_yaml ghcr_username_yaml ghcr_token_yaml
   local backup_bucket_yaml backup_namespace_yaml backup_prefix_yaml backup_region_yaml
   local grafana_endpoint_yaml grafana_instance_yaml grafana_token_yaml langfuse_endpoint_yaml langfuse_public_yaml langfuse_secret_yaml
   local ford_meta_auto_binding_enabled_yaml ford_meta_provider_account_id_yaml ford_tenant_id_yaml
@@ -405,6 +411,7 @@ render_deploy_inventory() {
   openrouter_key_yaml="$(yaml_quote "${OPENROUTER_API_KEY:-}")"
   typesafe_key_yaml="$(yaml_quote "${TYPESAFE_API_KEY:-${FORD_TYPESAFE_JEV_API_KEY:-}}")"
   app_image_yaml="$(yaml_quote "${EMME_APP_IMAGE:-ford-service:deployment}")"
+  bff_image_yaml="$(yaml_quote "${EMME_BFF_IMAGE:-}")"
   ghcr_username_yaml="$(yaml_quote "${GHCR_USERNAME:-}")"
   ghcr_token_yaml="$(yaml_quote "${GHCR_TOKEN:-}")"
   grafana_endpoint_yaml="$(yaml_quote "$GRAFANA_CLOUD_OTLP_ENDPOINT")"
@@ -501,6 +508,7 @@ all:
     openrouter_api_key: ${openrouter_key_yaml}
     typesafe_api_key: ${typesafe_key_yaml}
     app_image: ${app_image_yaml}
+    ford_bff_image: ${bff_image_yaml}
     ghcr_username: ${ghcr_username_yaml}
     ghcr_token: ${ghcr_token_yaml}
     grafana_cloud_otlp_endpoint: ${grafana_endpoint_yaml}

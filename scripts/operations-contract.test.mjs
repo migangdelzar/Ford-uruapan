@@ -399,6 +399,7 @@ test("Ford MCP keeps combined vehicle and financing search in app allowlists", a
 test("app deployment transfers local images and checks the webhook route", async () => {
   const appTask = await read("ford-ai-service/.mise/tasks/deploy/app");
   const appRole = await read("deployment/ansible/roles/app/tasks/main.yml");
+  const appCompose = await read("deployment/ansible/roles/app/templates/compose.yml.j2");
   const playbook = await read("deployment/ansible/site.yml");
 
   assert.match(appTask, /docker save/);
@@ -408,6 +409,9 @@ test("app deployment transfers local images and checks the webhook route", async
   assert.match(appTask, /ghcr\.io\/\*/);
   assert.match(appRole, /docker pull/);
   assert.match(appRole, /ghcr\.io/);
+  assert.match(appRole, /ford_bff_image/);
+  assert.match(appCompose, /FORD_BFF_REDIS_URL/);
+  assert.match(appCompose, /ford-service:8080/);
   assert.match(playbook, /webhooks\/meta\/whatsapp/);
   assert.match(playbook, /status_code: 400/);
 });
