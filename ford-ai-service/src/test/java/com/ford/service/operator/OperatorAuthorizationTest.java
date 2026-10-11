@@ -1,17 +1,23 @@
 package com.ford.service.operator;
 
+import com.ford.service.identity.api.OperatorIdentity;
+import com.ford.service.identity.api.OperatorIdentityPrincipal;
 import com.ford.service.operator.application.AuthenticatedOperator;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class OperatorAuthorizationTest {
 
@@ -65,5 +71,25 @@ class OperatorAuthorizationTest {
         assertThatThrownBy(() -> AuthenticatedOperator.from(withoutTenant))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenant");
+    }
+
+    @Test
+    void extractsOperatorIdentityAndTenantFromSpringSessionPrincipal() {
+        var identity = new OperatorIdentity(UUID.fromString("33333333-3333-3333-3333-333333333333"),
+                "operator@example.test", "Session Operator", true, Set.of("OPERATOR"),
+                Set.of(TENANT_A), Set.of("operator:read", "operator:write"));
+        var principal = mock(OperatorIdentityPrincipal.class);
+        when(principal.identity()).thenReturn(identity);
+        var authentication = UsernamePasswordAuthenticationToken.authenticated(principal, null, List.of(
+                new SimpleGrantedAuthority("SCOPE_operator:read"),
+                new SimpleGrantedAuthority("SCOPE_operator:write"),
+                new SimpleGrantedAuthority("ROLE_OPERATOR")));
+
+        var operator = AuthenticatedOperator.from(authentication);
+
+        assertThat(operator.subject()).isEqualTo(identity.subject());
+        assertThat(operator.tenantIds()).containsExactly(TENANT_A);
+        assertThat(operator.hasAuthority("SCOPE_operator:read")).isTrue();
+        assertThat(operator.hasRole("OPERATOR")).isTrue();
     }
 }

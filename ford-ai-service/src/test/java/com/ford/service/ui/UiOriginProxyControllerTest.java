@@ -28,6 +28,8 @@ class UiOriginProxyControllerTest {
                 .andExpect(request -> assertThat(request.getHeaders().getFirst("Cookie")).isNull())
                 .andRespond(withStatus(HttpStatus.OK)
                         .header("Content-Security-Policy", "default-src 'self'")
+                        .header("Cache-Control", "public, max-age=14400")
+                        .header("ETag", "W/\"html-v1\"")
                         .body("<main>CRM</main>"));
         var controller = new UiOriginProxyController(builder.build(), properties());
         var request = request("GET", "/leads/active", "tab=hot");
@@ -40,6 +42,32 @@ class UiOriginProxyControllerTest {
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(response.getContentAsString()).isEqualTo("<main>CRM</main>");
         assertThat(response.getHeader("Content-Security-Policy")).isEqualTo("default-src 'self'");
+        assertThat(response.getHeader("Cache-Control")).isEqualTo("public, max-age=0, must-revalidate");
+        assertThat(response.getHeader("ETag")).isEqualTo("W/\"html-v1\"");
+        upstream.verify();
+    }
+
+    @Test
+    void fingerprintedAssetsUseImmutableCachingAndKeepConditionalValidation() throws Exception {
+        var builder = RestClient.builder();
+        var upstream = MockRestServiceServer.bindTo(builder).build();
+        upstream.expect(requestTo("https://ford-crm-ui.pages.dev/assets/index-AbCdEf09.js"))
+                .andExpect(header("If-None-Match", "W/\"asset-v1\""))
+                .andRespond(withStatus(HttpStatus.OK)
+                        .header("Cache-Control", "public, max-age=14400")
+                        .header("ETag", "W/\"asset-v1\"")
+                        .body("export {};"));
+        var controller = new UiOriginProxyController(builder.build(), properties());
+        var request = request("GET", "/assets/index-AbCdEf09.js", null);
+        request.addHeader("If-None-Match", "W/\"asset-v1\"");
+        var response = new MockHttpServletResponse();
+
+        controller.proxy(request, response);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getHeader("Cache-Control"))
+                .isEqualTo("public, max-age=31536000, immutable");
+        assertThat(response.getHeader("ETag")).isEqualTo("W/\"asset-v1\"");
         upstream.verify();
     }
 

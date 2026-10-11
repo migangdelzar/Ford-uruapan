@@ -248,6 +248,7 @@ public class OperatorAuthenticationConfiguration {
             OperatorUserDetailsService userDetailsService) throws Exception {
         http.securityMatcher("/api/**")
                 .csrf(csrf -> csrf
+                        .spa()
                         .csrfTokenRepository(csrfTokenRepository)
                         .ignoringRequestMatchers(request -> {
                             var authorization = request.getHeader("Authorization");

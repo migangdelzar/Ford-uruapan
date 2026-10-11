@@ -1,5 +1,6 @@
 package com.ford.service.operator.application;
 
+import com.ford.service.identity.api.OperatorIdentityPrincipal;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -55,6 +56,13 @@ public record AuthenticatedOperator(
                 throw new IllegalArgumentException("JWT tenant claim is required");
             }
             return new AuthenticatedOperator(token.getSubject(), authorities, roles, tenantIds);
+        }
+        if (authentication.getPrincipal() instanceof OperatorIdentityPrincipal principal) {
+            var identity = principal.identity();
+            if (identity == null) {
+                throw new IllegalArgumentException("operator identity is required");
+            }
+            return new AuthenticatedOperator(identity.subject(), authorities, roles, identity.tenantIds());
         }
         throw new IllegalArgumentException("validated JWT is required for operator API access");
     }

@@ -16,9 +16,14 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 @Controller
 public class UiOriginProxyController {
+    private static final String REVALIDATE_CACHE_CONTROL = "public, max-age=0, must-revalidate";
+    private static final String IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+    private static final Pattern FINGERPRINTED_ASSET =
+            Pattern.compile("^/assets/.+-[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9]+$");
     private static final Set<String> RESERVED_ROOTS = Set.of(
             "api", "oauth2", ".well-known", "logout", "webauthn", "actuator", "webhooks", "error");
     private static final Set<String> REQUEST_HEADERS = Set.of(
@@ -53,6 +58,7 @@ public class UiOriginProxyController {
                     .exchange((clientRequest, clientResponse) -> {
                         response.setStatus(clientResponse.getStatusCode().value());
                         copyResponseHeaders(clientResponse.getHeaders(), response);
+                        response.setHeader("Cache-Control", cacheControlFor(path));
                         if (method != HttpMethod.HEAD && clientResponse.getBody() != null) {
                             clientResponse.getBody().transferTo(response.getOutputStream());
                         }
@@ -71,6 +77,12 @@ public class UiOriginProxyController {
                 .path(request.getRequestURI());
         if (request.getQueryString() != null) builder.query(request.getQueryString());
         return builder.build(true).toUri();
+    }
+
+    private static String cacheControlFor(String path) {
+        return FINGERPRINTED_ASSET.matcher(path).matches()
+                ? IMMUTABLE_CACHE_CONTROL
+                : REVALIDATE_CACHE_CONTROL;
     }
 
     private static boolean isReserved(String path) {

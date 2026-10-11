@@ -35,6 +35,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Testcontainers
@@ -233,6 +234,22 @@ class OperatorAuthenticationConfigurationIntegrationTest {
         mvc.perform(get("/api/v1/operator/me").cookie(sessionCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.operatorId").value(operator.id().toString()));
+        var tenantId = operator.tenantIds().iterator().next().toString();
+        mvc.perform(get("/api/v1/conversations").param("tenantId", tenantId).cookie(sessionCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isArray());
+        mvc.perform(get("/api/v1/operator/events/stream").param("tenantId", tenantId).cookie(sessionCookie))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted());
+        mvc.perform(post("/api/v1/conversations/" + java.util.UUID.randomUUID() + "/messages")
+                        .param("tenantId", tenantId)
+                        .cookie(sessionCookie, csrf.getResponse().getCookie("XSRF-TOKEN"))
+                        .header("X-XSRF-TOKEN", token)
+                        .header("Idempotency-Key", java.util.UUID.randomUUID().toString())
+                        .header("If-Match", "\"v1\"")
+                        .contentType("application/json")
+                        .content("{\"content\":\"Test UI reply\",\"clientMessageId\":\"test-client-message\",\"internalNote\":false}"))
+                .andExpect(status().isNotFound());
 
         mvc.perform(post("/api/auth/logout")
                         .cookie(sessionCookie, csrf.getResponse().getCookie("XSRF-TOKEN"))
