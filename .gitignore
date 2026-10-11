@@ -6,6 +6,9 @@
 **/build/
 **/bin/
 **/out/
+# Java adapter source packages use `adapter/out`; do not treat them as build output.
+!**/src/main/java/**/adapter/out/
+!**/src/main/java/**/adapter/out/**
 **/.kotlin/
 
 # IDE/editor metadata
