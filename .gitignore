@@ -9,6 +9,8 @@
 # Java adapter source packages use `adapter/out`; do not treat them as build output.
 !**/src/main/java/**/adapter/out/
 !**/src/main/java/**/adapter/out/**
+!**/src/main/java/**/application/port/out/
+!**/src/main/java/**/application/port/out/package-info.java
 **/.kotlin/
 
 # IDE/editor metadata

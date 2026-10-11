@@ -36,4 +36,10 @@ class ModuleApiBoundaryTest {
         assertThat(KnowledgeIngestionService.class.isAnnotationPresent(NamedInterface.class)).isFalse();
         assertThat(KnowledgeRetrievalService.class.isAnnotationPresent(NamedInterface.class)).isFalse();
     }
+
+    @Test
+    void aiCompletionPortIsAnExplicitCrossModuleContract() {
+        assertThat(com.ford.service.ai.application.port.out.ChatCompletionPort.class
+                .getPackage().getAnnotation(NamedInterface.class)).isNotNull();
+    }
 }
