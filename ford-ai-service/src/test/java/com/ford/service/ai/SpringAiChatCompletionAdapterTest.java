@@ -398,6 +398,24 @@ class SpringAiChatCompletionAdapterTest {
     }
 
     @Test
+    void acceptsPlainTextWhenStructuredResponseConversionCannotParseIt() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("Hola, ¿en qué puedo ayudarle?");
+
+        var result = new SpringAiChatCompletionAdapter(client, "deepseek")
+                .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "Hola", "BOT_ACTIVE", false), null);
+
+        assertThat(result.content()).isEqualTo("Hola, ¿en qué puedo ayudarle?");
+    }
+
+    @Test
     void parsesAssistantGenerationJsonReturnedAsTextAfterAToolCall() {
         var client = mock(ChatClient.class);
         var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
