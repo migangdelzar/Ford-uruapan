@@ -232,6 +232,11 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         if (generation == null || generation.answer() == null || generation.answer().isBlank()) {
             throw new IllegalStateException("assistant returned an invalid structured response");
         }
+        generation = new AssistantGeneration(customerAnswer(generation.answer()), generation.journeyProposal(),
+                generation.modelConfidence());
+        if (generation.answer().isBlank()) {
+            throw new IllegalStateException("assistant returned an invalid structured response");
+        }
         log.info("Model call completed: conversationId={} provider={} answerChars={} journeyProposal={}",
                 request.conversationId(), provider, generation.answer().length(), generation.journeyProposal() != null);
         return generation;
@@ -284,5 +289,9 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                 .replace("[/MEMORIA DE SESIÓN]", "[/memoria]")
                 .replace("[DECISION CONTEXT]", "[decision]")
                 .replace("[/DECISION CONTEXT]", "[/decision]");
+    }
+
+    private static String customerAnswer(String answer) {
+        return answer.replaceFirst("(?is)\\s*\\[\\s*modelConfidence\\s*:\\s*(?:0(?:\\.\\d+)?|1(?:\\.0+)?)\\s*]\\s*$", "").strip();
     }
 }

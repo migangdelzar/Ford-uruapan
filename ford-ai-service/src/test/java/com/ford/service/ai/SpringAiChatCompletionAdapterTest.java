@@ -378,6 +378,26 @@ class SpringAiChatCompletionAdapterTest {
     }
 
     @Test
+    void removesAConfidenceMarkerLeakedInsideTheCustomerAnswer() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.entity(AssistantGeneration.class)).thenReturn(
+                new AssistantGeneration("Hola.\n\n[modelConfidence: 0.9]", null));
+
+        var result = new SpringAiChatCompletionAdapter(client, "deepseek")
+                .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "Hola", "BOT_ACTIVE", false), null);
+
+        assertThat(result.content()).isEqualTo("Hola.");
+        assertThat(result.content()).doesNotContain("modelConfidence", "0.9");
+    }
+
+    @Test
     void parsesAssistantGenerationJsonReturnedAsTextAfterAToolCall() {
         var client = mock(ChatClient.class);
         var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
