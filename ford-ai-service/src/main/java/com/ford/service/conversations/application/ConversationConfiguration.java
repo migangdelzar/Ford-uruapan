@@ -72,8 +72,16 @@ public class ConversationConfiguration {
                                                         ConversationMemorySemanticPort semanticMemory,
                                                         ConversationMemoryRecallPort recall,
                                                         ApplicationEventPublisher publisher,
-                                                        ConversationMemoryCompactionPort compactor) {
-        return new ConversationMemoryService(memory, properties, semanticMemory, recall, publisher, compactor);
+                                                        ConversationMemoryCompactionPort compactor,
+                                                        ObjectProvider<ConversationRuntimeSettingsService> runtimeSettings) {
+        return new ConversationMemoryService(memory, properties, semanticMemory, recall, publisher, compactor,
+                runtimeSettings.getIfAvailable());
+    }
+
+    @Bean
+    ConversationRuntimeSettings runtimeSettingsDefaults(ConversationProperties conversations, MemoryProperties memory) {
+        return new ConversationRuntimeSettings(conversations.humanHandoffEnabled(), memory.enabled(),
+                memory.promptRecentMessageLimit());
     }
 
     @Bean
@@ -96,8 +104,12 @@ public class ConversationConfiguration {
     }
 
     @Bean
-    HumanHandoffPolicy humanHandoffPolicy(ConversationProperties properties) {
-        return new HumanHandoffPolicy(properties.humanHandoffEnabled());
+    HumanHandoffPolicy humanHandoffPolicy(ConversationProperties properties,
+                                          ObjectProvider<ConversationRuntimeSettingsService> runtimeSettings) {
+        var runtime = runtimeSettings.getIfAvailable();
+        return runtime == null ? new HumanHandoffPolicy(properties.humanHandoffEnabled())
+                : new HumanHandoffPolicy(properties.humanHandoffEnabled(), tenantId ->
+                        runtime.current(tenantId).settings().humanHandoffEnabled());
     }
 
     @Bean

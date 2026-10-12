@@ -10,6 +10,8 @@ import java.util.UUID;
 public interface OperatorConversationCommandRepository {
     Optional<CommandTarget> find(UUID tenantId, UUID conversationId);
 
+    boolean bumpVersionForMemoryRestart(UUID tenantId, UUID conversationId, long expectedVersion);
+
     CommandReceipt appendMessage(CommandMessage message);
 
     record CommandTarget(UUID tenantId, UUID conversationId, Channel channel,

@@ -273,7 +273,7 @@ public class ConversationWorkflow {
         }
 
         var customerAuthorized = customerAuthorization.isAuthorized(currentMessage, memory);
-        if (customerAuthorized && handoffPolicy.shouldCreateHandoff(true)) {
+        if (customerAuthorized && handoffPolicy.shouldCreateHandoff(snapshot.tenantId(), true)) {
             var payload = handoffPayloadFactory.create(currentMessage, memory, reply.text());
             var accepted = repository.requestHumanHandoff(snapshot.conversationId(), snapshot.version(),
                     new HandoffDecision(payload.reason()));
@@ -285,11 +285,12 @@ public class ConversationWorkflow {
             return;
         }
 
-        var shouldOffer = handoffPolicy.enabled()
+        var handoffEnabled = handoffPolicy.enabled(snapshot.tenantId());
+        var shouldOffer = handoffEnabled
                 && handoffOfferPolicy.shouldOffer(currentMessage, reply.text(),
                         reply.decision() == null ? com.ford.service.ai.application.LeadTemperature.UNKNOWN
                                 : reply.decision().leadTemperature(), memory);
-        var text = customerAuthorized && !handoffPolicy.enabled() ? HANDOFF_UNAVAILABLE_TEXT
+        var text = customerAuthorized && !handoffEnabled ? HANDOFF_UNAVAILABLE_TEXT
                 : reply.handoffRequired() ? shouldOffer ? handoffOfferPolicy.offerAfter(null) : UNAUTHORIZED_HANDOFF_TEXT
                 : shouldOffer ? handoffOfferPolicy.offerAfter(reply.text()) : reply.text();
         var accepted = repository.completeBotTurn(snapshot.conversationId(), snapshot.version(),

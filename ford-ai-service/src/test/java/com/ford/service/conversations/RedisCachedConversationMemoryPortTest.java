@@ -111,6 +111,18 @@ class RedisCachedConversationMemoryPortTest {
         assertThat(port.updateProjection(key, update, 0)).isEqualTo(expected);
     }
 
+    @Test
+    void failsMemoryRestartWhenCacheCannotBeEvicted() {
+        var key = key();
+        var actor = UUID.randomUUID();
+        var resetAt = Instant.now();
+        cache.failure = new IllegalStateException("redis unavailable");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> port.resetContext(key, actor, resetAt))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("restart was not committed");
+        verify(durable).resetContext(key, actor, resetAt);
+    }
+
     private static MemoryQuery query(String currentProviderMessageId, int recentLimit) {
         return new MemoryQuery(key(), "latest", currentProviderMessageId, recentLimit, 5);
     }

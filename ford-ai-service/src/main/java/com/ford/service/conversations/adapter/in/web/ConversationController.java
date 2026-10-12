@@ -7,6 +7,7 @@ import com.ford.service.conversations.api.ConversationPage;
 import com.ford.service.conversations.api.ConversationView;
 import com.ford.service.conversations.application.port.in.ConversationQuery;
 import com.ford.service.conversations.application.ConversationCommandService;
+import com.ford.service.conversations.application.ConversationMemoryRestartService;
 import com.ford.service.conversations.api.CommandReceipt;
 import com.ford.service.conversations.api.SendMessageRequest;
 import com.ford.service.conversations.domain.ConversationState;
@@ -16,6 +17,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,10 +35,13 @@ public class ConversationController {
 
     private final ConversationQuery query;
     private final ConversationCommandService commands;
+    private final ObjectProvider<ConversationMemoryRestartService> memoryRestarts;
 
-    public ConversationController(ConversationQuery query, ConversationCommandService commands) {
+    public ConversationController(ConversationQuery query, ConversationCommandService commands,
+                                  ObjectProvider<ConversationMemoryRestartService> memoryRestarts) {
         this.query = query;
         this.commands = commands;
+        this.memoryRestarts = memoryRestarts;
     }
 
     @GetMapping
@@ -96,6 +101,24 @@ public class ConversationController {
         var selectedTenant = resolveTenant(operator, tenantId);
         return ResponseEntity.accepted().body(commands.sendMessage(operator, selectedTenant, conversationId,
                 parseVersion(ifMatch), idempotencyKey, request));
+    }
+
+    @PostMapping("/{conversationId}/restart")
+    @PreAuthorize("hasAuthority('SCOPE_operator:write') || hasRole('ADMIN')")
+    public ResponseEntity<com.ford.service.conversations.api.ConversationMemoryRestartReceipt> restartMemory(
+            @PathVariable UUID conversationId,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @RequestHeader("If-Match") String ifMatch,
+            @RequestParam(required = false) UUID tenantId,
+            Authentication authentication) {
+        var operator = AuthenticatedOperator.from(authentication);
+        var selectedTenant = resolveTenant(operator, tenantId);
+        var service = memoryRestarts.getIfAvailable();
+        if (service == null) throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE);
+        var receipt = service.restart(operator, selectedTenant, conversationId,
+                parseVersion(ifMatch), idempotencyKey);
+        return ResponseEntity.ok().header(HttpHeaders.ETAG, etag(receipt.conversationVersion())).body(receipt);
     }
 
     private static UUID resolveTenant(AuthenticatedOperator operator, UUID requestedTenant) {

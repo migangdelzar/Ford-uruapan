@@ -24,4 +24,14 @@ class HumanHandoffPolicyTest {
         assertThat(policy.shouldCreateHandoff(true)).isTrue();
         assertThat(policy.fallbackText()).contains("No pude generar").doesNotContain("asesor humano");
     }
+
+    @Test
+    void usesTenantRuntimeHandoffSetting() {
+        var tenant = java.util.UUID.randomUUID();
+        var policy = new HumanHandoffPolicy(false, requestedTenant -> tenant.equals(requestedTenant));
+
+        assertThat(policy.enabled(tenant)).isTrue();
+        assertThat(policy.shouldCreateHandoff(tenant, true)).isTrue();
+        assertThat(policy.enabled(java.util.UUID.randomUUID())).isFalse();
+    }
 }

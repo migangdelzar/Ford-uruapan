@@ -42,7 +42,7 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
     @Override
     public ConversationMemoryContext load(MemoryQuery query) {
         var projection = jdbc.sql("""
-                select summary, facts_json, memory_version, updated_at
+                select summary, facts_json, memory_version, updated_at, context_started_at
                 from conversation_memory
                 where conversation_id = :conversationId
                   and tenant_id = :tenantId
@@ -57,9 +57,10 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
                 .param("participantId", query.key().participantId())
                 .query((rs, rowNum) -> new Projection(
                         rs.getString("summary"), rs.getString("facts_json"),
-                        rs.getLong("memory_version"), rs.getTimestamp("updated_at").toInstant()))
+                        rs.getLong("memory_version"), rs.getTimestamp("updated_at").toInstant(),
+                        rs.getTimestamp("context_started_at").toInstant()))
                 .optional()
-                .orElse(new Projection("", "[]", 0, null));
+                .orElse(new Projection("", "[]", 0, null, null));
 
         if (projection.updatedAt() == null
                 || !projection.updatedAt().isAfter(Instant.now().minus(properties.workingMemoryTtl()))) {
@@ -81,6 +82,7 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
                             and owner.provider_account_id = :providerAccountId
                             and owner.participant_id = :participantId
                       )
+                      and received_at >= :contextStartedAt
                       and (cast(:currentProviderMessageId as varchar) is null
                            or provider_message_id <> :currentProviderMessageId)
                 ) recent
@@ -92,6 +94,7 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
                 .param("channel", query.key().channel().name())
                 .param("providerAccountId", query.key().providerAccountId())
                 .param("participantId", query.key().participantId())
+                .param("contextStartedAt", Timestamp.from(projection.contextStartedAt()))
                 .param("currentProviderMessageId", query.currentProviderMessageId())
                 .param("recentMessageLimit", query.recentMessageLimit())
                 .query((rs, rowNum) -> new ConversationMessage(
@@ -108,13 +111,96 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
                 truncate(projection.summary(), properties.summaryMaxChars()),
                 messages,
                 readFacts(projection.factsJson()),
-                projection.memoryVersion(), projection.updatedAt());
+                projection.memoryVersion(), projection.updatedAt(), List.of(), projection.contextStartedAt());
     }
 
     @Override
     @Transactional
     public void recordInbound(ConversationMemoryKey key, ConversationMessage message) {
         recordMessage(key, message);
+    }
+
+    @Override
+    @Transactional
+    public void resetContext(ConversationMemoryKey key, UUID actorId, Instant resetAt) {
+        jdbc.sql("""
+                insert into conversation_memory
+                    (conversation_id, tenant_id, channel, provider_account_id, participant_id,
+                     summary, facts_json, memory_version, source_message_id, updated_at,
+                     context_started_at, context_reset_by)
+                select id, tenant_id, channel, provider_account_id, participant_id,
+                       '', '[]', 0, null, :resetAt, :resetAt, :actorId
+                  from conversation c
+                 where c.id = :conversationId
+                   and c.tenant_id = :tenantId
+                   and c.channel = :channel
+                   and c.provider_account_id = :providerAccountId
+                   and c.participant_id = :participantId
+                   and not exists (
+                       select 1 from conversation_memory current
+                        where current.conversation_id = c.id
+                   )
+                """)
+                .param("conversationId", key.conversationId())
+                .param("tenantId", key.tenantId())
+                .param("channel", key.channel().name())
+                .param("providerAccountId", key.providerAccountId())
+                .param("participantId", key.participantId())
+                .param("resetAt", Timestamp.from(resetAt))
+                .param("actorId", actorId)
+                .update();
+
+        var updated = jdbc.sql("""
+                update conversation_memory
+                   set summary = '',
+                       facts_json = '[]',
+                       memory_version = memory_version + 1,
+                       source_message_id = null,
+                       context_started_at = :resetAt,
+                       context_reset_by = :actorId,
+                       updated_at = :resetAt
+                 where conversation_id = :conversationId
+                   and tenant_id = :tenantId
+                   and channel = :channel
+                   and provider_account_id = :providerAccountId
+                   and participant_id = :participantId
+                """)
+                .param("conversationId", key.conversationId())
+                .param("tenantId", key.tenantId())
+                .param("channel", key.channel().name())
+                .param("providerAccountId", key.providerAccountId())
+                .param("participantId", key.participantId())
+                .param("resetAt", Timestamp.from(resetAt))
+                .param("actorId", actorId)
+                .update();
+        if (updated != 1) {
+            throw new java.util.NoSuchElementException("conversation not found for memory reset");
+        }
+
+        jdbc.sql("""
+                update conversation_memory_item
+                   set active = false, updated_at = :resetAt
+                 where conversation_id = :conversationId
+                   and tenant_id = :tenantId
+                   and active = true
+                   and created_at < :resetAt
+                """)
+                .param("conversationId", key.conversationId())
+                .param("tenantId", key.tenantId())
+                .param("resetAt", Timestamp.from(resetAt))
+                .update();
+        jdbc.sql("""
+                update conversation_memory_embedding
+                   set active = false, updated_at = :resetAt
+                 where conversation_id = :conversationId
+                   and tenant_id = :tenantId
+                   and active = true
+                   and occurred_at < :resetAt
+                """)
+                .param("conversationId", key.conversationId())
+                .param("tenantId", key.tenantId())
+                .param("resetAt", Timestamp.from(resetAt))
+                .update();
     }
 
     @Override
@@ -224,6 +310,7 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
         return value.length() <= maxChars ? value : value.substring(0, maxChars);
     }
 
-    private record Projection(String summary, String factsJson, long memoryVersion, Instant updatedAt) {
+    private record Projection(String summary, String factsJson, long memoryVersion, Instant updatedAt,
+                              Instant contextStartedAt) {
     }
 }

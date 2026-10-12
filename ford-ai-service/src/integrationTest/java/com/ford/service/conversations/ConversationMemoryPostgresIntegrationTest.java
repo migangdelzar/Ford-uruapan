@@ -123,6 +123,48 @@ class ConversationMemoryPostgresIntegrationTest {
         }
     }
 
+    @Test
+    void restartStartsNewMemoryEpochAndPreservesHistoricalTranscript() {
+        insertConversation();
+        var beforeReset = Instant.now().minusSeconds(5);
+        jdbc.sql("""
+                insert into conversation_message (id, conversation_id, direction, provider_message_id, content, received_at)
+                values (:id, :conversationId, 'INBOUND', 'before-reset', 'Busca Ranger', :receivedAt)
+                """)
+                .param("id", UUID.randomUUID()).param("conversationId", CONVERSATION_ID)
+                .param("receivedAt", Timestamp.from(beforeReset)).update();
+        repository.updateProjection(MEMORY_KEY,
+                new MemoryProjectionUpdate("Busca Ranger", List.of(new MemoryFact("model", "Ranger", null)), null), 0);
+        jdbc.sql("""
+                insert into conversation_memory_item
+                    (id, conversation_id, tenant_id, channel, kind, content, embedding, active, created_at, updated_at)
+                values (:id, :conversationId, :tenantId, 'WHATSAPP', 'preference', 'Ranger', '[0.1,0.2]'::vector,
+                        true, :createdAt, :createdAt)
+                """)
+                .param("id", UUID.randomUUID()).param("conversationId", CONVERSATION_ID).param("tenantId", TENANT_ID)
+                .param("createdAt", Timestamp.from(beforeReset)).update();
+        var resetAt = Instant.now();
+
+        repository.resetContext(MEMORY_KEY, UUID.randomUUID(), resetAt);
+        jdbc.sql("""
+                insert into conversation_message (id, conversation_id, direction, provider_message_id, content, received_at)
+                values (:id, :conversationId, 'INBOUND', 'after-reset', 'Tema nuevo', :receivedAt)
+                """)
+                .param("id", UUID.randomUUID()).param("conversationId", CONVERSATION_ID)
+                .param("receivedAt", Timestamp.from(resetAt.plusMillis(5))).update();
+
+        var context = repository.load(new MemoryQuery(MEMORY_KEY, null, 10, 10));
+
+        assertThat(context.summary()).isEmpty();
+        assertThat(context.durableFacts()).isEmpty();
+        assertThat(context.recentMessages()).extracting(message -> message.providerMessageId())
+                .containsExactly("after-reset");
+        assertThat(jdbc.sql("select count(*) from conversation_message where conversation_id = :id")
+                .param("id", CONVERSATION_ID).query(Long.class).single()).isEqualTo(2);
+        assertThat(jdbc.sql("select active from conversation_memory_item where conversation_id = :id")
+                .param("id", CONVERSATION_ID).query(Boolean.class).single()).isFalse();
+    }
+
     private void insertConversation() {
         var now = Instant.now();
         jdbc.sql("""

@@ -10,19 +10,27 @@ public record ConversationMemoryContext(
         List<MemoryFact> durableFacts,
         long memoryVersion,
         Instant updatedAt,
-        List<ConversationMemoryRecall> recalledTurns) {
+        List<ConversationMemoryRecall> recalledTurns,
+        Instant contextStartedAt) {
 
     public ConversationMemoryContext(ConversationMemoryKey key, String summary,
                                      List<ConversationMessage> recentMessages,
                                      List<MemoryFact> durableFacts, long memoryVersion) {
-        this(key, summary, recentMessages, durableFacts, memoryVersion, null, List.of());
+        this(key, summary, recentMessages, durableFacts, memoryVersion, null, List.of(), null);
     }
 
     public ConversationMemoryContext(ConversationMemoryKey key, String summary,
                                      List<ConversationMessage> recentMessages,
                                      List<MemoryFact> durableFacts, long memoryVersion,
                                      Instant updatedAt) {
-        this(key, summary, recentMessages, durableFacts, memoryVersion, updatedAt, List.of());
+        this(key, summary, recentMessages, durableFacts, memoryVersion, updatedAt, List.of(), null);
+    }
+
+    public ConversationMemoryContext(ConversationMemoryKey key, String summary,
+                                    List<ConversationMessage> recentMessages,
+                                    List<MemoryFact> durableFacts, long memoryVersion,
+                                    Instant updatedAt, List<ConversationMemoryRecall> recalledTurns) {
+        this(key, summary, recentMessages, durableFacts, memoryVersion, updatedAt, recalledTurns, null);
     }
 
     public ConversationMemoryContext {
