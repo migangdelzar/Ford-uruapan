@@ -1,14 +1,42 @@
 package com.ford.service.ai.configuration;
 
 import jakarta.validation.Validation;
+import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.env.YamlPropertySourceLoader;
+import org.springframework.core.env.MapPropertySource;
+import org.springframework.core.env.StandardEnvironment;
+import org.springframework.core.io.ClassPathResource;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ChatProviderPropertiesTest {
+
+    @Test
+    void enablesOnlyOpenRouterAsTheProductionFallbackWhenCredentialsAreProvided() throws Exception {
+        var loader = new YamlPropertySourceLoader();
+        var environment = new StandardEnvironment();
+        environment.getPropertySources().addFirst(new MapPropertySource("test-credentials",
+                Map.of("OPENROUTER_API_KEY", "test-key",
+                        "ford.ai.providers.catalog.openrouter.api-key", "test-key")));
+        loader.load("application-prod", new ClassPathResource("application-prod.yml"))
+                .forEach(environment.getPropertySources()::addFirst);
+        loader.load("application", new ClassPathResource("application.yml"))
+                .forEach(environment.getPropertySources()::addLast);
+
+        var properties = Binder.get(environment).bind("ford.ai.providers",
+                Bindable.of(ChatProviderProperties.class))
+                .orElseThrow(() -> new IllegalStateException("production AI provider configuration is missing"));
+
+        assertThat(properties.fallbackOrder()).containsExactly("openrouter");
+        assertThat(properties.providerStatus()).containsEntry("openrouter", "ready");
+        assertThat(properties.eligibleFallbackIds()).containsExactly("openrouter");
+    }
 
     @Test
     void defaultsFallbackOrderToTheApprovedProviderSequence() {

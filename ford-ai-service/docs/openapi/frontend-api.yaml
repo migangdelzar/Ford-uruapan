@@ -1898,7 +1898,7 @@ components:
           format: date-time
     ConversationMessage:
       type: object
-      required: [id, conversationId, direction, content, receivedAt]
+      required: [id, conversationId, direction, senderType, content, receivedAt]
       properties:
         id:
           type: string
@@ -1911,6 +1911,9 @@ components:
           nullable: true
         direction:
           $ref: '#/components/schemas/MessageDirection'
+        senderType:
+          type: string
+          enum: [CUSTOMER, BOT, ADVISOR, SYSTEM]
         content:
           type: string
         deliveryStatus:

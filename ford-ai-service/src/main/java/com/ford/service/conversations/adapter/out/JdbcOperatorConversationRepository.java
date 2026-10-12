@@ -11,6 +11,7 @@ import com.ford.service.conversations.api.ParticipantView;
 import com.ford.service.conversations.application.port.in.ConversationQuery;
 import com.ford.service.conversations.application.port.out.OperatorConversationRepository;
 import com.ford.service.conversations.domain.ConversationMessage.Direction;
+import com.ford.service.conversations.domain.ConversationMessage.SenderType;
 import com.ford.service.conversations.domain.ConversationState;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -40,13 +41,16 @@ public class JdbcOperatorConversationRepository implements OperatorConversationR
                        c.participant_id, l.id as lead_id, c.updated_at,
                        m.id as latest_id, m.provider_message_id as latest_provider_message_id,
                        m.direction as latest_direction, m.content as latest_content,
-                       m.received_at as latest_received_at
+                       m.received_at as latest_received_at, m.sender_type as latest_sender_type,
+                       m.sender_id as latest_sender_id, m.sender_display_name as latest_sender_display_name
                 from conversation c
                 left join lateral (
-                    select id, provider_message_id, direction, content, received_at
-                    from conversation_message
-                    where conversation_id = c.id
-                    order by received_at desc, id desc
+                    select m.id, m.provider_message_id, m.direction, m.content, m.received_at,
+                           m.sender_type, m.sender_id,
+                           (select display_name from operator_identity where id = m.sender_id) as sender_display_name
+                    from conversation_message m
+                    where m.conversation_id = c.id
+                    order by m.received_at desc, m.id desc
                     limit 1
                 ) m on true
                 left join lateral (
@@ -125,7 +129,8 @@ public class JdbcOperatorConversationRepository implements OperatorConversationR
                        c.participant_id, l.id as lead_id, c.updated_at,
                        m.id as latest_id, m.provider_message_id as latest_provider_message_id,
                        m.direction as latest_direction, m.content as latest_content,
-                       m.received_at as latest_received_at
+                       m.received_at as latest_received_at, m.sender_type as latest_sender_type,
+                       m.sender_id as latest_sender_id, m.sender_display_name as latest_sender_display_name
                 from conversation c
                 left join lateral (
                     select id from lead
@@ -133,9 +138,11 @@ public class JdbcOperatorConversationRepository implements OperatorConversationR
                     order by updated_at desc, id desc limit 1
                 ) l on true
                 left join lateral (
-                    select id, provider_message_id, direction, content, received_at
-                    from conversation_message where conversation_id = c.id
-                    order by received_at desc, id desc limit 1
+                    select m.id, m.provider_message_id, m.direction, m.content, m.received_at,
+                           m.sender_type, m.sender_id,
+                           (select display_name from operator_identity where id = m.sender_id) as sender_display_name
+                    from conversation_message m where m.conversation_id = c.id
+                    order by m.received_at desc, m.id desc limit 1
                 ) m on true
                 where c.id = :conversationId and c.tenant_id = :tenantId
                 """)
@@ -152,9 +159,11 @@ public class JdbcOperatorConversationRepository implements OperatorConversationR
         }
         var sql = new StringBuilder("""
                 select m.id, m.conversation_id, m.provider_message_id, m.direction,
-                       m.content, m.received_at, c.participant_id
+                       m.content, m.received_at, c.participant_id, m.sender_type, m.sender_id,
+                       o.display_name as sender_display_name
                 from conversation_message m
                 join conversation c on c.id = m.conversation_id and c.tenant_id = :tenantId
+                left join operator_identity o on o.id = m.sender_id
                 where m.conversation_id = :conversationId
                 """);
         var statement = jdbc.sql(sql.toString()).param("tenantId", tenantId).param("conversationId", conversationId);
@@ -170,17 +179,22 @@ public class JdbcOperatorConversationRepository implements OperatorConversationR
         if (decoded != null) {
             statement = statement.param("cursorAt", Timestamp.from(decoded.updatedAt())).param("cursorId", decoded.id());
         }
-        var rows = statement.query((rs, rowNum) -> new ConversationMessageView(
-                rs.getObject("id", UUID.class),
-                rs.getObject("conversation_id", UUID.class),
-                rs.getString("provider_message_id"),
-                Direction.valueOf(rs.getString("direction")),
-                rs.getString("content"),
-                null,
-                new ParticipantView(rs.getString("participant_id"), null, null),
-                rs.getTimestamp("received_at").toInstant(),
-                Direction.OUTBOUND.name().equals(rs.getString("direction")) ? rs.getTimestamp("received_at").toInstant() : null,
-                Map.of())).list();
+        var rows = statement.query((rs, rowNum) -> {
+            var senderType = SenderType.valueOf(rs.getString("sender_type"));
+            return new ConversationMessageView(
+                    rs.getObject("id", UUID.class),
+                    rs.getObject("conversation_id", UUID.class),
+                    rs.getString("provider_message_id"),
+                    Direction.valueOf(rs.getString("direction")),
+                    rs.getString("content"),
+                    null,
+                    messageSender(senderType, rs.getString("participant_id"),
+                            rs.getString("sender_id"), rs.getString("sender_display_name")),
+                    rs.getTimestamp("received_at").toInstant(),
+                    Direction.OUTBOUND.name().equals(rs.getString("direction")) ? rs.getTimestamp("received_at").toInstant() : null,
+                    Map.of(),
+                    senderType);
+        }).list();
         var hasNext = rows.size() > pageSize;
         var items = hasNext ? rows.subList(0, pageSize) : rows;
         var nextCursor = hasNext ? encode(items.get(items.size() - 1).receivedAt(), items.get(items.size() - 1).id()) : null;
@@ -198,10 +212,13 @@ public class JdbcOperatorConversationRepository implements OperatorConversationR
                     Direction.valueOf(rs.getString("latest_direction")),
                     rs.getString("latest_content"),
                     null,
-                    new ParticipantView(rs.getString("participant_id"), null, null),
+                    messageSender(SenderType.valueOf(rs.getString("latest_sender_type")),
+                            rs.getString("participant_id"), rs.getString("latest_sender_id"),
+                            rs.getString("latest_sender_display_name")),
                     rs.getTimestamp("latest_received_at").toInstant(),
                     null,
-                    Map.of());
+                    Map.of(),
+                    SenderType.valueOf(rs.getString("latest_sender_type")));
         }
         return new ConversationView(
                 rs.getObject("id", UUID.class),
@@ -214,6 +231,16 @@ public class JdbcOperatorConversationRepository implements OperatorConversationR
                 rs.getObject("lead_id", UUID.class),
                 latest,
                 rs.getTimestamp("updated_at").toInstant());
+    }
+
+    private static ParticipantView messageSender(SenderType senderType, String participantId,
+                                                 String senderId, String senderDisplayName) {
+        return switch (senderType) {
+            case CUSTOMER -> new ParticipantView(participantId, null, null);
+            case BOT -> new ParticipantView("bot", "Bot Concierge", null);
+            case ADVISOR -> new ParticipantView(senderId == null ? "advisor" : senderId, senderDisplayName, null);
+            case SYSTEM -> new ParticipantView(senderId == null ? "system" : senderId, "Sistema", null);
+        };
     }
 
     private static String encode(Instant updatedAt, UUID id) {

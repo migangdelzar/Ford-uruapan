@@ -119,6 +119,18 @@ public class JdbcHandoffRepository implements HandoffRepository {
                 .param("ticketId", ticketId).param("tenantId", tenantId).param("operatorId", operatorId)
                 .param("expectedVersion", expectedVersion).param("claimedAt", java.sql.Timestamp.from(claimedAt))
                 .update();
+        if (updated == 1) {
+            var conversationUpdated = jdbc.sql("""
+                    update conversation
+                       set state = 'HUMAN_ACTIVE', version = version + 1, updated_at = :claimedAt
+                     where id = :conversationId and tenant_id = :tenantId and state = 'HUMAN_PENDING'
+                    """)
+                    .param("conversationId", findRequired(ticketId).conversationId())
+                    .param("tenantId", tenantId).param("claimedAt", java.sql.Timestamp.from(claimedAt)).update();
+            if (conversationUpdated != 1) {
+                throw new IllegalStateException("Conversation cannot enter active advisor handoff");
+            }
+        }
         return updated == 1 ? Optional.of(findRequired(ticketId)) : Optional.empty();
     }
 

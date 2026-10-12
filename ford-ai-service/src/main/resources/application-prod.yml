@@ -16,8 +16,17 @@ ford:
     human-handoff:
       enabled: ${FORD_HUMAN_HANDOFF_ENABLED:false}
   ai:
+    provider-max-attempts: ${FORD_AI_PROVIDER_MAX_ATTEMPTS:2}
     classification:
       enabled: ${FORD_AI_CLASSIFICATION_ENABLED:true}
+    providers:
+      fallback-order: ${FORD_AI_FALLBACK_ORDER:openrouter}
+      catalog:
+        openrouter:
+          enabled: ${FORD_AI_OPENROUTER_ENABLED:true}
+          model: ${FORD_AI_OPENROUTER_MODEL:xiaomi/mimo-v2.6-flash}
+          tool-calling-verified: ${FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED:true}
+          structured-output-verified: ${FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED:true}
   channels:
     meta:
       auto-binding:

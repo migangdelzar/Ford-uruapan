@@ -107,6 +107,24 @@ class AssistantResponseQualityPolicyTest {
     }
 
     @Test
+    void acceptsOneQuestionThatOffersAlternativesForTheSameDetail() {
+        var verdict = policy.evaluate("Busco una SUV", null,
+                "¿Prefiere la Ford Escape o la Bronco Sport?");
+
+        assertThat(verdict.accepted()).isTrue();
+        assertThat(verdict.reason()).isEqualTo("accepted");
+    }
+
+    @Test
+    void rejectsOneQuestionThatRequestsTwoDifferentDetails() {
+        var verdict = policy.evaluate("Quiero cotizar", null,
+                "¿Qué modelo le interesa y cuál es su presupuesto?");
+
+        assertThat(verdict.accepted()).isFalse();
+        assertThat(verdict.reason()).isEqualTo("multiple_questions");
+    }
+
+    @Test
     void exposesOnlyStableReasonCodesForDiagnostics() {
         var verdict = policy.evaluate("private customer prompt", null,
                 "¿Qué modelo buscas y cuál es tu presupuesto?");

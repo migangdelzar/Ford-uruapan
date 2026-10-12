@@ -44,6 +44,8 @@ databaseChangeLog:
   - include:
       file: db/changelog/changes/023-conversation-runtime-settings-and-memory-epoch.yaml
   - include:
+      file: db/changelog/changes/024-conversation-message-sender.yaml
+  - include:
       file: db/changelog/langgraph/db.changelog.yaml
   - include:
       file: db/changelog/changes/004-modulith-events.yaml

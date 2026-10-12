@@ -47,6 +47,19 @@ public class JdbcOperatorConversationCommandRepository implements OperatorConver
     }
 
     @Override
+    public boolean messageExists(UUID tenantId, UUID conversationId, String providerMessageId) {
+        return jdbc.sql("""
+                select exists (
+                    select 1 from conversation_message m
+                    join conversation c on c.id = m.conversation_id and c.tenant_id = :tenantId
+                    where m.conversation_id = :conversationId and m.provider_message_id = :providerMessageId
+                )
+                """)
+                .param("tenantId", tenantId).param("conversationId", conversationId)
+                .param("providerMessageId", providerMessageId).query(Boolean.class).single();
+    }
+
+    @Override
     @Transactional
     public boolean bumpVersionForMemoryRestart(UUID tenantId, UUID conversationId, long expectedVersion) {
         return jdbc.sql("""
@@ -82,11 +95,14 @@ public class JdbcOperatorConversationCommandRepository implements OperatorConver
         var now = Instant.now();
         jdbc.sql("""
                 insert into conversation_message
-                    (id, conversation_id, direction, provider_message_id, content, received_at)
-                values (:id, :conversationId, 'OUTBOUND', :providerMessageId, :content, :receivedAt)
+                    (id, conversation_id, direction, provider_message_id, content, received_at, sender_type, sender_id)
+                values (:id, :conversationId, 'OUTBOUND', :providerMessageId, :content, :receivedAt,
+                        :senderType, :senderId)
                 """)
                 .param("id", message.messageId()).param("conversationId", message.conversationId())
                 .param("providerMessageId", message.providerMessageId()).param("content", message.content())
+                .param("senderType", message.internalNote() ? "SYSTEM" : "ADVISOR")
+                .param("senderId", message.operatorId())
                 .param("receivedAt", Timestamp.from(now)).update();
         if (!message.internalNote()) {
             outbox.append(new OutboxEvent(

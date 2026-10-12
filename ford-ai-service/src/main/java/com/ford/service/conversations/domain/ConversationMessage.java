@@ -12,4 +12,6 @@ public record ConversationMessage(
         Instant occurredAt) {
 
     public enum Direction { INBOUND, OUTBOUND }
+
+    public enum SenderType { CUSTOMER, BOT, ADVISOR, SYSTEM }
 }

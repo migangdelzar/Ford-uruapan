@@ -2,6 +2,7 @@ package com.ford.service.handoff.application;
 
 import com.ford.service.handoff.api.HandoffActionRequested;
 import com.ford.service.handoff.api.OperatorPrincipal;
+import com.ford.service.conversations.api.ConversationHandoffMessagePort;
 import com.ford.service.handoff.application.port.out.HandoffRepository;
 import com.ford.service.handoff.domain.HandoffRequest;
 import com.ford.service.handoff.domain.HandoffStatus;
@@ -20,10 +21,13 @@ public class DefaultHandoffService implements HandoffService {
 
     private final HandoffRepository repository;
     private final ApplicationEventPublisher eventPublisher;
+    private final ConversationHandoffMessagePort handoffMessages;
 
-    public DefaultHandoffService(HandoffRepository repository, ApplicationEventPublisher eventPublisher) {
+    public DefaultHandoffService(HandoffRepository repository, ApplicationEventPublisher eventPublisher,
+                                 ConversationHandoffMessagePort handoffMessages) {
         this.repository = Objects.requireNonNull(repository);
         this.eventPublisher = Objects.requireNonNull(eventPublisher);
+        this.handoffMessages = Objects.requireNonNull(handoffMessages);
     }
 
     @Override
@@ -57,7 +61,11 @@ public class DefaultHandoffService implements HandoffService {
         var current = repository.findRequired(Objects.requireNonNull(ticketId));
         requireTenant(principal, current.tenantId());
         return repository.claim(ticketId, current.tenantId(), principal.operatorId(), expectedVersion, Instant.now())
-                .map(ticket -> publishAuditAndReturn("HANDOFF_CLAIMED", ticket, principal))
+                .map(ticket -> {
+                    handoffMessages.sendAdvisorTakeoverMessage(ticket.tenantId(), ticket.conversationId(),
+                            principal.operatorId(), ticket.id());
+                    return publishAuditAndReturn("HANDOFF_CLAIMED", ticket, principal);
+                })
                 .orElseThrow(() -> staleVersion(ticketId));
     }
 
@@ -68,7 +76,13 @@ public class DefaultHandoffService implements HandoffService {
         var current = repository.findByConversation(Objects.requireNonNull(conversationId));
         requireTenant(principal, current.tenantId());
         return repository.pause(conversationId, current.tenantId(), principal.operatorId(), expectedVersion, Instant.now())
-                .map(ticket -> publishAuditAndReturn("HANDOFF_PAUSED", ticket, principal))
+                .map(ticket -> {
+                    if (current.status() == HandoffStatus.HUMAN_PENDING) {
+                        handoffMessages.sendAdvisorTakeoverMessage(ticket.tenantId(), ticket.conversationId(),
+                                principal.operatorId(), ticket.id());
+                    }
+                    return publishAuditAndReturn("HANDOFF_PAUSED", ticket, principal);
+                })
                 .orElseThrow(() -> staleVersion(conversationId));
     }
 

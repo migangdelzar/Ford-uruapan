@@ -88,6 +88,11 @@ class ConversationCommandServiceTest {
         }
 
         @Override
+        public boolean messageExists(UUID tenantId, UUID conversationId, String providerMessageId) {
+            return false;
+        }
+
+        @Override
         public boolean bumpVersionForMemoryRestart(UUID tenantId, UUID conversationId, long expectedVersion) {
             if (target.version() != expectedVersion) return false;
             target = new CommandTarget(target.tenantId(), target.conversationId(), target.channel(),

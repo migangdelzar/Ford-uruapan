@@ -58,7 +58,8 @@ class JdbcConversationMemoryRepositoryTest {
                     direction varchar(20) not null,
                     provider_message_id varchar(200) not null,
                     content text,
-                    received_at timestamp with time zone not null
+                    received_at timestamp with time zone not null,
+                    sender_type varchar(16) not null default 'BOT'
                 )
                 """).update();
         jdbc.sql("""
@@ -201,7 +202,9 @@ class JdbcConversationMemoryRepositoryTest {
 
     private void insertMessage(String providerId, ConversationMessage.Direction direction,
                                 String content, Instant receivedAt) {
-        jdbc.sql("insert into conversation_message values (:id, :conversation, :direction, :provider, :content, :received)")
+        jdbc.sql("insert into conversation_message "
+                        + "(id, conversation_id, direction, provider_message_id, content, received_at) "
+                        + "values (:id, :conversation, :direction, :provider, :content, :received)")
                 .param("id", UUID.randomUUID())
                 .param("conversation", key.conversationId())
                 .param("direction", direction.name())

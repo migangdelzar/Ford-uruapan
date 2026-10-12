@@ -290,7 +290,7 @@ public class SpringAiConfiguration {
                             typeSafeConfigured ? typeSafeClient : null, scopePolicy),
                     providerId, toolPolicy, decisionPolicy, systemPromptService,
                     new com.ford.service.ai.application.AssistantResponseQualityPolicy(), objectMapper,
-                    observations, factResponseRenderer));
+                    observations, factResponseRenderer, false));
         }
         var ollama = localModel.getIfAvailable();
         if (properties.localEnabled() && ollama != null) {

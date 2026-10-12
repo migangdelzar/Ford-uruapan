@@ -2,6 +2,7 @@ package com.ford.service.conversations;
 
 import com.ford.service.channels.domain.Channel;
 import com.ford.service.conversations.adapter.out.JdbcConversationRepository;
+import com.ford.service.conversations.adapter.out.JdbcOperatorConversationRepository;
 import com.ford.service.conversations.adapter.out.JdbcOperatorConversationCommandRepository;
 import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.conversations.domain.ConversationTurn;
@@ -60,6 +61,9 @@ class ConversationRepositoryIntegrationTest {
     JdbcOperatorConversationCommandRepository operatorCommands;
 
     @Autowired
+    JdbcOperatorConversationRepository operatorConversations;
+
+    @Autowired
     JdbcLeadFollowUpRepository followUps;
 
     @Autowired
@@ -104,6 +108,31 @@ class ConversationRepositoryIntegrationTest {
         assertThat(repository.completeBotTurn(
                 conversationId, snapshot.version(), new ConversationTurn("Respuesta obsoleta.")))
                 .isFalse();
+    }
+
+    @Test
+    void returnsMessageAuthorTypeAndAdvisorNameInTranscript() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var operatorId = UUID.randomUUID();
+        insertConversation(tenantId, conversationId);
+        jdbc.sql("insert into operator_identity (id, email_normalized, display_name) "
+                        + "values (:id, :email, 'Ana asesora')")
+                .param("id", operatorId).param("email", operatorId + "@example.com").update();
+        jdbc.sql("""
+                insert into conversation_message
+                    (id, conversation_id, direction, provider_message_id, content, received_at, sender_type, sender_id)
+                values (:id, :conversationId, 'OUTBOUND', 'operator:command-1', 'Hola, soy Ana.', :receivedAt,
+                        'ADVISOR', :operatorId)
+                """)
+                .param("id", UUID.randomUUID()).param("conversationId", conversationId)
+                .param("receivedAt", Timestamp.from(Instant.now())).param("operatorId", operatorId).update();
+
+        var message = operatorConversations.messages(tenantId, conversationId, null, 20).items().getFirst();
+
+        assertThat(message.senderType().name()).isEqualTo("ADVISOR");
+        assertThat(message.sender().providerId()).isEqualTo(operatorId.toString());
+        assertThat(message.sender().displayName()).isEqualTo("Ana asesora");
     }
 
     @Test
@@ -181,7 +210,17 @@ class ConversationRepositoryIntegrationTest {
 
         var claimed = handoffService.claim(pending.id(), pending.version(), principal);
         assertThat(claimed.status().name()).isEqualTo("HUMAN_ACTIVE");
-        assertThat(repository.state(conversationId)).isEqualTo(ConversationState.HUMAN_PENDING);
+        assertThat(repository.state(conversationId)).isEqualTo(ConversationState.HUMAN_ACTIVE);
+        assertThat(jdbc.sql("select sender_type from conversation_message where conversation_id = :id")
+                .param("id", conversationId).query(String.class).single()).isEqualTo("ADVISOR");
+        assertThat(jdbc.sql("select sender_id from conversation_message where conversation_id = :id")
+                .param("id", conversationId).query(UUID.class).single()).isEqualTo(principal.operatorId());
+        assertThat(jdbc.sql("select content from conversation_message where conversation_id = :id")
+                .param("id", conversationId).query(String.class).single())
+                .isEqualTo("Hola, ya tomé tu conversación. Te responderé por aquí en cuanto pueda.");
+        assertThat(jdbc.sql("select count(*) from outbox_event where aggregate_id = :id "
+                        + "and event_type = 'OUTBOUND_DELIVERY_REQUESTED'")
+                .param("id", conversationId).query(Integer.class).single()).isEqualTo(1);
 
         handoffService.resumeBot(conversationId, claimed.version(), principal);
         assertThat(repository.state(conversationId)).isEqualTo(ConversationState.BOT_ACTIVE);

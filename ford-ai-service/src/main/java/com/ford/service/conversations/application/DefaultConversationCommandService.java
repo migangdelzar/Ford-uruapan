@@ -62,7 +62,7 @@ public class DefaultConversationCommandService implements ConversationCommandSer
         }
         var messageId = UUID.randomUUID();
         var receipt = conversations.appendMessage(new OperatorConversationCommandRepository.CommandMessage(
-                tenantId, conversationId, UUID.nameUUIDFromBytes(operator.subject().getBytes(StandardCharsets.UTF_8)),
+                tenantId, conversationId, operatorId(operator.subject()),
                 messageId, "operator:" + normalizedKey, request.content().trim(), request.internalNote(), expectedVersion));
         complete(tenantId, operator.subject(), normalizedKey, hash, receipt);
         return receipt;
@@ -109,6 +109,14 @@ public class DefaultConversationCommandService implements ConversationCommandSer
                     .digest(value.getBytes(StandardCharsets.UTF_8)));
         } catch (java.security.NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
+    }
+
+    private static UUID operatorId(String subject) {
+        try {
+            return UUID.fromString(subject);
+        } catch (IllegalArgumentException exception) {
+            return UUID.nameUUIDFromBytes(subject.getBytes(StandardCharsets.UTF_8));
         }
     }
 }

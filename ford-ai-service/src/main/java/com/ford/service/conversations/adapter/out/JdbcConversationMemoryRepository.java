@@ -266,13 +266,15 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
     private void recordMessage(ConversationMemoryKey key, ConversationMessage message) {
         jdbc.sql("""
                 insert into conversation_message
-                    (id, conversation_id, direction, provider_message_id, content, received_at)
-                values (:id, :conversationId, :direction, :providerMessageId, :content, :receivedAt)
+                    (id, conversation_id, direction, provider_message_id, content, received_at, sender_type)
+                values (:id, :conversationId, :direction, :providerMessageId, :content, :receivedAt, :senderType)
                 on conflict (conversation_id, provider_message_id) do nothing
                 """)
                 .param("id", message.id())
                 .param("conversationId", key.conversationId())
                 .param("direction", message.direction().name())
+                .param("senderType", message.direction() == ConversationMessage.Direction.INBOUND
+                        ? "CUSTOMER" : "BOT")
                 .param("providerMessageId", message.providerMessageId())
                 .param("content", message.content())
                 .param("receivedAt", Timestamp.from(message.occurredAt()))

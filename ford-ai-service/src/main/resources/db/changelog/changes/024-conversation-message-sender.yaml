@@ -1,0 +1,26 @@
+databaseChangeLog:
+  - changeSet:
+      id: 024-conversation-message-sender
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              alter table conversation_message
+                  add column sender_type varchar(16) not null default 'BOT',
+                  add column sender_id uuid;
+              update conversation_message
+                 set sender_type = case
+                     when direction = 'INBOUND' then 'CUSTOMER'
+                     when provider_message_id like 'operator:%' then 'ADVISOR'
+                     else 'BOT'
+                 end;
+              alter table conversation_message
+                  add constraint conversation_message_sender_type_check
+                  check (sender_type in ('CUSTOMER', 'BOT', 'ADVISOR', 'SYSTEM'));
+      rollback:
+        - sql:
+            sql: |
+              alter table conversation_message
+                  drop constraint if exists conversation_message_sender_type_check,
+                  drop column if exists sender_id,
+                  drop column if exists sender_type;

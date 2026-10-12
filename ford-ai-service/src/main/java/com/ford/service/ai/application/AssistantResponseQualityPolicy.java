@@ -16,6 +16,8 @@ import java.util.regex.Pattern;
 public final class AssistantResponseQualityPolicy {
 
     private static final Pattern WORDS = Pattern.compile("[^\\p{L}\\p{N}]+", Pattern.UNICODE_CHARACTER_CLASS);
+    private static final Pattern SECOND_DETAIL = Pattern.compile(
+            "\\b(?:y|o)\\s+(?:que|cual|cuanto|cuantos|cuantas|donde|cuando|como|quien|a que)\\b");
     private static final List<String> INTERNAL_MARKERS = List.of(
             "search_vehicles", "get_vehicle", "compare_vehicles", "search_offers", "list_promotions",
             "get_vehicle_provenance", "get_catalog_status", "vehicle_snapshot_search", "approved_knowledge_search",
@@ -99,7 +101,7 @@ public final class AssistantResponseQualityPolicy {
         var questionEnd = response.indexOf('?', questionStart);
         if (questionEnd < 0) questionEnd = response.length();
         var question = normalize(response.substring(questionStart, questionEnd));
-        return question.contains(" y ") || question.contains(" o ");
+        return SECOND_DETAIL.matcher(question).find();
     }
 
     private static boolean repeatsAssistantMessage(String memory, String response) {

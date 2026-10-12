@@ -79,8 +79,8 @@ public class JdbcInboundMessagePersistenceAdapter implements InboundMessagePersi
 
         jdbc.sql("""
                 insert into conversation_message
-                    (id, conversation_id, direction, provider_message_id, content, received_at)
-                values (:id, :conversationId, 'INBOUND', :providerMessageId, :content, :receivedAt)
+                    (id, conversation_id, direction, provider_message_id, content, received_at, sender_type)
+                values (:id, :conversationId, 'INBOUND', :providerMessageId, :content, :receivedAt, 'CUSTOMER')
                 on conflict (conversation_id, provider_message_id) do nothing
                 """)
                 .param("id", UUID.randomUUID())

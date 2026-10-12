@@ -117,8 +117,8 @@ public class JdbcConversationRepository implements ConversationRepository {
         var messageId = responseProviderMessageId;
         jdbc.sql("""
                 insert into conversation_message
-                    (id, conversation_id, direction, provider_message_id, content, received_at)
-                values (:id, :conversationId, 'OUTBOUND', :providerMessageId, :content, :receivedAt)
+                    (id, conversation_id, direction, provider_message_id, content, received_at, sender_type)
+                values (:id, :conversationId, 'OUTBOUND', :providerMessageId, :content, :receivedAt, 'BOT')
                 """)
                 .param("id", UUID.randomUUID())
                 .param("conversationId", conversationId)
@@ -196,8 +196,8 @@ public class JdbcConversationRepository implements ConversationRepository {
             var responseProviderMessageId = assistantMessageId(tenantId, conversationId, inboundProviderMessageId);
             jdbc.sql("""
                     insert into conversation_message
-                        (id, conversation_id, direction, provider_message_id, content, received_at)
-                    values (:id, :conversationId, 'OUTBOUND', :providerMessageId, :content, :receivedAt)
+                        (id, conversation_id, direction, provider_message_id, content, received_at, sender_type)
+                    values (:id, :conversationId, 'OUTBOUND', :providerMessageId, :content, :receivedAt, 'BOT')
                     """)
                     .param("id", UUID.randomUUID()).param("conversationId", conversationId)
                     .param("providerMessageId", responseProviderMessageId).param("content", confirmation.text())

@@ -29,7 +29,9 @@ class HandoffServiceTest {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
         repository.conversationTenants.put(conversationId, tenantId);
-        HandoffService service = new DefaultHandoffService(repository, event -> { });
+        var notifiedTickets = new ArrayList<UUID>();
+        HandoffService service = new DefaultHandoffService(repository, event -> { },
+                (tenant, conversation, operator, handoffId) -> notifiedTickets.add(handoffId));
         var principal = principal(tenantId);
         var ticket = service.request(new HandoffRequest(UUID.randomUUID(), conversationId, null, "HOT_LEAD"), principal);
 
@@ -38,6 +40,7 @@ class HandoffServiceTest {
         assertThat(claimed.status()).isEqualTo(HandoffStatus.HUMAN_ACTIVE);
         assertThat(claimed.assignedOperatorId()).isEqualTo(principal.operatorId());
         assertThat(claimed.version()).isEqualTo(1);
+        assertThat(notifiedTickets).containsExactly(claimed.id());
     }
 
     @Test
@@ -46,7 +49,7 @@ class HandoffServiceTest {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
         repository.conversationTenants.put(conversationId, tenantId);
-        HandoffService service = new DefaultHandoffService(repository, event -> { });
+        HandoffService service = new DefaultHandoffService(repository, event -> { }, (tenant, conversation, operator, handoffId) -> { });
         var principal = principal(tenantId);
         var ticket = service.request(new HandoffRequest(tenantId, conversationId, null, "CUSTOMER_REQUEST"), principal);
         service.claim(ticket.id(), 0, principal);

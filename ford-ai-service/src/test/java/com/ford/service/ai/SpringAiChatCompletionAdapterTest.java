@@ -37,11 +37,62 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.times;
 
 class SpringAiChatCompletionAdapterTest {
+
+    @Test
+    void returnsMcpPriceAndSourceLinkWhenTheModelFailsAfterTheToolCall() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var getVehicle = new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return org.springframework.ai.tool.definition.DefaultToolDefinition.builder()
+                        .name("get_vehicle").description("vehicle").inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String input) {
+                return "{\"model\":\"Explorer\",\"year\":2027,\"priceDisplay\":\"$1,193,600\","
+                        + "\"modelPageUrl\":\"https://www.forduruapan.mx/EXPLORER/27/\"}";
+            }
+        };
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenAnswer(invocation -> {
+            invokeFirstToolCallback(invocation.getArgument(0));
+            return requestSpec;
+        });
+        when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenThrow(new IllegalStateException("provider unavailable"));
+
+        var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
+                LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE,
+                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, List.of());
+        var renderer = new McpFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper());
+        var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
+                new ToolAuthorizationPolicy(List.of(getVehicle)), new DecisionPolicy(), null,
+                new com.ford.service.ai.application.AssistantResponseQualityPolicy(), new ObjectMapper(),
+                new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP), renderer);
+
+        var result = adapter.complete(new AssistantRequest(tenantId, conversationId,
+                        "¿Qué precio tiene Explorer 2027?", "BOT_ACTIVE", null, false, decision),
+                new ToolContext(tenantId, conversationId));
+
+        assertThat(result.content()).contains("Explorer 2027", "$1,193,600",
+                "https://www.forduruapan.mx/EXPLORER/27/");
+        assertThat(result.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED);
+    }
 
     @Test
     void replacesModelPriceAnswerWithApprovedTemplateAndMcpSourceLink() {
@@ -459,6 +510,93 @@ class SpringAiChatCompletionAdapterTest {
     }
 
     @Test
+    void returnsOnlyALimitedMessageWhenTheReadOnlyToolFails() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        var passedTools = new java.util.concurrent.atomic.AtomicReference<Object[]>();
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenAnswer(invocation -> {
+            passedTools.set(invocation.getArguments());
+            return requestSpec;
+        });
+        when(requestSpec.call()).thenAnswer(invocation -> {
+            ((ToolCallback) passedTools.get()[0]).call("{}");
+            return responseSpec;
+        });
+        var failedTool = new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return org.springframework.ai.tool.definition.DefaultToolDefinition.builder()
+                        .name("search_vehicles").description("search").inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String input) {
+                throw new IllegalStateException("catalog timeout");
+            }
+        };
+        var decision = new ConversationDecision(ConversationIntent.INVENTORY, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_SEARCH,
+                SensitiveDataLevel.NONE, List.of());
+
+        var result = new SpringAiChatCompletionAdapter(client, "deepseek",
+                new ToolAuthorizationPolicy(List.of(failedTool)))
+                .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "¿Hay Ranger disponible?", "BOT_ACTIVE", null, false, decision), null);
+
+        assertThat(result.content()).contains("no lo tengo confirmado")
+                .doesNotContain("disponible", "precio", "$", "2027");
+        assertThat(result.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.READ_ONLY_TOOL_FAILED);
+    }
+
+    @Test
+    void withholdsUnsupportedExactFactsWhenTheReadOnlyToolReturnsNoResults() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        var passedTools = new java.util.concurrent.atomic.AtomicReference<Object[]>();
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenAnswer(invocation -> {
+            passedTools.set(invocation.getArguments());
+            return requestSpec;
+        });
+        when(requestSpec.call()).thenAnswer(invocation -> {
+            ((ToolCallback) passedTools.get()[0]).call("{}");
+            return responseSpec;
+        });
+        when(responseSpec.content()).thenReturn("Sí, la Ranger está disponible por $850,000 en 2027.");
+        var emptyTool = new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return org.springframework.ai.tool.definition.DefaultToolDefinition.builder()
+                        .name("search_vehicles").description("search").inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String input) {
+                return "";
+            }
+        };
+        var decision = new ConversationDecision(ConversationIntent.INVENTORY, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_SEARCH,
+                SensitiveDataLevel.NONE, List.of());
+
+        var result = new SpringAiChatCompletionAdapter(client, "deepseek",
+                new ToolAuthorizationPolicy(List.of(emptyTool)))
+                .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "¿Hay Ranger disponible?", "BOT_ACTIVE", null, false, decision), null);
+
+        assertThat(result.content()).contains("no lo tengo confirmado")
+                .doesNotContain("$850,000", "2027", "disponible");
+        assertThat(result.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED_EMPTY);
+    }
+
+    @Test
     void retainsModelSelfConfidenceOnlyAsInternalResponseMetadata() {
         var client = mock(ChatClient.class);
         var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
@@ -583,6 +721,32 @@ class SpringAiChatCompletionAdapterTest {
 
         assertThat(result.content()).contains("Lobo Raptor");
         verify(requestSpec, times(2)).call();
+    }
+
+    @Test
+    void doesNotRepairAnInvalidFallbackAnswerMoreThanOnce() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("¿Qué modelo le interesa y cuánto planea invertir?");
+        var adapter = new SpringAiChatCompletionAdapter(client, "openrouter",
+                new ToolAuthorizationPolicy(), new DecisionPolicy(), null,
+                new com.ford.service.ai.application.AssistantResponseQualityPolicy(), new ObjectMapper(),
+                new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP), null, false);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> adapter.complete(
+                        new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(), "Quiero cotizar",
+                                "BOT_ACTIVE", false),
+                        new ToolContext(UUID.randomUUID(), UUID.randomUUID())))
+                .isInstanceOf(InvalidAssistantResponseException.class)
+                .hasFieldOrPropertyWithValue("reason", "multiple_questions");
+        verify(requestSpec, times(1)).call();
     }
 
     @Test

@@ -30,7 +30,7 @@ class HandoffAuthorizationTest {
     void rejectsClaimForTenantOutsideOperatorClaims() {
         var repository = new InMemoryHandoffRepository();
         var ticket = repository.seed(TENANT_A, UUID.randomUUID());
-        HandoffService service = new DefaultHandoffService(repository, event -> { });
+        HandoffService service = new DefaultHandoffService(repository, event -> { }, (tenant, conversation, operator, handoffId) -> { });
 
         assertThatThrownBy(() -> service.claim(ticket.id(), 0,
                 principal(UUID.randomUUID(), TENANT_B)))
@@ -41,7 +41,7 @@ class HandoffAuthorizationTest {
     void rejectsStaleVersionWithoutChangingTheTicket() {
         var repository = new InMemoryHandoffRepository();
         var ticket = repository.seed(TENANT_A, UUID.randomUUID());
-        HandoffService service = new DefaultHandoffService(repository, event -> { });
+        HandoffService service = new DefaultHandoffService(repository, event -> { }, (tenant, conversation, operator, handoffId) -> { });
 
         assertThatIllegalStateException()
                 .isThrownBy(() -> service.claim(ticket.id(), 7,
@@ -56,7 +56,8 @@ class HandoffAuthorizationTest {
         var conversationId = UUID.randomUUID();
         repository.conversationTenants.put(conversationId, TENANT_A);
         var events = new ArrayList<Object>();
-        HandoffService service = new DefaultHandoffService(repository, events::add);
+        HandoffService service = new DefaultHandoffService(repository, events::add,
+                (tenant, conversation, operator, handoffId) -> { });
 
         var created = service.request(
                 new HandoffRequest(TENANT_B, conversationId, null, "CUSTOMER_REQUEST"),
@@ -72,7 +73,7 @@ class HandoffAuthorizationTest {
         var repository = new InMemoryHandoffRepository();
         var conversationId = UUID.randomUUID();
         var ticket = repository.seed(TENANT_A, conversationId);
-        HandoffService service = new DefaultHandoffService(repository, event -> { });
+        HandoffService service = new DefaultHandoffService(repository, event -> { }, (tenant, conversation, operator, handoffId) -> { });
         var principal = principal(UUID.randomUUID(), TENANT_A);
 
         var claimed = service.claim(ticket.id(), 0, principal);

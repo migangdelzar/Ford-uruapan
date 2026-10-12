@@ -43,7 +43,7 @@ class FinanceLeadHandoffFlowTest {
         var conversationId = UUID.randomUUID();
         repository.conversationTenants.put(conversationId, tenantId);
         var principal = new OperatorPrincipal(UUID.randomUUID(), Set.of(tenantId), Set.of("ROLE_OPERATOR"));
-        var handoff = new DefaultHandoffService(repository, event -> { });
+        var handoff = new DefaultHandoffService(repository, event -> { }, (tenant, conversation, operator, handoffId) -> { });
         var ticket = handoff.request(new HandoffRequest(UUID.randomUUID(), conversationId, null, score.band().name()), principal);
         var claimed = handoff.claim(ticket.id(), 0, principal);
 

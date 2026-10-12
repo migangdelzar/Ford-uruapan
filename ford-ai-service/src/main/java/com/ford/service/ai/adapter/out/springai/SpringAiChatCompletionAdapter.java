@@ -38,7 +38,8 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                     + "No inventes datos: usa únicamente la información autorizada y las herramientas de solo lectura. "
                     + "Responde primero la pregunta actual; usa el contexto de sesión para no repetir saludos ni preguntas. ";
     private static final String VOLATILE_SOURCE_UNAVAILABLE =
-            "Ese dato no lo tengo confirmado ahora; prefiero no darle información incompleta.";
+            "Ese dato no lo tengo confirmado ahora; prefiero no darle información incompleta. "
+                    + "Puedo orientarle con información general sin inventar cifras ni disponibilidad.";
 
     private final ChatClient client;
     private final String provider;
@@ -49,6 +50,7 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
     private final ObjectMapper objectMapper;
     private final AiObservationService observations;
     private final McpFactResponseRenderer factResponseRenderer;
+    private final boolean repairEnabled;
 
     public SpringAiChatCompletionAdapter(ChatClient client, String provider) {
         this(client, provider, new ToolAuthorizationPolicy(), new DecisionPolicy(), null,
@@ -114,6 +116,19 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                                          ObjectMapper objectMapper,
                                          AiObservationService observations,
                                          McpFactResponseRenderer factResponseRenderer) {
+        this(client, provider, toolPolicy, decisionPolicy, systemPromptService, qualityPolicy,
+                objectMapper, observations, factResponseRenderer, true);
+    }
+
+    public SpringAiChatCompletionAdapter(ChatClient client, String provider,
+                                         ToolAuthorizationPolicy toolPolicy,
+                                         DecisionPolicy decisionPolicy,
+                                         SystemPromptService systemPromptService,
+                                         AssistantResponseQualityPolicy qualityPolicy,
+                                         ObjectMapper objectMapper,
+                                         AiObservationService observations,
+                                         McpFactResponseRenderer factResponseRenderer,
+                                         boolean repairEnabled) {
         this.client = Objects.requireNonNull(client);
         this.provider = Objects.requireNonNull(provider);
         this.toolPolicy = Objects.requireNonNull(toolPolicy);
@@ -123,6 +138,7 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         this.objectMapper = Objects.requireNonNull(objectMapper);
         this.observations = Objects.requireNonNull(observations);
         this.factResponseRenderer = factResponseRenderer;
+        this.repairEnabled = repairEnabled;
     }
 
     @Override
@@ -151,6 +167,9 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
             if (deterministic != null) return deterministic;
             var verdict = qualityPolicy.evaluate(request.message(), request.memoryContext(), generation.answer());
             if (!verdict.accepted()) {
+                if (!repairEnabled) {
+                    throw new InvalidAssistantResponseException(verdict.reason());
+                }
                 log.warn("Model completion quality repair requested: conversationId={} reason={}",
                         request.conversationId(), qualityPolicy.diagnosticReason(verdict));
                 generation = call(request, context, tools, qualityPolicy.repairInstruction(verdict.reason()));
@@ -186,6 +205,12 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         } catch (RuntimeException exception) {
             var deterministic = renderFactResponse(request, toolResults, null);
             if (deterministic != null) return deterministic;
+            if (toolResults.hasFailed() && decisionPolicy.requiresVolatileInformation(request.decision())) {
+                var evidenceStatus = evidenceStatus(request, toolResults);
+                recordAssessment(evidenceStatus, null, "withheld");
+                return new AssistantResponse(VOLATILE_SOURCE_UNAVAILABLE, false, provider, List.of(), null,
+                        null, evidenceStatus);
+            }
             var routedFailure = AiProviderFailureDiagnostics.afterReadOnlyToolResult(
                     exception, toolResults.hasReturnedResult());
             log.warn("Model completion failed: conversationId={} provider={} {}",

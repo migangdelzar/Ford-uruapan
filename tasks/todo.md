@@ -269,3 +269,20 @@ Goal: Spring fills separate Markdown templates from returned MCP price/promotion
 - The first reply gets a stable Mexican name derived from the conversation ID; later replies in that conversation skip the introduction. The greeting does not claim the assistant is human, and the prompt requires an honest answer if asked.
 - Scope policy rejects unrelated questions even if a classifier labels them Ford-related; explicit vehicle shopping requests and genuine in-context follow-ups remain supported.
 - Focused persona, scope, renderer, adapter, and assistant-service tests passed; full `./gradlew test --no-daemon` passed (565 tests), including app-context startup. Changes are local; not committed, pushed, or deployed.
+
+# Safe DeepSeek responses and advisor handoff (2026-10-12)
+
+- [x] Keep one-detail assistant replies, log only rejection reasons, bound DeepSeek repair plus OpenRouter fallback, and return safe replies when MCP is unavailable.
+- [x] Enable the verified OpenRouter production fallback and add config/quality/MCP regressions.
+- [x] Send a customer handoff notice after an advisor claims the conversation; persist sender type/identity and expose it through the API/UI.
+- [x] Verify app startup, Modulith listener packaging, DB migration, handoff transcript/outbox, and frontend sender rendering.
+- [x] Run a read-only live MCP vehicle search and confirm catalog source URLs are returned.
+- [ ] Recheck production logs after rollout; current app image still logged one `ClassNotFoundException` for `ConversationTurnRealtimeListener` in the last 100 lines.
+
+### Results
+
+- Branch: `fix/advisor-handoff-message-senders` in Ford-uruapan and Ford-web, based on each repo's current `origin/main`.
+- On successful advisor claim, the service appends one outbound advisor-authored notice: “Hola, ya tomé tu conversación. Te responderé por aquí en cuanto pueda.” Message sender type/name now survive DB/API/UI mapping; existing messages receive a safe sender backfill.
+- DeepSeek remains primary; the verified OpenRouter model is the only fallback. Primary gets at most one repair; fallback gets one request. Rejections log only a reason, not prompts or generated text. MCP failures/empty results withhold exact volatile facts; confirmed MCP prices/promotions render deterministic source-linked answers.
+- Verification passed: full backend unit suite, focused backend suite, Ford-web sender Vitest, `bun run lint`, API contract check (47 paths), app context/Liquibase/Modulith tests, handoff/conversation integration tests, end-to-end Meta-to-outbox flow, and `bootJar` packaging check.
+- Live read-only MCP `search_vehicles` returned three Ford Ranger results and Ford Uruapan source URLs. No deployment was performed. Production log check found no follow-up-service or classifier-failure signatures, but did find one realtime listener `ClassNotFoundException`; recheck after the feature branch is deployed.
