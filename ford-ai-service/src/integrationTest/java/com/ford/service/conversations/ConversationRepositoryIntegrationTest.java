@@ -2,6 +2,7 @@ package com.ford.service.conversations;
 
 import com.ford.service.channels.domain.Channel;
 import com.ford.service.conversations.adapter.out.JdbcConversationRepository;
+import com.ford.service.conversations.adapter.out.JdbcOperatorConversationCommandRepository;
 import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.conversations.domain.ConversationTurn;
 import com.ford.service.conversations.domain.HandoffDecision;
@@ -56,6 +57,9 @@ class ConversationRepositoryIntegrationTest {
     JdbcConversationRepository repository;
 
     @Autowired
+    JdbcOperatorConversationCommandRepository operatorCommands;
+
+    @Autowired
     JdbcLeadFollowUpRepository followUps;
 
     @Autowired
@@ -100,6 +104,18 @@ class ConversationRepositoryIntegrationTest {
         assertThat(repository.completeBotTurn(
                 conversationId, snapshot.version(), new ConversationTurn("Respuesta obsoleta.")))
                 .isFalse();
+    }
+
+    @Test
+    void incrementsVersionForMemoryRestartOnlyWhenBotStillOwnsExpectedVersion() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        insertConversation(tenantId, conversationId);
+
+        assertThat(operatorCommands.bumpVersionForMemoryRestart(tenantId, conversationId, 0)).isTrue();
+        assertThat(operatorCommands.bumpVersionForMemoryRestart(tenantId, conversationId, 0)).isFalse();
+        assertThat(jdbc.sql("select version from conversation where id = :id")
+                .param("id", conversationId).query(Long.class).single()).isEqualTo(1L);
     }
 
     @Test

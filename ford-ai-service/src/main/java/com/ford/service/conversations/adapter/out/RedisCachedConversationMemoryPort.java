@@ -97,6 +97,19 @@ public final class RedisCachedConversationMemoryPort implements ConversationMemo
     }
 
     @Override
+    public void resetContext(ConversationMemoryKey key, java.util.UUID actorId, Instant resetAt) {
+        durable.resetContext(key, actorId, resetAt);
+        try {
+            cache.evict(key);
+        } catch (RuntimeException exception) {
+            cacheFailures.increment();
+            log.error("Conversation memory restart cache eviction failed: conversationId={} exceptionType={}",
+                    key.conversationId(), exception.getClass().getSimpleName());
+            throw new IllegalStateException("conversation memory cache unavailable; restart was not committed", exception);
+        }
+    }
+
+    @Override
     public MemoryUpdateResult updateProjection(ConversationMemoryKey key,
                                                 MemoryProjectionUpdate update,
                                                 long expectedVersion) {
@@ -125,7 +138,8 @@ public final class RedisCachedConversationMemoryPort implements ConversationMemo
         var fromIndex = Math.max(0, messages.size() - limit);
         var boundedMessages = List.copyOf(messages.subList(fromIndex, messages.size()));
         return new ConversationMemoryContext(context.key(), context.summary(), boundedMessages,
-                context.durableFacts(), context.memoryVersion());
+                context.durableFacts(), context.memoryVersion(), context.updatedAt(),
+                context.recalledTurns(), context.contextStartedAt());
     }
 
     private static Counter counter(MeterRegistry registry, String outcome) {

@@ -360,6 +360,94 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProblemDetail'
 
+  /api/v1/conversations/{conversationId}/restart:
+    parameters:
+      - $ref: '#/components/parameters/ConversationId'
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IfMatch'
+    post:
+      tags: [Conversations]
+      summary: Restart bot context while retaining transcript
+      description: Starts a new bot-memory epoch; transcript messages remain available to authorized operators.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: New memory epoch created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationMemoryRestartReceipt'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Version is stale, a bot turn is active, or the conversation is not bot-owned.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /api/v1/conversations/runtime-settings:
+    get:
+      tags: [Conversations]
+      summary: Get tenant runtime behavior settings
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Effective settings and audit revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationRuntimeSettingsSnapshot'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    put:
+      tags: [Conversations]
+      summary: Update tenant runtime behavior settings
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationRuntimeSettings'
+      responses:
+        '200':
+          description: Persisted settings and new audit revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationRuntimeSettingsSnapshot'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Revision changed since the settings were loaded.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
   /api/v1/conversations/{conversationId}/takeover:
     post:
       tags: [Handoffs]
@@ -1729,6 +1817,53 @@ components:
     DeliveryStatus:
       type: string
       enum: [QUEUED, SENT, DELIVERED, READ, FAILED]
+    ConversationMemoryRestartReceipt:
+      type: object
+      required: [conversationId, conversationVersion, contextStartedAt]
+      properties:
+        conversationId:
+          type: string
+          format: uuid
+        conversationVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        contextStartedAt:
+          type: string
+          format: date-time
+    ConversationRuntimeSettings:
+      type: object
+      required: [humanHandoffEnabled, memoryEnabled, promptRecentMessageLimit]
+      properties:
+        humanHandoffEnabled:
+          type: boolean
+        memoryEnabled:
+          type: boolean
+        promptRecentMessageLimit:
+          type: integer
+          minimum: 1
+          maximum: 50
+    ConversationRuntimeSettingsSnapshot:
+      type: object
+      required: [tenantId, revision, settings]
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+        settings:
+          $ref: '#/components/schemas/ConversationRuntimeSettings'
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedBy:
+          type: string
+          format: uuid
+          nullable: true
     Conversation:
       type: object
       required: [id, tenantId, channel, state, version, participant, updatedAt]

@@ -1,0 +1,31 @@
+databaseChangeLog:
+  - changeSet:
+      id: 023-conversation-runtime-settings-and-memory-epoch
+      author: ford-service
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              alter table conversation_memory
+                  add column if not exists context_started_at timestamptz not null default '-infinity'::timestamptz;
+              alter table conversation_memory
+                  add column if not exists context_reset_by uuid;
+
+              create table if not exists tenant_runtime_configuration (
+                  tenant_id uuid primary key,
+                  config_json jsonb not null default '{}'::jsonb,
+                  revision bigint not null default 0,
+                  updated_by uuid,
+                  updated_at timestamptz not null default now()
+              );
+
+              create index if not exists idx_conversation_memory_epoch
+                  on conversation_memory(tenant_id, conversation_id, context_started_at);
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              drop index if exists idx_conversation_memory_epoch;
+              drop table if exists tenant_runtime_configuration;
+              alter table conversation_memory drop column if exists context_reset_by;
+              alter table conversation_memory drop column if exists context_started_at;

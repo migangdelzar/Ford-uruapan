@@ -81,7 +81,7 @@ public class ConversationTurnCommitService {
         }
 
         var customerAuthorized = customerAuthorization.isAuthorized(inbound.text(), memory);
-        if (handoffPolicy.shouldCreateHandoff(customerAuthorized)) {
+        if (handoffPolicy.shouldCreateHandoff(reference.tenantId(), customerAuthorized)) {
             var payload = payloadFactory.create(inbound.text(), memory, reply.text());
             var decision = reply.decision();
             var urgent = decision.intent() == ConversationIntent.HUMAN_REQUEST
@@ -106,10 +106,11 @@ public class ConversationTurnCommitService {
             return ConversationGraphRoute.HUMAN_PENDING;
         }
 
-        var shouldOffer = handoffPolicy.enabled()
+        var handoffEnabled = handoffPolicy.enabled(reference.tenantId());
+        var shouldOffer = handoffEnabled
                 && handoffOfferPolicy.shouldOffer(inbound.text(), reply.text(),
                         reply.decision() == null ? LeadTemperature.UNKNOWN : reply.decision().leadTemperature(), memory);
-        var text = customerAuthorized && !handoffPolicy.enabled() ? HANDOFF_UNAVAILABLE_TEXT
+        var text = customerAuthorized && !handoffEnabled ? HANDOFF_UNAVAILABLE_TEXT
                 : reply.handoffRequired() ? shouldOffer ? handoffOfferPolicy.offerAfter(null) : UNAUTHORIZED_HANDOFF_TEXT
                 : shouldOffer ? handoffOfferPolicy.offerAfter(reply.text()) : reply.text();
         if (!repository.completeBotTurn(reference.tenantId(), reference.conversationId(), conversation.version(),

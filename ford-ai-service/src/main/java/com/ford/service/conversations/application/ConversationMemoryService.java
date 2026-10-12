@@ -24,6 +24,7 @@ public final class ConversationMemoryService {
     private final ConversationMemoryRecallPolicy recallPolicy;
     private final ConversationMemoryProjector projector;
     private final ApplicationEventPublisher eventPublisher;
+    private final ConversationRuntimeSettingsService runtimeSettings;
 
     public ConversationMemoryService(ConversationMemoryPort memory, MemoryProperties properties) {
         this(memory, properties, new NoOpConversationMemorySemanticPort(),
@@ -59,6 +60,16 @@ public final class ConversationMemoryService {
                                      ConversationMemoryRecallPort recall,
                                      ApplicationEventPublisher eventPublisher,
                                      ConversationMemoryCompactionPort compactor) {
+        this(memory, properties, semanticMemory, recall, eventPublisher, compactor, null);
+    }
+
+    public ConversationMemoryService(ConversationMemoryPort memory,
+                                     MemoryProperties properties,
+                                     ConversationMemorySemanticPort semanticMemory,
+                                     ConversationMemoryRecallPort recall,
+                                     ApplicationEventPublisher eventPublisher,
+                                     ConversationMemoryCompactionPort compactor,
+                                     ConversationRuntimeSettingsService runtimeSettings) {
         this.memory = Objects.requireNonNull(memory);
         this.properties = Objects.requireNonNull(properties);
         this.semanticMemory = Objects.requireNonNull(semanticMemory);
@@ -66,14 +77,18 @@ public final class ConversationMemoryService {
         this.recallPolicy = new ConversationMemoryRecallPolicy();
         this.eventPublisher = Objects.requireNonNull(eventPublisher);
         this.projector = new ConversationMemoryProjector(properties, Objects.requireNonNull(compactor));
+        this.runtimeSettings = runtimeSettings;
     }
 
     public ConversationMemoryContext load(MemoryQuery query) {
-        if (!properties.enabled()) {
+        var runtime = currentSettings(query.key().tenantId());
+        if (!(runtime == null ? properties.enabled() : runtime.memoryEnabled())) {
             return ConversationMemoryContext.empty(query.key());
         }
+        var promptLimit = runtime == null ? properties.promptRecentMessageLimit()
+                : Math.min(properties.recentMessageLimit(), runtime.promptRecentMessageLimit());
         var boundedQuery = new MemoryQuery(query.key(), query.latestMessage(), query.currentProviderMessageId(),
-                properties.promptRecentMessageLimit(), properties.semanticLimit());
+                promptLimit, properties.semanticLimit());
         try {
             var context = memory.load(boundedQuery);
             if (!properties.semanticEnabled() || query.latestMessage() == null
@@ -88,7 +103,7 @@ public final class ConversationMemoryService {
                             .toList();
                     context = new ConversationMemoryContext(context.key(), context.summary(),
                             context.recentMessages(), facts, context.memoryVersion(), context.updatedAt(),
-                            context.recalledTurns());
+                            context.recalledTurns(), context.contextStartedAt());
                 } catch (RuntimeException exception) {
                     log.warn("Semantic conversation memory search failed: conversationId={} tenantId={} exceptionType={}",
                             query.key().conversationId(), query.key().tenantId(),
@@ -103,7 +118,7 @@ public final class ConversationMemoryService {
                             properties.semanticRecallLimit(), properties.semanticRecallMinimumSimilarity());
                     context = new ConversationMemoryContext(context.key(), context.summary(),
                             context.recentMessages(), context.durableFacts(), context.memoryVersion(),
-                            context.updatedAt(), recalled);
+                            context.updatedAt(), recalled, context.contextStartedAt());
                 } catch (RuntimeException exception) {
                     log.warn("Conversation semantic recall failed: conversationId={} tenantId={} exceptionType={}",
                             query.key().conversationId(), query.key().tenantId(),
@@ -121,7 +136,8 @@ public final class ConversationMemoryService {
 
     public void recordInbound(ConversationMemoryKey key, UUID messageId, String providerMessageId,
                               String content, java.time.Instant occurredAt) {
-        if (!properties.enabled() || content == null || content.isBlank()) {
+        var runtime = currentSettings(key.tenantId());
+        if (!(runtime == null ? properties.enabled() : runtime.memoryEnabled()) || content == null || content.isBlank()) {
             return;
         }
         try {
@@ -138,7 +154,8 @@ public final class ConversationMemoryService {
 
     public void indexOutbound(ConversationMemoryKey key, UUID messageId, String providerMessageId,
                               String content, java.time.Instant occurredAt) {
-        if (!properties.enabled() || content == null || content.isBlank()) {
+        var runtime = currentSettings(key.tenantId());
+        if (!(runtime == null ? properties.enabled() : runtime.memoryEnabled()) || content == null || content.isBlank()) {
             return;
         }
         var message = new ConversationMessage(messageId, key.conversationId(),
@@ -165,12 +182,27 @@ public final class ConversationMemoryService {
         }
     }
 
+    public void resetContext(ConversationMemoryKey key, UUID actorId, Instant resetAt) {
+        memory.resetContext(key, actorId, resetAt);
+    }
+
     private void publishIndexRequest(ConversationMemoryKey key, ConversationMessage message) {
         try {
             eventPublisher.publishEvent(new com.ford.service.conversations.api.ConversationMemoryIndexRequested(key, message));
         } catch (RuntimeException exception) {
             log.warn("Conversation memory index event publication failed: conversationId={} exceptionType={}",
                     key.conversationId(), exception.getClass().getSimpleName());
+        }
+    }
+
+    private ConversationRuntimeSettings currentSettings(UUID tenantId) {
+        if (runtimeSettings == null) return null;
+        try {
+            return runtimeSettings.current(tenantId).settings();
+        } catch (RuntimeException exception) {
+            log.warn("Runtime settings lookup failed; using deployment memory defaults: tenantId={} exceptionType={}",
+                    tenantId, exception.getClass().getSimpleName());
+            return null;
         }
     }
 }

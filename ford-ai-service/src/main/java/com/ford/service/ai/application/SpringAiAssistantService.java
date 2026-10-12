@@ -155,7 +155,7 @@ public final class SpringAiAssistantService implements AssistantService {
                     securedInput.memoryContext(),
                     securedInput.containsSensitiveData(), decision, securedInput.leadJourneyContext()));
             var requestsHuman = response.handoffRequired()
-                    || decisionPolicy.mayCreateHandoff(decision, handoffPolicy.enabled());
+                    || decisionPolicy.mayCreateHandoff(decision, handoffPolicy.enabled(context.tenantId()));
             log.info("AI turn completed: conversationId={} provider={} model={} requestsHuman={} sourceCount={} journeyProposal={} durationMs={}",
                     conversationId, response.provider(), modelVersion(response.provider()), requestsHuman,
                     response.sourceDocumentIds().size(), response.journeyProposal() != null, elapsedMs(started));

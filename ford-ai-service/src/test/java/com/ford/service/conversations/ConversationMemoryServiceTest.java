@@ -6,6 +6,9 @@ import com.ford.service.conversations.application.ConversationMemorySemanticPort
 import com.ford.service.conversations.application.ConversationMemoryRecallPort;
 import com.ford.service.conversations.application.ConversationMemoryService;
 import com.ford.service.conversations.application.MemoryProperties;
+import com.ford.service.conversations.application.ConversationRuntimeSettings;
+import com.ford.service.conversations.application.ConversationRuntimeSettingsService;
+import com.ford.service.conversations.application.ConversationRuntimeSettingsSnapshot;
 import com.ford.service.conversations.domain.ConversationMemoryContext;
 import com.ford.service.conversations.domain.ConversationMemoryKey;
 import com.ford.service.conversations.domain.ConversationMessage;
@@ -20,6 +23,8 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class ConversationMemoryServiceTest {
 
@@ -37,6 +42,41 @@ class ConversationMemoryServiceTest {
 
         assertThat(port.lastQuery.recentMessageLimit()).isEqualTo(8);
         assertThat(port.lastQuery.semanticLimit()).isEqualTo(properties.semanticLimit());
+    }
+
+    @Test
+    void appliesTenantRuntimeMemoryDisableAndPromptLimit() {
+        var key = new ConversationMemoryKey(UUID.randomUUID(), Channel.WHATSAPP,
+                "phone-1", "customer-1", UUID.randomUUID());
+        var port = new FakeMemoryPort();
+        var runtime = mock(ConversationRuntimeSettingsService.class);
+        when(runtime.current(key.tenantId())).thenReturn(new ConversationRuntimeSettingsSnapshot(
+                key.tenantId(), 2, new ConversationRuntimeSettings(false, false, 6), Instant.now(), UUID.randomUUID()));
+        var service = new ConversationMemoryService(port, new MemoryProperties(), new FakeSemanticPort(),
+                new FakeRecallPort(), event -> { }, com.ford.service.conversations.application.ConversationMemoryCompactionPort.unavailable(), runtime);
+
+        var context = service.load(new MemoryQuery(key, "Ranger"));
+        service.recordInbound(key, UUID.randomUUID(), "msg-1", "Ranger", Instant.now());
+
+        assertThat(context.summary()).isEmpty();
+        assertThat(port.lastQuery).isNull();
+        assertThat(port.recordedInbound).isZero();
+    }
+
+    @Test
+    void appliesTenantRuntimePromptLimitWhenMemoryIsEnabled() {
+        var key = new ConversationMemoryKey(UUID.randomUUID(), Channel.WHATSAPP,
+                "phone-1", "customer-1", UUID.randomUUID());
+        var port = new FakeMemoryPort();
+        var runtime = mock(ConversationRuntimeSettingsService.class);
+        when(runtime.current(key.tenantId())).thenReturn(new ConversationRuntimeSettingsSnapshot(
+                key.tenantId(), 2, new ConversationRuntimeSettings(false, true, 6), Instant.now(), UUID.randomUUID()));
+        var service = new ConversationMemoryService(port, new MemoryProperties(), new FakeSemanticPort(),
+                new FakeRecallPort(), event -> { }, com.ford.service.conversations.application.ConversationMemoryCompactionPort.unavailable(), runtime);
+
+        service.load(new MemoryQuery(key, "Ranger"));
+
+        assertThat(port.lastQuery.recentMessageLimit()).isEqualTo(6);
     }
 
     @Test
@@ -118,6 +158,7 @@ class ConversationMemoryServiceTest {
     private static final class FakeMemoryPort implements ConversationMemoryPort {
         private RuntimeException loadFailure;
         private MemoryQuery lastQuery;
+        private int recordedInbound;
 
         @Override
         public ConversationMemoryContext load(MemoryQuery query) {
@@ -130,6 +171,7 @@ class ConversationMemoryServiceTest {
 
         @Override
         public void recordInbound(ConversationMemoryKey key, ConversationMessage message) {
+            recordedInbound++;
         }
 
         @Override

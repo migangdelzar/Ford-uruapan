@@ -48,6 +48,22 @@ public class JdbcOperatorConversationCommandRepository implements OperatorConver
 
     @Override
     @Transactional
+    public boolean bumpVersionForMemoryRestart(UUID tenantId, UUID conversationId, long expectedVersion) {
+        return jdbc.sql("""
+                update conversation
+                   set version = version + 1, updated_at = :updatedAt
+                 where id = :conversationId and tenant_id = :tenantId and version = :expectedVersion
+                   and state in ('BOT_ACTIVE', 'LEAD_CAPTURE')
+                """)
+                .param("conversationId", conversationId)
+                .param("tenantId", tenantId)
+                .param("expectedVersion", expectedVersion)
+                .param("updatedAt", Timestamp.from(Instant.now()))
+                .update() == 1;
+    }
+
+    @Override
+    @Transactional
     public CommandReceipt appendMessage(CommandMessage message) {
         var target = find(message.tenantId(), message.conversationId())
                 .orElseThrow(() -> new java.util.NoSuchElementException("conversation not found"));
