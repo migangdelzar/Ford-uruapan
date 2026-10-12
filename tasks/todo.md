@@ -251,3 +251,21 @@
 - [ ] Deploy compatible versions while BFF stays available; verify all login/API/webhook flows.
 - [ ] Cut `ford.emme.business` over to emme-1; requires Cloudflare Zone DNS Edit permission.
 - [ ] Remove BFF container and `ford-origin` route only after public hostname verification; retain Collector.
+# Deterministic MCP price and promotion response templates (2026-10-11)
+
+Goal: Spring fills separate Markdown templates from returned MCP price/promotion facts; the LLM does not rewrite factual values.
+
+- [x] Inspect tool result shapes and current completion seam.
+- [x] Add renderer tests for confirmed prices/promotions, source links, and missing evidence.
+- [x] Implement MCP evidence parsing and separate Markdown resource rendering.
+- [x] Capture only relevant bounded payloads and override generated text for matching questions.
+- [x] Run focused tests and check diff.
+
+### Results
+
+- Added independent price, promotion, combined, and no-evidence Markdown templates under `ford-ai-service/src/main/resources/response-templates/`.
+- Spring fills separate templates with MCP-confirmed published prices, benefits, validity dates/status, conditions, and Ford source links. It never computes a net price or treats unknown validity as active; the LLM cannot rewrite these factual replies.
+- MCP evidence capture is limited to `get_vehicle`, `search_vehicles`, and `list_promotions`, with a 64 KB per-payload cap. Source links are restricted to Ford Uruapan HTTPS hosts and query parameters are stripped.
+- The first reply gets a stable Mexican name derived from the conversation ID; later replies in that conversation skip the introduction. The greeting does not claim the assistant is human, and the prompt requires an honest answer if asked.
+- Scope policy rejects unrelated questions even if a classifier labels them Ford-related; explicit vehicle shopping requests and genuine in-context follow-ups remain supported.
+- Focused persona, scope, renderer, adapter, and assistant-service tests passed; full `./gradlew test --no-daemon` passed (565 tests), including app-context startup. Changes are local; not committed, pushed, or deployed.

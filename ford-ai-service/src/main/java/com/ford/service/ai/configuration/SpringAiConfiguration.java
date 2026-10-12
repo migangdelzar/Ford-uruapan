@@ -174,6 +174,11 @@ public class SpringAiConfiguration {
     }
 
     @Bean
+    com.ford.service.ai.application.AssistantPersona assistantPersona() {
+        return new com.ford.service.ai.application.AssistantPersona();
+    }
+
+    @Bean
     LeadQualificationPolicy leadQualificationPolicy() {
         return new LeadQualificationPolicy();
     }
@@ -253,13 +258,15 @@ public class SpringAiConfiguration {
                                            ClassificationProperties classificationProperties,
                                          ObjectProvider<TypeSafeClient> typeSafeClients,
                                          ObjectProvider<TypeSafeProperties> typeSafeProperties,
-                                         ObjectProvider<ObjectMapper> objectMappers) {
+                                         ObjectProvider<ObjectMapper> objectMappers,
+                                         ObjectProvider<com.ford.service.ai.application.McpFactResponseRenderer> factResponseRenderers) {
         var providers = new ArrayList<ProviderChatCompletionPort>();
         var objectMapper = objectMappers.getIfAvailable(
                 () -> new ObjectMapper().findAndRegisterModules());
         var observations = observationServices.getIfAvailable(
                 () -> new DefaultAiObservationService(ObservationRegistry.NOOP));
         var systemPromptService = systemPromptServices.getIfAvailable();
+        var factResponseRenderer = factResponseRenderers.getIfAvailable();
         var typeSafeClient = typeSafeClients.getIfAvailable();
         var typeSafeConfigured = usableTypeSafeConfiguration(typeSafeClient, typeSafeProperties.getIfAvailable(),
                 classificationProperties);
@@ -270,7 +277,7 @@ public class SpringAiConfiguration {
                             typeSafeConfigured ? typeSafeClient : null, scopePolicy),
                     properties.cloudChatProvider(), toolPolicy, decisionPolicy, systemPromptService,
                     new com.ford.service.ai.application.AssistantResponseQualityPolicy(), objectMapper,
-                    observations));
+                    observations, factResponseRenderer));
         }
         var springAiObservationRegistry = observationRegistries.getIfAvailable(() -> ObservationRegistry.NOOP);
         for (var providerId : chatProviders.eligibleFallbackIds().stream()
@@ -283,7 +290,7 @@ public class SpringAiConfiguration {
                             typeSafeConfigured ? typeSafeClient : null, scopePolicy),
                     providerId, toolPolicy, decisionPolicy, systemPromptService,
                     new com.ford.service.ai.application.AssistantResponseQualityPolicy(), objectMapper,
-                    observations));
+                    observations, factResponseRenderer));
         }
         var ollama = localModel.getIfAvailable();
         if (properties.localEnabled() && ollama != null) {
@@ -292,7 +299,7 @@ public class SpringAiConfiguration {
                             typeSafeConfigured ? typeSafeClient : null, scopePolicy),
                     properties.localChatProvider(), toolPolicy, decisionPolicy, systemPromptService,
                     new com.ford.service.ai.application.AssistantResponseQualityPolicy(), objectMapper,
-                    observations));
+                    observations, factResponseRenderer));
         }
         return providers.isEmpty()
                 ? new UnavailableChatCompletionPort()
@@ -371,10 +378,11 @@ public class SpringAiConfiguration {
                                       AssistantScopePolicy scopePolicy,
                                       LeadQualificationPolicy leadQualificationPolicy,
                                       ClassificationProperties classificationProperties,
-                                      InputSecurityPolicy inputSecurityPolicy) {
+                                      InputSecurityPolicy inputSecurityPolicy,
+                                      com.ford.service.ai.application.AssistantPersona assistantPersona) {
         return new SpringAiAssistantService(orchestrator,
                 handoffPolicy.getIfAvailable(() -> new HumanHandoffPolicy(true)), providerPolicy,
                 properties.logProviderErrors(), decisionService, decisionPolicy, scopePolicy,
-                leadQualificationPolicy, inputSecurityPolicy);
+                leadQualificationPolicy, inputSecurityPolicy, assistantPersona);
     }
 }

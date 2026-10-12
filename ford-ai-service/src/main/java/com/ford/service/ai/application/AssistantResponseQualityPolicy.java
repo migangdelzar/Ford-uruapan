@@ -72,6 +72,11 @@ public final class AssistantResponseQualityPolicy {
         };
     }
 
+    /** Stable, content-free reason suitable for logs and metrics. */
+    public String diagnosticReason(Verdict verdict) {
+        return verdict == null || verdict.accepted() ? "accepted" : verdict.reason();
+    }
+
     private static boolean looksLikeInternalPayload(String rawResponse) {
         var raw = rawResponse.toLowerCase(Locale.ROOT);
         var trimmedRaw = raw.strip();

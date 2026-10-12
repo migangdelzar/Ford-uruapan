@@ -13,10 +13,14 @@ import com.ford.service.ai.configuration.ClassificationProperties;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 public final class SpringAiAssistantService implements AssistantService {
 
     private static final Logger log = LoggerFactory.getLogger(SpringAiAssistantService.class);
+    private static final Pattern PRIOR_ASSISTANT_TURN = Pattern.compile(
+            "(?im)^\\s*[-*]?\\s*(usuario|asistente|user|assistant)\\s*:\\s*\\S");
+    private static final Pattern SESSION_SUMMARY = Pattern.compile("(?im)^\\s*resumen de sesión:\\s*(.+)$");
 
     private final AssistantOrchestrator orchestrator;
     private final HumanHandoffPolicy handoffPolicy;
@@ -27,6 +31,7 @@ public final class SpringAiAssistantService implements AssistantService {
     private final AssistantScopePolicy scopePolicy;
     private final LeadQualificationPolicy leadQualificationPolicy;
     private final InputSecurityPolicy inputSecurityPolicy;
+    private final AssistantPersona assistantPersona;
 
     public SpringAiAssistantService(AssistantOrchestrator orchestrator,
                                     ModelProviderPolicy providerPolicy) {
@@ -100,6 +105,20 @@ public final class SpringAiAssistantService implements AssistantService {
                                     AssistantScopePolicy scopePolicy,
                                     LeadQualificationPolicy leadQualificationPolicy,
                                     InputSecurityPolicy inputSecurityPolicy) {
+        this(orchestrator, handoffPolicy, providerPolicy, logProviderErrors, decisionService, decisionPolicy,
+                scopePolicy, leadQualificationPolicy, inputSecurityPolicy, new AssistantPersona());
+    }
+
+    public SpringAiAssistantService(AssistantOrchestrator orchestrator,
+                                    HumanHandoffPolicy handoffPolicy,
+                                    ModelProviderPolicy providerPolicy,
+                                    boolean logProviderErrors,
+                                    ConversationDecisionService decisionService,
+                                    DecisionPolicy decisionPolicy,
+                                    AssistantScopePolicy scopePolicy,
+                                    LeadQualificationPolicy leadQualificationPolicy,
+                                    InputSecurityPolicy inputSecurityPolicy,
+                                    AssistantPersona assistantPersona) {
         this.orchestrator = Objects.requireNonNull(orchestrator);
         this.handoffPolicy = Objects.requireNonNull(handoffPolicy);
         this.providerPolicy = Objects.requireNonNull(providerPolicy);
@@ -109,6 +128,7 @@ public final class SpringAiAssistantService implements AssistantService {
         this.scopePolicy = Objects.requireNonNull(scopePolicy);
         this.leadQualificationPolicy = Objects.requireNonNull(leadQualificationPolicy);
         this.inputSecurityPolicy = Objects.requireNonNull(inputSecurityPolicy);
+        this.assistantPersona = Objects.requireNonNull(assistantPersona);
     }
 
     @Override
@@ -146,7 +166,8 @@ public final class SpringAiAssistantService implements AssistantService {
         if (!scopePolicy.allows(securedInput.message(), decision, securedInput.memoryContext())) {
             log.info("AI turn completed by scope guard: conversationId={} durationMs={}",
                     conversationId, elapsedMs(started));
-            return new AssistantTurn(scopePolicy.scopeResponse(), decision.toLegacyIntent(), false,
+            return new AssistantTurn(introduceOnce(scopePolicy.scopeResponse(), conversationId,
+                    securedInput.memoryContext()), decision.toLegacyIntent(), false,
                     List.of(), "scope-guard", "none", decision);
         }
         try {
@@ -159,7 +180,8 @@ public final class SpringAiAssistantService implements AssistantService {
             log.info("AI turn completed: conversationId={} provider={} model={} requestsHuman={} sourceCount={} journeyProposal={} durationMs={}",
                     conversationId, response.provider(), modelVersion(response.provider()), requestsHuman,
                     response.sourceDocumentIds().size(), response.journeyProposal() != null, elapsedMs(started));
-            return new AssistantTurn(response.content(), decision.toLegacyIntent(), requestsHuman,
+            return new AssistantTurn(introduceOnce(response.content(), conversationId,
+                    securedInput.memoryContext()), decision.toLegacyIntent(), requestsHuman,
                     response.sourceDocumentIds(), response.provider(), modelVersion(response.provider()), decision,
                     response.journeyProposal());
         } catch (RuntimeException exception) {
@@ -168,7 +190,8 @@ public final class SpringAiAssistantService implements AssistantService {
                     providerSummary(), exception.getClass().getSimpleName(),
                     elapsedMs(started),
                     AiProviderFailureDiagnostics.describe(exception, logProviderErrors));
-            return new AssistantTurn(handoffPolicy.fallbackText(), decision.toLegacyIntent(),
+            return new AssistantTurn(introduceOnce(handoffPolicy.fallbackText(), conversationId,
+                    securedInput.memoryContext()), decision.toLegacyIntent(),
                     false, List.of(), "fallback", "none", decision);
         }
     }
@@ -179,6 +202,18 @@ public final class SpringAiAssistantService implements AssistantService {
             case SENSITIVE_DATA_BLOCKED -> "Por seguridad, elimina los datos personales o financieros del mensaje y vuelve a enviarlo. Puedo ayudarte con tu consulta Ford.";
             case NONE -> "Puedo ayudarte con información de Ford. ¿Qué te gustaría consultar?";
         };
+    }
+
+    private String introduceOnce(String response, UUID conversationId, String memoryContext) {
+        if (hasPriorConversation(memoryContext)) return response;
+        return assistantPersona.introductionFor(conversationId) + "\n" + response;
+    }
+
+    private static boolean hasPriorConversation(String memoryContext) {
+        if (memoryContext == null || memoryContext.isBlank()) return false;
+        if (PRIOR_ASSISTANT_TURN.matcher(memoryContext).find()) return true;
+        var summary = SESSION_SUMMARY.matcher(memoryContext);
+        return summary.find() && !summary.group(1).isBlank() && !summary.group(1).equalsIgnoreCase("null");
     }
 
     private static long elapsedMs(long started) {

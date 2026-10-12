@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+#MISE description="Deploy the Ford catalog MCP and BGE-M3 embeddings to emme-2"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+require_deploy_config
+render_deploy_inventory
+
+image="${1:-}"
+if [[ "$image" != ghcr.io/* || ! "$image" =~ ^ghcr\.io/[A-Za-z0-9._/-]+(@sha256:[a-f0-9]{64}|:[A-Za-z0-9._-]+)$ ]]; then
+  echo "Usage: mise run deploy:mcp -- ghcr.io/owner/ford-mcp:tag-or-digest" >&2
+  exit 2
+fi
+shift
+
+source_repo="$(cd "$MISE_PROJECT_ROOT/../../Ford-scraping" && pwd -P)"
+catalog_dump="${1:-$source_repo/backups/ford-20261009T101630.207Z.dump}"
+if (( $# > 0 )); then shift; fi
+cloudflared_token_file="${CLOUDFLARED_TUNNEL_TOKEN_FILE:-${HOME}/.cloudflared/ford-mcp-workstation.token}"
+if [[ ! -f "$catalog_dump" ]]; then
+  echo "Catalog dump not found: $catalog_dump" >&2
+  exit 2
+fi
+if [[ ! -f "$cloudflared_token_file" ]]; then
+  echo "Cloudflare tunnel token file not found: $cloudflared_token_file" >&2
+  exit 2
+fi
+(cd "$(dirname "$catalog_dump")" && shasum -a 256 -c "$(basename "$catalog_dump").sha256") >/dev/null
+
+ansible_command "$(deploy_repo_root)/deployment/ansible/mcp.yml" \
+  --limit data \
+  -e "mcp_image=$image" \
+  -e "mcp_catalog_dump_path=$catalog_dump" \
+  -e "mcp_cloudflared_tunnel_token_path=$cloudflared_token_file" \
+  "$@"

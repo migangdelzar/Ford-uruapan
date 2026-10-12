@@ -8,3 +8,4 @@
 - Live provider tests depend on external model/config state; disable Gradle up-to-date reuse or a “passing” preflight may be a stale result.
 - Short affirmations must be interpreted against the immediately pending offer/question. Classifying only the literal reply (for example, “sí me gustaría”) can fall back to GENERAL and restart discovery; persist the next workflow slot deterministically and do not depend on generated prose to advance state.
 - Spring Security OAuth2 Resource Server validates access tokens; it does not issue them. Before designing login, inspect `SecurityConfiguration` and use the same external OIDC issuer, rather than describing Spring as the issuer.
+- Spring Modulith observability creates CGLIB proxies for observed beans; keep observed Spring components subclassable. `final` classes can prevent the app context from starting.

@@ -1,8 +1,17 @@
 package com.ford.service.ai.application;
 
 import java.util.Locale;
+import java.util.List;
+import java.util.regex.Pattern;
 
 public class IntentRouter {
+
+    private static final List<Pattern> FORD_MODEL_PATTERNS = List.of(
+            "bronco", "edge", "expedition", "explorer", "f-150", "f 150", "f150",
+            "f-250", "f 250", "f250", "lobo", "maverick", "mustang",
+            "police interceptor", "ranger", "super duty", "territory", "transit"
+    ).stream().map(model -> Pattern.compile("(?<![\\p{L}\\p{N}])" + Pattern.quote(model)
+            + "(?![\\p{L}\\p{N}])", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE)).toList();
 
     public Intent route(String text) {
         if (text == null || text.isBlank()) {
@@ -43,6 +52,11 @@ public class IntentRouter {
         if (containsAny(normalized, "disponible", "inventario", "stock", "unidades", "color")) {
             return Intent.INVENTORY;
         }
+        if (containsAny(normalized, "suv", "crossover", "camioneta", "vehículo", "vehiculo", "auto", "carro")
+                && containsAny(normalized, "busco", "estoy buscando", "recomiend", "necesito", "quiero comprar",
+                        "me interesa", "quiero ver", "para mi familia")) {
+            return Intent.INVENTORY;
+        }
         if (containsAny(normalized, "mensualidad", "financiamiento", "comisión", "credito", "crédito", "enganche")) {
             return Intent.FINANCE;
         }
@@ -55,10 +69,15 @@ public class IntentRouter {
             return Intent.KNOWLEDGE;
         }
         if (containsAny(normalized, "precio", "modelo", "version", "versión", "ranger", "bronco", "maverick",
-                "lobo", "raptor", "pickup", "pick-up", "camioneta", "f-150")) {
+                "lobo", "raptor", "pickup", "pick-up", "camioneta", "f-150")
+                || mentionsFordModel(normalized)) {
             return Intent.CATALOG;
         }
         return Intent.GENERAL;
+    }
+
+    private static boolean mentionsFordModel(String normalized) {
+        return FORD_MODEL_PATTERNS.stream().anyMatch(pattern -> pattern.matcher(normalized).find());
     }
 
     private static boolean containsAny(String value, String... terms) {

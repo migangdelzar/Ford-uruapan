@@ -115,6 +115,28 @@ class AssistantScopePolicyTest {
     }
 
     @Test
+    void doesNotLetAClassifierExpandAnUnrelatedFollowUpIntoFordScope() {
+        var falseFordClassification = new ConversationDecision(
+                ConversationIntent.KNOWLEDGE, LeadTemperature.UNKNOWN, LeadStage.NEW,
+                HandoffRecommendation.NONE, ToolFamily.KNOWLEDGE_SEARCH,
+                SensitiveDataLevel.NONE, java.util.List.of());
+
+        assertThat(policy.allows("Explícame la mecánica cuántica", falseFordClassification,
+                "Historial reciente:\n- asistente: Ford Ranger 2026"))
+                .isFalse();
+    }
+
+    @Test
+    void allowsLifestyleVehicleShoppingEvenWithoutNamingAModel() {
+        var vehicleSearch = new ConversationDecision(
+                ConversationIntent.INVENTORY, LeadTemperature.UNKNOWN, LeadStage.NEW,
+                HandoffRecommendation.NONE, ToolFamily.VEHICLE_SEARCH,
+                SensitiveDataLevel.NONE, java.util.List.of());
+
+        assertThat(policy.allows("Busco una SUV amplia para mi familia", vehicleSearch)).isTrue();
+    }
+
+    @Test
     void allowsSupportedClassifierRouteForAShortVehicleTrimAnswer() {
         var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
                 LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE,

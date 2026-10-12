@@ -45,6 +45,27 @@ import static org.mockito.Mockito.verify;
 class SpringAiAssistantServiceTest {
 
     @Test
+    void introducesAStableFriendlyMexicanNameOnlyOnTheFirstReplyOfEachConversation() {
+        var orchestrator = mock(AssistantOrchestrator.class);
+        when(orchestrator.respond(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AssistantResponse("Claro, ¿qué modelo desea revisar?", false, "ollama", List.of()));
+        var service = new SpringAiAssistantService(orchestrator, new HumanHandoffPolicy(false),
+                new DefaultModelProviderPolicy(List.of()));
+        var firstConversation = new UUID(0, 0);
+        var secondConversation = new UUID(0, 1);
+
+        var firstReply = service.respond(new AiExecutionContext(UUID.randomUUID(), false, firstConversation,
+                "[HISTORIAL DE CONVERSACIÓN]\nResumen de sesión: null"), "Hola");
+        var followUp = service.respond(new AiExecutionContext(UUID.randomUUID(), false, firstConversation,
+                "Historial reciente:\n- asistente: Hola, soy *Ana*, su asistente de Ford Uruapan. 👋"), "Hola");
+        var newConversation = service.respond(new AiExecutionContext(UUID.randomUUID(), false, secondConversation), "Hola");
+
+        assertThat(firstReply.text()).startsWith("Hola, soy *Ana*, su asistente de Ford Uruapan.");
+        assertThat(followUp.text()).doesNotStartWith("Hola, soy");
+        assertThat(newConversation.text()).startsWith("Hola, soy *Daniela*, su asistente de Ford Uruapan.");
+    }
+
+    @Test
     void blocksPromptInjectionBeforeCallingClassifierOrModel() {
         var orchestrator = mock(AssistantOrchestrator.class);
         var classified = new boolean[1];
@@ -355,7 +376,7 @@ class SpringAiAssistantServiceTest {
         var turn = service.respond(new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID()),
                 "¿Qué precio tiene la Ranger?");
 
-        assertThat(turn.text()).isEqualTo(com.ford.service.shared.HumanHandoffPolicy.BOT_FALLBACK);
+        assertThat(turn.text()).contains("Hola, soy ", com.ford.service.shared.HumanHandoffPolicy.BOT_FALLBACK);
         assertThat(turn.intent()).isEqualTo(Intent.CATALOG);
         assertThat(turn.requestsHuman()).isFalse();
         assertThat(turn.provider()).isEqualTo("fallback");
@@ -373,7 +394,7 @@ class SpringAiAssistantServiceTest {
         var turn = service.respond(new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID()),
                 "¿Qué precio tiene la Ranger?");
 
-        assertThat(turn.text()).isEqualTo(
+        assertThat(turn.text()).contains("Hola, soy ",
                 "No pude generar una respuesta en este momento. Intenta de nuevo en unos segundos.");
         assertThat(turn.intent()).isEqualTo(Intent.CATALOG);
         assertThat(turn.requestsHuman()).isFalse();

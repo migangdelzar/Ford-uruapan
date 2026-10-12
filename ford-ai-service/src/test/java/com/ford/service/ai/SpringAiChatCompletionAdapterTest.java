@@ -19,9 +19,12 @@ import com.ford.service.ai.application.ToolAuthorizationPolicy;
 import com.ford.service.ai.application.InvalidAssistantResponseException;
 import com.ford.service.ai.application.ToolContext;
 import com.ford.service.ai.application.SystemPromptService;
+import com.ford.service.ai.application.McpFactResponseRenderer;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.core.io.DefaultResourceLoader;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
@@ -39,6 +42,111 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.times;
 
 class SpringAiChatCompletionAdapterTest {
+
+    @Test
+    void replacesModelPriceAnswerWithApprovedTemplateAndMcpSourceLink() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var toolInvocations = new java.util.concurrent.atomic.AtomicInteger();
+        var getVehicle = new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return org.springframework.ai.tool.definition.DefaultToolDefinition.builder()
+                        .name("get_vehicle").description("vehicle").inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String input) {
+                toolInvocations.incrementAndGet();
+                return "{\"model\":\"Explorer\",\"year\":2027,\"priceDisplay\":\"$1,193,600\","
+                        + "\"modelPageUrl\":\"https://www.forduruapan.mx/EXPLORER/27/?utm_source=test\"}";
+            }
+        };
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenAnswer(invocation -> {
+            invokeFirstToolCallback(invocation.getArgument(0));
+            return requestSpec;
+        });
+        when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("{\"answer\":\"La Explorer cuesta $1.\"}");
+
+        var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
+                LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE,
+                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, List.of());
+        var renderer = new McpFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper());
+        var adapter = new SpringAiChatCompletionAdapter(client, "openrouter",
+                new ToolAuthorizationPolicy(List.of(getVehicle)), new DecisionPolicy(), null,
+                new com.ford.service.ai.application.AssistantResponseQualityPolicy(), new ObjectMapper(),
+                new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP), renderer);
+
+        var result = adapter.complete(new AssistantRequest(tenantId, conversationId,
+                        "¿Qué precio tiene Explorer 2027?", "BOT_ACTIVE", null, false, decision),
+                new ToolContext(tenantId, conversationId));
+
+        assertThat(toolInvocations).hasValue(1);
+        assertThat(result.content()).contains("Explorer 2027", "$1,193,600",
+                "https://www.forduruapan.mx/EXPLORER/27/")
+                .doesNotContain("utm_source");
+        assertThat(result.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED);
+    }
+
+    @Test
+    void appendsExactComparisonUrlReturnedByMcpToTheModelAnswer() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var comparison = new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return org.springframework.ai.tool.definition.DefaultToolDefinition.builder()
+                        .name("get_variant_comparisons").description("comparison").inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String input) {
+                return "{\"modelPageUrl\":\"https://www.forduruapan.mx/EXPEDITION/27/\","
+                        + "\"comparisons\":[{\"comparisonUrl\":\"https://www.forduruapan.mx/EXPEDITION/27/Comparativo/KING-RANCH-MAX/?ref=x\"}]}";
+            }
+        };
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenAnswer(invocation -> {
+            invokeFirstToolCallback(invocation.getArgument(0));
+            return requestSpec;
+        });
+        when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("{\"answer\":\"La fuente muestra diferencias de equipamiento.\"}");
+
+        var renderer = new McpFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper());
+        var adapter = new SpringAiChatCompletionAdapter(client, "openrouter",
+                new ToolAuthorizationPolicy(List.of(comparison)), new DecisionPolicy(), null,
+                new com.ford.service.ai.application.AssistantResponseQualityPolicy(), new ObjectMapper(),
+                new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP), renderer);
+        var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
+                LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE,
+                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, List.of());
+
+        var result = adapter.complete(new AssistantRequest(tenantId, conversationId,
+                        "Compare Expedition King Ranch Max with competitors", "BOT_ACTIVE", null, false, decision),
+                new ToolContext(tenantId, conversationId));
+
+        assertThat(result.content()).contains("La fuente muestra diferencias de equipamiento.",
+                "🔎 *Enlaces útiles*",
+                "https://www.forduruapan.mx/EXPEDITION/27/Comparativo/KING-RANCH-MAX/")
+                .doesNotContain("?ref=x", "[Ver");
+    }
 
     @Test
     void attachesReadOnlyToolsAndTenantContextToTheSpringAiRequest() {
@@ -472,6 +580,23 @@ class SpringAiChatCompletionAdapterTest {
                 return "{}";
             }
         };
+    }
+
+    private static void invokeFirstToolCallback(Object candidate) {
+        if (candidate instanceof ToolCallback callback) {
+            callback.call("{}");
+        } else if (candidate instanceof Object[] callbacks) {
+            for (var item : callbacks) {
+                if (item instanceof ToolCallback callback) {
+                    callback.call("{}");
+                    return;
+                }
+                if (item instanceof Object[]) {
+                    invokeFirstToolCallback(item);
+                    return;
+                }
+            }
+        }
     }
 
     private static void assertToolNames(ChatClient.ChatClientRequestSpec requestSpec, String... expectedNames) {

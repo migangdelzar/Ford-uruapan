@@ -87,12 +87,32 @@ class AssistantResponseQualityPolicyTest {
     }
 
     @Test
+    void logsCanUseTheValidationReasonWithoutIncludingCustomerOrGeneratedText() {
+        var customerText = "¿Qué modelo me recomiendas? mi teléfono es 5551234567";
+        var generatedText = "¿Qué modelo buscas y cuál es tu presupuesto?";
+
+        var verdict = policy.evaluate(customerText, null, generatedText);
+
+        assertThat(verdict.reason()).isEqualTo("multiple_questions");
+        assertThat(verdict.reason()).doesNotContain(customerText, generatedText, "5551234567");
+    }
+
+    @Test
     void rejectsAQuestionThatCombinesTwoLeadDetails() {
         var verdict = policy.evaluate("Me interesa cotizar", null,
                 "¿Qué modelo le interesa y qué precio aproximado busca?");
 
         assertThat(verdict.accepted()).isFalse();
         assertThat(verdict.reason()).isEqualTo("multiple_questions");
+    }
+
+    @Test
+    void exposesOnlyStableReasonCodesForDiagnostics() {
+        var verdict = policy.evaluate("private customer prompt", null,
+                "¿Qué modelo buscas y cuál es tu presupuesto?");
+
+        assertThat(policy.diagnosticReason(verdict)).isEqualTo("multiple_questions");
+        assertThat(policy.diagnosticReason(null)).isEqualTo("accepted");
     }
 
     @Test

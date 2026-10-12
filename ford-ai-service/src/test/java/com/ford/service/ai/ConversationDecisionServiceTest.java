@@ -176,6 +176,26 @@ class ConversationDecisionServiceTest {
         assertThat(decision.intent()).isEqualTo(ConversationIntent.GENERAL);
     }
 
+    @Test
+    void routesTerritoryToVehicleDetailsWhenThePrimaryClassifierFallsBackOnLowConfidence() {
+        var properties = new ClassificationProperties();
+        properties.setMinConfidence(0.8);
+        var lowConfidence = new ConversationDecision(ConversationIntent.GENERAL,
+                LeadTemperature.UNKNOWN, LeadStage.NEW, HandoffRecommendation.NONE,
+                ToolFamily.NONE, SensitiveDataLevel.NONE,
+                List.of(new com.ford.service.ai.application.ClassificationEvidence(
+                        com.ford.service.ai.application.ClassifierType.INTENT, "GENERAL", 0.4,
+                        "model_choice", "typesafe", "test", 1, false)));
+        var rules = new RulesConversationDecisionAdapter(new IntentRouter());
+        var decision = new ConversationDecisionService(context -> lowConfidence, rules, properties)
+                .decide(context("Territory"));
+
+        assertThat(decision.intent()).isEqualTo(ConversationIntent.VEHICLE_DETAILS);
+        assertThat(decision.toolFamily()).isEqualTo(ToolFamily.VEHICLE_DETAILS);
+        assertThat(new DecisionPolicy().allowedToolNames(decision, Set.of("get_vehicle", "search_vehicles")))
+                .contains("get_vehicle", "search_vehicles");
+    }
+
     private static ClassificationContext context(String message) {
         return new ClassificationContext(UUID.randomUUID(), UUID.randomUUID(), message,
                 null, "BOT_ACTIVE", false);

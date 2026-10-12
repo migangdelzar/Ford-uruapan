@@ -3,6 +3,8 @@ package com.ford.service.ai;
 import com.ford.service.ai.application.Intent;
 import com.ford.service.ai.application.IntentRouter;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -32,6 +34,20 @@ class IntentRouterTest {
     void routesFordLoboToVehicleCatalog() {
         assertThat(router.route("Me interesa una Ford Lobo"))
                 .isEqualTo(Intent.CATALOG);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "Bronco", "Bronco Raptor", "Bronco Sport", "Edge Híbrida", "E Transit",
+            "Expedition", "Explorer", "Explorer ST", "Explorer Police Interceptor",
+            "F-150", "F-150 Híbrida", "F-250", "Lobo Híbrida", "Lobo Raptor", "Lobo",
+            "Maverick Híbrida", "Mustang", "Mustang Mach E", "Mustang RTR",
+            "Police Interceptor Utility", "Police Interceptor Utility Híbrida",
+            "Ranger", "Ranger Raptor", "Super Duty Chasis", "Territory",
+            "Territory Híbrida", "Transit Chasis", "Transit Custom", "Transit Pasajeros", "Transit Van"
+    })
+    void routesEverySupportedFordNameplateToVehicleCatalog(String model) {
+        assertThat(router.route(model)).as(model).isEqualTo(Intent.CATALOG);
     }
 
     @Test

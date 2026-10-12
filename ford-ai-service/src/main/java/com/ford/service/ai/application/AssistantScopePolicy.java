@@ -20,9 +20,13 @@ public class AssistantScopePolicy {
             "write a poem", "poem", "recipe", "weather", "write a song", "medical diagnosis");
 
     private static final List<String> CONTEXTUAL_FOLLOW_UPS = List.of(
-            "y cuanto", "y que precio", "y el precio", "cuanto cuesta", "explicame eso", "explicame mejor",
-            "que incluye", "que opciones", "mas informacion", "y esa version", "y ese modelo", "la otra version",
-            "el otro modelo");
+            "y cuanto", "y que precio", "y el precio", "cuanto cuesta", "cuanto vale", "explicame eso",
+            "explicame mejor", "que incluye", "que opciones", "mas informacion", "y esa version",
+            "y ese modelo", "la otra version", "el otro modelo", "que version me recomienda",
+            "que modelo me recomienda");
+    private static final List<String> VEHICLE_TRIM_FOLLOW_UPS = List.of(
+            "xl", "xlt", "lariat", "limited", "king ranch", "platinum", "tremor", "active", "titanium",
+            "trend", "ambiente", "wildtrak", "badlands", "outer banks", "raptor", "max");
 
     private static final Set<Intent> SUPPORTED_FORD_INTENTS = Set.of(
             Intent.INVENTORY, Intent.CATALOG, Intent.OFFERS, Intent.FINANCE, Intent.KNOWLEDGE,
@@ -70,13 +74,12 @@ public class AssistantScopePolicy {
             return true;
         }
         if (decision != null && SUPPORTED_FORD_INTENTS.contains(decision.toLegacyIntent())) {
-            return true;
+            return isFordContextualFollowUp(normalized, memoryContext);
         }
         if (routedIntent != Intent.GENERAL) {
             return false;
         }
-        return isGreeting(normalized)
-                || hasFordContext(memoryContext) && containsAny(normalized, CONTEXTUAL_FOLLOW_UPS);
+        return isGreeting(normalized) || isFordContextualFollowUp(normalized, memoryContext);
     }
 
     public String scopeResponse() {
@@ -102,5 +105,11 @@ public class AssistantScopePolicy {
         return memoryContext != null && !memoryContext.isBlank()
                 && containsAny(memoryContext.toLowerCase(Locale.ROOT),
                 List.of("ford", "ranger", "lobo", "raptor", "bronco", "maverick", "territory", "explorer", "vehículo", "vehiculo"));
+    }
+
+    private static boolean isFordContextualFollowUp(String normalized, String memoryContext) {
+        if (!hasFordContext(memoryContext)) return false;
+        return containsAny(normalized, CONTEXTUAL_FOLLOW_UPS)
+                || normalized.length() <= 40 && containsAny(normalized, VEHICLE_TRIM_FOLLOW_UPS);
     }
 }

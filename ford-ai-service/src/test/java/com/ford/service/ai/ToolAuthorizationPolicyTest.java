@@ -73,6 +73,22 @@ class ToolAuthorizationPolicyTest {
         assertThat(tool.call("{}")).isEqualTo("{}");
         assertThat(tracker.hasReturnedResult()).isTrue();
         assertThat(tracker.returnedToolNames()).containsExactly("search_vehicles");
+        assertThat(tracker.returnedPayloads()).containsEntry("search_vehicles", "{}");
+    }
+
+    @Test
+    void capturesComparisonAndPageLinkEvidenceButNotUnrelatedToolPayloads() {
+        var tracker = new ToolResultTracker();
+        var policy = new ToolAuthorizationPolicy(List.of(
+                callbackReturning("get_variant_comparisons", "{\"comparisonUrl\":\"https://forduruapan.mx/x\"}"),
+                callbackReturning("calculate_financing", "sensitive or large output")));
+        var tools = policy.readOnlyTools(new AiExecutionContext(UUID.randomUUID(), false), null, tracker);
+
+        tools.getFirst().call("{}");
+        tools.get(1).call("{}");
+
+        assertThat(tracker.returnedPayloads()).containsKey("get_variant_comparisons")
+                .doesNotContainKey("calculate_financing");
     }
 
     @Test
