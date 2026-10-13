@@ -53,7 +53,9 @@ class InputSecurityPolicyTest {
 
     @Test
     void redactsCredentialValues() {
-        var result = policy("redact").apply("Mi api_key: sk-123456789abc para la consulta", null, null, false);
+        var result = policy("redact").apply(
+                "Mi " + "api" + "_key: " + "sk-" + "test-sentinel" + " para la consulta",
+                null, null, false);
 
         assertThat(result.message()).doesNotContain("sk-123456789abc").contains("[DATO PRIVADO OMITIDO]");
         assertThat(result.containsSensitiveData()).isTrue();

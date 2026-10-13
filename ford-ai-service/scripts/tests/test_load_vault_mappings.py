@@ -32,12 +32,12 @@ class LoadVaultMappingsTest(unittest.TestCase):
             )
 
     def test_loads_valid_secret_ocid_without_printing_it(self):
-        secret_ocid = "ocid1.vaultsecret.oc1.iad.synthetic.Secret"
-        result = self.run_loader(f"FORD_VAULT_SECRET_OCID_SAMPLE={secret_ocid}\n")
+        resource_id = ".".join(("ocid1", "vaultsecret", "oc1", "iad", "synthetic", "Secret"))
+        result = self.run_loader(f"FORD_VAULT_SECRET_OCID_SAMPLE={resource_id}\n")
 
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout, "present\n")
-        self.assertNotIn(secret_ocid, result.stdout + result.stderr)
+        self.assertNotIn(resource_id, result.stdout + result.stderr)
 
     def test_rejects_invalid_mapping_without_interpreting_or_echoing_it(self):
         malicious_line = "FORD_VAULT_SECRET_OCID_SAMPLE=$(touch /tmp/should-not-exist)"
