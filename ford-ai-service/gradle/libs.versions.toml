@@ -1,6 +1,10 @@
 [versions]
-spring-boot = "4.1.0"
-spring-dependency-management = "1.1.7"
+spring-boot = "4.1.1"
+spring-framework = "7.0.9"
+jackson2 = "2.21.7"
+jackson3 = "3.1.7"
+netty = "4.2.17.Final"
+tomcat = "11.0.25"
 spring-ai = "2.0.1"
 typesafe = "0.1.0"
 spring-modulith = "2.1.1"
@@ -9,9 +13,17 @@ liquibase = "4.29.2"
 testcontainers = "1.20.6"
 archunit = "1.4.0"
 langgraph4j = "1.9.1"
+oci-sdk = "3.97.2"
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
+spring-framework-bom = { module = "org.springframework:spring-framework-bom", version.ref = "spring-framework" }
+jackson2-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "jackson2" }
+jackson3-bom = { module = "tools.jackson:jackson-bom", version.ref = "jackson3" }
+netty-bom = { module = "io.netty:netty-bom", version.ref = "netty" }
+tomcat-embed-core = { module = "org.apache.tomcat.embed:tomcat-embed-core", version.ref = "tomcat" }
+tomcat-embed-el = { module = "org.apache.tomcat.embed:tomcat-embed-el", version.ref = "tomcat" }
+tomcat-embed-websocket = { module = "org.apache.tomcat.embed:tomcat-embed-websocket", version.ref = "tomcat" }
 spring-ai-bom = { module = "org.springframework.ai:spring-ai-bom", version.ref = "spring-ai" }
 spring-modulith-bom = { module = "org.springframework.modulith:spring-modulith-bom", version.ref = "spring-modulith" }
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
@@ -50,7 +62,9 @@ testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter", ve
 archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
 langgraph4j-core = { module = "org.bsc.langgraph4j:langgraph4j-core", version.ref = "langgraph4j" }
 langgraph4j-postgres-saver = { module = "org.bsc.langgraph4j:langgraph4j-postgres-saver", version.ref = "langgraph4j" }
+oci-sdk-bom = { module = "com.oracle.oci.sdk:oci-java-sdk-bom", version.ref = "oci-sdk" }
+oci-sdk-secrets = { module = "com.oracle.oci.sdk:oci-java-sdk-secrets" }
+oci-sdk-httpclient-jersey3 = { module = "com.oracle.oci.sdk:oci-java-sdk-common-httpclient-jersey3" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
-spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "spring-dependency-management" }

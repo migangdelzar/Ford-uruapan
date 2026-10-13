@@ -1,4 +1,4 @@
-FROM eclipse-temurin:25-jdk AS build
+FROM --platform=$BUILDPLATFORM eclipse-temurin:25-jdk AS build
 WORKDIR /workspace
 COPY gradle gradle
 COPY gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
@@ -13,6 +13,10 @@ RUN JAVA_TOOL_OPTIONS="-Xmx1g -XX:MaxMetaspaceSize=256m -Dfile.encoding=UTF-8" \
 
 FROM eclipse-temurin:25-jre
 WORKDIR /app
+# The Temurin Ubuntu base includes Pebble as a generic container service manager.
+# This image starts Java directly and does not use Pebble.
+RUN rm -f /usr/bin/pebble
 COPY --from=build /workspace/build/libs/*.jar app.jar
 EXPOSE 8080
+USER 10001:10001
 ENTRYPOINT ["java", "--enable-native-access=ALL-UNNAMED", "-jar", "/app/app.jar"]

@@ -41,7 +41,7 @@ test("observability startup bootstraps a private environment file", async () => 
     "REDIS_AUTH=replace-with-a-local-secret",
     "MINIO_ROOT_PASSWORD=replace-with-a-local-secret",
     "SALT=replace-with-32-byte-hex-secret",
-    "ENCRYPTION_KEY=replace-with-64-character-hex-secret",
+    "ENCRYPTION_KEY=",
     "NEXTAUTH_SECRET=replace-with-a-long-random-secret",
     "LANGFUSE_AUTH_HEADER=Basic-replace-with-base64-public-key-colon-secret",
     "LANGFUSE_INIT_PROJECT_PUBLIC_KEY=",
@@ -80,7 +80,7 @@ test("Grafana Cloud collector profile exports traces, metrics, and Docker logs",
   assert.match(source, /GRAFANA_CLOUD_API_TOKEN/);
   assert.match(source, /GRAFANA_CLOUD_OTLP_ENDPOINT/);
   assert.match(source, /file_log\/docker/);
-  assert.match(source, /prometheus:/);
+  assert.match(source, /metrics:\n\s+receivers: \[otlp\][\s\S]*?exporters: \[otlp_http\/grafana\]/);
   assert.match(source, /otlp_http\/grafana/);
   assert.match(source, /pipelines:/);
   assert.match(source, /logs:/);
@@ -105,12 +105,13 @@ test("Grafana Cloud telemetry tasks and Compose contract are present", async () 
   assert.match(start, /OTEL_COLLECTOR_CONFIG=grafana-cloud-config\.yaml/);
 });
 
-test("local tracing export is opt-in when the collector is not running", async () => {
+test("app-only tracing is opt-in and the local Compose stack exports to its collector", async () => {
   const application = await read("ford-ai-service/src/main/resources/application.yml");
   const env = await read("ford-ai-service/.env.example");
   const compose = await read("ford-ai-service/docker-compose.yml");
 
   assert.match(application, /enabled: \$\{FORD_OTEL_TRACES_EXPORT_ENABLED:false\}/);
   assert.match(env, /^FORD_OTEL_TRACES_EXPORT_ENABLED=false$/m);
-  assert.match(compose, /FORD_OTEL_TRACES_EXPORT_ENABLED: \$\{FORD_OTEL_TRACES_EXPORT_ENABLED:-false\}/);
+  assert.match(compose, /FORD_OTEL_TRACES_EXPORT_ENABLED: \$\{FORD_OTEL_TRACES_EXPORT_ENABLED:-true\}/);
+  assert.match(compose, /FORD_OTEL_TRACES_ENDPOINT: \$\{FORD_OTEL_TRACES_ENDPOINT_DOCKER:-http:\/\/host\.docker\.internal:4318\/v1\/traces\}/);
 });

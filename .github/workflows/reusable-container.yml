@@ -9,6 +9,13 @@ on:
         required: false
         default: false
         type: boolean
+    outputs:
+      image:
+        description: Immutable GHCR image reference by digest.
+        value: ${{ jobs.image.outputs.image }}
+      digest:
+        description: OCI image content digest.
+        value: ${{ jobs.image.outputs.digest }}
 
 permissions:
   contents: read
@@ -25,18 +32,23 @@ jobs:
     name: Build, scan, and publish container
     runs-on: ubuntu-24.04
     timeout-minutes: 35
-    env:
-      IMAGE_NAME: ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
     outputs:
       image: ${{ steps.image.outputs.image }}
       digest: ${{ steps.build.outputs.digest }}
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+      - name: Verify workflow and container contracts
+        run: node --test scripts/workflow-contract.test.mjs
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Set up ARM64 emulation
         uses: docker/setup-qemu-action@v3
+      - name: Normalize GHCR repository name
+        id: image-repository
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
       - name: Log in to GHCR
         if: inputs.publish
         uses: docker/login-action@v3
@@ -50,22 +62,74 @@ jobs:
         with:
           context: ford-ai-service
           file: ford-ai-service/Dockerfile
-          tags: ${{ env.IMAGE_NAME }}
-          platforms: linux/arm64
+          tags: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
+          platforms: ${{ inputs.publish && 'linux/arm64' || 'linux/amd64' }}
           load: ${{ !inputs.publish }}
           push: ${{ inputs.publish }}
+          cache-from: type=gha,scope=ford-service
+          cache-to: type=gha,scope=ford-service,mode=max
           provenance: false
           sbom: false
+      - name: Install PostgreSQL readiness probe
+        if: always()
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends postgresql-client
       - name: Pull published image for scanning
         if: inputs.publish
+        env:
+          IMAGE_NAME: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
         run: docker pull "${IMAGE_NAME}"
+      - name: Smoke test Spring service health endpoint
+        env:
+          IMAGE_NAME: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker network create ford-service-smoke
+          docker run --detach --name ford-service-postgres --network ford-service-smoke \
+            --env POSTGRES_DB=ford_service --env POSTGRES_USER=ford --env POSTGRES_PASSWORD=ci-smoke \
+            pgvector/pgvector:pg16
+          until docker exec ford-service-postgres pg_isready -U ford -d ford_service; do sleep 2; done
+          docker run --detach --name ford-service-redis --network ford-service-smoke redis:7-alpine
+          until docker exec ford-service-redis redis-cli ping | grep --quiet PONG; do sleep 2; done
+          docker run --detach --name ford-service-smoke --network ford-service-smoke \
+            --env FORD_DATABASE_URL=jdbc:postgresql://ford-service-postgres:5432/ford_service \
+            --env FORD_DATABASE_USERNAME=ford --env FORD_DATABASE_PASSWORD=ci-smoke \
+            --env FORD_REDIS_HOST=ford-service-redis \
+            --env SERVER_PORT=8080 "${IMAGE_NAME}"
+          trap 'docker rm --force ford-service-smoke ford-service-postgres ford-service-redis >/dev/null 2>&1 || true; docker network rm ford-service-smoke >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 60); do
+            if [[ "$(docker inspect --format '{{.State.Running}}' ford-service-smoke)" != true ]]; then
+              docker logs ford-service-smoke
+              exit 1
+            fi
+            if docker run --rm --network ford-service-smoke curlimages/curl:8.12.1 \
+              --fail --silent http://ford-service-smoke:8080/actuator/health >/dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker logs ford-service-smoke
+          echo 'Ford Service health endpoint did not become healthy.' >&2
+          exit 1
+      - name: Smoke test Java runtime
+        env:
+          IMAGE_NAME: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
+        run: docker run --rm --entrypoint java "${IMAGE_NAME}" -version
       - name: Expose image reference
         id: image
-        run: echo "image=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_REPOSITORY: ${{ steps.image-repository.outputs.name }}
+          IMAGE_NAME: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
+        run: |
+          if [[ -n "${IMAGE_DIGEST}" ]]; then
+            echo "image=${IMAGE_REPOSITORY}@${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+          fi
       - name: Scan image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ env.IMAGE_NAME }}
+          image-ref: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
           format: sarif
           output: trivy-image.sarif
           severity: HIGH,CRITICAL
@@ -76,7 +140,7 @@ jobs:
       - name: Generate SBOM
         uses: anchore/sbom-action@v0.20.0
         with:
-          image: ${{ env.IMAGE_NAME }}
+          image: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
           format: cyclonedx-json
           output-file: sbom.cdx.json
           artifact-name: ford-service-sbom-${{ github.run_id }}.cdx.json
@@ -91,7 +155,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Upload image SARIF
-        if: always() && github.event_name != 'pull_request'
+        if: >-
+          always() && github.event_name != 'pull_request' &&
+          (github.event.repository.visibility == 'public' || vars.CODE_SCANNING_ENABLED == 'true') &&
+          hashFiles('trivy-image.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-image.sarif
@@ -99,6 +166,6 @@ jobs:
         if: inputs.publish
         uses: actions/attest-build-provenance@v2
         with:
-          subject-name: ghcr.io/${{ github.repository }}
+          subject-name: ${{ steps.image-repository.outputs.name }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true

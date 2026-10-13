@@ -1,15 +1,14 @@
----
-name: Reusable Deployment Contract
+name: Reusable Deployment Input Validation
 
 on:
   workflow_call:
     inputs:
-      environment:
-        description: Protected deployment environment name.
+      target:
+        description: OCI service target.
         required: true
         type: string
       image:
-        description: Immutable image reference to deploy.
+        description: Immutable image digest being considered for deployment.
         required: true
         type: string
 
@@ -17,13 +16,20 @@ permissions:
   contents: read
 
 concurrency:
-  group: ford-deploy-${{ inputs.environment }}
-  cancel-in-progress: false
+  group: ford-deployment-contract-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  contract:
-    name: Deployment workflow contract
-    environment: ${{ inputs.environment }}
+  validate:
+    name: Validate non-production deployment inputs
     runs-on: ubuntu-24.04
     steps:
-      - run: echo "Deployment target contract will be enabled after a staging target is selected."
+      - name: Reject unsupported deployment targets and mutable images
+        env:
+          DEPLOY_TARGET: ${{ inputs.target }}
+          DEPLOY_IMAGE: ${{ inputs.image }}
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOY_TARGET" == "ford-service" || "$DEPLOY_TARGET" == "ford-mcp" ]]
+          [[ "$DEPLOY_IMAGE" =~ ^ghcr\.io/[A-Za-z0-9._/-]+@sha256:[a-f0-9]{64}$ ]]
+          echo "Deployment input contract validated; no environment or deployment credentials were used."

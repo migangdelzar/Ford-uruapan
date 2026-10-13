@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.spring.boot)
-    alias(libs.plugins.spring.dependency.management)
     java
 }
 
@@ -15,8 +14,28 @@ java {
 
 dependencies {
     implementation(platform(libs.spring.boot.bom))
+    // Keep these patched platforms until the Spring Boot BOM manages the same versions.
+    implementation(enforcedPlatform(libs.spring.framework.bom))
+    implementation(enforcedPlatform(libs.jackson2.bom))
+    implementation(enforcedPlatform(libs.jackson3.bom))
+    implementation(enforcedPlatform(libs.netty.bom))
     implementation(platform(libs.spring.ai.bom))
     implementation(platform(libs.spring.modulith.bom))
+    implementation(platform(libs.oci.sdk.bom))
+    developmentOnly(platform(libs.spring.boot.bom))
+
+    constraints {
+        implementation(libs.tomcat.embed.core) {
+            version { strictly(libs.versions.tomcat.get()) }
+            because("Spring Boot 4.1.1 manages a Tomcat version with unresolved critical CVEs")
+        }
+        implementation(libs.tomcat.embed.el) {
+            version { strictly(libs.versions.tomcat.get()) }
+        }
+        implementation(libs.tomcat.embed.websocket) {
+            version { strictly(libs.versions.tomcat.get()) }
+        }
+    }
 
     implementation(libs.spring.boot.starter.web)
     developmentOnly(libs.spring.boot.devtools)
@@ -46,6 +65,8 @@ dependencies {
     implementation(libs.typesafe.spring.ai)
     implementation(libs.langgraph4j.core)
     implementation(libs.langgraph4j.postgres.saver)
+    implementation(libs.oci.sdk.secrets)
+    implementation(libs.oci.sdk.httpclient.jersey3)
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.security.test)

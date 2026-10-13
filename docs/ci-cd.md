@@ -18,6 +18,11 @@ generates an SBOM on pull requests. It publishes to GHCR only for a push to
 GitHub build-provenance attestation. Pull requests never publish images or
 upload SARIF to the repository security tab.
 
+The dependency-review action runs on pull requests when the repository has
+Dependency Graph enabled in Settings → Advanced Security and the
+`DEPENDENCY_GRAPH_ENABLED=true` Actions variable is set. Until then, Trivy's
+blocking filesystem scan continues to check dependency vulnerabilities.
+
 ## Local checks
 
 The preferred local entry point is mise from `ford-ai-service`:

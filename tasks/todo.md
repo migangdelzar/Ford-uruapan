@@ -286,3 +286,21 @@ Goal: Spring fills separate Markdown templates from returned MCP price/promotion
 - DeepSeek remains primary; the verified OpenRouter model is the only fallback. Primary gets at most one repair; fallback gets one request. Rejections log only a reason, not prompts or generated text. MCP failures/empty results withhold exact volatile facts; confirmed MCP prices/promotions render deterministic source-linked answers.
 - Verification passed: full backend unit suite, focused backend suite, Ford-web sender Vitest, `bun run lint`, API contract check (47 paths), app context/Liquibase/Modulith tests, handoff/conversation integration tests, end-to-end Meta-to-outbox flow, and `bootJar` packaging check.
 - Live read-only MCP `search_vehicles` returned three Ford Ranger results and Ford Uruapan source URLs. No deployment was performed. Production log check found no follow-up-service or classifier-failure signatures, but did find one realtime listener `ClassNotFoundException`; recheck after the feature branch is deployed.
+
+# Credential storage hardening (2026-10-12)
+
+- [x] Add OCI Vault-backed Spring secret loading using Compute instance principals, enabled only by explicit provider selection.
+- [x] Prevent generated Ansible inventory from storing secret values; sanitize the existing generated inventory without printing its contents.
+- [x] Add no-echo OCI Vault create/rotate tooling and save only secret OCIDs in a mode-0600 ignored mapping file.
+- [x] Import configured current values into test-only Vault secrets, keeping the production mapping and runtime mode unchanged.
+- [x] Disable the legacy task that persisted secret values in `deployment/config/oci.env`; add a macOS Keychain wrapper for local commands.
+- [x] Document credential ownership, rotation, and runtime migration requirements.
+- [x] Verify Python helper tests, Spring tests/build, Ansible syntax, Jinja templates, shell syntax, and whitespace.
+- [ ] Rotate issuer-managed credentials, provision replacement values in OCI Vault, migrate data/MCP/collector runtime retrieval, deploy, and verify production.
+
+### Results
+
+- Added tests for secret request encoding, OCI-shaped OCIDs, test-only current-value import, OCID mapping safety, generated-inventory scrubbing, Keychain handoff, and hidden Vault prompts. `python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v` passed (16 tests).
+- `./gradlew test bootJar` passed. Ansible `site.yml` and `mcp.yml` syntax checks passed; four Ansible Jinja templates parsed; changed shell scripts passed `bash -n`; Python scripts parsed; `git diff --check` and cached diff check passed.
+- The local generated inventory had 18 credential fields removed while retaining unrelated settings and restrictive permissions. No credential values were printed. At the user's request, 20 current configured values were imported into active `ford-test-*` Vault secrets; the ignored test mapping contains only OCIDs and the production mapping is untouched. Two unconfigured Meta tokens were skipped.
+- Production remains on environment mode. OCI browser authentication is active; read-only verification confirmed all 20 test secrets are `ACTIVE`, the test mapping is mode `0600`, and all mapped OCIDs match Vault resource IDs. Issuer-approved production replacements are still needed. Data, MCP, and collector still need direct Vault retrieval before production can switch safely. No deploy, commit, or push was performed.

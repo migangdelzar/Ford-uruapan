@@ -1,0 +1,110 @@
+name: Ford Service Release
+
+on:
+  workflow_run:
+    workflows: [Ford Service CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Deploy a verified main artifact or roll back to the recorded prior digest.
+        required: true
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+      source_sha:
+        description: Full source SHA with a successful Ford Service CI run (deploy only).
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ford-service-production-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Ford Service on the existing OCI VM
+    if: >-
+      vars.PRODUCTION_DEPLOY_ENABLED == 'true' && vars.RUNTIME_VAULT_READY == 'true' &&
+      ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    environment: production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Check out the protected release tooling from main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Resolve and verify the release source SHA
+        id: source
+        env:
+          WORKFLOW_EVENT: ${{ github.event_name }}
+          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          REQUESTED_SHA: ${{ inputs.source_sha }}
+          REQUESTED_OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          operation="${REQUESTED_OPERATION:-deploy}"
+          if [[ "${WORKFLOW_EVENT}" == "workflow_run" ]]; then
+            operation=deploy
+            source_sha="${WORKFLOW_RUN_SHA}"
+          elif [[ "${operation}" == "deploy" ]]; then
+            source_sha="${REQUESTED_SHA}"
+            [[ "${source_sha}" =~ ^[a-f0-9]{40}$ ]] || { echo "A full source SHA is required for deploy." >&2; exit 1; }
+            successful_runs="$(gh run list --workflow 'Ford Service CI' --branch main --commit "${source_sha}" --status success --json databaseId --jq 'length')"
+            [[ "${successful_runs}" -gt 0 ]] || { echo "No successful Ford Service CI run exists for this main SHA." >&2; exit 1; }
+          else
+            source_sha=recorded-rollback
+          fi
+          if [[ "${operation}" == "deploy" ]]; then
+            [[ "${source_sha}" =~ ^[a-f0-9]{40}$ ]] || { echo "Release source SHA is invalid." >&2; exit 1; }
+          fi
+          echo "operation=${operation}" >> "$GITHUB_OUTPUT"
+          echo "source_sha=${source_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve the verified source to its published GHCR digest
+        id: image
+        if: steps.source.outputs.operation == 'deploy'
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          printf '%s' "${GH_TOKEN}" | docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin >/dev/null
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          tagged_image="${image}:sha-${SOURCE_SHA}"
+          docker pull "${tagged_image}" >/dev/null
+          immutable_image="$(docker image inspect --format '{{index .RepoDigests 0}}' "${tagged_image}")"
+          [[ "${immutable_image}" =~ ^ghcr\.io/[A-Za-z0-9._/-]+@sha256:[a-f0-9]{64}$ ]] || { echo "Published image did not resolve to an immutable digest." >&2; exit 1; }
+          echo "image=${immutable_image}" >> "$GITHUB_OUTPUT"
+
+      - name: Run the shared OCI blue-green deployment action
+        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@f8112024deea512ffebe8a7b49df531a29dad027
+        with:
+          target: ford-service
+          image: ${{ steps.image.outputs.image }}
+          operation: ${{ steps.source.outputs.operation }}
+          source-sha: ${{ steps.source.outputs.source_sha }}
+          host: ${{ secrets.OCI_DEPLOY_HOST }}
+          user: ${{ secrets.OCI_DEPLOY_USER }}
+          ssh-private-key: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+          backup-ssh-private-key: ${{ secrets.OCI_DATA_SSH_PRIVATE_KEY }}
+          ssh-known-hosts: ${{ secrets.OCI_SSH_KNOWN_HOSTS }}
+          registry-username: ${{ github.actor }}
+          registry-token: ${{ secrets.GITHUB_TOKEN }}
+          remote-root: /opt/ford
+          backup-host: ${{ secrets.OCI_DATA_DEPLOY_HOST }}
+          backup-user: ${{ secrets.OCI_DATA_DEPLOY_USER }}
