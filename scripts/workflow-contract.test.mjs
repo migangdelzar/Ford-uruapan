@@ -82,6 +82,15 @@ test("service image runs as a non-root user", async () => {
   assert.match(dockerfile, /^USER 10001:10001$/m);
 });
 
+test("container compiles Java on the native builder and retains target runtime", async () => {
+  const dockerfile = await read("ford-ai-service/Dockerfile");
+  assert.match(
+    dockerfile,
+    /^FROM --platform=\$BUILDPLATFORM eclipse-temurin:25-jdk AS build$/m,
+  );
+  assert.match(dockerfile, /^FROM eclipse-temurin:25-jre$/m);
+});
+
 test("observability workflow validates Compose and collector configuration", async () => {
   const source = await read(".github/workflows/reusable-observability.yml");
   assert.match(source, /docker compose/);
