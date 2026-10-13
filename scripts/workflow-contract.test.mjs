@@ -137,6 +137,10 @@ test("container build, smoke tests, and vulnerability scan pass before GHCR publ
 test("service image runs as a non-root user", async () => {
   const dockerfile = await read("ford-ai-service/Dockerfile");
   assert.match(dockerfile, /^USER 10001:10001$/m);
+  assert.match(
+    dockerfile,
+    /^LABEL org\.opencontainers\.image\.source=https:\/\/github\.com\/migangdelzar\/Ford-uruapan$/m,
+  );
 });
 
 test("container compiles Java on the native builder and retains target runtime", async () => {
