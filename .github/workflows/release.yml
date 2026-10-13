@@ -92,7 +92,7 @@ jobs:
           echo "image=${immutable_image}" >> "$GITHUB_OUTPUT"
 
       - name: Run the shared OCI blue-green deployment action
-        uses: ./.github/actions/oci-blue-green
+        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@f8112024deea512ffebe8a7b49df531a29dad027
         with:
           target: ford-service
           image: ${{ steps.image.outputs.image }}

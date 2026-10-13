@@ -77,6 +77,20 @@ test("container tags and provenance subjects use a lowercase GHCR repository", a
   assert.doesNotMatch(source, /ghcr\.io\/\$\{\{ github\.repository \}\}/);
 });
 
+test("branch container verification uses native AMD64 while published images target OCI ARM64", async () => {
+  const source = await read(".github/workflows/reusable-container.yml");
+
+  assert.match(
+    source,
+    /platforms:\s*\$\{\{ inputs\.publish && 'linux\/arm64' \|\| 'linux\/amd64' \}\}/,
+  );
+  assert.match(source, /cache-from:\s*type=gha/);
+  assert.match(source, /cache-to:\s*type=gha[^\n]*mode=max/);
+  assert.match(source, /actuator\/health/);
+  assert.match(source, /ford-service-postgres/);
+  assert.match(source, /curlimages\/curl/);
+});
+
 test("service image runs as a non-root user", async () => {
   const dockerfile = await read("ford-ai-service/Dockerfile");
   assert.match(dockerfile, /^USER 10001:10001$/m);
@@ -105,4 +119,60 @@ test("observability workflow points to files in the checked-in deployment tree",
   assert.match(source, /docker compose -f deployment\/observability\/langfuse\/docker-compose\.yml/);
   assert.match(source, /\$GITHUB_WORKSPACE\/deployment\/observability\/otel-collector\/config\.yaml/);
   assert.doesNotMatch(source, /ford-ai-service\/deployment\/observability/);
+});
+
+test("MCP containers run the protected HTTP command instead of the scheduler default", async () => {
+  const composeFiles = [
+    "deployment/ansible/roles/mcp/templates/compose.yml.j2",
+    "deployment/ansible/roles/mcp/templates/blue-green-compose.yml.j2",
+  ];
+
+  for (const path of composeFiles) {
+    const source = await read(path);
+    assert.match(
+      source,
+      /command:\s*\["node", "dist\/src\/cli\.js", "mcp-http"\]/,
+      `${path} must explicitly start mcp-http`,
+    );
+  }
+});
+
+test("scraper migrations use the candidate image and the service Compose environment", async () => {
+  const compose = await read(
+    "deployment/ansible/roles/mcp/templates/compose.yml.j2",
+  );
+  const override = await read(
+    "deployment/ansible/roles/mcp/templates/migration-compose.yml.j2",
+  );
+  const tasks = await read("deployment/ansible/roles/mcp/tasks/blue-green.yml");
+  const migrationStart = tasks.indexOf(
+    "Run catalog migrations once from the immutable candidate image",
+  );
+  const migrationEnd = tasks.indexOf("\n- name:", migrationStart + 1);
+  const migration = tasks.slice(migrationStart, migrationEnd);
+
+  assert.match(compose, /DATABASE_URL: postgres:\/\/ford:\$\{POSTGRES_PASSWORD/);
+  assert.match(compose, /FORD_BASE_URL: https:\/\/www\.forduruapan\.mx/);
+  assert.match(override, /image: \{\{ mcp_candidate_image \}\}/);
+  assert.match(migration, /-f "\{\{ remote_root \}\}\/mcp\/migration-compose\.yml"/);
+  assert.match(migration, /run --rm --no-deps mcp node dist\/src\/cli\.js migrate/);
+  assert.match(migration, /no_log: true/);
+});
+
+test("production scheduler runs privately on the data network", async () => {
+  const source = await read(
+    "deployment/ansible/roles/mcp/templates/blue-green-compose.yml.j2",
+  );
+
+  assert.match(source, /scheduler:/);
+  assert.match(
+    source,
+    /command:\s*\["node", "dist\/src\/cli\.js", "scheduler"\]/,
+  );
+  assert.match(source, /networks:\s*\[data_default\]/);
+  const scheduler = source.split("\n  scheduler:")[1]?.split("\n  mcp-proxy:")[0];
+  assert.ok(scheduler, "scheduler service definition must be present");
+  assert.doesNotMatch(scheduler, /ports:/);
+  assert.match(source, /SYNC_SCHEDULE: "0 12 1 \* \*"/);
+  assert.match(source, /SYNC_TIMEZONE: America\/Mexico_City/);
 });

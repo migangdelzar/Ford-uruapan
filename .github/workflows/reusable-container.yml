@@ -63,11 +63,45 @@ jobs:
           context: ford-ai-service
           file: ford-ai-service/Dockerfile
           tags: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
-          platforms: linux/arm64
+          platforms: ${{ inputs.publish && 'linux/arm64' || 'linux/amd64' }}
           load: ${{ !inputs.publish }}
           push: ${{ inputs.publish }}
+          cache-from: type=gha,scope=ford-service
+          cache-to: type=gha,scope=ford-service,mode=max
           provenance: false
           sbom: false
+      - name: Install PostgreSQL readiness probe
+        if: always()
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends postgresql-client
+      - name: Smoke test Spring service health endpoint
+        env:
+          IMAGE_NAME: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker network create ford-service-smoke
+          docker run --detach --name ford-service-postgres --network ford-service-smoke \
+            --env POSTGRES_DB=ford_service --env POSTGRES_USER=ford --env POSTGRES_PASSWORD=ci-smoke \
+            pgvector/pgvector:pg16
+          until docker exec ford-service-postgres pg_isready -U ford -d ford_service; do sleep 2; done
+          docker run --detach --name ford-service-smoke --network ford-service-smoke \
+            --env FORD_DATABASE_URL=jdbc:postgresql://ford-service-postgres:5432/ford_service \
+            --env FORD_DATABASE_USERNAME=ford --env FORD_DATABASE_PASSWORD=ci-smoke \
+            --env SERVER_PORT=8080 "${IMAGE_NAME}"
+          trap 'docker rm --force ford-service-smoke ford-service-postgres >/dev/null 2>&1 || true; docker network rm ford-service-smoke >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 60); do
+            if [[ "$(docker inspect --format '{{.State.Running}}' ford-service-smoke)" != true ]]; then
+              docker logs ford-service-smoke
+              exit 1
+            fi
+            if docker run --rm --network ford-service-smoke curlimages/curl:8.12.1 \
+              --fail --silent http://ford-service-smoke:8080/actuator/health >/dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker logs ford-service-smoke
+          echo 'Ford Service health endpoint did not become healthy.' >&2
+          exit 1
       - name: Smoke test Java runtime
         env:
           IMAGE_NAME: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
