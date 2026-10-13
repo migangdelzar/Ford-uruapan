@@ -39,6 +39,7 @@ jobs:
         with:
           scan-type: fs
           scan-ref: .
+          skip-dirs: .worktrees,ford-ai-service/.mise/state,ford-ai-service/build,node_modules,.wrangler
           format: sarif
           output: trivy-fs.sarif
           severity: HIGH,CRITICAL

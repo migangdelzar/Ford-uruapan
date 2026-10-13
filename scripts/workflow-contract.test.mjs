@@ -52,6 +52,7 @@ test("security workflow contains secret, filesystem, and SARIF gates", async () 
   const source = await read(".github/workflows/reusable-security.yml");
   assert.match(source, /gitleaks\/gitleaks-action@v3/);
   assert.match(source, /aquasecurity\/trivy-action@v0\.36\.0/);
+  assert.match(source, /skip-dirs:\s*\.worktrees/);
   assert.match(source, /github\/codeql-action\/upload-sarif@v4/);
   assert.match(source, /vars\.CODE_SCANNING_ENABLED == 'true'/);
   assert.match(source, /actions\/upload-artifact@v7/);
