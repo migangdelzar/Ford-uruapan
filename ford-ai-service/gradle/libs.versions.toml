@@ -9,6 +9,7 @@ liquibase = "4.29.2"
 testcontainers = "1.20.6"
 archunit = "1.4.0"
 langgraph4j = "1.9.1"
+oci-sdk = "3.97.2"
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
@@ -50,6 +51,9 @@ testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter", ve
 archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
 langgraph4j-core = { module = "org.bsc.langgraph4j:langgraph4j-core", version.ref = "langgraph4j" }
 langgraph4j-postgres-saver = { module = "org.bsc.langgraph4j:langgraph4j-postgres-saver", version.ref = "langgraph4j" }
+oci-sdk-bom = { module = "com.oracle.oci.sdk:oci-java-sdk-bom", version.ref = "oci-sdk" }
+oci-sdk-secrets = { module = "com.oracle.oci.sdk:oci-java-sdk-secrets" }
+oci-sdk-httpclient-jersey3 = { module = "com.oracle.oci.sdk:oci-java-sdk-common-httpclient-jersey3" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }

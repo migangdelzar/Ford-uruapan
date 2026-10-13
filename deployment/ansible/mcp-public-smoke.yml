@@ -8,7 +8,7 @@
         url: https://ford-mcp.emme.business/mcp
         method: POST
         headers:
-          Authorization: "Bearer {{ mcp_http_bearer_token }}"
+          Authorization: "Bearer {{ lookup('ansible.builtin.env', 'FORD_MCP_TOKEN') | default(lookup('ansible.builtin.env', 'FORD_MCP_API_TOKEN') | default(lookup('ansible.builtin.env', 'MCP_HTTP_BEARER_TOKEN') | default('', true), true), true) }}"
           CF-Access-Client-Id: "{{ ford_mcp_access_client_id }}"
           CF-Access-Client-Secret: "{{ ford_mcp_access_client_secret }}"
           Host: ford-mcp.emme.business
@@ -35,7 +35,7 @@
         url: https://ford-mcp.emme.business/mcp
         method: POST
         headers:
-          Authorization: "Bearer {{ mcp_http_bearer_token }}"
+          Authorization: "Bearer {{ lookup('ansible.builtin.env', 'FORD_MCP_TOKEN') | default(lookup('ansible.builtin.env', 'FORD_MCP_API_TOKEN') | default(lookup('ansible.builtin.env', 'MCP_HTTP_BEARER_TOKEN') | default('', true), true), true) }}"
           CF-Access-Client-Id: "{{ ford_mcp_access_client_id }}"
           CF-Access-Client-Secret: "{{ ford_mcp_access_client_secret }}"
           Host: ford-mcp.emme.business
@@ -63,7 +63,7 @@
         url: https://ford-mcp.emme.business/mcp
         method: POST
         headers:
-          Authorization: "Bearer {{ mcp_http_bearer_token }}"
+          Authorization: "Bearer {{ lookup('ansible.builtin.env', 'FORD_MCP_TOKEN') | default(lookup('ansible.builtin.env', 'FORD_MCP_API_TOKEN') | default(lookup('ansible.builtin.env', 'MCP_HTTP_BEARER_TOKEN') | default('', true), true), true) }}"
           CF-Access-Client-Id: "{{ ford_mcp_access_client_id }}"
           CF-Access-Client-Secret: "{{ ford_mcp_access_client_secret }}"
           Host: ford-mcp.emme.business

@@ -78,8 +78,9 @@ public class FordIngestionConfiguration {
     }
 
     @Bean
-    FordSyncJob fordSyncJob(SyncCoordinator coordinator, FordSyncProperties properties) {
-        return new FordSyncJob(coordinator, properties);
+    FordSyncJob fordSyncJob(SyncCoordinator coordinator, FordSyncProperties properties,
+                            com.ford.service.shared.PostgresAdvisoryExecutionLock executionLock) {
+        return new FordSyncJob(coordinator, properties, executionLock);
     }
 
     private static SourceSnapshot emptySnapshot() {

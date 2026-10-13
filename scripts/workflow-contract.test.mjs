@@ -21,6 +21,16 @@ test("required workflow contracts exist", async () => {
   }
 });
 
+test("CI verifies every branch while publishing containers only from main", async () => {
+  const source = await read(".github/workflows/ci.yml");
+  const release = await read(".github/workflows/release.yml");
+
+  assert.match(source, /^  push:\s*$/m);
+  assert.match(source, /publish:.*github\.ref == 'refs\/heads\/main'/s);
+  assert.match(release, /PRODUCTION_DEPLOY_ENABLED/);
+  assert.match(release, /branches: \[main\]/);
+});
+
 test("reusable workflows expose the shared contract", async () => {
   for (const path of requiredWorkflows.slice(1)) {
     const source = await read(path);
@@ -43,6 +53,7 @@ test("security workflow contains secret, filesystem, and SARIF gates", async () 
   assert.match(source, /gitleaks\/gitleaks-action@v3/);
   assert.match(source, /aquasecurity\/trivy-action@v0\.36\.0/);
   assert.match(source, /github\/codeql-action\/upload-sarif@v4/);
+  assert.match(source, /vars\.CODE_SCANNING_ENABLED == 'true'/);
   assert.match(source, /actions\/upload-artifact@v7/);
 });
 
@@ -54,6 +65,11 @@ test("container workflow contains image, SBOM, and provenance gates", async () =
   assert.match(source, /actions\/attest-build-provenance@v2/);
   assert.match(source, /packages: write/);
   assert.match(source, /id-token: write/);
+});
+
+test("service image runs as a non-root user", async () => {
+  const dockerfile = await read("ford-ai-service/Dockerfile");
+  assert.match(dockerfile, /^USER 10001:10001$/m);
 });
 
 test("observability workflow validates Compose and collector configuration", async () => {

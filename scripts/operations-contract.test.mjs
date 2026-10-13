@@ -112,7 +112,6 @@ test("OCI backup identity is declarative and reproducible", async () => {
   const backupTasks = await read("deployment/ansible/roles/backup/tasks/main.yml");
   const backupScript = await read("deployment/ansible/roles/backup/templates/backup-databases.sh.j2");
   const backupService = await read("deployment/ansible/roles/backup/templates/ford-backup.service.j2");
-  const deploySecretsTask = await read("ford-ai-service/.mise/tasks/deploy/secrets");
 
   assert.match(storage, /oci_identity_dynamic_group/);
   assert.match(storage, /oci_identity_policy/);
@@ -130,8 +129,6 @@ test("OCI backup identity is declarative and reproducible", async () => {
   assert.match(backupScript, /redis/);
   assert.match(backupScript, /ford\/backups/);
   assert.match(backupService, /Environment=.*PATH=.*\/usr\/local\/bin/);
-  assert.match(deploySecretsTask, /OCI_OBJECT_STORAGE_NAMESPACE/);
-  assert.match(deploySecretsTask, /adopt_environment_secret \"\$name\"/);
   assert.match(backupListTask, /ssh/);
   assert.match(backupListTask, /find/);
   assert.match(backupVerifyTask, /ssh/);
@@ -209,7 +206,7 @@ test("Ansible propagates the configured cloud AI provider", async () => {
 test("Ansible propagates isolated AI fallback credentials and evaluation gates", async () => {
   const example = await read("deployment/config/oci.env.example");
   const remote = await read("ford-ai-service/.mise/lib/remote.sh");
-  const secrets = await read("ford-ai-service/.mise/tasks/deploy/secrets");
+  const vaultSecret = await read("ford-ai-service/.mise/tasks/deploy/vault-secret");
   const template = await read("deployment/ansible/roles/app/templates/app.env.j2");
   const spring = await read("ford-ai-service/src/main/resources/application.yml");
   const terraform = await read("deployment/terraform/variables.tf");
@@ -224,7 +221,8 @@ test("Ansible propagates isolated AI fallback credentials and evaluation gates",
     assert.match(template, new RegExp(`^${variable}=`, "m"), `${variable} must reach app.env.j2`);
   }
   for (const variable of ["GROQ_API_KEY", "GEMINI_API_KEY", "CLOUDFLARE_API_TOKEN", "OPENROUTER_API_KEY"]) {
-    assert.match(secrets, new RegExp(variable), `${variable} must be adopted from the shell into ignored config`);
+    assert.match(vaultSecret, new RegExp(variable), `${variable} must be allowlisted for Vault import`);
+    assert.match(template, new RegExp(`FORD_VAULT_SECRET_OCID_${variable}`), `${variable} must be sourced from Vault in production`);
   }
   assert.match(spring, /provider-max-attempts:.*:5/);
   assert.match(spring, /max-attempts:.*:1/);
@@ -283,17 +281,19 @@ test("deployment adopts the prefixed Jev key into the private app credential wit
   }
 });
 
-test("Ansible inventory and app environment receive the TypeSafe credential", async () => {
+test("TypeSafe credential is available through supported secret providers without entering Terraform", async () => {
   const remote = await read("ford-ai-service/.mise/lib/remote.sh");
   const template = await read("deployment/ansible/roles/app/templates/app.env.j2");
-  const secrets = await read("ford-ai-service/.mise/tasks/deploy/secrets");
+  const vaultSecret = await read("ford-ai-service/.mise/tasks/deploy/vault-secret");
   const example = await read("deployment/config/oci.env.example");
+  const vaultExample = await read("deployment/config/vault-secret-ocids.env.example");
 
-  assert.match(remote, /typesafe_api_key:\s*\$\{typesafe_key_yaml\}/);
-  assert.match(remote, /typesafe_key_yaml=.*TYPESAFE_API_KEY/);
-  assert.match(template, /^TYPESAFE_API_KEY=\{\{ typesafe_api_key \| default\(''\) \}\}$/m);
-  assert.match(secrets, /TYPESAFE_API_KEY/);
+  assert.match(remote, /TYPESAFE_API_KEY/);
+  assert.match(template, /^TYPESAFE_API_KEY=\{\{ lookup\('ansible\.builtin\.env', 'TYPESAFE_API_KEY'\)/m);
+  assert.match(vaultSecret, /TYPESAFE_API_KEY/);
+  assert.match(template, /FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY/);
   assert.match(example, /^TYPESAFE_API_KEY=$/m);
+  assert.match(vaultExample, /^FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY=$/m);
   assert.doesNotMatch(remote, /typesafe_api_key.*terraform|terraform.*typesafe_api_key/i);
 });
 
@@ -348,7 +348,7 @@ test("Ansible propagates Meta delivery and outbox runtime settings", async () =>
   const example = await read("deployment/config/oci.env.example");
   const remote = await read("ford-ai-service/.mise/lib/remote.sh");
   const template = await read("deployment/ansible/roles/app/templates/app.env.j2");
-  const secrets = await read("ford-ai-service/.mise/tasks/deploy/secrets");
+  const vaultSecret = await read("ford-ai-service/.mise/tasks/deploy/vault-secret");
 
   for (const variable of [
     "FORD_META_DELIVERY_ENABLED",
@@ -361,7 +361,8 @@ test("Ansible propagates Meta delivery and outbox runtime settings", async () =>
     assert.match(template, new RegExp(`^${variable}=`, "m"), `${variable} must reach app.env.j2`);
   }
 
-  assert.match(secrets, /FORD_META_WHATSAPP_ACCESS_TOKEN/);
+  assert.match(vaultSecret, /FORD_META_WHATSAPP_ACCESS_TOKEN/);
+  assert.match(template, /FORD_VAULT_SECRET_OCID_FORD_META_WHATSAPP_ACCESS_TOKEN/);
 });
 
 test("Ansible propagates the human handoff feature flag", async () => {
@@ -377,15 +378,15 @@ test("Ansible propagates the human handoff feature flag", async () => {
 test("Ansible accepts the source Ford MCP configuration names", async () => {
   const example = await read("deployment/config/oci.env.example");
   const remote = await read("ford-ai-service/.mise/lib/remote.sh");
-  const secrets = await read("ford-ai-service/.mise/tasks/deploy/secrets");
+  const vaultSecret = await read("ford-ai-service/.mise/tasks/deploy/vault-secret");
 
   for (const variable of ["FORD_MCP_URL", "FORD_MCP_ENDPOINT", "FORD_MCP_TOKEN"]) {
     assert.match(example, new RegExp(`^${variable}=`, "m"), `${variable} must be documented`);
     assert.match(remote, new RegExp(variable), `${variable} must reach the inventory`);
   }
   assert.match(remote, /FORD_MCP_API_TOKEN/);
-  assert.match(secrets, /FORD_MCP_API_TOKEN/);
-  assert.match(secrets, /FORD_MCP_TOKEN/);
+  assert.match(vaultSecret, /FORD_MCP_API_TOKEN/);
+  assert.match(vaultSecret, /FORD_MCP_TOKEN/);
 });
 
 test("Ford MCP keeps combined vehicle and financing search in app allowlists", async () => {
@@ -438,32 +439,33 @@ test("remote image rollback archive is exposed through a Mise task", async () =>
   assert.match(source, /deploy_state_dir/);
 });
 
-test("one Mise task collects and protects deployment secrets before propagation", async () => {
+test("Vault credential provisioning keeps values off disk and stores only OCID mappings", async () => {
   const task = await read("ford-ai-service/.mise/tasks/deploy/secrets");
+  const vaultTask = await read("ford-ai-service/.mise/tasks/deploy/vault-secret");
   const remote = await read("ford-ai-service/.mise/lib/remote.sh");
-  const appTask = await read("ford-ai-service/.mise/tasks/deploy/app");
 
-  for (const variable of [
-    "POSTGRES_PASSWORD",
-    "REDIS_PASSWORD",
-    "FORD_OPERATOR_PASSWORD",
-    "FORD_META_APP_SECRET",
-    "FORD_META_VERIFY_TOKEN",
-    "GHCR_USERNAME",
-    "GRAFANA_CLOUD_API_TOKEN",
-    "LANGFUSE_SECRET_KEY"
-  ]) {
-    assert.match(task, new RegExp(variable), `${variable} must be managed by deploy:secrets`);
-  }
+  assert.match(task, /disabled because it stored credential values/);
+  assert.match(task, /deploy:vault-secret/);
+  assert.match(vaultTask, /read -r -s/);
+  assert.match(vaultTask, /create-base64/);
+  assert.match(vaultTask, /update-base64/);
+  assert.match(vaultTask, /unset secret_value/);
+  assert.doesNotMatch(vaultTask, /echo.*secret_value|printf.*secret_value.*>>/);
+  assert.match(remote, /load_vault_secret_mappings/);
+  assert.match(remote, /ocid1\\\.vaultsecret/);
+});
 
-  assert.match(remote, /read -r -s/);
-  assert.match(remote, /chmod 600/);
-  assert.match(remote, /mktemp/);
-  assert.match(task, /prompt_deploy_secret/);
-  assert.match(task, /ensure_deploy_secret/);
-  assert.doesNotMatch(task, /printf.*\$value|echo.*\$value/);
-  assert.match(appTask, /load_deploy_config/);
-  assert.match(appTask, /ansible_command/);
+test("Vault request and mapping helpers encode secret input and atomically save non-secret OCIDs", async () => {
+  const request = await read("ford-ai-service/scripts/oci/create_secret_request.py");
+  const mapping = await read("ford-ai-service/scripts/oci/update_secret_mapping.py");
+
+  assert.match(request, /sys\.stdin\.buffer\.read\(\)/);
+  assert.match(request, /base64\.b64encode\(secret_value\)/);
+  assert.match(request, /secretContentContent/);
+  assert.match(mapping, /NamedTemporaryFile/);
+  assert.match(mapping, /os\.fchmod\(temp_file\.fileno\(\), 0o600\)/);
+  assert.match(mapping, /os\.replace\(temp_name, path\)/);
+  assert.match(mapping, /SECRET_OCID\.fullmatch/);
 });
 
 test("deployment config preserves externally supplied secret values", async () => {
@@ -479,7 +481,6 @@ test("deployment config preserves externally supplied secret values", async () =
   assert.match(remote, /is_valid_tenant_id/);
   assert.match(remote, /00000000-0000-0000-0000-000000000001/);
   assert.match(remote, /adopt_environment_secret/);
-  assert.match(secretsTask, /adopt_environment_secret/);
-  assert.match(secretsTask, /FORD_META_APP_SECRET/);
-  assert.match(secretsTask, /FORD_META_VERIFY_TOKEN/);
+  assert.match(secretsTask, /disabled because it stored credential values/);
+  assert.doesNotMatch(secretsTask, /adopt_environment_secret/);
 });

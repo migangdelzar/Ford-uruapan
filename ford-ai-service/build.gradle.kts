@@ -17,6 +17,7 @@ dependencies {
     implementation(platform(libs.spring.boot.bom))
     implementation(platform(libs.spring.ai.bom))
     implementation(platform(libs.spring.modulith.bom))
+    implementation(platform(libs.oci.sdk.bom))
 
     implementation(libs.spring.boot.starter.web)
     developmentOnly(libs.spring.boot.devtools)
@@ -46,6 +47,8 @@ dependencies {
     implementation(libs.typesafe.spring.ai)
     implementation(libs.langgraph4j.core)
     implementation(libs.langgraph4j.postgres.saver)
+    implementation(libs.oci.sdk.secrets)
+    implementation(libs.oci.sdk.httpclient.jersey3)
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.security.test)

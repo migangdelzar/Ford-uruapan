@@ -13,10 +13,33 @@ require_command() {
 deploy_repo_root() { printf '%s\n' "$(cd "$MISE_PROJECT_ROOT/.." && pwd -P)"; }
 deploy_config_file() { printf '%s\n' "${FORD_DEPLOY_CONFIG_FILE:-$(deploy_repo_root)/deployment/config/oci.env}"; }
 deploy_state_dir() { printf '%s\n' "$MISE_PROJECT_ROOT/.mise/state/deploy"; }
-deploy_inventory_file() { printf '%s\n' "$(deploy_state_dir)/inventory.yml"; }
+deploy_inventory_file() { printf '%s\n' "${FORD_DEPLOY_INVENTORY_FILE:-$(deploy_state_dir)/inventory.yml}"; }
 backup_inventory_file() { printf '%s\n' "$(deploy_state_dir)/backup-inventory.yml"; }
 infra_state_dir() { printf '%s\n' "$MISE_PROJECT_ROOT/.mise/state/infra"; }
 infra_vars_file() { printf '%s\n' "$(infra_state_dir)/terraform.tfvars"; }
+vault_secret_mapping_file() { printf '%s\n' "$(deploy_repo_root)/deployment/config/vault-secret-ocids.env"; }
+
+load_vault_secret_mappings() {
+  local mapping_file="$(vault_secret_mapping_file)"
+  local line_number=0 name value
+  [[ -e "$mapping_file" ]] || return 0
+  if [[ -L "$mapping_file" ]]; then
+    echo "Vault OCID mapping file must not be a symlink." >&2
+    return 1
+  fi
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line_number=$((line_number + 1))
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    if [[ ! "$line" =~ ^(FORD_VAULT_SECRET_OCID_[A-Z][A-Z0-9_]*)=(ocid1\.vaultsecret\.oc1\.[a-z0-9-]*\.[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*)$ ]]; then
+      echo "Invalid Vault OCID mapping at line ${line_number}; no value was loaded." >&2
+      return 1
+    fi
+    name="${BASH_REMATCH[1]}"
+    value="${BASH_REMATCH[2]}"
+    export "${name}=${value}"
+  done < "$mapping_file"
+}
 
 load_deploy_config() {
   local config_file="$(deploy_config_file)"
@@ -74,6 +97,7 @@ load_deploy_config() {
   if [[ -n "$preserved_grafana_token" ]]; then export GRAFANA_CLOUD_API_TOKEN="$preserved_grafana_token"; fi
   if [[ -n "$preserved_langfuse_secret" ]]; then export LANGFUSE_SECRET_KEY="$preserved_langfuse_secret"; fi
   if [[ -n "$preserved_oci_namespace" ]]; then export OCI_OBJECT_STORAGE_NAMESPACE="$preserved_oci_namespace"; fi
+  load_vault_secret_mappings
 }
 
 is_valid_tenant_id() {
@@ -307,12 +331,11 @@ render_deploy_inventory() {
   local inventory_file="$(deploy_inventory_file)"
   local ansible_user_yaml ansible_host_1_yaml ansible_host_2_yaml key_1_yaml key_2_yaml
   local private_1_yaml private_2_yaml root_yaml mount_yaml data_bind_yaml
-  local postgres_yaml redis_yaml operator_user_yaml operator_password_yaml
-  local meta_secret_yaml verify_token_yaml openai_key_yaml app_image_yaml ghcr_username_yaml ghcr_token_yaml
+  local operator_user_yaml app_image_yaml ghcr_username_yaml
   local backup_bucket_yaml backup_namespace_yaml backup_prefix_yaml backup_region_yaml
-  local grafana_endpoint_yaml grafana_instance_yaml grafana_token_yaml langfuse_endpoint_yaml langfuse_public_yaml langfuse_secret_yaml
+  local grafana_endpoint_yaml grafana_instance_yaml langfuse_endpoint_yaml langfuse_public_yaml
   local ford_meta_auto_binding_enabled_yaml ford_meta_provider_account_id_yaml ford_tenant_id_yaml
-  local ford_meta_delivery_enabled_yaml ford_meta_whatsapp_endpoint_yaml ford_meta_whatsapp_access_token_yaml
+  local ford_meta_delivery_enabled_yaml ford_meta_whatsapp_endpoint_yaml
   local ford_human_handoff_enabled_yaml
   local ford_conversation_graph_enabled_yaml
   local ford_outbox_enabled_yaml
@@ -328,10 +351,10 @@ render_deploy_inventory() {
   local ford_ai_cloudflare_base_url_yaml
   local ford_ai_openrouter_enabled_yaml ford_ai_openrouter_model_yaml ford_ai_openrouter_tool_calling_verified_yaml ford_ai_openrouter_structured_output_verified_yaml
   local ford_ai_openrouter_base_url_yaml
-  local groq_key_yaml gemini_key_yaml cloudflare_token_yaml cloudflare_account_id_yaml openrouter_key_yaml typesafe_key_yaml
+  local cloudflare_account_id_yaml
   local ford_ai_classifier_handoff_enabled_yaml
-  local ford_mcp_enabled_yaml ford_mcp_url_yaml ford_mcp_endpoint_yaml mcp_token_yaml
-  local ford_ai_ollama_access_id_yaml ford_ai_ollama_access_secret_yaml ford_mcp_access_id_yaml ford_mcp_access_secret_yaml
+  local ford_mcp_enabled_yaml ford_mcp_url_yaml ford_mcp_endpoint_yaml
+  local ford_ai_ollama_access_id_yaml ford_mcp_access_id_yaml
   ansible_user_yaml="$(yaml_quote "$OCI_SSH_USER")"
   ansible_host_1_yaml="$(yaml_quote "$EMME_1_SSH_HOST")"
   ansible_host_2_yaml="$(yaml_quote "$EMME_2_SSH_HOST")"
@@ -342,12 +365,7 @@ render_deploy_inventory() {
   root_yaml="$(yaml_quote "$EMME_REMOTE_ROOT")"
   mount_yaml="$(yaml_quote "$EMME_DATA_VOLUME_MOUNT")"
   data_bind_yaml="$(yaml_quote "${EMME_2_PRIVATE_IP}")"
-  postgres_yaml="$(yaml_quote "$POSTGRES_PASSWORD")"
-  redis_yaml="$(yaml_quote "$REDIS_PASSWORD")"
   operator_user_yaml="$(yaml_quote "$FORD_OPERATOR_USERNAME")"
-  operator_password_yaml="$(yaml_quote "$FORD_OPERATOR_PASSWORD")"
-  meta_secret_yaml="$(yaml_quote "${FORD_META_APP_SECRET:-}")"
-  verify_token_yaml="$(yaml_quote "${FORD_META_VERIFY_TOKEN:-}")"
   ford_meta_auto_binding_enabled_yaml="$(yaml_quote "${FORD_META_AUTO_BINDING_ENABLED:-false}")"
   ford_meta_provider_account_id_yaml="$(yaml_quote "${FORD_META_PHONE_NUMBER_ID:-${FORD_META_PROVIDER_ACCOUNT_ID:-${FORD_META_PHONE_ID:-}}}")"
   ford_meta_waba_id_yaml="$(yaml_quote "${FORD_META_WHATSAPP_BUSINESS_ACCOUNT_ID:-${FORD_META_WABA_ID:-}}")"
@@ -356,7 +374,6 @@ render_deploy_inventory() {
   ford_tenant_id_yaml="$(yaml_quote "${FORD_TENANT_ID:-00000000-0000-0000-0000-000000000001}")"
   ford_meta_delivery_enabled_yaml="$(yaml_quote "${FORD_META_DELIVERY_ENABLED:-false}")"
   ford_meta_whatsapp_endpoint_yaml="$(yaml_quote "${FORD_META_WHATSAPP_DELIVERY_ENDPOINT:-}")"
-  ford_meta_whatsapp_access_token_yaml="$(yaml_quote "${FORD_META_WHATSAPP_ACCESS_TOKEN:-}")"
   ford_human_handoff_enabled_yaml="$(yaml_quote "${FORD_HUMAN_HANDOFF_ENABLED:-true}")"
   ford_conversation_graph_enabled_yaml="$(yaml_quote "${FORD_CONVERSATION_GRAPH_ENABLED:-true}")"
   ford_outbox_enabled_yaml="$(yaml_quote "${FORD_OUTBOX_ENABLED:-false}")"
@@ -396,30 +413,18 @@ render_deploy_inventory() {
   ford_ai_openrouter_tool_calling_verified_yaml="$(yaml_quote "${FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED:-false}")"
   ford_ai_openrouter_structured_output_verified_yaml="$(yaml_quote "${FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED:-false}")"
   ford_ai_classifier_handoff_enabled_yaml="$(yaml_quote "${FORD_AI_CLASSIFIER_HANDOFF_ENABLED:-false}")"
-  openai_key_yaml="$(yaml_quote "${OPENAI_API_KEY:-}")"
-  groq_key_yaml="$(yaml_quote "${GROQ_API_KEY:-}")"
-  gemini_key_yaml="$(yaml_quote "${GEMINI_API_KEY:-}")"
-  cloudflare_token_yaml="$(yaml_quote "${CLOUDFLARE_API_TOKEN:-}")"
   cloudflare_account_id_yaml="$(yaml_quote "${CLOUDFLARE_ACCOUNT_ID:-}")"
-  openrouter_key_yaml="$(yaml_quote "${OPENROUTER_API_KEY:-}")"
-  typesafe_key_yaml="$(yaml_quote "${TYPESAFE_API_KEY:-${FORD_TYPESAFE_JEV_API_KEY:-}}")"
   app_image_yaml="$(yaml_quote "${EMME_APP_IMAGE:-ford-service:deployment}")"
   ghcr_username_yaml="$(yaml_quote "${GHCR_USERNAME:-}")"
-  ghcr_token_yaml="$(yaml_quote "${GHCR_TOKEN:-}")"
   grafana_endpoint_yaml="$(yaml_quote "$GRAFANA_CLOUD_OTLP_ENDPOINT")"
   grafana_instance_yaml="$(yaml_quote "$GRAFANA_CLOUD_INSTANCE_ID")"
-  grafana_token_yaml="$(yaml_quote "$GRAFANA_CLOUD_API_TOKEN")"
   langfuse_endpoint_yaml="$(yaml_quote "${LANGFUSE_OTLP_ENDPOINT:-${LANGFUSE_BASE_URL:-https://us.cloud.langfuse.com}/api/public/otel}")"
   langfuse_public_yaml="$(yaml_quote "$LANGFUSE_PUBLIC_KEY")"
-  langfuse_secret_yaml="$(yaml_quote "$LANGFUSE_SECRET_KEY")"
   ford_mcp_enabled_yaml="$(yaml_quote "${FORD_MCP_ENABLED:-false}")"
   ford_mcp_url_yaml="$(yaml_quote "${FORD_MCP_URL:-https://your-stable-mcp-domain.example.com}")"
   ford_mcp_endpoint_yaml="$(yaml_quote "${FORD_MCP_ENDPOINT:-/mcp}")"
-  mcp_token_yaml="$(yaml_quote "${FORD_MCP_TOKEN:-${FORD_MCP_API_TOKEN:-${MCP_HTTP_BEARER_TOKEN:-}}}")"
   ford_ai_ollama_access_id_yaml="$(yaml_quote "${FORD_AI_OLLAMA_ACCESS_CLIENT_ID:-}")"
-  ford_ai_ollama_access_secret_yaml="$(yaml_quote "${FORD_AI_OLLAMA_ACCESS_CLIENT_SECRET:-}")"
   ford_mcp_access_id_yaml="$(yaml_quote "${FORD_MCP_ACCESS_CLIENT_ID:-}")"
-  ford_mcp_access_secret_yaml="$(yaml_quote "${FORD_MCP_ACCESS_CLIENT_SECRET:-}")"
   backup_bucket_yaml="$(yaml_quote "${OCI_BACKUP_BUCKET:-emme-business}")"
   backup_namespace_yaml="$(yaml_quote "${OCI_OBJECT_STORAGE_NAMESPACE:-}")"
   backup_prefix_yaml="$(yaml_quote "${OCI_BACKUP_PREFIX:-ford/backups}")"
@@ -435,12 +440,7 @@ all:
     data_bind_address: ${data_bind_yaml}
     remote_root: ${root_yaml}
     data_volume_mount: ${mount_yaml}
-    postgres_password: ${postgres_yaml}
-    redis_password: ${redis_yaml}
     ford_operator_username: ${operator_user_yaml}
-    ford_operator_password: ${operator_password_yaml}
-    ford_meta_app_secret: ${meta_secret_yaml}
-    ford_meta_verify_token: ${verify_token_yaml}
     ford_meta_auto_binding_enabled: ${ford_meta_auto_binding_enabled_yaml}
     ford_meta_provider_account_id: ${ford_meta_provider_account_id_yaml}
     ford_meta_waba_id: ${ford_meta_waba_id_yaml}
@@ -449,7 +449,6 @@ all:
     ford_tenant_id: ${ford_tenant_id_yaml}
     ford_meta_delivery_enabled: ${ford_meta_delivery_enabled_yaml}
     ford_meta_whatsapp_delivery_endpoint: ${ford_meta_whatsapp_endpoint_yaml}
-    ford_meta_whatsapp_access_token: ${ford_meta_whatsapp_access_token_yaml}
     ford_human_handoff_enabled: ${ford_human_handoff_enabled_yaml}
     ford_conversation_graph_enabled: ${ford_conversation_graph_enabled_yaml}
     ford_outbox_enabled: ${ford_outbox_enabled_yaml}
@@ -459,7 +458,6 @@ all:
     ford_ai_log_provider_errors: ${ford_ai_log_provider_errors_yaml}
     ford_ai_local_enabled: ${ford_ai_local_enabled_yaml}
     ford_ai_ollama_access_client_id: ${ford_ai_ollama_access_id_yaml}
-    ford_ai_ollama_access_client_secret: ${ford_ai_ollama_access_secret_yaml}
     ford_ai_local_base_url: ${ford_ai_local_base_url_yaml}
     ford_ai_local_model_version: ${ford_ai_local_model_version_yaml}
     ford_ai_local_temperature: ${ford_ai_local_temperature_yaml}
@@ -491,28 +489,17 @@ all:
     ford_ai_openrouter_tool_calling_verified: ${ford_ai_openrouter_tool_calling_verified_yaml}
     ford_ai_openrouter_structured_output_verified: ${ford_ai_openrouter_structured_output_verified_yaml}
     ford_ai_classifier_handoff_enabled: ${ford_ai_classifier_handoff_enabled_yaml}
-    openai_api_key: ${openai_key_yaml}
-    groq_api_key: ${groq_key_yaml}
-    gemini_api_key: ${gemini_key_yaml}
-    cloudflare_api_token: ${cloudflare_token_yaml}
     cloudflare_account_id: ${cloudflare_account_id_yaml}
-    openrouter_api_key: ${openrouter_key_yaml}
-    typesafe_api_key: ${typesafe_key_yaml}
     app_image: ${app_image_yaml}
     ghcr_username: ${ghcr_username_yaml}
-    ghcr_token: ${ghcr_token_yaml}
     grafana_cloud_otlp_endpoint: ${grafana_endpoint_yaml}
     grafana_cloud_instance_id: ${grafana_instance_yaml}
-    grafana_cloud_api_token: ${grafana_token_yaml}
     langfuse_otlp_endpoint: ${langfuse_endpoint_yaml}
     langfuse_public_key: ${langfuse_public_yaml}
-    langfuse_secret_key: ${langfuse_secret_yaml}
     ford_mcp_enabled: ${ford_mcp_enabled_yaml}
     ford_mcp_url: ${ford_mcp_url_yaml}
     ford_mcp_endpoint: ${ford_mcp_endpoint_yaml}
-    mcp_http_bearer_token: ${mcp_token_yaml}
     ford_mcp_access_client_id: ${ford_mcp_access_id_yaml}
-    ford_mcp_access_client_secret: ${ford_mcp_access_secret_yaml}
     backup_bucket: ${backup_bucket_yaml}
     object_storage_namespace: ${backup_namespace_yaml}
     backup_object_prefix: ${backup_prefix_yaml}

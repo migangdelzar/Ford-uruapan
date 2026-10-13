@@ -10,6 +10,7 @@ import com.ford.service.conversations.api.ConversationMemoryProjectionRefreshReq
 import com.ford.service.conversations.domain.ConversationSnapshot;
 import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.outbox.OutboxStore;
+import com.ford.service.shared.PostgresAdvisoryExecutionLock;
 import org.junit.jupiter.api.Test;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.modulith.test.Scenario;
@@ -88,6 +89,11 @@ class ConversationScenarioIntegrationTest {
         @Bean
         OutboxStore outboxStore() {
             return org.mockito.Mockito.mock(OutboxStore.class);
+        }
+
+        @Bean
+        PostgresAdvisoryExecutionLock executionLock() {
+            return org.mockito.Mockito.mock(PostgresAdvisoryExecutionLock.class);
         }
 
         @Bean(name = "conversationWorkflow")

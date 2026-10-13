@@ -35,6 +35,11 @@ Thumbs.db
 !.env.example
 !.env.template
 !.env.prod.example
+deployment/config/oci.env*
+!deployment/config/oci.env.example
+deployment/config/vault-secret-ocids.env
+deployment/config/vault-test-secret-ocids.env
+!deployment/config/vault-secret-ocids.env.example
 application-local.yml
 application-local.yaml
 application-secrets.yml

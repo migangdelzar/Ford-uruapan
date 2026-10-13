@@ -17,10 +17,10 @@
 - name: Authenticate to GHCR
   ansible.builtin.command:
     cmd: docker login ghcr.io --username "{{ ghcr_username }}" --password-stdin
-    stdin: "{{ ghcr_token }}"
+    stdin: "{{ lookup('ansible.builtin.env', 'GHCR_TOKEN') }}"
   no_log: true
   changed_when: false
-  when: ghcr_token | default('') | length > 0 and app_image is match('^ghcr[.]io/')
+  when: lookup('ansible.builtin.env', 'GHCR_TOKEN') | default('', true) | length > 0 and app_image is match('^ghcr[.]io/')
 
 - name: Pull application image from registry
   ansible.builtin.command:
@@ -58,6 +58,7 @@
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: "0600"
+  no_log: true
 
 - name: Render Collector environment
   ansible.builtin.template:
@@ -66,6 +67,7 @@
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: "0600"
+  no_log: true
 
 - name: Copy Grafana Cloud Collector configuration
   ansible.builtin.copy:

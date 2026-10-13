@@ -2,18 +2,42 @@ package com.ford.service.conversations.application;
 
 import com.ford.service.channels.api.InboundMessageAccepted;
 import com.ford.service.channels.domain.Channel;
+import com.ford.service.shared.PostgresAdvisoryExecutionLock;
 import org.junit.jupiter.api.Test;
 import org.springframework.modulith.events.EventPublication;
 
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ConversationPublicationRecoveryTest {
+
+    @Test
+    void doesNotResubmitPublicationsWhenAnotherInstanceOwnsTheRecoveryLock() {
+        var publications = mock(org.springframework.modulith.events.IncompleteEventPublications.class);
+        var executor = mock(org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor.class);
+        when(executor.getThreadPoolExecutor()).thenReturn(new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(1)));
+        var properties = new ConversationProperties();
+        var lock = mock(PostgresAdvisoryExecutionLock.class);
+        when(lock.runIfAcquired(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any(Runnable.class)))
+                .thenReturn(false);
+
+        new ConversationPublicationRecovery(publications, executor, properties, lock).resubmitWhenCapacityReturns();
+
+        verify(publications, never()).resubmitIncompletePublications(
+                org.mockito.ArgumentMatchers.<Predicate<EventPublication>>any());
+    }
 
     @Test
     void retriesOnlyOldUnclaimedInboundConversationPublications() {

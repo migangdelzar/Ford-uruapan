@@ -9,7 +9,6 @@ services:
       options:
         max-size: 20m
         max-file: "3"
-    command: ["sh", "-c", "node dist/src/cli.js migrate && exec node dist/src/cli.js mcp-http"]
     environment:
       DATABASE_URL: postgres://ford:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be supplied}@postgres:5432/ford_service?application_name=ford-mcp
       FORD_BASE_URL: https://www.forduruapan.mx

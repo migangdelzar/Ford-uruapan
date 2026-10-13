@@ -71,14 +71,14 @@ The shared action must run inside the target repository’s environment-protecte
 - Create: `ford-ai-service/scripts/tests/test_blue_green_deploy.py`
 - Test: `deployment/ansible/site.yml`
 
-- [ ] Add a failing deployment-configuration test for selecting blue or green, assigning a distinct candidate port, and retaining the previous image reference.
-- [ ] Run `python -m unittest scripts.tests.test_blue_green_deploy -v` from `ford-ai-service`; confirm the new assertion fails before implementation.
-- [ ] Add Compose/Ansible behavior for launching the candidate without stopping the active service, checking candidate health directly, switching the stable ingress, and retaining the prior container for the configured observation window.
-- [ ] Add the post-switch check. If it fails, point the stable ingress back to the prior slot, verify prior health, and fail the release with both artifact IDs and switch-back result in output.
-- [ ] Add an operator-triggered switch-back path that accepts only the recorded prior immutable image and uses the same health checks.
-- [ ] Use the caller’s short-lived `GITHUB_TOKEN` with `packages: read` for the image pull; run `docker logout ghcr.io` after pull and ensure the token is never stored in the VM’s Docker config or deployment summary.
-- [ ] Ensure logs and deployment summaries report health and routing status without printing SSH keys, runtime credentials, or customer data.
-- [ ] Run `python -m unittest scripts.tests.test_blue_green_deploy scripts.tests.test_deploy_inventory_secrets -v` from `ford-ai-service` and `ansible-playbook -i 'localhost,' deployment/ansible/site.yml --syntax-check` from the repository root; expect all tests and syntax checks to pass.
+- [x] Add failing deployment-configuration tests for blue/green selection, distinct candidate ports, and retained image references; confirm the tests fail before implementation.
+- [x] Run `python -m unittest scripts.tests.test_blue_green_deploy -v` from `ford-ai-service`; new deployment assertions failed before implementation and pass now.
+- [x] Add Compose/Ansible paths that start and health-check candidates before cutover, switch the stable local proxy, and retain the prior slot.
+- [x] Add post-switch checks and automatic route restoration with prior-service verification.
+- [x] Add operator rollback limited to the previously recorded immutable digest and the same health checks.
+- [x] Pull with temporary GHCR Docker configuration when a caller token is supplied; log out and delete the temporary credential directory.
+- [x] Keep credential-bearing tasks and MCP protocol smoke output redacted.
+- [x] Run deployment contract and inventory-secret tests, Compose validation, Nginx `-t`, and Ansible syntax checks for both blue-green playbooks and `site.yml`; all pass.
 
 **Acceptance:** Candidate failure before switch leaves live traffic untouched. Failed health after switch automatically returns traffic to the prior healthy slot. Manual rollback selects the prior immutable image and does not touch database schema.
 
@@ -90,11 +90,11 @@ The shared action must run inside the target repository’s environment-protecte
 - Create or modify: focused tests beside each affected class under `ford-ai-service/src/test/java/com/ford/service/`
 - Modify: `ford-ai-service/src/main/resources/db/changelog/db.changelog-master.yaml` only if a backward-compatible lock/lease table is required
 
-- [ ] Write tests that start two job instances against the same persistence boundary and prove one external action/run is created for one due item.
-- [ ] Run each focused Gradle test and confirm the concurrency assertion fails if the existing persistence does not serialize the operation.
-- [ ] Reuse existing DB claims/leases where they already guarantee single execution. For any failing path, add the smallest database-backed coordination mechanism and a Liquibase change that is safe for both old and candidate app versions.
+- [x] Write PostgreSQL integration tests that run two app-version instances against the same persistence boundary and prove one sync, outbox delivery, lease-recovery action, or publication resubmission executes.
+- [x] Run focused Gradle unit and integration tests for the coordination paths.
+- [x] Reuse outbox record claims and cleanup idempotency; add session-scoped PostgreSQL advisory locks for sync, outbox delivery plus recovery, and publication recovery. No schema migration is required.
 - [ ] Verify candidate Spring startup does not run an incompatible destructive schema change. Split destructive contract changes into a later release after the old version is retired.
-- [ ] Run `./gradlew test --no-daemon --no-configuration-cache` from `ford-ai-service`; expect all unit tests to pass.
+- [x] Run `./gradlew test --no-daemon --no-configuration-cache` and `./gradlew integrationTest --no-daemon --no-configuration-cache` from `ford-ai-service`; both pass.
 
 **Acceptance:** Old and candidate may overlap during the traffic observation window without duplicate outbox delivery, ingestion, event recovery, or cleanup side effects. Both versions can run against the expanded schema.
 
@@ -107,15 +107,16 @@ The shared action must run inside the target repository’s environment-protecte
 - Modify: `deployment/ansible/roles/mcp/tasks/main.yml`
 - Modify: `.github/workflows/reusable-deploy.yml` (remove the placeholder contract or convert it to non-production validation only)
 - Create: `ford-ai-service/scripts/tests/test_oci_action_contract.py`
+- Create: `deployment/ansible/backup-now.yml`
 
-- [ ] Define action inputs for service target, immutable image reference, deployment host/user, SSH private key, and known-hosts value. Validate target against `ford-service` and `ford-mcp`; reject mutable image tags.
-- [ ] Keep the action free of repository-wide privileges. Its caller sets only `contents: read` and the minimal package read permission required by the selected deploy method.
-- [ ] Make the action invoke the shared Ansible role and emit a redacted summary containing source SHA, image digest, migration result, selected slot, health checks, and rollback result.
-- [ ] Add tests that reject missing image digests, unknown targets, mutable tags, and credential values in captured output.
-- [ ] Run `python -m unittest scripts.tests.test_oci_action_contract -v` and the Ansible syntax command from Task 2; expect all checks to pass.
-- [ ] Pin any external GitHub Actions used by the action to reviewed full commit SHAs.
+- [x] Define action inputs for target, immutable image, host/user, SSH key and known-hosts, registry token, and existing private IP. Validate target and reject mutable image tags.
+- [x] Keep the composite action free of workflow permissions; callers must set only the package-read permission required for the short-lived image pull.
+- [x] Invoke the shared Ansible playbook and emit a redacted summary with source SHA, active/prior image digests, slot, migration status, health checks, and rollback behavior.
+- [x] Add tests for missing digests, unknown targets, mutable tags, MCP private-IP validation, rollback resolution, and secret leakage.
+- [x] Run the OCI action contract tests, deployment tests, workflow contract tests, YAML parsing, and Ansible syntax checks; all pass.
+- [x] The composite action has no third-party GitHub Action dependencies. Its Ansible runtime package is pinned.
 
-**Acceptance:** Target repos can invoke one version-pinned action inside their own `environment: production` job; no approval or environment secret moves to Ford Service.
+**Acceptance:** Target repos can invoke the shared action inside their own `environment: production` job; cross-repo SHA pinning remains gated on making the private action available from the intended Ford Service main branch. No approval or environment secret moves to Ford Service.
 
 ## Task 5: Add Ford Service release and rollback jobs
 
@@ -126,12 +127,12 @@ The shared action must run inside the target repository’s environment-protecte
 - Test: `.github/workflows/release.yml` with actionlint
 - Test: `.github/workflows/ci.yml` with actionlint
 
-- [ ] Keep PR runs verification-only. On successful `main`, publish the ARM64 image by immutable digest and pass that digest to a deploy job in the Ford Service `production` environment.
-- [ ] Put `environment: production` on the caller-owned deploy job and invoke the Ford Service OCI action from that job, pinned to the reviewed full commit SHA produced after Task 4 is reviewed.
-- [ ] Add manual `workflow_dispatch` inputs for a reviewed source SHA and operation (`deploy` or `rollback`). Rollback resolves only the previous artifact recorded by a successful deployment; do not accept arbitrary tags.
-- [ ] Add required checks for backup success before schema changes and fail closed when runtime Vault readiness is false.
-- [ ] Require `vars.PRODUCTION_DEPLOY_ENABLED == 'true'` on the production deploy job so a missing environment cannot be auto-created without reviewer protection and immediately deployed.
-- [ ] Run `actionlint .github/workflows/ci.yml .github/workflows/release.yml` and `./gradlew check --no-daemon --no-configuration-cache` from `ford-ai-service`; expect valid workflows and passing checks.
+- [x] Keep PR runs verification-only and publish the ARM64 image only from successful `main` verification; expose the image digest and resolve it from the verified source SHA for release.
+- [x] Add a caller-owned `production` job that invokes the shared local OCI action. The action is not yet available to external repositories by reviewed SHA.
+- [x] Add manual dispatch for a full source SHA and operation (`deploy` or `rollback`). Deploy requires successful CI on `main`; rollback resolves only the recorded prior artifact.
+- [x] Run and verify the existing on-VM database backup before app/MCP deploys that may change schema; gate on runtime Vault readiness.
+- [x] Require both `PRODUCTION_DEPLOY_ENABLED == 'true'` and `RUNTIME_VAULT_READY == 'true'`; the environment is not created by a skipped job.
+- [ ] Run `actionlint .github/workflows/ci.yml .github/workflows/release.yml` and `./gradlew check --no-daemon --no-configuration-cache`; actionlint is unavailable locally, and the complete `check` task remains to be run.
 
 **Acceptance:** PRs cannot deploy; main deployment pauses at Ford Service’s own production approval; artifact digest and rollback target appear in deployment summary.
 
@@ -147,12 +148,13 @@ The shared action must run inside the target repository’s environment-protecte
 - Create: `../Ford-scraping/tests/unit/deployment-contract.test.ts`
 
 - [x] Add PR checks using Node 22: `npm ci`, baseline-visible `npm run lint`, `npm run build`, `npm run test:unit`, and `npm run test:integration` with pgvector and migrations against the test DB. Lint currently reports 773 existing issues, so it is non-blocking until debt is reduced; build/unit/integration remain blocking. Local integration currently reports 3 existing failures in embedding pending/search setup (2 in `database.test.ts`, 1 suite setup in `search-repository.test.ts`).
+- [x] Set the local scheduler default and Compose schedule to `0 12 1 * *` in `America/Mexico_City`; migration is no longer run during scheduler container startup. The monthly contract test, unit suite, and TypeScript build pass.
 - [ ] On verified `main`, publish the ARM64 image by digest; keep PR jobs unable to publish or deploy.
 - [ ] Add a Ford-scraping-owned production deployment job that invokes the remote Ford Service OCI action pinned to its reviewed full commit SHA for `ford-mcp`.
 - [ ] Require `vars.PRODUCTION_DEPLOY_ENABLED == 'true'` before entering the production deployment job.
-- [ ] Run `node dist/src/cli.js migrate` exactly once as a one-shot task from the selected image before changing MCP or scheduler containers. Remove migration from every normal container startup path.
+- [x] Remove migration from the local normal scheduler startup path. The shared Ford Service blue-green deploy runs `node dist/src/cli.js migrate` once as a one-shot before an MCP/scheduler release; production execution remains gated.
 - [ ] Start candidate MCP on an alternate local port, check its MCP health endpoint, switch the stable Tunnel origin/proxy, and test a read-only catalog question with source URL evidence. Switch back automatically if post-switch smoke fails.
-- [ ] Replace the monthly scheduler serially with one replica, `SYNC_SCHEDULE=0 12 1 * *`, `SYNC_TIMEZONE=America/Mexico_City`; if it fails, restore the previous image without running a second scheduler concurrently.
+- [ ] Replace the production monthly scheduler serially with one replica, `SYNC_SCHEDULE=0 12 1 * *`, `SYNC_TIMEZONE=America/Mexico_City`; if it fails, restore the previous image without running a second scheduler concurrently.
 - [ ] Clear the known lint baseline and embedding integration failures, then run `npm run lint && npm run build && npm run test:unit && npm run test:integration` from `../Ford-scraping`; expect all commands to pass.
 
 **Acceptance:** MCP startup does not migrate, MCP traffic can switch back to the prior digest, only one monthly scheduler runs, and the live read-only MCP check returns supported facts with source links.

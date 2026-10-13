@@ -1,6 +1,7 @@
 package com.ford.service.outbox;
 
 import com.ford.service.observability.AiObservationService;
+import com.ford.service.shared.PostgresAdvisoryExecutionLock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -25,13 +26,13 @@ public class OutboxConfiguration {
 
     @Bean
     @ConditionalOnProperty(name = "ford.outbox.enabled", havingValue = "true")
-    OutboxDeliveryJob outboxDeliveryJob(OutboxPublisher publisher) {
-        return new OutboxDeliveryJob(publisher);
+    OutboxDeliveryJob outboxDeliveryJob(OutboxPublisher publisher, PostgresAdvisoryExecutionLock executionLock) {
+        return new OutboxDeliveryJob(publisher, executionLock);
     }
 
     @Bean
     @ConditionalOnProperty(name = "ford.outbox.enabled", havingValue = "true")
-    OutboxRecoveryJob outboxRecoveryJob(OutboxStore store) {
-        return new OutboxRecoveryJob(store);
+    OutboxRecoveryJob outboxRecoveryJob(OutboxStore store, PostgresAdvisoryExecutionLock executionLock) {
+        return new OutboxRecoveryJob(store, executionLock);
     }
 }
