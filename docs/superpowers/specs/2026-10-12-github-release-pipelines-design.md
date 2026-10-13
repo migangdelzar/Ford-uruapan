@@ -13,6 +13,7 @@ Give each repo a tested, protected path to release its own production service, p
 ## Approved choices
 
 - A successful `main` build may proceed to a production deployment, but deployment pauses for approval in that repository’s protected GitHub `production` environment.
+- Production uses a health-gated rollout per repo: one approval before deployment, automated health checks after each change, and a human-triggered rollback to the prior immutable artifact if checks fail. OCI services deploy in-place; Pages deploys the selected commit.
 - Each repo normally deploys only its own service. A separate “release all” workflow coordinates selected releases across repos.
 - Ford-scraping needs a production scheduler; it does not currently have one in the checked-in OCI deployment.
 - The scheduler runs on day 1 at 12:00 in `America/Mexico_City`.
@@ -44,6 +45,8 @@ Cross-repo callers must be allowed to use the shared private workflow repository
 Add a `workflow_dispatch` coordinator in Ford Service. For each selected repo, it resolves the latest successful verification run on `main`, takes that run’s exact source commit, and dispatches the repo’s existing release workflow with that commit. Each target workflow re-runs its release gates against the pinned commit before publishing/deploying. The coordinator waits for target runs and records the selected commits, run links, and per-repo outcomes. It does not implement another deployment path. Each target repo retains its own `production` approval and deployment log; the user approves each selected repo separately.
 
 The coordinator uses a GitHub App installation token limited to these repos and the permissions required to read release runs and dispatch workflows. A repository’s `GITHUB_TOKEN` is scoped to that repository; cross-repo dispatch therefore uses a narrowly scoped app token, not a personal access token. GitHub documents `workflow_dispatch` as an event that can trigger a workflow when created by a token. See [workflow trigger behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
+
+The release-all dispatch accepts an explicit repo selection and records the selected commit for each target before dispatch. It remains a coordinator: each selected repo pauses independently at its own production approval gate, and approval in one repo does not approve another. For an individual release, the operator can approve or reject the pending production deployment from that repo’s deployment review. Rejecting leaves the current production version in place. If a deployment fails its health gate, the workflow stops and reports the failed check; it does not automatically roll back. An operator can trigger a separate rollback workflow that selects the recorded previous immutable app image (or Pages commit) and runs the same deploy and health checks. The rollback action does not reverse database migrations.
 
 Each target workflow must deploy its own build’s immutable image digest or exact web commit SHA; it must not resolve a mutable `latest` tag at deploy time. Each target run summary records its artifact digest, migration status, and smoke-check result. The release-all summary links to those target summaries. If one target fails, the coordinator reports individual results; it does not try to undo completed deployments or database changes automatically.
 
@@ -81,6 +84,8 @@ Before enabling the Pages workflow, inspect the Cloudflare project’s current G
 - Apply catalog migrations once before updating MCP and the scheduler. App Liquibase remains within app startup and is followed by a health gate.
 - Prefer backward-compatible expand/contract schema changes. Do not automatically run down migrations during rollback.
 - On application failure, allow a redeploy of the previous immutable image. Database restoration is a separate, explicitly reviewed recovery operation using the existing backup/restore process.
+- Application rollback is an explicit operator action after a failed health gate; report the previous and candidate artifact identifiers, failing health checks, and selected rollback target in the deployment summary. The rollback itself must pass the normal health gate before it is reported successful.
+- A manual catalog sync is a separate operator action from deployment. It runs the existing sync command once, reports its outcome and changed-record counts, and does not change the scheduled day-1 cadence.
 - Emit an observable scheduler start/result record with run time, outcome, and changed-record counts, without logging customer data or credentials. Alert on a missing or failed monthly run.
 
 ## Security and reliability controls
@@ -90,7 +95,8 @@ Before enabling the Pages workflow, inspect the Cloudflare project’s current G
 - Never deploy pull-request code or mutable tags to production.
 - Generate per-repo release summaries containing repo, commit, artifact digest (for images), migration status, approver/deployment URL, and smoke-check result. Release-all links to each summary.
 - Run post-deploy smoke checks before marking a release successful.
-- Preserve the current deployment until the replacement passes health checks; retain the previous image digest for rollback.
+- Retain the previous immutable artifact and deployment metadata so an operator can explicitly roll back after a failed health check. For in-place Compose releases, report deployment/health status accurately; do not claim zero downtime or that the previous container stayed active during replacement.
+- Keep operator workflows narrow: release selected repos, explicitly roll back an app artifact, or run catalog sync now. Do not add standalone migration or database-restore buttons; migrations remain part of the gated release sequence, and restore stays a separately reviewed recovery procedure.
 
 ## Implementation gates and open checks
 
@@ -105,10 +111,13 @@ Before enabling the Pages workflow, inspect the Cloudflare project’s current G
 
 - Pull requests in each repo run their verification lane and cannot deploy.
 - A production release after a successful `main` build waits for approval and deploys only the selected repo’s immutable version.
+- Each deployment has one production approval gate, post-deploy health checks, clear failure details, and an explicit rollback action to the previous immutable application artifact; rejection leaves the current production version unchanged.
 - Release-all selects exact versions, triggers only selected repos, preserves separate approvals, and records per-repo outcomes.
 - Catalog migrations run once before the MCP/scheduler update; ordinary container restarts do not run migrations.
 - One scheduler runs monthly on day 1 at 12:00 `America/Mexico_City`; overlapping executions are prevented and failures/missed runs are observable.
 - Spring Liquibase migration completes during the approved app rollout and app health checks pass before success is reported.
+- A failed app health gate stops the rollout and makes the previous artifact available for an operator-triggered redeploy; no automatic down migration occurs.
+- An operator can run the catalog sync manually without changing the monthly schedule.
 - Runtime credentials stay out of GitHub Actions; production deployment remains disabled until all runtime consumers are migrated to Vault.
 - Cloudflare production deploy has one owner and verifies the site/API routes after deployment.
 
