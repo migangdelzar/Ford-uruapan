@@ -13,7 +13,7 @@ Give each repo a tested, protected path to release its own production service, p
 ## Approved choices
 
 - A successful `main` build may proceed to a production deployment, but deployment pauses for approval in that repository’s protected GitHub `production` environment.
-- Production uses a health-gated rollout per repo: one approval before deployment, automated health checks after each change, and a human-triggered rollback to the prior immutable artifact if checks fail. OCI services deploy in-place; Pages deploys the selected commit.
+- Production uses a health-gated rollout per repo: one approval before deployment, a candidate version validated before traffic moves, and a retained prior version for rapid traffic rollback. OCI services use blue-green containers on the existing host when measured capacity allows; Pages uses its immutable deployment versions.
 - Each repo normally deploys only its own service. A separate “release all” workflow coordinates selected releases across repos.
 - Ford-scraping needs a production scheduler; it does not currently have one in the checked-in OCI deployment.
 - The scheduler runs on day 1 at 12:00 in `America/Mexico_City`.
@@ -46,7 +46,11 @@ Add a `workflow_dispatch` coordinator in Ford Service. For each selected repo, i
 
 The coordinator uses a GitHub App installation token limited to these repos and the permissions required to read release runs and dispatch workflows. A repository’s `GITHUB_TOKEN` is scoped to that repository; cross-repo dispatch therefore uses a narrowly scoped app token, not a personal access token. GitHub documents `workflow_dispatch` as an event that can trigger a workflow when created by a token. See [workflow trigger behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
 
-The release-all dispatch accepts an explicit repo selection and records the selected commit for each target before dispatch. It remains a coordinator: each selected repo pauses independently at its own production approval gate, and approval in one repo does not approve another. For an individual release, the operator can approve or reject the pending production deployment from that repo’s deployment review. Rejecting leaves the current production version in place. If a deployment fails its health gate, the workflow stops and reports the failed check; it does not automatically roll back. An operator can trigger a separate rollback workflow that selects the recorded previous immutable app image (or Pages commit) and runs the same deploy and health checks. The rollback action does not reverse database migrations.
+The release-all dispatch accepts an explicit repo selection and records the selected commit for each target before dispatch. It remains a coordinator: each selected repo pauses independently at its own production approval gate, and approval in one repo does not approve another. For an individual release, the operator can approve or reject the pending production deployment from that repo’s deployment review. Rejecting leaves the current production version in place. If a candidate fails before cutover, traffic stays on the active version; if post-cutover checks fail, the workflow switches ingress back to the retained prior version and reports the failure. An operator can also trigger rollback during the observation window. Neither automatic nor manual rollback reverses database migrations.
+
+For OCI application traffic, use blue-green rather than percentage canary routing: start the candidate beside the active container on an alternate local port, validate it directly, then switch the stable local ingress to the candidate. Canary traffic splitting adds routing and metrics complexity, and no traffic-splitting layer appears in the checked-in deployment. Keep the prior container available through a short observation window. If post-switch smoke or health checks fail, automatically switch ingress back; an operator can also request rollback during the observation window. Do not claim zero downtime until the actual public ingress path has been verified. The checked-in Compose config binds Ford Service to loopback port 8080 and does not define an app proxy; the MCP tunnel targets its current local service. Implementation must identify the live routing configuration and add or reuse a stable switch point before enabling blue-green deployment.
+
+Blue-green is one extra container on the existing VM, not one extra OCI VM. The checked-in Terraform budget allocates two 1 OCPU / 6 GB VMs, so another VM exceeds the configured Always Free budget. A second container still needs enough temporary CPU and memory headroom; measure the app and MCP hosts before enabling this path. Ford Service also has scheduled outbox, ingestion, and recovery jobs. Candidate startup must not run duplicate side effects: either prove the jobs are safe across instances with shared coordination or keep candidate workers disabled until promotion. Catalog scheduler stays single-instance and is replaced serially, not blue-green.
 
 Each target workflow must deploy its own build’s immutable image digest or exact web commit SHA; it must not resolve a mutable `latest` tag at deploy time. Each target run summary records its artifact digest, migration status, and smoke-check result. The release-all summary links to those target summaries. If one target fails, the coordinator reports individual results; it does not try to undo completed deployments or database changes automatically.
 
@@ -54,9 +58,9 @@ Each target workflow must deploy its own build’s immutable image digest or exa
 
 | Repo / target | Verification and artifact | Production sequence |
 | --- | --- | --- |
-| Ford Service app | Existing Java checks and security gates; build, scan, attest, and publish the ARM64 image by immutable digest. | Wait for approval; back up before a release that changes Liquibase changelogs; deploy the exact image with Ansible; Spring Liquibase applies pending changes at startup; require app health checks. |
-| Ford-scraping MCP + scheduler | Add Node lint, build, unit/integration tests, and container scan; publish the ARM64 image by immutable digest. | Wait for approval; back up before a release that changes catalog migrations; run `node dist/src/cli.js migrate` once from the selected image on the OCI host; update MCP and the single scheduler process; verify MCP health and report the last monthly sync. |
-| Ford-web Pages | Run lint, tests, production build, API contract check, and Pages Functions build check. Deploy output from the selected commit. | Wait for approval; deploy with Wrangler to the existing Pages project; verify the public UI and same-origin API routes. |
+| Ford Service app | Existing Java checks and security gates; build, scan, attest, and publish the ARM64 image by immutable digest. | Wait for approval; back up before schema changes; apply only backward-compatible Liquibase expansion; start candidate beside active version with duplicate workers disabled or coordinated; validate candidate; switch ingress; automatically switch back if post-switch checks fail; retain old image/container through the observation window. |
+| Ford-scraping MCP + scheduler | Add Node lint, build, unit/integration tests, and container scan; publish the ARM64 image by immutable digest. | Wait for approval; back up before catalog schema changes; run `node dist/src/cli.js migrate` once; validate candidate MCP on an alternate local port and switch the stable tunnel origin; replace the single scheduler serially; restore old MCP/scheduler image on failure without down-migrating. |
+| Ford-web Pages | Run lint, tests, production build, API contract check, and Pages Functions build check. Deploy output from the selected commit. | Wait for approval; deploy with Wrangler to the existing Pages project; verify the public UI and same-origin API routes; retain the prior Pages deployment for rollback. |
 
 The Ford-scraping scheduler is a single container on the existing MCP host and its Docker network, subject to confirming host capacity and configuration during implementation. It uses the repo’s existing timezone-aware scheduler with `SYNC_SCHEDULE=0 12 1 * *` and `SYNC_TIMEZONE=America/Mexico_City`. Keep it at one replica. The scheduler code already passes `noOverlap: true` to its cron adapter; deployment must not start overlapping scheduler replicas. Record each scheduled run’s start, completion, outcome, and changed-record counts through the existing container log path. Alert on failure or a missing monthly success; provide a manual `sync` recovery command rather than silently running a missed monthly job at an arbitrary time.
 
@@ -77,14 +81,14 @@ GitHub Environments support reviewer gates and environment-scoped secrets, but r
 
 Before enabling the Pages workflow, inspect the Cloudflare project’s current Git integration. Use one production deployment owner: if GitHub Actions deploys Pages, disable the existing automatic Git integration to avoid duplicate production deployments.
 
-## Migration and rollback policy
+## Rollout, migration, and rollback policy
 
 - Migration changes are serialized with deployment concurrency per production database.
 - Before applying changed DB migrations, use the existing backup path and require a successful backup result.
-- Apply catalog migrations once before updating MCP and the scheduler. App Liquibase remains within app startup and is followed by a health gate.
-- Prefer backward-compatible expand/contract schema changes. Do not automatically run down migrations during rollback.
-- On application failure, allow a redeploy of the previous immutable image. Database restoration is a separate, explicitly reviewed recovery operation using the existing backup/restore process.
-- Application rollback is an explicit operator action after a failed health gate; report the previous and candidate artifact identifiers, failing health checks, and selected rollback target in the deployment summary. The rollback itself must pass the normal health gate before it is reported successful.
+- Apply catalog migrations once before changing MCP/scheduler containers. Ford Service Liquibase currently runs at application startup; blue-green requires every automatic schema change at startup to be backward-compatible with both active and candidate versions. If that cannot be guaranteed, introduce a separately controlled expansion step before candidate startup.
+- Prefer backward-compatible expand/contract schema changes. Keep destructive contract migrations in a later release after the rollback window closes. Never run down migrations as part of rollback.
+- On candidate startup or health failure, leave active traffic on the old version. If checks fail after traffic switches, automatically point ingress back to the retained old version. An operator can request the same switch-back during the observation window. Database restoration is a separate, explicitly reviewed recovery operation using the existing backup/restore process.
+- Record old/candidate artifact IDs, migration status, ingress target, failed checks, switch-back result, and final smoke result in each deployment summary. Keep the old container/artifact until the observation window closes and the new version is confirmed healthy.
 - A manual catalog sync is a separate operator action from deployment. It runs the existing sync command once, reports its outcome and changed-record counts, and does not change the scheduled day-1 cadence.
 - Emit an observable scheduler start/result record with run time, outcome, and changed-record counts, without logging customer data or credentials. Alert on a missing or failed monthly run.
 
@@ -95,8 +99,8 @@ Before enabling the Pages workflow, inspect the Cloudflare project’s current G
 - Never deploy pull-request code or mutable tags to production.
 - Generate per-repo release summaries containing repo, commit, artifact digest (for images), migration status, approver/deployment URL, and smoke-check result. Release-all links to each summary.
 - Run post-deploy smoke checks before marking a release successful.
-- Retain the previous immutable artifact and deployment metadata so an operator can explicitly roll back after a failed health check. For in-place Compose releases, report deployment/health status accurately; do not claim zero downtime or that the previous container stayed active during replacement.
-- Keep operator workflows narrow: release selected repos, explicitly roll back an app artifact, or run catalog sync now. Do not add standalone migration or database-restore buttons; migrations remain part of the gated release sequence, and restore stays a separately reviewed recovery procedure.
+- Retain the previous immutable artifact and deployment metadata so traffic can return to the prior version during the observation window. Verify the active public ingress route and measure host capacity before enabling OCI blue-green rollout.
+- Keep operator workflows narrow: release selected repos, explicitly switch traffic back to the prior app artifact, or run catalog sync now. Do not add standalone migration or database-restore buttons; migrations remain part of the gated release sequence, and restore stays a separately reviewed recovery procedure.
 
 ## Implementation gates and open checks
 
@@ -111,12 +115,13 @@ Before enabling the Pages workflow, inspect the Cloudflare project’s current G
 
 - Pull requests in each repo run their verification lane and cannot deploy.
 - A production release after a successful `main` build waits for approval and deploys only the selected repo’s immutable version.
-- Each deployment has one production approval gate, post-deploy health checks, clear failure details, and an explicit rollback action to the previous immutable application artifact; rejection leaves the current production version unchanged.
+- Each deployment has one production approval gate, candidate health checks before traffic switches, clear failure details, automatic traffic switch-back on failed post-switch checks, and an operator rollback action during the observation window.
 - Release-all selects exact versions, triggers only selected repos, preserves separate approvals, and records per-repo outcomes.
 - Catalog migrations run once before the MCP/scheduler update; ordinary container restarts do not run migrations.
 - One scheduler runs monthly on day 1 at 12:00 `America/Mexico_City`; overlapping executions are prevented and failures/missed runs are observable.
 - Spring Liquibase migration completes during the approved app rollout and app health checks pass before success is reported.
-- A failed app health gate stops the rollout and makes the previous artifact available for an operator-triggered redeploy; no automatic down migration occurs.
+- A failed candidate check leaves traffic on the old version; a failed post-switch check returns traffic to the old version. Neither path runs an automatic down migration.
+- OCI blue-green deploy is enabled only after ingress routing, worker singleton behavior, and temporary host capacity are verified.
 - An operator can run the catalog sync manually without changing the monthly schedule.
 - Runtime credentials stay out of GitHub Actions; production deployment remains disabled until all runtime consumers are migrated to Vault.
 - Cloudflare production deploy has one owner and verifies the site/API routes after deployment.
