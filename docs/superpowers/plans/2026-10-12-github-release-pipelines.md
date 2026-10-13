@@ -82,6 +82,19 @@ The shared action must run inside the target repository’s environment-protecte
 
 **Acceptance:** Candidate failure before switch leaves live traffic untouched. Failed health after switch automatically returns traffic to the prior healthy slot. Manual rollback selects the prior immutable image and does not touch database schema.
 
+## Task 1A: Clear CI and repository prerequisites
+
+Complete these gates before publishing or enabling release workflows. They are separated from production runtime readiness so CI can be made reliable without touching production.
+
+- [x] Diagnose Ford Service's latest filesystem Trivy failure: SARIF output included a LOW `DS-0026` note despite the HIGH/CRITICAL threshold, causing the action's exit code 1. Set `limit-severities-for-sarif: true` and add a workflow contract test; local test passes. The threshold and exit code remain HIGH/CRITICAL and blocking.
+- [ ] Re-run Ford Service CI through the Trivy job and record the successful run and source SHA in the readiness log.
+- [ ] Establish Ford-scraping `main` through a reviewed, non-destructive branch/default-branch transition. Preserve `chore/platform-secret-management` and its history; first verify CI on the intended `main` commit, then change the remote default branch and branch protections.
+- [ ] Reduce the Ford-scraping lint and PostgreSQL integration backlogs in small, measured batches. Record baseline and remaining counts; make lint blocking when clean and require all integration tests to pass before image publishing.
+- [ ] Resolve the shared-action hosting boundary: public Ford-scraping cannot consume the private Ford Service action. Review and approve a public home for the action, publish the reviewed action there, pin callers to a full commit SHA, and run action contract checks from each caller. Do not place credentials in the public repository.
+- [ ] Add a release workflow to Ford-scraping after `main` and shared-action publication are verified; publish immutable multi-platform images only from successful `main` verification.
+
+**Acceptance:** The intended default branch is `main`, required checks are green, the scanner remains an enforced gate, and the public caller resolves the shared action at a reviewed full SHA. No production job is enabled by this task.
+
 ## Task 3: Prove Ford Service is safe with two app versions
 
 **Files:**
@@ -159,6 +172,8 @@ The shared action must run inside the target repository’s environment-protecte
 
 **Acceptance:** MCP startup does not migrate, MCP traffic can switch back to the prior digest, only one monthly scheduler runs, and the live read-only MCP check returns supported facts with source links.
 
+**Current external blockers:** This task depends on Task 1A for the Ford-scraping `main` branch, clean blocking CI, and a public shared-action home. Keep its release job absent or disabled until those are complete.
+
 ## Task 7: Add Ford-web Pages release and rollback
 
 **Files:**
@@ -196,6 +211,17 @@ The shared action must run inside the target repository’s environment-protecte
 
 **Acceptance:** Release-all selects exact versions, dispatches only checked repos, preserves each target’s separate approval, waits for results, and reports partial failures without undoing successful repos.
 
+**Configuration prerequisite:** Ford Service currently reports `Actions private-repository access: none`; a public caller cannot consume a private action regardless. The coordinator also needs a narrowly scoped GitHub App installation token and workflow access in each target repository. Do not store this token in the public shared-action repository.
+
+## Task 8A: Configure GitHub repository controls
+
+- [ ] Confirm `main` exists and is protected in each repository before release workflows rely on it.
+- [ ] Create a `production` environment in each target repo with required reviewers, allowed deployment branches, and only that repo's deployment credentials. Do not create or populate production credentials until runtime secret retrieval and host prerequisites pass.
+- [ ] Give the coordinator's GitHub App access only to the three target repositories and only the permissions needed to read workflow runs and dispatch releases; verify token expiry and repository scope in a non-production dispatch test.
+- [ ] Record environment IDs/settings and a permission check result in the readiness document without recording secret values.
+
+**Acceptance:** A test dispatch can identify the exact successful `main` SHA and reach each target workflow, while production remains blocked behind its own reviewer gate.
+
 ## Task 9: Stage production enablement and verify rollback behavior
 
 **Files:**
@@ -212,6 +238,8 @@ The shared action must run inside the target repository’s environment-protecte
 - [ ] Verify the live read-only MCP catalog question returns a source link and no unsupported exact facts.
 - [ ] Keep production workflows disabled if any gate fails; document the exact blocker and retain the tested CI workflows.
 
+Execution order for the first release: Ford-web preview and production-owner alignment; Ford Service app; Ford-scraping MCP; Ford-scraping scheduler; then release-all. For each step, verify health and observe before proceeding. A failed gate stops the sequence; rollback uses the retained artifact and never reverses migrations automatically.
+
 **Acceptance:** All production gates have evidence; deploy, automatic switch-back, operator rollback, monthly scheduler, release-all partial failure, and read-only MCP smoke have been exercised without exposing runtime secrets.
 
 ## Dependencies
@@ -220,9 +248,9 @@ The shared action must run inside the target repository’s environment-protecte
 Task 1 readiness
   ├─ Task 2 OCI blue-green primitives ─ Task 3 Ford Service dual-worker safety ─ Task 4 shared action
   │                                                                        ├─ Task 5 Ford Service release
-  │                                                                        └─ Task 6 Ford-scraping release
+  │                                                                        └─ Task 1A prerequisites ─ Task 6 Ford-scraping release
   ├─ Task 7 Ford-web release
-  └─ Tasks 5, 6, 7 ─ Task 8 release-all ─ Task 9 production enablement
+  └─ Tasks 5, 6, 7 ─ Task 8 release-all ─ Task 8A GitHub controls ─ Task 9 production enablement
 ```
 
 ## Definition of Done

@@ -19,6 +19,21 @@ Checked on 2026-10-13 from the local workspace, authenticated GitHub CLI session
 | GitHub CLI | Authenticated as `migangdelzar`; repository metadata and the preview/preflight environments are configured. Production environments and protections remain outstanding. |
 | Cloudflare Pages | Project name is `ford-web-ui`; its Pages hostname is `ford-crm-ui.pages.dev`. The active Git integration deploys production from `feat-ford-crm-auth-integration`, while the Actions release workflow targets `main`. A feature-branch Pages preview now deploys and passes UI/API smoke from GitHub Actions. Production ownership still needs to move to one aligned path before release enablement. |
 
+## Latest CI status and ordered remaining work
+
+This record is a readiness snapshot, not an authorization to deploy. The release plan in `docs/superpowers/plans/2026-10-12-github-release-pipelines.md` now sequences remaining work as CI/repository prerequisites, per-repository release workflows, coordinator controls, then production readiness.
+
+| Area | Latest evidence | Remaining action |
+| --- | --- | --- |
+| Ford-scraping CI | Run [`38351439105`](https://github.com/migangdelzar/Ford-scraping/actions/runs/38351439105) passed for commit `b414810f1cc8dde075ee81a124b19e621b28f771`, including migration and PostgreSQL integration checks. | Establish and protect `main`; reduce the known lint backlog and ensure all integration tests pass before image publication. Create its release workflow after shared-action availability is solved. |
+| Ford Service CI | Latest run [`38353173081`](https://github.com/migangdelzar/Ford-uruapan/actions/runs/38353173081) failed in the filesystem Trivy scan. Quality/unit, PostgreSQL integration, deterministic evaluation, secret scan, and observability jobs passed. Its SARIF artifact reported only LOW `DS-0026` (missing Dockerfile HEALTHCHECK). Trivy Action includes all severities in SARIF by default even when `severity: HIGH,CRITICAL`; this caused the exit code 1. | `limit-severities-for-sarif: true` is now set and covered by a passing local workflow contract test. Push the change, then require a successful hosted Ford Service CI run before closing this gate. |
+| Ford Service VM preflight | Read-only preflight [`38353172875`](https://github.com/Ford-uruapan/actions/runs/38353172875) passed for both existing hosts. | This only verifies access/health; it is not deployment evidence. |
+| Ford-web | Earlier CI [`38348983403`](https://github.com/Ford-web/actions/runs/38348983403) and Pages preview [`38348983417`](https://github.com/Ford-web/actions/runs/38348983417) passed. | Resolve production ownership conflict between Cloudflare Git integration and the Actions workflow, then configure protected production environment after other gates. |
+| Shared OCI action | Ford Service action access is `none`; Ford-scraping is public and cannot consume a private action. | Review/publish the action in an approved public repository and pin consumers to a full commit SHA. Keep secrets out of the action repository. |
+| Release-all | Coordinator workflow not implemented; no scoped GitHub App dispatch credential configured. | Implement exact-SHA dispatch/status reporting, then configure minimal three-repository permissions and verify in a non-production test. |
+
+The production state remains **not end-to-end release-ready**. Ford-scraping has no `main` branch yet; no repo has a fully protected, ready `production` environment; the shared action cannot yet be consumed by the public caller; and runtime Vault, ingress, headroom, and migration gates below remain open. No deployment has been performed.
+
 ## Verified local deployment shape
 
 - Terraform budgets two VMs at 1 OCPU and 6 GB each, with a configured total ceiling of 2 OCPU and 12 GB. A second VM is outside that configured budget.
@@ -37,16 +52,20 @@ Checked on 2026-10-13 from the local workspace, authenticated GitHub CLI session
 
 ## Gates before enabling production
 
-- [ ] Create or identify the intended GitHub repository and remote for Ford-scraping; confirm owner and visibility before pushing its local branch.
-- [ ] Publish reviewed release workflow/action changes to the appropriate default branches; local working-tree workflows cannot run on GitHub yet.
+- [ ] Establish Ford-scraping `main` and branch protections using a reviewed, non-destructive transition; retain the current feature branch and history.
+- [ ] Confirm the Trivy filesystem scan now passes on GitHub Actions with `limit-severities-for-sarif: true`; keep HIGH/CRITICAL findings blocking and record the hosted run.
+- [ ] Publish the shared action to an approved public home and pin Ford-scraping to its reviewed full SHA; then publish the Ford-scraping release workflow.
+- [ ] Publish reviewed release workflow changes to the appropriate default branches; local working-tree workflows cannot run on GitHub yet.
 - [ ] Configure protected `production` environments and required reviewers in all three target repositories; verify the account plan supports those rules for each repository’s visibility.
-- [ ] Allow the three caller repositories to use the private Ford Service composite action.
+- [ ] Configure the narrowly scoped GitHub App required by release-all and verify target workflow dispatch without approving a production deployment.
+- [ ] Reduce Ford-scraping lint backlog and require all PostgreSQL integration tests to pass before image publishing.
 - [x] Authenticate Wrangler and verify Pages project ownership and current Git integration. Wrangler access is confirmed; Git integration is currently the production owner and conflicts with Actions. Select one owner and align the production branch before enabling Actions deploys.
 - [ ] Read the live Ford Service ingress and MCP Tunnel origin; configure and test a stable upstream switch point without changing public URLs.
 - [ ] Measure peak host resources with Ollama and existing services active; confirm blue-green candidate headroom on both OCI VMs. Read-only idle snapshots are recorded above.
 - [x] Prove scheduled/background work remains single-effect while old and candidate Ford Service versions overlap in PostgreSQL integration tests.
 - [ ] Verify Spring, data, MCP, and Collector all retrieve runtime secrets from the intended Vault/runtime path.
 - [ ] Verify the backup command and catalog migration run successfully from the production deployment context.
+- [ ] Run an approved per-repository rollout and rollback exercise, then a release-all partial-failure exercise; retain evidence and exact source/artifact identities.
 
 ## Recheck record
 
@@ -56,3 +75,4 @@ Append the date, command or evidence source, result, and operator for each gate.
 - **2026-10-13 — VM connectivity preflight:** Ford Service run `38348341955` succeeded on branch `chore/platform-secret-management`; GitHub Actions connected to both existing VMs and checked app/MCP, PostgreSQL, and Ollama health. It was read-only and did not deploy.
 - **2026-10-13 — local release checks:** Ford Service `./gradlew check --no-daemon --no-configuration-cache` and 23 focused action/Ansible contract tests passed. Ford-scraping build and 274 unit tests passed locally. Neither local result is a GitHub Actions run.
 - **2026-10-13 — branch pipelines:** Ford-scraping commit `b414810f1cc8dde075ee81a124b19e621b28f771` passed GitHub CI run `38351439105`, including migrations and PostgreSQL integration tests. Its prior run `38351293296` exposed missing `FORD_BASE_URL`; the deployment contract now asserts that configuration. Ford Service commit `94b42716a98b008bdf4ba82261d98d18bde4d7bb` passed its quality/unit job in run `38351294011`; PostgreSQL integration and deterministic AI evaluation were still running at the time of this check. The separate read-only emme preflight run `38351293719` passed for both existing VMs.
+- **2026-10-13 — latest pipeline check:** Ford-scraping run `38351439105` remains the latest passing CI evidence. Ford Service run `38353173081` failed at the filesystem Trivy scan; inspection of the job log and SARIF found only LOW `DS-0026`. The action's SARIF severity filter was missing; `limit-severities-for-sarif: true` has been added and a local workflow contract test passes. Hosted CI confirmation remains open. The read-only host preflight run `38353172875` passed. Do not treat these runs as production deployment validation.
