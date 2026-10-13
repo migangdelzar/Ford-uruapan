@@ -68,6 +68,15 @@ test("container workflow contains image, SBOM, and provenance gates", async () =
   assert.match(source, /id-token: write/);
 });
 
+test("container tags and provenance subjects use a lowercase GHCR repository", async () => {
+  const source = await read(".github/workflows/reusable-container.yml");
+  assert.match(source, /id: image-repository/);
+  assert.match(source, /echo "name=ghcr\.io\/\$\{REPOSITORY,,\}"/);
+  assert.match(source, /tags: \$\{\{ steps\.image-repository\.outputs\.name \}\}:sha-\$\{\{ github\.sha \}\}/);
+  assert.match(source, /subject-name: \$\{\{ steps\.image-repository\.outputs\.name \}\}/);
+  assert.doesNotMatch(source, /ghcr\.io\/\$\{\{ github\.repository \}\}/);
+});
+
 test("service image runs as a non-root user", async () => {
   const dockerfile = await read("ford-ai-service/Dockerfile");
   assert.match(dockerfile, /^USER 10001:10001$/m);

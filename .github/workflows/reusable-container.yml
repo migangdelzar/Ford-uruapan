@@ -32,8 +32,6 @@ jobs:
     name: Build, scan, and publish container
     runs-on: ubuntu-24.04
     timeout-minutes: 35
-    env:
-      IMAGE_NAME: ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
     outputs:
       image: ${{ steps.image.outputs.image }}
       digest: ${{ steps.build.outputs.digest }}
@@ -46,6 +44,11 @@ jobs:
         uses: docker/setup-buildx-action@v3
       - name: Set up ARM64 emulation
         uses: docker/setup-qemu-action@v3
+      - name: Normalize GHCR repository name
+        id: image-repository
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
       - name: Log in to GHCR
         if: inputs.publish
         uses: docker/login-action@v3
@@ -59,7 +62,7 @@ jobs:
         with:
           context: ford-ai-service
           file: ford-ai-service/Dockerfile
-          tags: ${{ env.IMAGE_NAME }}
+          tags: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
           platforms: linux/arm64
           load: ${{ !inputs.publish }}
           push: ${{ inputs.publish }}
@@ -67,21 +70,25 @@ jobs:
           sbom: false
       - name: Pull published image for scanning
         if: inputs.publish
+        env:
+          IMAGE_NAME: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
         run: docker pull "${IMAGE_NAME}"
       - name: Expose image reference
         id: image
         env:
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_REPOSITORY: ${{ steps.image-repository.outputs.name }}
+          IMAGE_NAME: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
         run: |
           if [[ -n "${IMAGE_DIGEST}" ]]; then
-            echo "image=ghcr.io/${GITHUB_REPOSITORY}@${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
+            echo "image=${IMAGE_REPOSITORY}@${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
           else
             echo "image=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
           fi
       - name: Scan image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ env.IMAGE_NAME }}
+          image-ref: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
           format: sarif
           output: trivy-image.sarif
           severity: HIGH,CRITICAL
@@ -92,7 +99,7 @@ jobs:
       - name: Generate SBOM
         uses: anchore/sbom-action@v0.20.0
         with:
-          image: ${{ env.IMAGE_NAME }}
+          image: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
           format: cyclonedx-json
           output-file: sbom.cdx.json
           artifact-name: ford-service-sbom-${{ github.run_id }}.cdx.json
@@ -115,6 +122,6 @@ jobs:
         if: inputs.publish
         uses: actions/attest-build-provenance@v2
         with:
-          subject-name: ghcr.io/${{ github.repository }}
+          subject-name: ${{ steps.image-repository.outputs.name }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
