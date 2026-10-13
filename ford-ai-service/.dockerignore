@@ -35,7 +35,7 @@ docs
 !.env.template
 docker-compose*.yml
 docker-compose*.yaml
-**/secrets
+# Do not blanket-ignore directories named "secrets": Java source uses that package path.
 **/*.pem
 **/*.key
 **/*.p12

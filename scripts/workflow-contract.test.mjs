@@ -88,7 +88,24 @@ test("branch container verification uses native AMD64 while published images tar
   assert.match(source, /cache-to:\s*type=gha[^\n]*mode=max/);
   assert.match(source, /actuator\/health/);
   assert.match(source, /ford-service-postgres/);
+  assert.match(source, /--name ford-service-redis --network ford-service-smoke redis:7-alpine/);
+  assert.match(source, /FORD_REDIS_HOST=ford-service-redis/);
   assert.match(source, /curlimages\/curl/);
+});
+
+test("published image is pulled locally before container smoke tests", async () => {
+  const source = await read(".github/workflows/reusable-container.yml");
+  const pull = source.indexOf("- name: Pull published image for scanning");
+  const healthSmoke = source.indexOf("- name: Smoke test Spring service health endpoint");
+  const runtimeSmoke = source.indexOf("- name: Smoke test Java runtime");
+
+  assert.ok(pull >= 0 && healthSmoke >= 0 && runtimeSmoke >= 0);
+  assert.ok(pull < healthSmoke, "published image must exist in Docker before its health smoke");
+  assert.ok(pull < runtimeSmoke, "published image must exist in Docker before its runtime smoke");
+  assert.match(
+    source,
+    /if: always\(\) && github\.event_name != 'pull_request' && hashFiles\('trivy-image\.sarif'\) != ''/,
+  );
 });
 
 test("service image runs as a non-root user", async () => {
@@ -103,6 +120,15 @@ test("container compiles Java on the native builder and retains target runtime",
     /^FROM --platform=\$BUILDPLATFORM eclipse-temurin:25-jdk AS build$/m,
   );
   assert.match(dockerfile, /^FROM eclipse-temurin:25-jre$/m);
+});
+
+test("Docker context excludes credential files without excluding Java secrets packages", async () => {
+  const dockerignore = await read("ford-ai-service/.dockerignore");
+
+  assert.doesNotMatch(dockerignore, /^\*\*\/secrets\/?$/m);
+  assert.match(dockerignore, /^\.env$/m);
+  assert.match(dockerignore, /^\*\*\/\*\.pem$/m);
+  assert.match(dockerignore, /^\*\*\/\*\.key$/m);
 });
 
 test("observability workflow validates Compose and collector configuration", async () => {
