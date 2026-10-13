@@ -2,7 +2,7 @@
 
 Status: **blocked from production enablement**. Local workflow and deployment implementation may proceed, but no production deploy job may run until every blocking gate below is cleared and rechecked.
 
-Checked on 2026-10-12 from the local workspace, authenticated GitHub CLI session, read-only SSH sessions, and read-only Cloudflare Pages API/CLI queries. No secret values were read or recorded.
+Checked on 2026-10-13 from the local workspace, authenticated GitHub CLI session, read-only SSH sessions, and read-only Cloudflare Pages API/CLI queries. No secret values were read or recorded.
 
 ## Verified repository and GitHub state
 
@@ -10,11 +10,12 @@ Checked on 2026-10-12 from the local workspace, authenticated GitHub CLI session
 | --- | --- |
 | Ford Service GitHub repository | `migangdelzar/Ford-uruapan`, private, default branch `main`. |
 | Ford-web GitHub repository | `migangdelzar/Ford-web`, public, default branch `main`. |
-| Ford-scraping GitHub repository | No `origin` remote in the local checkout and no `Ford-scraping` repository visible under the authenticated account. The local directory is on `chore/platform-secret-management`. |
-| Workflows on GitHub default branches | Ford Service has CI/reusable workflows only; Ford-web has no Actions workflows on `main`. Ford-web CI/release/preview workflows are on `chore/platform-secret-management`; Ford Service release/action and Ford-scraping CI workflows remain local. |
-| Ford Service deployment environments | Only `talented-purpose / production` is listed; it has no protection rules. The required `production` environment is not configured. |
-| Ford-web deployment environments | `pages-preview` is configured with a branch restriction and preview credentials. The protected `production` environment and its smoke URL are still not configured. |
-| Ford Service private action access | Actions private-repository access level is `none`; target repositories cannot yet call a shared private action. |
+| Ford-scraping GitHub repository | Public `migangdelzar/Ford-scraping`; branch `chore/platform-secret-management` is pushed and is currently the default branch. A `main` branch does not exist on GitHub yet. CI run `38351439105` passed after adding the required safe `FORD_BASE_URL` to the migration job. |
+| Workflows on GitHub | Ford Service and Ford-scraping CI now run on their pushed feature branches. Ford-web CI and Pages preview both passed earlier on its feature branch. Ford-scraping does not yet have a release workflow, and the release-all coordinator is not implemented. |
+| Ford Service deployment environments | `talented-purpose / production` exists without protection rules; the exact `production` environment required by the release workflow is not configured. |
+| Ford-scraping deployment environments | No GitHub environments are configured. |
+| Ford-web deployment environments | Only `pages-preview` is configured. The protected `production` environment and its smoke URL are still not configured. |
+| Ford Service private action access | Actions private-repository access level is `none`. Public Ford-scraping cannot call a private action regardless; shared OCI deployment logic needs a reviewed public home before Ford-scraping can use it. |
 | GitHub CLI | Authenticated as `migangdelzar`; repository metadata and the preview/preflight environments are configured. Production environments and protections remain outstanding. |
 | Cloudflare Pages | Project name is `ford-web-ui`; its Pages hostname is `ford-crm-ui.pages.dev`. The active Git integration deploys production from `feat-ford-crm-auth-integration`, while the Actions release workflow targets `main`. A feature-branch Pages preview now deploys and passes UI/API smoke from GitHub Actions. Production ownership still needs to move to one aligned path before release enablement. |
 
@@ -54,3 +55,4 @@ Append the date, command or evidence source, result, and operator for each gate.
 - **2026-10-13 — Ford-web Actions preview:** Commit `b64fbcee44bb5c173b7375a33f962fa8d3a4b27a`; CI run `38348983403` and Pages preview run `38348983417` both succeeded. The preview deployed to `https://actions-e2e-preview.ford-crm-ui.pages.dev`; the workflow found deployment `f46477f8-25b6-4821-be35-c08c2895dea7` through the Cloudflare API and passed UI and API health checks. Production was unchanged.
 - **2026-10-13 — VM connectivity preflight:** Ford Service run `38348341955` succeeded on branch `chore/platform-secret-management`; GitHub Actions connected to both existing VMs and checked app/MCP, PostgreSQL, and Ollama health. It was read-only and did not deploy.
 - **2026-10-13 — local release checks:** Ford Service `./gradlew check --no-daemon --no-configuration-cache` and 23 focused action/Ansible contract tests passed. Ford-scraping build and 274 unit tests passed locally. Neither local result is a GitHub Actions run.
+- **2026-10-13 — branch pipelines:** Ford-scraping commit `b414810f1cc8dde075ee81a124b19e621b28f771` passed GitHub CI run `38351439105`, including migrations and PostgreSQL integration tests. Its prior run `38351293296` exposed missing `FORD_BASE_URL`; the deployment contract now asserts that configuration. Ford Service commit `94b42716a98b008bdf4ba82261d98d18bde4d7bb` passed its quality/unit job in run `38351294011`; PostgreSQL integration and deterministic AI evaluation were still running at the time of this check. The separate read-only emme preflight run `38351293719` passed for both existing VMs.
