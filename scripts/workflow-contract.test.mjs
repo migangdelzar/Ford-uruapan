@@ -80,3 +80,10 @@ test("observability workflow validates Compose and collector configuration", asy
   assert.match(source, /cloud-tempo-config\.yaml/);
   assert.match(source, /LANGFUSE_PUBLIC_KEY/);
 });
+
+test("observability workflow points to files in the checked-in deployment tree", async () => {
+  const source = await read(".github/workflows/reusable-observability.yml");
+  assert.match(source, /docker compose -f deployment\/observability\/langfuse\/docker-compose\.yml/);
+  assert.match(source, /\$GITHUB_WORKSPACE\/deployment\/observability\/otel-collector\/config\.yaml/);
+  assert.doesNotMatch(source, /ford-ai-service\/deployment\/observability/);
+});
