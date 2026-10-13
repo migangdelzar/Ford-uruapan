@@ -109,15 +109,25 @@ test("branch container verification uses native AMD64 while published images tar
   assert.match(source, /curlimages\/curl/);
 });
 
-test("published image is pulled locally before container smoke tests", async () => {
+test("container build, smoke tests, and vulnerability scan pass before GHCR publication", async () => {
   const source = await read(".github/workflows/reusable-container.yml");
-  const pull = source.indexOf("- name: Pull published image for scanning");
+  const build = source.indexOf("- name: Build immutable image");
   const healthSmoke = source.indexOf("- name: Smoke test Spring service health endpoint");
   const runtimeSmoke = source.indexOf("- name: Smoke test Java runtime");
+  const scan = source.indexOf("- name: Scan image");
+  const login = source.indexOf("- name: Log in to GHCR");
+  const publish = source.indexOf("- name: Publish scanned image");
 
-  assert.ok(pull >= 0 && healthSmoke >= 0 && runtimeSmoke >= 0);
-  assert.ok(pull < healthSmoke, "published image must exist in Docker before its health smoke");
-  assert.ok(pull < runtimeSmoke, "published image must exist in Docker before its runtime smoke");
+  assert.ok(build >= 0 && healthSmoke >= 0 && runtimeSmoke >= 0 && scan >= 0);
+  assert.ok(login >= 0 && publish >= 0);
+  assert.ok(build < healthSmoke, "local image must build before its health smoke");
+  assert.ok(build < runtimeSmoke, "local image must build before its runtime smoke");
+  assert.ok(runtimeSmoke < scan, "runtime smoke must pass before vulnerability scanning");
+  assert.ok(scan < login, "the image must pass its scan before registry login");
+  assert.ok(login < publish, "registry login must precede image publication");
+  assert.match(source, /load: true/);
+  assert.match(source, /push: false/);
+  assert.match(source, /docker push "\$\{IMAGE_NAME\}"/);
   assert.match(
     source,
     /if: >-\n\s+always\(\) && github\.event_name != 'pull_request' &&\s+\(github\.event\.repository\.visibility == 'public' \|\| vars\.CODE_SCANNING_ENABLED == 'true'\) &&\s+hashFiles\('trivy-image\.sarif'\) != ''/s,

@@ -34,7 +34,7 @@ jobs:
     timeout-minutes: 35
     outputs:
       image: ${{ steps.image.outputs.image }}
-      digest: ${{ steps.build.outputs.digest }}
+      digest: ${{ steps.publish.outputs.digest }}
     steps:
       - name: Check out source
         uses: actions/checkout@v7
@@ -49,13 +49,6 @@ jobs:
         env:
           REPOSITORY: ${{ github.repository }}
         run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
-      - name: Log in to GHCR
-        if: inputs.publish
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build immutable image
         id: build
         uses: docker/build-push-action@v6
@@ -64,8 +57,8 @@ jobs:
           file: ford-ai-service/Dockerfile
           tags: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
           platforms: ${{ inputs.publish && 'linux/arm64' || 'linux/amd64' }}
-          load: ${{ !inputs.publish }}
-          push: ${{ inputs.publish }}
+          load: true
+          push: false
           cache-from: type=gha,scope=ford-service
           cache-to: type=gha,scope=ford-service,mode=max
           provenance: false
@@ -73,11 +66,6 @@ jobs:
       - name: Install PostgreSQL readiness probe
         if: always()
         run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends postgresql-client
-      - name: Pull published image for scanning
-        if: inputs.publish
-        env:
-          IMAGE_NAME: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
-        run: docker pull "${IMAGE_NAME}"
       - name: Smoke test Spring service health endpoint
         env:
           IMAGE_NAME: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
@@ -114,18 +102,6 @@ jobs:
         env:
           IMAGE_NAME: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
         run: docker run --rm --entrypoint java "${IMAGE_NAME}" -version
-      - name: Expose image reference
-        id: image
-        env:
-          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
-          IMAGE_REPOSITORY: ${{ steps.image-repository.outputs.name }}
-          IMAGE_NAME: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
-        run: |
-          if [[ -n "${IMAGE_DIGEST}" ]]; then
-            echo "image=${IMAGE_REPOSITORY}@${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
-          else
-            echo "image=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
-          fi
       - name: Scan image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -162,6 +138,39 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-image.sarif
+      - name: Log in to GHCR after build, smoke tests, and scan pass
+        if: inputs.publish
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish scanned image
+        id: publish
+        if: inputs.publish
+        env:
+          IMAGE_NAME: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker push "${IMAGE_NAME}" | tee "$RUNNER_TEMP/docker-push.log"
+          digest="$(sed -n 's/^.*digest: \(sha256:[0-9a-f]*\).*$/\1/p' "$RUNNER_TEMP/docker-push.log" | tail -1)"
+          [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo 'Could not resolve published image digest.' >&2
+            exit 1
+          }
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+      - name: Expose image reference
+        id: image
+        env:
+          IMAGE_DIGEST: ${{ steps.publish.outputs.digest }}
+          IMAGE_REPOSITORY: ${{ steps.image-repository.outputs.name }}
+          IMAGE_NAME: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
+        run: |
+          if [[ -n "${IMAGE_DIGEST}" ]]; then
+            echo "image=${IMAGE_REPOSITORY}@${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+          fi
       - name: Attest published image
         if: inputs.publish
         uses: actions/attest-build-provenance@v2
