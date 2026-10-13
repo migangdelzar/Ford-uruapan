@@ -36,7 +36,9 @@ Give each repo a tested, protected path to release its own production service, p
 
 Each repo owns its application checks and its `main` release caller. Pull requests run verification only. A successful `main` run builds/tests and publishes an immutable release artifact. A production deploy job then references the protected `production` environment; GitHub waits for approval before exposing that environment’s secrets or running the deployment job.
 
-Ford Service remains the home of shared OCI deployment workflows because it already contains reusable workflow infrastructure. Ford Service and Ford-scraping callers use the shared OCI deployment contract; their build and project-specific checks stay next to their source code. Ford-web uses the Cloudflare Wrangler deployment action because Pages is a different platform and a generic OCI deploy abstraction would add indirection without reuse.
+Ford Service remains the home of shared OCI deployment mechanics. Each target repository owns its production deployment job and attaches its own protected `production` environment; that job invokes a version-pinned composite action hosted in Ford Service. The action contains the common Ansible/blue-green deployment logic, while each repo keeps its build and project-specific checks. This keeps the approval gate and environment-scoped deployment secrets in the target repo. GitHub reusable workflows cannot receive an environment from the caller; an environment declared inside the called workflow would use that workflow repository’s environment secrets. A composite action runs inside the caller’s environment-protected job and avoids moving approvals or credentials to Ford Service. See [reusable workflow environment and secret behavior](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows).
+
+Ford-web owns its Pages deployment job and production environment and uses the Cloudflare Wrangler deployment action because Pages is a different platform and a generic OCI deploy abstraction would add indirection without reuse.
 
 Cross-repo callers must be allowed to use the shared private workflow repository. Pin callers to a reviewed release tag or commit SHA rather than a moving branch. GitHub permits shared private reusable workflows only when the called repository’s Actions access policy allows the caller; called workflows cannot elevate the caller’s token permissions. See [reusable workflow access and permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations).
 
@@ -104,7 +106,7 @@ Before enabling the Pages workflow, inspect the Cloudflare project’s current G
 
 ## Implementation gates and open checks
 
-1. Verify all three GitHub repos can use the private shared workflows and that the account plan supports required reviewer gates for their visibility.
+1. Verify all three GitHub repos can use the private shared composite action and that the account plan supports required reviewer gates for their visibility.
 2. Create/install the narrowly scoped GitHub App for release-all workflow dispatch.
 3. Finish production Vault retrieval for data, MCP, and Collector; remove GitHub/controller dependence on runtime secret values before enabling deploy jobs.
 4. Confirm the MCP host has capacity and required DB/Ollama/network settings for one scheduler container.
