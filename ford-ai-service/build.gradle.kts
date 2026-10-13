@@ -22,6 +22,7 @@ dependencies {
     implementation(platform(libs.spring.ai.bom))
     implementation(platform(libs.spring.modulith.bom))
     implementation(platform(libs.oci.sdk.bom))
+    developmentOnly(platform(libs.spring.boot.bom))
 
     constraints {
         implementation(libs.tomcat.embed.core) {
