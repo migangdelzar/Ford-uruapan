@@ -19,6 +19,7 @@
 - Never run automatic down migrations or database restore during an app rollback.
 - Keep the catalog scheduler at one replica; replace it serially and retain its prior image for recovery.
 - Run catalog migrations once before MCP/scheduler replacement; ordinary MCP container startup does not migrate.
+- Gate each deploy job behind a repository variable `PRODUCTION_DEPLOY_ENABLED` that is absent or `false` by default. Set it to `true` only after that repo’s `production` environment exists with required reviewers and all readiness gates pass.
 - Preserve current staged, unstaged, and untracked user changes in all three repositories.
 
 ---
@@ -129,6 +130,7 @@ The shared action must run inside the target repository’s environment-protecte
 - [ ] Put `environment: production` on the caller-owned deploy job and invoke the Ford Service OCI action from that job, pinned to the reviewed full commit SHA produced after Task 4 is reviewed.
 - [ ] Add manual `workflow_dispatch` inputs for a reviewed source SHA and operation (`deploy` or `rollback`). Rollback resolves only the previous artifact recorded by a successful deployment; do not accept arbitrary tags.
 - [ ] Add required checks for backup success before schema changes and fail closed when runtime Vault readiness is false.
+- [ ] Require `vars.PRODUCTION_DEPLOY_ENABLED == 'true'` on the production deploy job so a missing environment cannot be auto-created without reviewer protection and immediately deployed.
 - [ ] Run `actionlint .github/workflows/ci.yml .github/workflows/release.yml` and `./gradlew check --no-daemon --no-configuration-cache` from `ford-ai-service`; expect valid workflows and passing checks.
 
 **Acceptance:** PRs cannot deploy; main deployment pauses at Ford Service’s own production approval; artifact digest and rollback target appear in deployment summary.
@@ -147,6 +149,7 @@ The shared action must run inside the target repository’s environment-protecte
 - [ ] Add PR checks using Node 22: `npm ci`, `npm run lint`, `npm run build`, `npm run test:unit`, and `npm run test:integration` with the repo’s test DB setup.
 - [ ] On verified `main`, publish the ARM64 image by digest; keep PR jobs unable to publish or deploy.
 - [ ] Add a Ford-scraping-owned production deployment job that invokes the remote Ford Service OCI action pinned to its reviewed full commit SHA for `ford-mcp`.
+- [ ] Require `vars.PRODUCTION_DEPLOY_ENABLED == 'true'` before entering the production deployment job.
 - [ ] Run `node dist/src/cli.js migrate` exactly once as a one-shot task from the selected image before changing MCP or scheduler containers. Remove migration from every normal container startup path.
 - [ ] Start candidate MCP on an alternate local port, check its MCP health endpoint, switch the stable Tunnel origin/proxy, and test a read-only catalog question with source URL evidence. Switch back automatically if post-switch smoke fails.
 - [ ] Replace the monthly scheduler serially with one replica, `SYNC_SCHEDULE=0 12 1 * *`, `SYNC_TIMEZONE=America/Mexico_City`; if it fails, restore the previous image without running a second scheduler concurrently.
@@ -164,6 +167,7 @@ The shared action must run inside the target repository’s environment-protecte
 
 - [ ] Add PR verification with Bun frozen-lock install, lint, unit tests, production build, API contract check, and Pages Functions build check.
 - [ ] Publish/deploy only verified `main` output with Wrangler from a caller-owned `production` environment job.
+- [ ] Require `vars.PRODUCTION_DEPLOY_ENABLED == 'true'` before entering the production deployment job.
 - [ ] Store deployment commit and deployment ID in the workflow summary and retain the previous deployable artifact.
 - [ ] Add manual rollback that selects a successful prior Pages deployment/artifact from the release history, requires the `production` approval gate, and runs the public UI/API smoke checks after redeploy.
 - [ ] Ensure Cloudflare Git integration is disabled if Wrangler Actions owns production deploys; fail readiness if ownership is ambiguous.
