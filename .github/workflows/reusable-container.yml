@@ -155,7 +155,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Upload image SARIF
-        if: always() && github.event_name != 'pull_request' && hashFiles('trivy-image.sarif') != ''
+        if: >-
+          always() && github.event_name != 'pull_request' &&
+          (github.event.repository.visibility == 'public' || vars.CODE_SCANNING_ENABLED == 'true') &&
+          hashFiles('trivy-image.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-image.sarif

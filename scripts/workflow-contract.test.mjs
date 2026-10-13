@@ -120,7 +120,7 @@ test("published image is pulled locally before container smoke tests", async () 
   assert.ok(pull < runtimeSmoke, "published image must exist in Docker before its runtime smoke");
   assert.match(
     source,
-    /if: always\(\) && github\.event_name != 'pull_request' && hashFiles\('trivy-image\.sarif'\) != ''/,
+    /if: >-\n\s+always\(\) && github\.event_name != 'pull_request' &&\s+\(github\.event\.repository\.visibility == 'public' \|\| vars\.CODE_SCANNING_ENABLED == 'true'\) &&\s+hashFiles\('trivy-image\.sarif'\) != ''/s,
   );
 });
 
