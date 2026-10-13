@@ -68,6 +68,10 @@ jobs:
           push: ${{ inputs.publish }}
           provenance: false
           sbom: false
+      - name: Smoke test Java runtime
+        env:
+          IMAGE_NAME: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
+        run: docker run --rm --entrypoint java "${IMAGE_NAME}" -version
       - name: Pull published image for scanning
         if: inputs.publish
         env:

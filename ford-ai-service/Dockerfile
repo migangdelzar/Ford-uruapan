@@ -13,6 +13,9 @@ RUN JAVA_TOOL_OPTIONS="-Xmx1g -XX:MaxMetaspaceSize=256m -Dfile.encoding=UTF-8" \
 
 FROM eclipse-temurin:25-jre
 WORKDIR /app
+# The Temurin Ubuntu base includes Pebble as a generic container service manager.
+# This image starts Java directly and does not use Pebble.
+RUN rm -f /usr/bin/pebble
 COPY --from=build /workspace/build/libs/*.jar app.jar
 EXPOSE 8080
 USER 10001:10001
