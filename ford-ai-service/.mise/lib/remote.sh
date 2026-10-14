@@ -48,6 +48,9 @@ load_deploy_config() {
   local preserved_operator_password="${FORD_OPERATOR_PASSWORD:-}"
   local preserved_meta_app_secret="${FORD_META_APP_SECRET:-}"
   local preserved_meta_verify_token="${FORD_META_VERIFY_TOKEN:-}"
+  local preserved_meta_whatsapp_access_token="${FORD_META_WHATSAPP_ACCESS_TOKEN:-}"
+  local preserved_security_jwk_private_key="${FORD_SECURITY_JWK_PRIVATE_KEY:-}"
+  local preserved_bff_oidc_client_secret="${FORD_BFF_OIDC_CLIENT_SECRET:-}"
   local preserved_ghcr_username="${GHCR_USERNAME:-}"
   local preserved_ghcr_token="${GHCR_TOKEN:-}"
   local preserved_openai_api_key="${OPENAI_API_KEY:-}"
@@ -79,6 +82,9 @@ load_deploy_config() {
   if [[ -n "$preserved_operator_password" ]]; then export FORD_OPERATOR_PASSWORD="$preserved_operator_password"; fi
   if [[ -n "$preserved_meta_app_secret" ]]; then export FORD_META_APP_SECRET="$preserved_meta_app_secret"; fi
   if [[ -n "$preserved_meta_verify_token" ]]; then export FORD_META_VERIFY_TOKEN="$preserved_meta_verify_token"; fi
+  if [[ -n "$preserved_meta_whatsapp_access_token" ]]; then export FORD_META_WHATSAPP_ACCESS_TOKEN="$preserved_meta_whatsapp_access_token"; fi
+  if [[ -n "$preserved_security_jwk_private_key" ]]; then export FORD_SECURITY_JWK_PRIVATE_KEY="$preserved_security_jwk_private_key"; fi
+  if [[ -n "$preserved_bff_oidc_client_secret" ]]; then export FORD_BFF_OIDC_CLIENT_SECRET="$preserved_bff_oidc_client_secret"; fi
   if [[ -n "$preserved_ghcr_username" ]]; then export GHCR_USERNAME="$preserved_ghcr_username"; fi
   if [[ -n "$preserved_ghcr_token" ]]; then export GHCR_TOKEN="$preserved_ghcr_token"; fi
   if [[ -n "$preserved_openai_api_key" ]]; then export OPENAI_API_KEY="$preserved_openai_api_key"; fi
