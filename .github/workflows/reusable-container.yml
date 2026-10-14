@@ -22,6 +22,7 @@ permissions:
   packages: write
   security-events: write
   id-token: write
+  attestations: write
 
 concurrency:
   group: ford-container-${{ github.workflow }}-${{ github.ref }}
