@@ -6,6 +6,8 @@ Cloudflare Pages cannot rename a `pages.dev` hostname in place. The previous Pag
 
 The browser origin remains `https://ford.emme.business`. Spring serves UI routes through its server-side Pages proxy; API, login, OAuth, WebAuthn, and webhook routes remain Spring-owned. This migration changes neither DNS nor the public hostname.
 
+The new Pages origin was deployed from verified Ford Web `main` commit `c8ee6d38ced0b5a4ec87471c0564ffb1c673bd2e` by [Actions run 38588412862](https://github.com/migangdelzar/Ford-web/actions/runs/38588412862). Deployment `0056b296-f347-42ad-b73e-31fc735925d1` passed checks for `/`, `/login`, `/dashboard`, and a fingerprinted asset. This verifies the Pages origin only; the Spring upstream cutover and public-path verification remain pending.
+
 ## Cutover sequence
 
 1. In Ford-web, merge the project-name and workflow changes to `main`. Run **Stage and verify emme Pages origin** from `main`. It checks successful CI for the selected commit, builds and tests, deploys the `main` production branch to `emme-crm-ui`, then checks `/`, `/login`, `/dashboard`, and a fingerprinted asset at the new Pages origin.
