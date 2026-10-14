@@ -123,11 +123,41 @@ class OciActionContractTest(unittest.TestCase):
     def test_release_workflow_is_closed_until_vault_and_production_gates_pass(self):
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("vars.PRODUCTION_DEPLOY_ENABLED == 'true'", workflow)
+        self.assertIn("name: ford-release-result", workflow)
+        self.assertIn("ford.emme.business", workflow)
         self.assertIn("vars.RUNTIME_VAULT_READY == 'true'", workflow)
         self.assertIn("environment: production", workflow)
         self.assertIn("options: [deploy, rollback]", workflow)
-        self.assertIn("--status success", workflow)
+        self.assertIn("status=success", workflow)
         self.assertIn("source-sha:", workflow)
+
+    def test_service_ci_publishes_only_after_a_semver_tag_passes_ci(self):
+        workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+        container = CONTAINER_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertNotIn("publish_container", workflow)
+        self.assertIn("inputs.version", container)
+        self.assertIn("github.ref_type == 'tag'", workflow)
+        self.assertIn("refs/tags/v", workflow)
+        self.assertIn("Container gates (no publication)", workflow)
+        self.assertIn("packages: read", workflow)
+        self.assertIn("Container gates and version publication", workflow)
+        self.assertIn("packages: write", workflow)
+        self.assertIn("git merge-base --is-ancestor", container)
+        self.assertIn("git cat-file -t", container)
+        self.assertIn("docker buildx imagetools inspect", container)
+        self.assertIn("${VERSION#v}", container)
+
+    def test_service_release_resolves_version_tag_and_deploys_only_attested_digest(self):
+        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("version:", workflow)
+        self.assertIn("INPUT_VERSION", workflow)
+        self.assertIn("refs/tags/${VERSION}", workflow)
+        self.assertIn("--source-ref", workflow)
+        self.assertIn("--source-digest", workflow)
+        self.assertIn("sha256:[a-f0-9]{64}", workflow)
+        self.assertIn("vars.PRODUCTION_DEPLOY_ENABLED == 'true'", workflow)
 
     def test_reusable_container_exposes_the_published_digest(self):
         workflow = CONTAINER_WORKFLOW.read_text(encoding="utf-8")
@@ -135,9 +165,12 @@ class OciActionContractTest(unittest.TestCase):
         self.assertIn("jobs.image.outputs.digest", workflow)
         self.assertIn("@${IMAGE_DIGEST}", workflow)
 
-    def test_container_publication_is_restricted_to_main(self):
+    def test_container_publication_is_restricted_to_semver_tags(self):
         workflow = CI_WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("github.ref == 'refs/heads/main' && inputs.publish_container == true", workflow)
+        self.assertNotIn("publish_container", workflow)
+        self.assertIn("github.event_name == 'push'", workflow)
+        self.assertIn("github.ref_type == 'tag'", workflow)
+        self.assertIn("startsWith(github.ref, 'refs/tags/v')", workflow)
 
     def test_vm_preflight_is_branch_scoped_and_read_only(self):
         workflow = PREFLIGHT_WORKFLOW.read_text(encoding="utf-8")

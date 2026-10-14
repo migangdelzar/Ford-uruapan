@@ -24,6 +24,18 @@ on:
         type: boolean
         required: true
         default: false
+      service_version:
+        description: Ford Service version in vMAJOR.MINOR.PATCH form.
+        type: string
+        required: false
+      scraping_version:
+        description: Ford-scraping version in vMAJOR.MINOR.PATCH form.
+        type: string
+        required: false
+      web_version:
+        description: Ford-web version in vMAJOR.MINOR.PATCH form.
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -52,12 +64,18 @@ jobs:
           FORD_SERVICE: ${{ inputs.ford_service }}
           FORD_SCRAPING: ${{ inputs.ford_scraping }}
           FORD_WEB: ${{ inputs.ford_web }}
+          SERVICE_VERSION: ${{ inputs.service_version }}
+          SCRAPING_VERSION: ${{ inputs.scraping_version }}
+          WEB_VERSION: ${{ inputs.web_version }}
         run: |
           set -euo pipefail
           args=()
           if [[ "${FORD_SERVICE}" == "true" ]]; then args+=(--service); fi
           if [[ "${FORD_SCRAPING}" == "true" ]]; then args+=(--scraping); fi
           if [[ "${FORD_WEB}" == "true" ]]; then args+=(--web); fi
+          args+=(--service-version "${SERVICE_VERSION}")
+          args+=(--scraping-version "${SCRAPING_VERSION}")
+          args+=(--web-version "${WEB_VERSION}")
           python3 scripts/release_all.py --validate-only "${args[@]}"
 
       - name: Run credential-free release preflight
@@ -67,12 +85,18 @@ jobs:
           FORD_SERVICE: ${{ inputs.ford_service }}
           FORD_SCRAPING: ${{ inputs.ford_scraping }}
           FORD_WEB: ${{ inputs.ford_web }}
+          SERVICE_VERSION: ${{ inputs.service_version }}
+          SCRAPING_VERSION: ${{ inputs.scraping_version }}
+          WEB_VERSION: ${{ inputs.web_version }}
         run: |
           set -euo pipefail
           args=()
           if [[ "${FORD_SERVICE}" == "true" ]]; then args+=(--service); fi
           if [[ "${FORD_SCRAPING}" == "true" ]]; then args+=(--scraping); fi
           if [[ "${FORD_WEB}" == "true" ]]; then args+=(--web); fi
+          args+=(--service-version "${SERVICE_VERSION}")
+          args+=(--scraping-version "${SCRAPING_VERSION}")
+          args+=(--web-version "${WEB_VERSION}")
           python3 scripts/release_all.py --preflight-only "${args[@]}"
 
       - name: Create narrowly scoped GitHub App token
@@ -100,10 +124,26 @@ jobs:
           FORD_SERVICE: ${{ inputs.ford_service }}
           FORD_SCRAPING: ${{ inputs.ford_scraping }}
           FORD_WEB: ${{ inputs.ford_web }}
+          SERVICE_VERSION: ${{ inputs.service_version }}
+          SCRAPING_VERSION: ${{ inputs.scraping_version }}
+          WEB_VERSION: ${{ inputs.web_version }}
+          MANIFEST_PATH: ${{ runner.temp }}/release-manifest.json
         run: |
           set -euo pipefail
           args=()
           if [[ "${FORD_SERVICE}" == "true" ]]; then args+=(--service); fi
           if [[ "${FORD_SCRAPING}" == "true" ]]; then args+=(--scraping); fi
           if [[ "${FORD_WEB}" == "true" ]]; then args+=(--web); fi
+          args+=(--service-version "${SERVICE_VERSION}")
+          args+=(--scraping-version "${SCRAPING_VERSION}")
+          args+=(--web-version "${WEB_VERSION}")
+          args+=(--manifest-path "${MANIFEST_PATH}")
           python3 scripts/release_all.py "${args[@]}"
+
+      - name: Upload release manifest
+        if: always() && inputs.operation == 'release'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-manifest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-manifest.json
+          if-no-files-found: error

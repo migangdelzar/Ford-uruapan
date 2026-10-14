@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import re
@@ -12,6 +13,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -19,6 +21,9 @@ from typing import Any, Callable, Protocol
 
 OWNER = "migangdelzar"
 SOURCE_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+SEMVER_TAG_PATTERN = re.compile(
+    r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$"
+)
 REQUEST_ID_PATTERN = re.compile(r"^[0-9]+-[0-9]+$")
 
 
@@ -30,8 +35,9 @@ class ReleaseTarget:
     release_workflow: str
     release_run_name: str
 
-    def run_title(self, request_id: str, source_sha: str) -> str:
-        return f"{self.release_run_name} [{request_id}] {source_sha}"
+    def run_title(self, request_id: str, source_sha: str, version: str | None = None) -> str:
+        identity = f"{version} {source_sha}" if version else source_sha
+        return f"{self.release_run_name} [{request_id}] {identity}"
 
 
 TARGETS = (
@@ -72,6 +78,8 @@ class GitHubApi(Protocol):
         query: dict[str, Any] | None = None,
         body: dict[str, Any] | None = None,
     ) -> Any: ...
+
+    def download_artifact(self, repository: str, artifact_id: int) -> bytes: ...
 
 
 class GitHubRestApi:
@@ -119,6 +127,41 @@ class GitHubRestApi:
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
             raise GitHubApiError(f"GitHub API {method} {path} request failed") from None
 
+    def download_artifact(self, repository: str, artifact_id: int) -> bytes:
+        if not self._token:
+            raise GitHubApiError("A GitHub App installation token is required to read release artifacts")
+        path = f"/repos/{repository}/actions/artifacts/{artifact_id}/zip"
+        request = urllib.request.Request(
+            f"{self._api_url}{path}",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {self._token}",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        no_redirect = urllib.request.build_opener(_NoRedirectHandler())
+        try:
+            with no_redirect.open(request, timeout=30) as response:
+                return response.read()
+        except urllib.error.HTTPError as redirect:
+            if redirect.code not in {301, 302, 303, 307, 308}:
+                raise GitHubApiError(f"GitHub artifact download returned HTTP {redirect.code}") from None
+            location = redirect.headers.get("Location")
+            if not location:
+                raise GitHubApiError("GitHub artifact download did not provide a download location") from None
+        except (urllib.error.URLError, TimeoutError):
+            raise GitHubApiError("GitHub artifact download request failed") from None
+        try:
+            with urllib.request.urlopen(location, timeout=60) as response:
+                return response.read()
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
+            raise GitHubApiError("Release artifact archive could not be downloaded") from None
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        return None
+
 
 @dataclass(frozen=True)
 class ReleaseResult:
@@ -129,6 +172,10 @@ class ReleaseResult:
     run_id: int | None = None
     run_url: str | None = None
     detail: str | None = None
+    version: str | None = None
+    image_digest: str | None = None
+    deployment_id: str | None = None
+    deployment_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -137,6 +184,7 @@ class PreflightResult:
     source_sha: str | None
     status: str
     detail: str | None = None
+    version: str | None = None
 
 
 def select_targets(*, service: bool, scraping: bool, web: bool) -> tuple[ReleaseTarget, ...]:
@@ -151,39 +199,107 @@ def select_targets(*, service: bool, scraping: bool, web: bool) -> tuple[Release
     return targets
 
 
-def resolve_verified_sha(api: GitHubApi, target: ReleaseTarget) -> str:
+def select_versions(
+    targets: tuple[ReleaseTarget, ...],
+    *,
+    service: str = "",
+    scraping: str = "",
+    web: str = "",
+) -> dict[str, str]:
+    supplied = {"service": service, "scraping": scraping, "web": web}
+    selected = {target.key for target in targets}
+    for key, version in supplied.items():
+        if key in selected and SEMVER_TAG_PATTERN.fullmatch(version) is None:
+            raise ValueError("Provide one version per selected repository using vMAJOR.MINOR.PATCH")
+        if key not in selected and version:
+            raise ValueError("A version was provided for an unselected repository")
+    return {key: supplied[key] for key in selected}
+
+
+def resolve_release_version(api: GitHubApi, target: ReleaseTarget, version: str) -> str:
+    """Resolve an annotated SemVer tag to an exact CI-verified main commit."""
+    if SEMVER_TAG_PATTERN.fullmatch(version) is None:
+        raise ValueError("Release version must use vMAJOR.MINOR.PATCH")
+
+    tag_ref = api.request(
+        "GET",
+        f"/repos/{target.repository}/git/ref/tags/{version}",
+    )
+    if not isinstance(tag_ref, dict) or tag_ref.get("ref") != f"refs/tags/{version}":
+        raise GitHubApiError("Release tag ref was not found")
+
+    tag_object = tag_ref.get("object")
+    if not isinstance(tag_object, dict) or tag_object.get("type") != "tag":
+        raise GitHubApiError("Release must be an annotated tag pointing to a commit")
+    seen_tag_objects: set[str] = set()
+    for _ in range(8):
+        if not isinstance(tag_object, dict):
+            raise GitHubApiError("Release tag object is malformed")
+        object_type = tag_object.get("type")
+        object_sha = tag_object.get("sha")
+        if not isinstance(object_sha, str) or SOURCE_SHA_PATTERN.fullmatch(object_sha) is None:
+            raise GitHubApiError("Release tag object SHA is malformed")
+        if object_type == "commit":
+            source_sha = object_sha
+            break
+        if object_type != "tag" or object_sha in seen_tag_objects:
+            raise GitHubApiError("Release must be an annotated tag pointing to a commit")
+        seen_tag_objects.add(object_sha)
+        tag_object = api.request(
+            "GET",
+            f"/repos/{target.repository}/git/tags/{object_sha}",
+        ).get("object")
+    else:
+        raise GitHubApiError("Release tag nesting exceeded the supported depth")
+
+    comparison = api.request(
+        "GET",
+        f"/repos/{target.repository}/compare/{source_sha}...main",
+    )
+    if not isinstance(comparison, dict) or comparison.get("status") not in {"ahead", "identical"}:
+        raise GitHubApiError("Release tag target is not reachable from main")
+
     response = api.request(
         "GET",
         f"/repos/{target.repository}/actions/workflows/ci.yml/runs",
-        query={"branch": "main", "event": "push", "status": "success", "per_page": 1},
+        query={
+            "branch": version,
+            "event": "push",
+            "status": "success",
+            "head_sha": source_sha,
+            "per_page": 100,
+        },
     )
     runs = response.get("workflow_runs", []) if isinstance(response, dict) else []
-    if not runs:
-        raise GitHubApiError("No successful main CI run was found")
-    run = runs[0]
-    source_sha = run.get("head_sha")
-    if (
-        run.get("head_branch") != "main"
-        or run.get("event") != "push"
-        or run.get("status") != "completed"
-        or run.get("conclusion") != "success"
-        or not isinstance(source_sha, str)
-        or SOURCE_SHA_PATTERN.fullmatch(source_sha) is None
+    if not any(
+        isinstance(run, dict)
+        and run.get("head_branch") == version
+        and run.get("event") == "push"
+        and run.get("head_sha") == source_sha
+        and run.get("status") == "completed"
+        and run.get("conclusion") == "success"
+        for run in runs
     ):
-        raise GitHubApiError("Latest successful CI response was not a verified main commit")
+        raise GitHubApiError("No successful push CI run for the tagged SHA")
     return source_sha
 
 
 def preflight_selected(
     api: GitHubApi,
     targets: tuple[ReleaseTarget, ...],
+    versions: dict[str, str] | None = None,
 ) -> list[PreflightResult]:
     """Check public release readiness without dispatching workflows or using credentials."""
+    if versions is None or set(versions) != {target.key for target in targets} or any(
+        SEMVER_TAG_PATTERN.fullmatch(version) is None for version in versions.values()
+    ):
+        raise ValueError("Provide one version per selected repository using vMAJOR.MINOR.PATCH")
     results: list[PreflightResult] = []
     for target in targets:
         source_sha: str | None = None
+        version = versions[target.key]
         try:
-            source_sha = resolve_verified_sha(api, target)
+            source_sha = resolve_release_version(api, target, version)
             workflow = api.request(
                 "GET",
                 f"/repos/{target.repository}/actions/workflows/{target.release_workflow}",
@@ -193,16 +309,16 @@ def preflight_selected(
             expected_path = f".github/workflows/{target.release_workflow}"
             if workflow.get("path") != expected_path:
                 raise GitHubApiError("Target release workflow path did not match")
-            results.append(PreflightResult(target, source_sha, "ready"))
+            results.append(PreflightResult(target, source_sha, "ready", version=version))
         except GitHubApiError as error:
             detail = str(error)
-            if "No successful main CI" in detail:
-                detail = "No successful main CI source is available"
+            if "tagged SHA" in detail:
+                detail = "No successful CI run exists for the selected tag and exact source SHA"
             elif "release workflow" in detail.lower():
                 detail = "Target release workflow is not active or has an unexpected path"
             else:
                 detail = "Could not verify target release readiness"
-            results.append(PreflightResult(target, source_sha, "failure", detail))
+            results.append(PreflightResult(target, source_sha, "failure", detail, version))
     return results
 
 
@@ -210,15 +326,15 @@ def summarize_preflight(results: list[PreflightResult]) -> str:
     lines = [
         "## Release-all preflight",
         "",
-        "| Repository | Verified main CI SHA | Status | Release workflow |",
-        "| --- | --- | --- | --- |",
+        "| Repository | Version | Verified source SHA | Status | Release workflow |",
+        "| --- | --- | --- | --- | --- |",
     ]
     for result in results:
         source_sha = f"`{result.source_sha}`" if result.source_sha else "unavailable"
         workflow_url = f"https://github.com/{result.target.repository}/actions/workflows/{result.target.release_workflow}"
         detail = f" — {result.detail}" if result.detail else ""
         lines.append(
-            f"| {result.target.name} | {source_sha} | {result.status}{detail} | [Workflow]({workflow_url}) |"
+            f"| {result.target.name} | {result.version or 'latest verified main'} | {source_sha} | {result.status}{detail} | [Workflow]({workflow_url}) |"
         )
     lines.extend(
         [
@@ -229,19 +345,27 @@ def summarize_preflight(results: list[PreflightResult]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def dispatch_selected(
+def dispatch_versioned_selected(
     api: GitHubApi,
     targets: tuple[ReleaseTarget, ...],
+    versions: dict[str, str],
+    *,
     request_id: str,
 ) -> list[ReleaseResult]:
+    """Dispatch independently versioned tags after read-only identity checks."""
     if REQUEST_ID_PATTERN.fullmatch(request_id) is None:
         raise ValueError("Release request ID must contain the run ID and attempt")
+    selected_keys = {target.key for target in targets}
+    if set(versions) != selected_keys or any(
+        SEMVER_TAG_PATTERN.fullmatch(version) is None for version in versions.values()
+    ):
+        raise ValueError("Provide one version per selected repository using vMAJOR.MINOR.PATCH")
 
-    verified: list[tuple[ReleaseTarget, str]] = []
     results: list[ReleaseResult] = []
     for target in targets:
+        version = versions[target.key]
         try:
-            verified.append((target, resolve_verified_sha(api, target)))
+            source_sha = resolve_release_version(api, target, version)
         except GitHubApiError:
             results.append(
                 ReleaseResult(
@@ -249,15 +373,17 @@ def dispatch_selected(
                     source_sha=None,
                     request_id=request_id,
                     status="failure",
-                    detail="Could not resolve a successful main CI source",
+                    detail="Could not verify the selected version tag and source",
+                    version=version,
                 )
             )
+            continue
 
-    for target, source_sha in verified:
         body = {
             "ref": "main",
             "inputs": {
                 "operation": "deploy",
+                "version": version,
                 "source_sha": source_sha,
                 "release_request_id": request_id,
             },
@@ -268,25 +394,22 @@ def dispatch_selected(
                 f"/repos/{target.repository}/actions/workflows/{target.release_workflow}/dispatches",
                 body=body,
             )
-            results.append(
-                ReleaseResult(
-                    target=target,
-                    source_sha=source_sha,
-                    request_id=request_id,
-                    status="dispatched",
-                )
-            )
+            status = "dispatched"
+            detail = None
         except GitHubApiError:
-            results.append(
-                ReleaseResult(
-                    target=target,
-                    source_sha=source_sha,
-                    request_id=request_id,
-                    status="failure",
-                    detail="Target workflow dispatch failed",
-                )
+            status = "failure"
+            detail = "Target workflow dispatch failed"
+        results.append(
+            ReleaseResult(
+                target=target,
+                source_sha=source_sha,
+                request_id=request_id,
+                status=status,
+                detail=detail,
+                version=version,
             )
-    return [next(result for result in results if result.target == target) for target in targets]
+        )
+    return results
 
 
 def _release_run(api: GitHubApi, release: ReleaseResult) -> dict[str, Any] | None:
@@ -300,16 +423,74 @@ def _release_run(api: GitHubApi, release: ReleaseResult) -> dict[str, Any] | Non
         run
         for run in runs
         if run.get("display_title")
-        == release.target.run_title(release.request_id, release.source_sha or "")
+        == release.target.run_title(
+            release.request_id,
+            release.source_sha or "",
+            release.version,
+        )
     ]
     if len(matches) > 1:
         raise GitHubApiError("Multiple target workflow runs matched one release request")
     return matches[0] if matches else None
 
 
+def _release_artifact(api: GitHubApi, release: ReleaseResult, run_id: int) -> dict[str, Any] | None:
+    response = api.request(
+        "GET",
+        f"/repos/{release.target.repository}/actions/runs/{run_id}/artifacts",
+        query={"per_page": 100},
+    )
+    artifacts = response.get("artifacts", []) if isinstance(response, dict) else []
+    artifact = next(
+        (
+            candidate
+            for candidate in artifacts
+            if candidate.get("name") == "ford-release-result"
+            and candidate.get("expired") is False
+            and isinstance(candidate.get("id"), int)
+        ),
+        None,
+    )
+    if artifact is None:
+        raise GitHubApiError("Target release workflow did not provide its result artifact")
+    archive = api.download_artifact(release.target.repository, artifact["id"])
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
+            payload = json.loads(bundle.read("release-result.json").decode("utf-8"))
+    except (KeyError, OSError, ValueError, zipfile.BadZipFile):
+        raise GitHubApiError("Target release result artifact is invalid") from None
+    if not isinstance(payload, dict):
+        raise GitHubApiError("Target release result artifact is invalid")
+    if payload.get("repository") != release.target.repository:
+        raise GitHubApiError("Target release result artifact has an unexpected repository")
+    if (
+        payload.get("version") != release.version
+        or payload.get("tag") != release.version
+        or payload.get("sourceSha") != release.source_sha
+    ):
+        raise GitHubApiError("Target release result artifact has unexpected release identity")
+    image_digest = payload.get("imageDigest")
+    if image_digest is not None and not re.fullmatch(r"sha256:[0-9a-f]{64}", str(image_digest)):
+        raise GitHubApiError("Target release result artifact has an invalid image digest")
+    deployment_id = payload.get("deploymentId")
+    deployment_url = payload.get("deploymentUrl")
+    if deployment_id is not None and not isinstance(deployment_id, str):
+        raise GitHubApiError("Target release result artifact has an invalid deployment ID")
+    if deployment_url is not None and not isinstance(deployment_url, str):
+        raise GitHubApiError("Target release result artifact has an invalid deployment URL")
+    if deployment_url is not None and urllib.parse.urlparse(deployment_url).scheme != "https":
+        raise GitHubApiError("Target release result artifact has an invalid deployment URL")
+    return {
+        "image_digest": image_digest,
+        "deployment_id": deployment_id,
+        "deployment_url": deployment_url,
+    }
+
+
 def refresh_release(api: GitHubApi, release: ReleaseResult) -> ReleaseResult:
     if release.status not in {"dispatched", "running", "approval-pending"}:
         return release
+    base = release
     try:
         run = _release_run(api, release)
         if run is None:
@@ -345,6 +526,9 @@ def refresh_release(api: GitHubApi, release: ReleaseResult) -> ReleaseResult:
         if status != "completed":
             return replace(base, status="running")
 
+        artifact = _release_artifact(api, release, run_id)
+        base = replace(base, **artifact)
+
         deploy_was_skipped = any(
             job.get("conclusion") == "skipped"
             and "deploy" in str(job.get("name", "")).lower()
@@ -354,7 +538,7 @@ def refresh_release(api: GitHubApi, release: ReleaseResult) -> ReleaseResult:
             return replace(base, status="skipped", detail="Target deployment job was gated off")
         return replace(base, status="success")
     except GitHubApiError:
-        return replace(release, status="failure", detail="Could not verify target workflow result")
+        return replace(base, status="failure", detail="Could not verify target workflow result")
 
 
 def wait_for_releases(
@@ -395,15 +579,15 @@ def summarize_releases(releases: list[ReleaseResult]) -> str:
     lines = [
         f"## Release-all results ({request_id})",
         "",
-        "| Repository | Verified source SHA | Status | Target workflow |",
-        "| --- | --- | --- | --- |",
+        "| Repository | Version | Verified source SHA | Status | Target workflow |",
+        "| --- | --- | --- | --- | --- |",
     ]
     for release in releases:
         source_sha = release.source_sha or "unavailable"
         target_link = f"[Run]({release.run_url})" if release.run_url else "not dispatched"
         detail = f" — {release.detail}" if release.detail else ""
         lines.append(
-            f"| {release.target.name} | `{source_sha}` | {release.status}{detail} | {target_link} |"
+            f"| {release.target.name} | {release.version or 'unspecified'} | `{source_sha}` | {release.status}{detail} | {target_link} |"
         )
     lines.extend(
         [
@@ -414,11 +598,47 @@ def summarize_releases(releases: list[ReleaseResult]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def release_manifest(releases: list[ReleaseResult]) -> dict[str, Any]:
+    """Return a credential-free JSON-serializable record of selected releases."""
+    request_id = releases[0].request_id if releases else "unknown"
+    return {
+        "schemaVersion": 1,
+        "requestId": request_id,
+        "releases": [
+            {
+                "repository": release.target.repository,
+                "version": release.version,
+                "tag": release.version,
+                "sourceSha": release.source_sha,
+                "status": release.status,
+                "workflowRunId": release.run_id,
+                "workflowRunUrl": release.run_url,
+                "imageDigest": release.image_digest,
+                "deploymentId": release.deployment_id,
+                "deploymentUrl": release.deployment_url,
+                "detail": release.detail,
+            }
+            for release in releases
+        ],
+    }
+
+
+def write_release_manifest(releases: list[ReleaseResult], path: Path) -> None:
+    path.write_text(
+        json.dumps(release_manifest(releases), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--service", action="store_true")
     parser.add_argument("--scraping", action="store_true")
     parser.add_argument("--web", action="store_true")
+    parser.add_argument("--service-version", default="")
+    parser.add_argument("--scraping-version", default="")
+    parser.add_argument("--web-version", default="")
+    parser.add_argument("--manifest-path", type=Path)
     parser.add_argument("--validate-only", action="store_true")
     parser.add_argument("--preflight-only", action="store_true")
     return parser.parse_args(argv)
@@ -428,6 +648,12 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     try:
         targets = select_targets(service=args.service, scraping=args.scraping, web=args.web)
+        versions = select_versions(
+            targets,
+            service=args.service_version,
+            scraping=args.scraping_version,
+            web=args.web_version,
+        )
     except ValueError as error:
         print(str(error), file=sys.stderr)
         return 2
@@ -435,7 +661,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.preflight_only:
-        results = preflight_selected(GitHubRestApi(), targets)
+        results = preflight_selected(GitHubRestApi(), targets, versions)
         summary = summarize_preflight(results)
         summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
         if summary_path:
@@ -451,7 +677,7 @@ def main(argv: list[str] | None = None) -> int:
     request_id = f"{os.environ.get('GITHUB_RUN_ID', '')}-{os.environ.get('GITHUB_RUN_ATTEMPT', '')}"
     try:
         api = GitHubRestApi(token)
-        releases = dispatch_selected(api, targets, request_id)
+        releases = dispatch_versioned_selected(api, targets, versions, request_id=request_id)
         releases = wait_for_releases(api, releases)
     except (ValueError, GitHubApiError) as error:
         print(str(error), file=sys.stderr)
@@ -462,6 +688,8 @@ def main(argv: list[str] | None = None) -> int:
     if summary_path:
         with Path(summary_path).open("a", encoding="utf-8") as summary_file:
             summary_file.write(summary)
+    if args.manifest_path:
+        write_release_manifest(releases, args.manifest_path)
     print(summary)
     return 1 if any(release.status in {"failure", "cancelled", "timed-out"} for release in releases) else 0
 

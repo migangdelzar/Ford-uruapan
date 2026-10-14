@@ -1,21 +1,21 @@
 name: Ford Service Release
-run-name: ${{ github.event_name == 'workflow_dispatch' && format('Ford Service Release [{0}] {1}', inputs.release_request_id || 'manual', inputs.source_sha || 'unspecified') || 'Ford Service Release' }}
+run-name: ${{ format('Ford Service Release [{0}] {1} {2}', inputs.release_request_id || 'manual', inputs.version || 'rollback', inputs.source_sha || 'recorded') }}
 
 on:
-  workflow_run:
-    workflows: [Ford Service CI]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       operation:
-        description: Deploy a verified main artifact or roll back to the recorded prior digest.
+        description: Deploy a versioned release or roll back to the recorded prior digest.
         required: true
         type: choice
         options: [deploy, rollback]
         default: deploy
+      version:
+        description: Immutable annotated vMAJOR.MINOR.PATCH tag (deploy only).
+        required: false
+        type: string
       source_sha:
-        description: Full source SHA with a successful Ford Service CI run (deploy only).
+        description: Full commit SHA targeted by the version tag (deploy only).
         required: false
         type: string
       release_request_id:
@@ -31,13 +31,133 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  verify:
+    name: Verify versioned source
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      operation: ${{ steps.source.outputs.operation }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      version: ${{ steps.source.outputs.version }}
+    steps:
+      - name: Check out release tooling from main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Resolve and verify the release tag and source SHA
+        id: source
+        env:
+          REQUESTED_OPERATION: ${{ inputs.operation }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          operation="${REQUESTED_OPERATION}"
+          if [[ "${operation}" == 'rollback' ]]; then
+            echo 'operation=rollback' >> "$GITHUB_OUTPUT"
+            echo 'source_sha=recorded-rollback' >> "$GITHUB_OUTPUT"
+            echo 'version=' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          VERSION="${INPUT_VERSION}"
+          SOURCE_SHA="${INPUT_SOURCE_SHA}"
+          [[ "${VERSION}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+            echo 'A canonical vMAJOR.MINOR.PATCH version is required.' >&2
+            exit 1
+          }
+          [[ "${SOURCE_SHA}" =~ ^[a-f0-9]{40}$ ]] || {
+            echo 'A full source SHA is required.' >&2
+            exit 1
+          }
+          git fetch --no-tags origin "refs/tags/${VERSION}:refs/tags/${VERSION}"
+          [[ "$(git cat-file -t "refs/tags/${VERSION}")" == tag ]] || {
+            echo 'Release version must be an annotated tag.' >&2
+            exit 1
+          }
+          [[ "$(git rev-parse "refs/tags/${VERSION}^{commit}")" == "${SOURCE_SHA}" ]] || {
+            echo 'Release tag target does not match the selected source SHA.' >&2
+            exit 1
+          }
+          git merge-base --is-ancestor "${SOURCE_SHA}" refs/remotes/origin/main || {
+            echo 'Release tag target is not reachable from main.' >&2
+            exit 1
+          }
+          runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${SOURCE_SHA}&event=push&status=success&per_page=100" --jq "[.workflow_runs[] | select(.head_branch == \"${VERSION}\")] | length")"
+          [[ "${runs}" -gt 0 ]] || {
+            echo 'No successful Ford Service CI run exists for this version tag and source SHA.' >&2
+            exit 1
+          }
+          echo 'operation=deploy' >> "$GITHUB_OUTPUT"
+          echo "source_sha=${SOURCE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+  image:
+    name: Resolve and verify the tagged GHCR digest
+    needs: verify
+    if: needs.verify.result == 'success' && needs.verify.outputs.operation == 'deploy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      digest: ${{ steps.image.outputs.digest }}
+    steps:
+      - name: Check out release tooling from main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+      - name: Normalize GHCR image name
+        id: repository
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Resolve and verify version image digest
+        id: image
+        env:
+          IMAGE_REPOSITORY: ${{ steps.repository.outputs.name }}
+          SOURCE_SHA: ${{ needs.verify.outputs.source_sha }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tagged_image="${IMAGE_REPOSITORY}:${VERSION}"
+          docker pull "${tagged_image}" >/dev/null
+          digest_reference="$(docker image inspect --format '{{index .RepoDigests 0}}' "${tagged_image}")"
+          [[ "${digest_reference}" =~ ^ghcr\.io/[A-Za-z0-9._/-]+@sha256:[a-f0-9]{64}$ ]] || {
+            echo 'Published image did not resolve to an immutable digest.' >&2
+            exit 1
+          }
+          digest="${digest_reference##*@}"
+          gh attestation verify "oci://${digest_reference}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --source-ref "refs/tags/${VERSION}" \
+            --source-digest "${SOURCE_SHA}" \
+            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/reusable-container.yml"
+          echo "image=${digest_reference}" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
   deploy:
     name: Deploy Ford Service on the existing OCI VM
+    needs: [verify, image]
     if: >-
-      vars.PRODUCTION_DEPLOY_ENABLED == 'true' && vars.RUNTIME_VAULT_READY == 'true' &&
-      ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') ||
-       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+      always() && needs.verify.result == 'success' &&
+      (needs.verify.outputs.operation == 'rollback' || needs.image.result == 'success') &&
+      vars.PRODUCTION_DEPLOY_ENABLED == 'true' && vars.RUNTIME_VAULT_READY == 'true'
     environment: production
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -45,64 +165,14 @@ jobs:
       actions: read
       contents: read
       packages: read
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: Check out the protected release tooling from main
-        uses: actions/checkout@v7
-        with:
-          ref: main
-
-      - name: Resolve and verify the release source SHA
-        id: source
-        env:
-          WORKFLOW_EVENT: ${{ github.event_name }}
-          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
-          REQUESTED_SHA: ${{ inputs.source_sha }}
-          REQUESTED_OPERATION: ${{ inputs.operation }}
-        run: |
-          set -euo pipefail
-          operation="${REQUESTED_OPERATION:-deploy}"
-          if [[ "${WORKFLOW_EVENT}" == "workflow_run" ]]; then
-            operation=deploy
-            source_sha="${WORKFLOW_RUN_SHA}"
-          elif [[ "${operation}" == "deploy" ]]; then
-            source_sha="${REQUESTED_SHA}"
-            [[ "${source_sha}" =~ ^[a-f0-9]{40}$ ]] || { echo "A full source SHA is required for deploy." >&2; exit 1; }
-            successful_runs="$(gh run list --workflow 'Ford Service CI' --branch main --commit "${source_sha}" --status success --json databaseId --jq 'length')"
-            [[ "${successful_runs}" -gt 0 ]] || { echo "No successful Ford Service CI run exists for this main SHA." >&2; exit 1; }
-          else
-            source_sha=recorded-rollback
-          fi
-          if [[ "${operation}" == "deploy" ]]; then
-            [[ "${source_sha}" =~ ^[a-f0-9]{40}$ ]] || { echo "Release source SHA is invalid." >&2; exit 1; }
-          fi
-          echo "operation=${operation}" >> "$GITHUB_OUTPUT"
-          echo "source_sha=${source_sha}" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve the verified source to its published GHCR digest
-        id: image
-        if: steps.source.outputs.operation == 'deploy'
-        env:
-          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
-        run: |
-          set -euo pipefail
-          image="ghcr.io/${GITHUB_REPOSITORY,,}"
-          printf '%s' "${GH_TOKEN}" | docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin >/dev/null
-          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
-          tagged_image="${image}:sha-${SOURCE_SHA}"
-          docker pull "${tagged_image}" >/dev/null
-          immutable_image="$(docker image inspect --format '{{index .RepoDigests 0}}' "${tagged_image}")"
-          [[ "${immutable_image}" =~ ^ghcr\.io/[A-Za-z0-9._/-]+@sha256:[a-f0-9]{64}$ ]] || { echo "Published image did not resolve to an immutable digest." >&2; exit 1; }
-          echo "image=${immutable_image}" >> "$GITHUB_OUTPUT"
-
       - name: Run the shared OCI blue-green deployment action
         uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@8e32aec3eabf8207c47c7a601d8d32735f7c0b37
         with:
           target: ford-service
-          image: ${{ steps.image.outputs.image }}
-          operation: ${{ steps.source.outputs.operation }}
-          source-sha: ${{ steps.source.outputs.source_sha }}
+          image: ${{ needs.verify.outputs.operation == 'rollback' && '' || needs.image.outputs.image }}
+          operation: ${{ needs.verify.outputs.operation }}
+          source-sha: ${{ needs.verify.outputs.source_sha }}
           host: ${{ vars.OCI_DEPLOY_HOST }}
           user: ${{ vars.OCI_DEPLOY_USER }}
           ssh-private-key: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
@@ -113,3 +183,48 @@ jobs:
           remote-root: /opt/ford
           backup-host: ${{ vars.OCI_DATA_DEPLOY_HOST }}
           backup-user: ${{ vars.OCI_DATA_DEPLOY_USER }}
+
+  release-result:
+    name: Record release artifact and deployment identity
+    needs: [verify, image, deploy]
+    if: >-
+      always() && needs.verify.result == 'success' &&
+      (needs.verify.outputs.operation == 'rollback' || needs.image.result == 'success')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Write release result manifest
+        env:
+          OPERATION: ${{ needs.verify.outputs.operation }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          SOURCE_SHA: ${{ needs.verify.outputs.source_sha }}
+          IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
+          DEPLOYMENT_RESULT: ${{ needs.deploy.result }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          deployed = os.environ["DEPLOYMENT_RESULT"] == "success"
+          result = {
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "version": os.environ["VERSION"] or None,
+              "tag": os.environ["VERSION"] or None,
+              "sourceSha": os.environ["SOURCE_SHA"],
+              "imageDigest": os.environ["IMAGE_DIGEST"] or None,
+              "deploymentId": os.environ["GITHUB_RUN_ID"] if deployed else None,
+              "deploymentUrl": "https://ford.emme.business" if deployed else None,
+          }
+          Path(os.environ["RUNNER_TEMP"], "release-result.json").write_text(
+              json.dumps(result, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+      - name: Upload release result artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ford-release-result
+          path: ${{ runner.temp }}/release-result.json
+          if-no-files-found: error
+          retention-days: 90
