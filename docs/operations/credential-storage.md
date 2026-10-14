@@ -11,11 +11,12 @@
 
 ## Current migration state
 
-- The legacy deploy task still reads runtime values from the local `deployment/config/oci.env` file. It is ignored by Git and must contain newly rotated values before an environment-mode deployment.
+- Deployment tooling still supports the legacy local `deployment/config/oci.env` file, but migrated values should be read from `com.ford.uruapan.deploy` using `FORD_KEYCHAIN_SERVICE=com.ford.uruapan.deploy`. The ignored file is being retired from local use after Keychain verification.
 - Generated Ansible inventory no longer includes secret values. The existing local inventory was scrubbed of 18 secret fields while preserving non-secret settings and mode `0600`. Ansible reads environment-mode values from its controller process environment; secret-bearing template, registry login, database password update, and MCP authorization tasks use `no_log` where applicable.
 - `mise run deploy:vault-secret -- create PROPERTY` prompts for a new value without terminal echo, sends its encoded request to OCI through stdin, and stores only the returned Secret OCID in the ignored `deployment/config/vault-secret-ocids.env` file. Use `rotate PROPERTY SECRET_OCID` to create a new current version for an existing secret. These commands do not read `oci.env`.
 - The old `mise run deploy:secrets` command is disabled so it cannot add more values to `oci.env`.
-- Local commands can read provider credentials from macOS Keychain with `scripts/with-keychain-secrets.sh COMMAND [ARG ...]`. Add each Generic Password in Keychain Access with service `com.ford.uruapan.local`, account equal to the environment variable name, and the new local-only credential as its password. The wrapper places retrieved values only in the child process environment and prints no values.
+- Local commands load credentials from macOS Keychain through `ford-ai-service/scripts/with-keychain-secrets.sh COMMAND [ARG ...]`. The default service is `com.ford.uruapan.local`; set `FORD_KEYCHAIN_SERVICE=com.ford.uruapan.deploy` for deployment tooling. Each Generic Password account is the environment variable name. `keychain-secrets.swift` imports JSON from stdin, adds missing items without overwriting existing items, and emits only account names. `exec-with-keychain-env.py` places values in the child process environment and execs the requested command. The wrapper itself prints no values.
+- Bitwarden master credentials are held under `com.personal.bitwarden`; `BW_SESSION` remains ephemeral and should be obtained through a fresh Bitwarden unlock when needed. A no-longer-used BFF OIDC client secret is isolated under `com.ford.uruapan.legacy` pending identification of its issuer and safe revocation.
 - The deploy loader accepts only validated `FORD_VAULT_SECRET_OCID_*` entries from that separate mapping file. The app template passes those OCIDs to the Spring loader; it does not put Vault values into the app environment when `FORD_SECRETS_PROVIDER=oci-vault`.
 - Environment-mode app, data, MCP, and collector files still contain runtime values on their target hosts. The data host, MCP service, and collector do not yet retrieve their secrets directly from Vault. Keep production on environment mode until each consumer has been migrated and verified.
 - The backend repo now ignores `deployment/config/oci.env` and its temporary variants, while explicitly allowing the tracked example file.
@@ -38,7 +39,7 @@ For production, never copy old exposed values into a new secret store. Create re
 1. For test-only imports of current local config values, run `mise run deploy:vault-secret -- import-current-test`; the task stores configured values as `ford-test-*` entries and uses a separate ignored OCID mapping. For production, rotate issuer-managed keys and internal credentials first, then use `mise run deploy:vault-secret` to enter replacements and record only their OCIDs in the production mapping.
 2. Migrate the data host, MCP service, and collector to retrieve their needed secrets from OCI Vault.
 3. Verify instance-principal access from the deployed app container and each runtime host before switching production.
-4. Move local development credentials into macOS Keychain and run local commands through `scripts/with-keychain-secrets.sh`.
+4. Move local development and deployment credentials into their separate macOS Keychain services and run commands through `ford-ai-service/scripts/with-keychain-secrets.sh`; never persist `BW_SESSION`.
 5. Revoke old credentials only after production health checks confirm the replacements are active.
 
 ## Safety rules

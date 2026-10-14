@@ -455,6 +455,46 @@ test("Vault credential provisioning keeps values off disk and stores only OCID m
   assert.match(remote, /ocid1\\\.vaultsecret/);
 });
 
+test("Keychain-backed deployment secrets override legacy oci.env values", async () => {
+  const library = path.resolve("ford-ai-service/.mise/lib/remote.sh");
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "ford-keychain-deploy-config-"));
+  const configFile = path.join(temporary, "oci.env");
+  const miseRoot = path.join(temporary, "ford-ai-service");
+  await mkdir(miseRoot);
+
+  try {
+    await writeFile(configFile, [
+      "FORD_SECURITY_JWK_PRIVATE_KEY=legacy-jwk",
+      "FORD_META_WHATSAPP_ACCESS_TOKEN=legacy-meta-token",
+      "FORD_BFF_OIDC_CLIENT_SECRET=legacy-oidc-secret",
+      "OPENROUTER_API_KEY=legacy-openrouter-key"
+    ].join("\n"), { mode: 0o600 });
+
+    const output = execFileSync("bash", ["-c", `source "${library}"; load_deploy_config; printf '%s\\n' "$FORD_SECURITY_JWK_PRIVATE_KEY" "$FORD_META_WHATSAPP_ACCESS_TOKEN" "$FORD_BFF_OIDC_CLIENT_SECRET" "$OPENROUTER_API_KEY"`], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        MISE_PROJECT_ROOT: miseRoot,
+        FORD_DEPLOY_CONFIG_FILE: configFile,
+        FORD_SECURITY_JWK_PRIVATE_KEY: "keychain-jwk",
+        FORD_META_WHATSAPP_ACCESS_TOKEN: "keychain-meta-token",
+        FORD_BFF_OIDC_CLIENT_SECRET: "keychain-oidc-secret",
+        OPENROUTER_API_KEY: "keychain-openrouter-key"
+      }
+    });
+
+    assert.equal(output, [
+      "keychain-jwk",
+      "keychain-meta-token",
+      "keychain-oidc-secret",
+      "keychain-openrouter-key",
+      ""
+    ].join("\n"));
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
+
 test("Vault request and mapping helpers encode secret input and atomically save non-secret OCIDs", async () => {
   const request = await read("ford-ai-service/scripts/oci/create_secret_request.py");
   const mapping = await read("ford-ai-service/scripts/oci/update_secret_mapping.py");
