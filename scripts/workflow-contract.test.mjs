@@ -42,6 +42,17 @@ test("deployment connectivity preflight is manually runnable from main and stays
   assert.doesNotMatch(source, /PRODUCTION_DEPLOY_ENABLED|oci-blue-green|reusable-deploy/);
 });
 
+test("Ford Service pins the backup-verified OCI rollout action", async () => {
+  const source = await read(".github/workflows/release.yml");
+
+  assert.match(
+    source,
+    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@8e32aec3eabf8207c47c7a601d8d32735f7c0b37/,
+  );
+  assert.match(source, /backup-ssh-private-key: \$\{\{ secrets\.OCI_DATA_SSH_PRIVATE_KEY \}\}/);
+  assert.match(source, /backup-host: \$\{\{ secrets\.OCI_DATA_DEPLOY_HOST \}\}/);
+});
+
 test("reusable workflows expose the shared contract", async () => {
   for (const path of requiredWorkflows.slice(1)) {
     const source = await read(path);
