@@ -179,3 +179,12 @@ jobs:
           subject-name: ${{ steps.image-repository.outputs.name }}
           subject-digest: ${{ steps.publish.outputs.digest }}
           push-to-registry: true
+      - name: Verify published image provenance
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE: ${{ steps.image.outputs.image }}
+        run: |
+          gh attestation verify "oci://${IMAGE}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/reusable-container.yml"
