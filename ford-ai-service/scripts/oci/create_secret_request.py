@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import uuid
 
 
 SECRET_NAME = re.compile(r"ford-(?:prod|test)-[a-z0-9]+(?:-[a-z0-9]+)*\Z")
@@ -46,7 +47,9 @@ def main() -> int:
 
     content = {
         "secretContentContent": base64.b64encode(secret_value).decode("ascii"),
-        "secretContentName": "current",
+        "secretContentName": (
+            f"rotation-{uuid.uuid4().hex}" if operation == "rotate" else "current"
+        ),
         "secretContentStage": "CURRENT",
     }
     request = (
