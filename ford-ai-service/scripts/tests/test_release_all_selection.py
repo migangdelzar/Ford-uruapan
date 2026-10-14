@@ -17,7 +17,9 @@ class ReleaseAllSelectionTest(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("if: github.ref == 'refs/heads/main'", workflow)
+        self.assertIn("name: Require coordinator dispatch from main", workflow)
+        self.assertIn("RELEASE_REF: ${{ github.ref }}", workflow)
+        self.assertIn("[[ \"${RELEASE_REF}\" == 'refs/heads/main' ]]", workflow)
         self.assertIn("Ford-uruapan", workflow)
         self.assertIn("Ford-scraping", workflow)
         self.assertIn("Ford-web", workflow)

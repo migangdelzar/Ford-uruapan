@@ -23,7 +23,6 @@ concurrency:
 jobs:
   backup:
     name: Run or verify the emme-2 database backup
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     environment: deployment-preflight
@@ -66,7 +65,7 @@ jobs:
           started_at="$(date -u +%s)"
           sudo -n systemctl start ford-backup.service
           sudo -n systemctl show --property=Result --value ford-backup.service | grep -qx success
-          latest_manifest="$(sudo find /opt/ford/backup/archive -maxdepth 1 -type f -name 'manifest_*.json' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)"
+          latest_manifest="$(sudo find /opt/ford-uruapan/backup/archive -maxdepth 1 -type f -name 'manifest_*.json' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)"
           test -n "$latest_manifest"
           sudo python3 - "$latest_manifest" "$started_at" <<'PY'
           import json
@@ -99,7 +98,7 @@ jobs:
           set -euo pipefail
           sudo -n systemctl is-enabled ford-backup.timer >/dev/null
           sudo -n systemctl is-active ford-backup.timer >/dev/null
-          latest_manifest="$(sudo find /opt/ford/backup/archive -maxdepth 1 -type f -name 'manifest_*.json' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)"
+          latest_manifest="$(sudo find /opt/ford-uruapan/backup/archive -maxdepth 1 -type f -name 'manifest_*.json' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)"
           test -n "$latest_manifest"
           sudo python3 - "$latest_manifest" <<'PY'
           import json
