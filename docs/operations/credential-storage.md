@@ -48,3 +48,10 @@ For production, never copy old exposed values into a new secret store. Create re
 - Ansible tasks that handle secret values must use `no_log: true`; generated inventory and temporary files must stay mode `0600` or stricter.
 - Do not pass secret values as command-line arguments. Avoid persisting decrypted secret values to disk.
 - Keep separate credentials for local, staging, and production environments where the issuing system supports it.
+
+## Naming and current local migration
+
+- GitHub Actions deployment hosts and usernames are configuration variables. SSH private keys, known-host data, and API tokens remain secrets.
+- Runtime names such as `FORD_DATABASE_PASSWORD` are application configuration keys. The `FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD` form combines the Vault-mapping prefix with that exact target key; it does not name a second credential. Keep this format until the loader and all ignored OCID maps are migrated together.
+- `FORD_MCP_API_TOKEN` and `MCP_HTTP_BEARER_TOKEN` are compatibility fallbacks for canonical `FORD_MCP_TOKEN`. Do not create new aliases; remove old ones only after the deployed consumers are verified.
+- The three non-empty SSH key values in the ignored local `oci.env` were added to the `com.ford.uruapan.deploy` Keychain service without overwriting existing entries. The source file remains mode `0600` while any legacy command may still read it. No key values were logged or committed.
