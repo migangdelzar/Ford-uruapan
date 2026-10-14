@@ -136,13 +136,21 @@ test("container tags and provenance subjects use a lowercase GHCR repository", a
   assert.doesNotMatch(source, /ghcr\.io\/\$\{\{ github\.repository \}\}/);
 });
 
-test("branch container verification uses native AMD64 while published images target OCI ARM64", async () => {
+test("service health smoke runs natively before target ARM64 image publication", async () => {
   const source = await read(".github/workflows/reusable-container.yml");
+  const smokeBuild = source.indexOf("- name: Build native smoke image");
+  const healthSmoke = source.indexOf("- name: Smoke test Spring service health endpoint");
+  const runtimeSmoke = source.indexOf("- name: Smoke test Java runtime");
+  const publishBuild = source.indexOf("- name: Build target image for publication");
+  const scan = source.indexOf("- name: Scan image");
+  const publish = source.indexOf("- name: Publish scanned image");
 
-  assert.match(
-    source,
-    /platforms:\s*\$\{\{ inputs\.publish && 'linux\/arm64' \|\| 'linux\/amd64' \}\}/,
-  );
+  assert.ok(smokeBuild >= 0 && healthSmoke > smokeBuild);
+  assert.ok(runtimeSmoke > healthSmoke && publishBuild > runtimeSmoke);
+  assert.ok(scan > publishBuild && publish > scan);
+  assert.match(source, /id: smoke-build/);
+  assert.match(source, /platforms: linux\/amd64/);
+  assert.match(source, /platforms: linux\/arm64/);
   assert.match(source, /cache-from:\s*type=gha/);
   assert.match(source, /cache-to:\s*type=gha[^\n]*mode=max/);
   assert.match(source, /actuator\/health/);
@@ -150,23 +158,30 @@ test("branch container verification uses native AMD64 while published images tar
   assert.match(source, /--name ford-service-redis --network ford-service-smoke redis:7-alpine/);
   assert.match(source, /FORD_REDIS_HOST=ford-service-redis/);
   assert.match(source, /curlimages\/curl/);
+  assert.match(source, /push: false/);
+  assert.match(source, /input: \/tmp\/ford-service-arm64\.tar/);
+  assert.match(source, /image: \$\{\{ steps\.image-repository\.outputs\.name \}\}:sha-\$\{\{ github\.sha \}\}/);
 });
 
 test("container build, smoke tests, and vulnerability scan pass before GHCR publication", async () => {
   const source = await read(".github/workflows/reusable-container.yml");
-  const build = source.indexOf("- name: Build immutable image");
+  const smokeBuild = source.indexOf("- name: Build native smoke image");
   const healthSmoke = source.indexOf("- name: Smoke test Spring service health endpoint");
   const runtimeSmoke = source.indexOf("- name: Smoke test Java runtime");
+  const targetBuild = source.indexOf("- name: Build target image for publication");
   const scan = source.indexOf("- name: Scan image");
-  const login = source.indexOf("- name: Log in to GHCR");
+  const sbom = source.indexOf("- name: Generate SBOM");
+  const login = source.indexOf("- name: Log in to GHCR after build, smoke tests, and scan pass");
   const publish = source.indexOf("- name: Publish scanned image");
 
-  assert.ok(build >= 0 && healthSmoke >= 0 && runtimeSmoke >= 0 && scan >= 0);
-  assert.ok(login >= 0 && publish >= 0);
-  assert.ok(build < healthSmoke, "local image must build before its health smoke");
-  assert.ok(build < runtimeSmoke, "local image must build before its runtime smoke");
-  assert.ok(runtimeSmoke < scan, "runtime smoke must pass before vulnerability scanning");
-  assert.ok(scan < login, "the image must pass its scan before registry login");
+  assert.ok(smokeBuild >= 0 && healthSmoke >= 0 && runtimeSmoke >= 0 && targetBuild >= 0 && scan >= 0);
+  assert.ok(sbom >= 0 && login >= 0 && publish >= 0);
+  assert.ok(smokeBuild < healthSmoke, "native image must build before its health smoke");
+  assert.ok(healthSmoke < runtimeSmoke, "health smoke must pass before runtime smoke");
+  assert.ok(runtimeSmoke < targetBuild, "native smokes must pass before target image build");
+  assert.ok(targetBuild < scan, "target image must build before vulnerability scanning");
+  assert.ok(scan < sbom, "the target image must pass its scan before SBOM generation");
+  assert.ok(sbom < login, "scan and SBOM must pass before registry login");
   assert.ok(login < publish, "registry login must precede image publication");
   assert.match(source, /load: true/);
   assert.match(source, /push: false/);
