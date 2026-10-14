@@ -98,6 +98,24 @@ test("container provenance attests the digest returned by the registry push", as
   assert.match(source, /subject-digest: \$\{\{ steps\.publish\.outputs\.digest \}\}/);
 });
 
+test("published container provenance is verified against the reusable workflow signer", async () => {
+  const source = await read(".github/workflows/reusable-container.yml");
+  const attest = source.indexOf("- name: Attest published image");
+  const verify = source.indexOf("- name: Verify published image provenance");
+
+  assert.ok(attest >= 0, "published images must have an attestation");
+  assert.ok(verify > attest, "verification must follow attestation creation");
+  assert.match(source, /- name: Verify published image provenance\n\s+if: inputs\.publish/);
+  assert.match(source, /gh attestation verify "oci:\/\/\$\{IMAGE\}"/);
+  assert.match(source, /--repo "\$\{GITHUB_REPOSITORY\}"/);
+  assert.match(
+    source,
+    /--signer-workflow "\$\{GITHUB_REPOSITORY\}\/\.github\/workflows\/reusable-container\.yml"/,
+  );
+  assert.match(source, /IMAGE: \$\{\{ steps\.image\.outputs\.image \}\}/);
+  assert.match(source, /GH_TOKEN: \$\{\{ github\.token \}\}/);
+});
+
 test("container tags and provenance subjects use a lowercase GHCR repository", async () => {
   const source = await read(".github/workflows/reusable-container.yml");
   assert.match(source, /id: image-repository/);
