@@ -140,6 +140,30 @@ test("OCI backup identity is declarative and reproducible", async () => {
   assert.match(backupPlaybook, /roles:\n\s+- backup/);
 });
 
+test("OCI runtime Vault identity is opt-in and scoped to each instance, vault, and named secret", async () => {
+  const identity = await read("deployment/terraform/runtime-vault-identity.tf");
+  const variables = await read("deployment/terraform/variables.tf");
+  const example = await read("deployment/terraform/terraform.tfvars.example");
+  const instructions = await read("deployment/terraform/README.md");
+
+  assert.match(variables, /variable "manage_runtime_vault_identity"\s*\{[^}]*default\s*=\s*false/s);
+  assert.match(example, /^manage_runtime_vault_identity\s*=\s*false$/m);
+  assert.match(identity, /resource "oci_identity_dynamic_group" "runtime_vault"/);
+  assert.match(identity, /resource "oci_identity_policy" "runtime_vault"/);
+  assert.match(identity, /ford-runtime-app-emme1/);
+  assert.match(identity, /ford-runtime-data-emme2/);
+  assert.match(identity, /ford-runtime-secret-read/);
+  assert.match(identity, /ALL \{instance\.id = '\$\{each\.value\.instance_ocid\}'\}/);
+  assert.match(identity, /read secret-bundles/);
+  assert.match(identity, /target\.vault\.id = '\$\{var\.runtime_vault_ocid\}'/);
+  assert.match(identity, /target\.secret\.name = '\$\{secret_name\}'/);
+  assert.match(identity, /ford-prod-cloudflared-tunnel-token/);
+  assert.match(identity, /ford-prod-meta-instagram-access-token/);
+  assert.doesNotMatch(identity, /ford-prod-bff-oidc-client-secret/);
+  assert.match(instructions, /terraform import/);
+  assert.match(instructions, /import.*before.*apply/is);
+});
+
 test("Ansible propagates the complete Meta webhook configuration", async () => {
   const example = await read("deployment/config/oci.env.example");
   const remote = await read("ford-ai-service/.mise/lib/remote.sh");
