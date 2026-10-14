@@ -19,7 +19,8 @@ class KeychainWrapperTest(unittest.TestCase):
                 "script=$1; operation=$2; service=$3; shift 3\n"
                 "[[ $service == 'com.ford.test' ]] || exit 43\n"
                 "[[ $operation == 'get' && -f $script ]] || exit 44\n"
-                "printf '%s' '{\"OPENROUTER_API_KEY\":\"synthetic-test-value\",\"FORD_DEEPSEEK_API_KEY\":\"synthetic-test-value\",\"OTEL_EXPORTER_OTLP_API_TOKEN\":\"synthetic-test-value\"}'\n",
+                "for required in OCI_SSH_PRIVATE_KEY EMME_1_SSH_KEY EMME_2_SSH_KEY; do [[ \" $* \" == *\" $required \"* ]] || exit 45; done\n"
+                "printf '%s' '{\"OPENROUTER_API_KEY\":\"synthetic-test-value\",\"FORD_DEEPSEEK_API_KEY\":\"synthetic-test-value\",\"OTEL_EXPORTER_OTLP_API_TOKEN\":\"synthetic-test-value\",\"OCI_SSH_PRIVATE_KEY\":\"synthetic-test-value\",\"EMME_1_SSH_KEY\":\"synthetic-test-value\",\"EMME_2_SSH_KEY\":\"synthetic-test-value\"}'\n",
                 encoding="utf-8",
             )
             fake_swift.chmod(0o700)
@@ -30,6 +31,9 @@ class KeychainWrapperTest(unittest.TestCase):
                     "OPENROUTER_API_KEY",
                     "FORD_DEEPSEEK_API_KEY",
                     "OTEL_EXPORTER_OTLP_API_TOKEN",
+                    "OCI_SSH_PRIVATE_KEY",
+                    "EMME_1_SSH_KEY",
+                    "EMME_2_SSH_KEY",
                 }
             }
             result = subprocess.run(
@@ -37,7 +41,7 @@ class KeychainWrapperTest(unittest.TestCase):
                     str(WRAPPER),
                     "python3",
                     "-c",
-                    "import os; print('loaded' if all(os.environ.get(name) for name in ('OPENROUTER_API_KEY', 'FORD_DEEPSEEK_API_KEY', 'OTEL_EXPORTER_OTLP_API_TOKEN')) else 'missing')",
+                    "import os; names=('OPENROUTER_API_KEY', 'FORD_DEEPSEEK_API_KEY', 'OTEL_EXPORTER_OTLP_API_TOKEN', 'OCI_SSH_PRIVATE_KEY', 'EMME_1_SSH_KEY', 'EMME_2_SSH_KEY'); print('loaded' if all(os.environ.get(name) for name in names) else 'missing')",
                 ],
                 env={
                     **inherited_env,

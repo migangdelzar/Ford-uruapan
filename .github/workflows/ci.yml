@@ -45,8 +45,8 @@ jobs:
     permissions:
       contents: read
 
-  release-coordinator:
-    name: Release coordinator tests
+  operational-tests:
+    name: Operational contract tests
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -54,13 +54,12 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
-      - name: Test release selection, exact dispatch, and partial outcomes
-        working-directory: ford-ai-service
-        run: python3 -m unittest scripts.tests.test_release_all_selection scripts.tests.test_release_all_summary -v
+      - name: Test rollout, secret handling, and release scripts
+        run: python3 -m unittest discover -s ford-ai-service/scripts/tests -p 'test_*.py' -v
 
   container:
     name: Container gates
-    needs: [java, security, observability, release-coordinator]
+    needs: [java, security, observability, operational-tests]
     uses: ./.github/workflows/reusable-container.yml
     with:
       publish: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_container == true) }}

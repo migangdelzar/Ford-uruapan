@@ -31,6 +31,15 @@ test("CI verifies every branch while publishing containers only from main", asyn
   assert.match(release, /branches: \[main\]/);
 });
 
+test("CI runs the operational Python contract suite", async () => {
+  const source = await read(".github/workflows/ci.yml");
+
+  assert.match(
+    source,
+    /python3 -m unittest discover -s ford-ai-service\/scripts\/tests -p 'test_\*\.py' -v/,
+  );
+});
+
 test("deployment connectivity preflight is manually runnable from main and stays read-only", async () => {
   const source = await read(".github/workflows/deployment-preflight.yml");
 
