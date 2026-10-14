@@ -1,8 +1,7 @@
 name: Deployment Connectivity Preflight
 
 on:
-  push:
-    branches: [chore/platform-secret-management]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,6 +17,15 @@ jobs:
     environment: deployment-preflight
     timeout-minutes: 15
     steps:
+      - name: Require dispatch from protected main
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${GITHUB_REF}" == "refs/heads/main" ]] || {
+            echo 'Dispatch this read-only preflight from main.' >&2
+            exit 1
+          }
+
       - name: Install pinned SSH credentials
         shell: bash
         env:

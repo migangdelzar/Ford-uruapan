@@ -31,6 +31,17 @@ test("CI verifies every branch while publishing containers only from main", asyn
   assert.match(release, /branches: \[main\]/);
 });
 
+test("deployment connectivity preflight is manually runnable from main and stays read-only", async () => {
+  const source = await read(".github/workflows/deployment-preflight.yml");
+
+  assert.match(source, /^  workflow_dispatch:\s*$/m);
+  assert.match(source, /\[\[ "\$\{GITHUB_REF\}" == "refs\/heads\/main" \]\]/);
+  assert.match(source, /environment: deployment-preflight/);
+  assert.match(source, /Deployment, migration, image pull, and route switch: not run/);
+  assert.doesNotMatch(source, /^  push:/m);
+  assert.doesNotMatch(source, /PRODUCTION_DEPLOY_ENABLED|oci-blue-green|reusable-deploy/);
+});
+
 test("reusable workflows expose the shared contract", async () => {
   for (const path of requiredWorkflows.slice(1)) {
     const source = await read(path);
