@@ -47,12 +47,22 @@ concurrency:
 jobs:
   release:
     name: Dispatch and track selected releases
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     permissions:
       contents: read
     steps:
+      - name: Require coordinator dispatch from main
+        shell: bash
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [[ "${RELEASE_REF}" == 'refs/heads/main' ]] || {
+            echo 'Run release-all from main.' >&2
+            exit 1
+          }
+
       - name: Check out coordinator source
         uses: actions/checkout@v7
         with:
@@ -98,6 +108,23 @@ jobs:
           args+=(--scraping-version "${SCRAPING_VERSION}")
           args+=(--web-version "${WEB_VERSION}")
           python3 scripts/release_all.py --preflight-only "${args[@]}"
+
+      - name: Validate release coordinator credentials
+        if: inputs.operation == 'release'
+        shell: bash
+        env:
+          RELEASE_COORDINATOR_APP_ID: ${{ secrets.RELEASE_COORDINATOR_APP_ID }}
+          RELEASE_COORDINATOR_APP_PRIVATE_KEY: ${{ secrets.RELEASE_COORDINATOR_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          [[ -n "$RELEASE_COORDINATOR_APP_ID" ]] || {
+            echo 'Release coordinator is missing the RELEASE_COORDINATOR_APP_ID repository secret.' >&2
+            exit 1
+          }
+          [[ -n "$RELEASE_COORDINATOR_APP_PRIVATE_KEY" ]] || {
+            echo 'Release coordinator is missing the RELEASE_COORDINATOR_APP_PRIVATE_KEY repository secret.' >&2
+            exit 1
+          }
 
       - name: Create narrowly scoped GitHub App token
         if: inputs.operation == 'release'
