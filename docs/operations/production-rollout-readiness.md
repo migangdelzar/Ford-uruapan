@@ -1,6 +1,6 @@
 # Production Rollout Readiness
 
-Status: **blocked from production enablement**. Local workflow and deployment implementation may proceed, but no production deploy job may run until every blocking gate below is cleared and rechecked.
+Status: **blocked from public production cutover**. The isolated `emme-crm-ui` Pages origin may be deployed and verified independently. Do not release Ford Service to emme-1, change public DNS, or switch customer traffic until every blocking runtime gate below is cleared and rechecked.
 
 Checked on 2026-10-13 from the local workspace, authenticated GitHub CLI session, read-only SSH sessions, and read-only Cloudflare Pages API/CLI queries. No secret values were read or recorded.
 
@@ -32,7 +32,7 @@ This record is a readiness snapshot, not an authorization to deploy. The release
 | Shared OCI action | Ford Service action access is `none`; Ford-scraping is public and cannot consume a private action. | Review/publish the action in an approved public repository and pin consumers to a full commit SHA. Keep secrets out of the action repository. |
 | Release-all | Coordinator workflow not implemented; no scoped GitHub App dispatch credential configured. | Implement exact-SHA dispatch/status reporting, then configure minimal three-repository permissions and verify in a non-production test. |
 
-The production state remains **not end-to-end release-ready**. Ford-scraping has no `main` branch yet; no repo has a fully protected, ready `production` environment; the shared action cannot yet be consumed by the public caller; and runtime Vault, ingress, headroom, and migration gates below remain open. No deployment has been performed.
+The public production state remains **not end-to-end release-ready**. Runtime Vault consumption, the active ingress switch point, peak blue-green resource headroom, and live schema-migration compatibility remain unverified. The isolated `emme-crm-ui` origin deployment recorded below does not change customer traffic; no Ford Service release or public route switch has been performed.
 
 ## Verified local deployment shape
 
