@@ -1,0 +1,136 @@
+name: Database Backup Operations
+run-name: Database backup ${{ github.event_name == 'schedule' && 'verification' || inputs.operation }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Run a backup now or verify the latest scheduled backup.
+        type: choice
+        required: true
+        default: run
+        options: [run, verify]
+  schedule:
+    - cron: '30 4 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ford-database-backup-operations
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Run or verify the emme-2 database backup
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: deployment-preflight
+    steps:
+      - name: Require dispatch from protected main
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${GITHUB_REF}" == "refs/heads/main" ]] || {
+            echo 'Run database backup operations from main only.' >&2
+            exit 1
+          }
+
+      - name: Install pinned emme-2 SSH credentials
+        shell: bash
+        env:
+          DATA_SSH_PRIVATE_KEY: ${{ secrets.DATA_SSH_PRIVATE_KEY }}
+          DATA_SSH_KNOWN_HOSTS: ${{ secrets.DATA_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 0700 "$RUNNER_TEMP/ford-backup-ssh"
+          printf '%s\n' "$DATA_SSH_PRIVATE_KEY" > "$RUNNER_TEMP/ford-backup-ssh/data"
+          printf '%s\n' "$DATA_SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/ford-backup-ssh/known_hosts"
+          chmod 0600 "$RUNNER_TEMP/ford-backup-ssh/data" "$RUNNER_TEMP/ford-backup-ssh/known_hosts"
+
+      - name: Run a backup now
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'run'
+        shell: bash
+        env:
+          DATA_SSH_HOST: ${{ vars.DATA_SSH_HOST }}
+          SSH_USER: ${{ vars.OCI_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i "$RUNNER_TEMP/ford-backup-ssh/data" \
+            -o BatchMode=yes -o ConnectTimeout=15 \
+            -o UserKnownHostsFile="$RUNNER_TEMP/ford-backup-ssh/known_hosts" \
+            -o StrictHostKeyChecking=yes \
+            "$SSH_USER@$DATA_SSH_HOST" 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          started_at="$(date -u +%s)"
+          sudo -n systemctl start ford-backup.service
+          sudo -n systemctl show --property=Result --value ford-backup.service | grep -qx success
+          latest_manifest="$(sudo find /opt/ford/backup/archive -maxdepth 1 -type f -name 'manifest_*.json' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)"
+          test -n "$latest_manifest"
+          sudo python3 - "$latest_manifest" "$started_at" <<'PY'
+          import json
+          import sys
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          manifest_path, started_at = sys.argv[1:]
+          manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+          created_at = datetime.strptime(manifest["created_at"], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+          if created_at.timestamp() < int(started_at) - 60:
+              raise SystemExit("The successful backup service did not create a fresh manifest.")
+          print(f"Manual database backup verified: created_at={manifest['created_at']}")
+          PY
+          REMOTE
+
+      - name: Verify the scheduled backup timer and recent backup
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'verify')
+        shell: bash
+        env:
+          DATA_SSH_HOST: ${{ vars.DATA_SSH_HOST }}
+          SSH_USER: ${{ vars.OCI_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i "$RUNNER_TEMP/ford-backup-ssh/data" \
+            -o BatchMode=yes -o ConnectTimeout=15 \
+            -o UserKnownHostsFile="$RUNNER_TEMP/ford-backup-ssh/known_hosts" \
+            -o StrictHostKeyChecking=yes \
+            "$SSH_USER@$DATA_SSH_HOST" 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          sudo -n systemctl is-enabled ford-backup.timer >/dev/null
+          sudo -n systemctl is-active ford-backup.timer >/dev/null
+          latest_manifest="$(sudo find /opt/ford/backup/archive -maxdepth 1 -type f -name 'manifest_*.json' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)"
+          test -n "$latest_manifest"
+          sudo python3 - "$latest_manifest" <<'PY'
+          import json
+          import sys
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          manifest_path = sys.argv[1]
+          manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+          created_at = datetime.strptime(manifest["created_at"], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+          age_seconds = (datetime.now(timezone.utc) - created_at).total_seconds()
+          if age_seconds < -300 or age_seconds > 36 * 60 * 60:
+              raise SystemExit("Latest verified database backup is missing, in the future, or older than 36 hours.")
+          print(f"Scheduled database backup healthy: created_at={manifest['created_at']}")
+          PY
+          REMOTE
+
+      - name: Remove temporary SSH credentials
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/ford-backup-ssh"
+
+      - name: Summarize backup operation
+        if: always()
+        shell: bash
+        env:
+          OPERATION: ${{ github.event_name == 'schedule' && 'scheduled verification' || inputs.operation }}
+        run: |
+          {
+            echo '### Database backup operation'
+            echo "- Operation: ${OPERATION}"
+            echo '- Target: existing emme-2 database host'
+            echo '- Backup files and database contents are not uploaded as workflow artifacts.'
+          } >> "$GITHUB_STEP_SUMMARY"
