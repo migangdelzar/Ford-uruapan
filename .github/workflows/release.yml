@@ -165,6 +165,8 @@ jobs:
       actions: read
       contents: read
       packages: read
+    env:
+      FORD_WEB_UI_UPSTREAM_URL: ${{ vars.FORD_WEB_UI_UPSTREAM_URL }}
     steps:
       - name: Run the shared OCI blue-green deployment action
         uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@8e32aec3eabf8207c47c7a601d8d32735f7c0b37

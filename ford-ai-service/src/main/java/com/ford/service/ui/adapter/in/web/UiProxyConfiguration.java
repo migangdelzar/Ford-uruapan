@@ -9,7 +9,7 @@ import org.springframework.web.client.RestClient;
 class UiProxyConfiguration {
     @Bean
     com.ford.service.ui.application.UiProxyProperties uiProxyProperties(
-            @Value("${ford.web.ui.upstream-url:https://ford-crm-ui.pages.dev}") java.net.URI upstreamUrl,
+            @Value("${ford.web.ui.upstream-url:https://emme-crm-ui.pages.dev}") java.net.URI upstreamUrl,
             @Value("${ford.web.ui.public-origin:https://ford.emme.business}") java.net.URI publicOrigin) {
         return new com.ford.service.ui.application.UiProxyProperties(upstreamUrl, publicOrigin);
     }
