@@ -19,6 +19,14 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive deployment/terraform
+      - name: Initialize and validate Terraform
+        run: |
+          terraform -chdir=deployment/terraform init -backend=false -input=false
+          terraform -chdir=deployment/terraform validate
       - name: Run observability contract tests
         run: node --test scripts/observability-contract.test.mjs scripts/operations-contract.test.mjs
       - name: Validate Compose configuration

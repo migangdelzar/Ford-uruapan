@@ -8,8 +8,8 @@ Keep credentials in the narrowest scope that needs them:
 
 | Repository and scope | GitHub Actions secrets | GitHub Actions variables |
 | --- | --- | --- |
-| Ford-uruapan / production | OCI_SSH_PRIVATE_KEY, OCI_DATA_SSH_PRIVATE_KEY, OCI_SSH_KNOWN_HOSTS | OCI_DEPLOY_HOST, OCI_DEPLOY_USER, OCI_DATA_DEPLOY_HOST, OCI_DATA_DEPLOY_USER |
-| Ford-scraping / production | OCI_MCP_SSH_PRIVATE_KEY, OCI_SSH_KNOWN_HOSTS | OCI_MCP_HOST, OCI_MCP_PRIVATE_IP, OCI_DEPLOY_USER, OCI_DATA_DEPLOY_HOST, OCI_DATA_DEPLOY_USER |
+| Ford-uruapan / production | OCI_SSH_PRIVATE_KEY, OCI_DATA_SSH_PRIVATE_KEY, OCI_SSH_KNOWN_HOSTS | OCI_DEPLOY_HOST, OCI_DEPLOY_USER, OCI_DATA_DEPLOY_HOST, OCI_DATA_DEPLOY_USER, OCI_DATA_PRIVATE_IP, FORD_SECRETS_PROVIDER, and the `FORD_VAULT_SECRET_OCID_*` mappings consumed by the Spring app |
+| Ford-scraping / production | OCI_MCP_SSH_PRIVATE_KEY, OCI_SSH_KNOWN_HOSTS | OCI_MCP_HOST, OCI_MCP_PRIVATE_IP, OCI_DEPLOY_USER, OCI_DATA_DEPLOY_HOST, OCI_DATA_DEPLOY_USER, FORD_SECRETS_PROVIDER, FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD, FORD_VAULT_SECRET_OCID_MCP_HTTP_BEARER_TOKEN |
 | Ford-web / production | CLOUDFLARE_API_TOKEN | CLOUDFLARE_ACCOUNT_ID, FORD_WEB_SMOKE_URL |
 | Ford-uruapan / repository variables | None | PRODUCTION_DEPLOY_ENABLED, RUNTIME_VAULT_READY |
 | Ford-scraping / repository variables | None | PRODUCTION_DEPLOY_ENABLED, RUNTIME_VAULT_READY |
@@ -17,6 +17,8 @@ Keep credentials in the narrowest scope that needs them:
 | Ford-uruapan / repository | RELEASE_COORDINATOR_APP_ID, RELEASE_COORDINATOR_APP_PRIVATE_KEY | None |
 
 Host names, account IDs, private IPs, and usernames are configuration, not credentials. Keep them as environment variables. Application provider keys and database credentials belong in OCI Vault and must not be copied into GitHub Actions secrets. GitHub secrets are for workflow credentials such as SSH keys, the Cloudflare deploy token, and the narrowly scoped GitHub App key.
+
+The Ford Service `OCI_DATA_PRIVATE_IP` production variable now matches Ford MCP's existing `OCI_MCP_PRIVATE_IP` for emme-2. The test-only Vault mapping file contains `ford-test-*` OCIDs; never copy those OCIDs into either production environment.
 
 Keep the production gate flags at repository scope: the workflow checks them before it enters the protected production environment, so a missing or false flag fails without first waiting for reviewer approval. Other deploy variables and secrets stay in the protected production environment.
 
