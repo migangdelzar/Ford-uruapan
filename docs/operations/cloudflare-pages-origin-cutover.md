@@ -8,6 +8,8 @@ The browser origin remains `https://ford.emme.business`. Spring serves UI routes
 
 The new Pages origin was deployed from verified Ford Web `main` commit `c8ee6d38ced0b5a4ec87471c0564ffb1c673bd2e` by [Actions run 38588412862](https://github.com/migangdelzar/Ford-web/actions/runs/38588412862). Deployment `0056b296-f347-42ad-b73e-31fc735925d1` passed checks for `/`, `/login`, `/dashboard`, and a fingerprinted asset. This verifies the Pages origin only; the Spring upstream cutover and public-path verification remain pending.
 
+Ford Web's production `FORD_WEB_SMOKE_URL` now points to `https://ford.emme.business`, so a future gated Pages release checks the public browser origin and Spring API path instead of testing a `pages.dev` URL directly.
+
 ## Cutover sequence
 
 1. In Ford-web, merge the project-name and workflow changes to `main`. Run **Stage and verify emme Pages origin** from `main`. It checks successful CI for the selected commit, builds and tests, deploys the `main` production branch to `emme-crm-ui`, then checks `/`, `/login`, `/dashboard`, and a fingerprinted asset at the new Pages origin.
