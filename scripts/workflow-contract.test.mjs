@@ -61,7 +61,7 @@ test("Ford Service pins the backup-verified OCI rollout action", async () => {
 
   assert.match(
     source,
-    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@8e32aec3eabf8207c47c7a601d8d32735f7c0b37/,
+    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@7c9eb649e4ffb83ac9ed2a7037c6fc2281f747c2/,
   );
   assert.match(source, /host: \$\{\{ vars\.OCI_DEPLOY_HOST \}\}/);
   assert.match(source, /user: \$\{\{ vars\.OCI_DEPLOY_USER \}\}/);
@@ -70,6 +70,12 @@ test("Ford Service pins the backup-verified OCI rollout action", async () => {
   assert.match(source, /backup-ssh-private-key: \$\{\{ secrets\.OCI_DATA_SSH_PRIVATE_KEY \}\}/);
   assert.match(source, /remote-root: \/opt\/ford-uruapan/);
   assert.doesNotMatch(source, /secrets\.OCI_(?:DATA_)?DEPLOY_(?:HOST|USER)/);
+});
+
+test("Ford Service supplies the data private IP required by app deployment", async () => {
+  const source = await read(".github/workflows/release.yml");
+
+  assert.match(source, /data-private-ip: \$\{\{ vars\.OCI_DATA_PRIVATE_IP \}\}/);
 });
 
 test("database backup actions inspect the deployed archive directory", async () => {
@@ -88,6 +94,39 @@ test("requested releases fail instead of reporting a skipped production deployme
   assert.match(source, /RUNTIME_VAULT_READY: \$\{\{ vars\.RUNTIME_VAULT_READY \}\}/);
   assert.match(source, /needs\.production-readiness\.result == 'success'/);
   assert.doesNotMatch(source, /needs\.deploy\.result == 'skipped'/);
+});
+
+test("production service deployment passes Vault secret references to Ansible", async () => {
+  const source = await read(".github/workflows/release.yml");
+  const requiredReferences = [
+    "FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD",
+    "FORD_VAULT_SECRET_OCID_SPRING_DATA_REDIS_PASSWORD",
+    "FORD_VAULT_SECRET_OCID_FORD_OPERATOR_PASSWORD",
+    "FORD_VAULT_SECRET_OCID_FORD_SECURITY_JWK_PRIVATE_KEY",
+    "FORD_VAULT_SECRET_OCID_FORD_RESEND_API_KEY",
+    "FORD_VAULT_SECRET_OCID_FORD_META_APP_SECRET",
+    "FORD_VAULT_SECRET_OCID_FORD_META_VERIFY_TOKEN",
+    "FORD_VAULT_SECRET_OCID_FORD_META_WHATSAPP_ACCESS_TOKEN",
+    "FORD_VAULT_SECRET_OCID_FORD_META_MESSENGER_ACCESS_TOKEN",
+    "FORD_VAULT_SECRET_OCID_FORD_META_INSTAGRAM_ACCESS_TOKEN",
+    "FORD_VAULT_SECRET_OCID_FORD_MCP_TOKEN",
+    "FORD_VAULT_SECRET_OCID_FORD_MCP_ACCESS_CLIENT_SECRET",
+    "FORD_VAULT_SECRET_OCID_FORD_AI_OLLAMA_ACCESS_CLIENT_SECRET",
+    "FORD_VAULT_SECRET_OCID_GROQ_API_KEY",
+    "FORD_VAULT_SECRET_OCID_GEMINI_API_KEY",
+    "FORD_VAULT_SECRET_OCID_CLOUDFLARE_API_TOKEN",
+    "FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY",
+    "FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY",
+    "FORD_VAULT_SECRET_OCID_OPENAI_API_KEY",
+  ];
+
+  assert.match(source, /FORD_SECRETS_PROVIDER: \$\{\{ vars\.FORD_SECRETS_PROVIDER \}\}/);
+  for (const name of requiredReferences) {
+    assert.ok(
+      source.includes(name + ": ${{ vars." + name + " }}"),
+      `${name} is passed to Ansible`,
+    );
+  }
 });
 
 test("release-all reports missing cross-repository dispatch credentials clearly", async () => {
@@ -324,7 +363,9 @@ test("scraper migrations use the candidate image and the service Compose environ
   const migrationEnd = tasks.indexOf("\n- name:", migrationStart + 1);
   const migration = tasks.slice(migrationStart, migrationEnd);
 
-  assert.match(compose, /DATABASE_URL: postgres:\/\/ford:\$\{POSTGRES_PASSWORD/);
+  assert.match(compose, /DATABASE_URL: \$\{DATABASE_URL:-postgres:\/\//);
+  assert.match(compose, /\$\{POSTGRES_PASSWORD:-\}/);
+  assert.match(compose, /DATABASE_HOST: postgres/);
   assert.match(compose, /FORD_BASE_URL: https:\/\/www\.forduruapan\.mx/);
   assert.match(override, /image: \{\{ mcp_candidate_image \}\}/);
   assert.match(migration, /-f "\{\{ remote_root \}\}\/mcp\/migration-compose\.yml"/);

@@ -9,6 +9,8 @@
       - (mcp_blue_port | default(3101) | int) != 3001
       - (mcp_green_port | default(3102) | int) != 3001
       - (remote_root ~ '/mcp/.env') is file
+      - (lookup('ansible.builtin.env', 'FORD_SECRETS_PROVIDER') | default('environment', true)) in ['environment', 'oci-vault']
+      - (lookup('ansible.builtin.env', 'FORD_SECRETS_PROVIDER') | default('environment', true)) != 'oci-vault' or (lookup('ansible.builtin.env', 'FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD') | default('', true) | length > 0 and lookup('ansible.builtin.env', 'FORD_VAULT_SECRET_OCID_MCP_HTTP_BEARER_TOKEN') | default('', true) | length > 0)
     fail_msg: "Blue-green MCP requires immutable image digests, distinct slot ports, and the provisioned MCP environment file."
 
 - name: Check blue-green MCP deployment state
@@ -74,6 +76,17 @@
       - mcp_candidate_image is match('^ghcr[.]io/[A-Za-z0-9._/-]+@sha256:[a-f0-9]{64}$')
       - mcp_operation | default('deploy') != 'rollback' or mcp_image | default(mcp_candidate_image) == mcp_candidate_image
     fail_msg: "The selected MCP candidate must be the recorded immutable image."
+
+- name: Render MCP runtime environment from protected configuration
+  ansible.builtin.template:
+    src: mcp.env.j2
+    dest: "{{ remote_root }}/mcp/.env"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0600"
+  vars:
+    mcp_image: "{{ mcp_candidate_image }}"
+  no_log: true
 
 - name: Render blue-green MCP Compose file
   ansible.builtin.template:
@@ -194,11 +207,14 @@
 - name: Set MCP protocol smoke script
   ansible.builtin.set_fact:
     mcp_protocol_smoke_script: |
+      (async () => {
+        const {loadRuntimeEnvironment} = await import('./dist/src/secrets/runtime-secrets.js');
+        const runtimeEnvironment = await loadRuntimeEnvironment(process.env, {command: 'mcp-http'});
       async function call(id, method, params) {
         const response = await fetch(process.env.MCP_SMOKE_URL, {
           method: 'POST',
           headers: {
-            'authorization': 'Bearer ' + process.env.MCP_HTTP_BEARER_TOKEN,
+            'authorization': 'Bearer ' + runtimeEnvironment.MCP_HTTP_BEARER_TOKEN,
             'content-type': 'application/json',
             'accept': 'application/json, text/event-stream'
           },
@@ -214,7 +230,6 @@
         const required = process.env.MCP_SMOKE_REQUIRED_TOOLS.split(',');
         if (!required.every(name => names.includes(name))) throw new Error('Required MCP tools are missing');
       }
-      (async () => {
         await call(1, 'initialize', {
           protocolVersion: '2025-03-26', capabilities: {},
           clientInfo: {name: 'blue-green-deployment-smoke', version: '1'}

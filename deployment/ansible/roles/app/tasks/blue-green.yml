@@ -75,6 +75,15 @@
       - app_operation | default('deploy') != 'rollback' or app_image | default(app_candidate_image) == app_candidate_image
     fail_msg: "The selected Ford Service candidate must be an immutable image digest."
 
+- name: Refresh Ford Service runtime environment from protected configuration
+  ansible.builtin.template:
+    src: app.env.j2
+    dest: "{{ remote_root }}/app/.env"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0600"
+  no_log: true
+
 - name: Confirm the provisioned application network exists
   ansible.builtin.command:
     cmd: docker network inspect app_default
