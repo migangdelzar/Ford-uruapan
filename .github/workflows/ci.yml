@@ -45,8 +45,8 @@ jobs:
     permissions:
       contents: read
 
-  operational-tests:
-    name: Operational contract tests
+  release-coordinator:
+    name: Release coordinator tests
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -59,7 +59,7 @@ jobs:
 
   container:
     name: Container gates
-    needs: [java, security, observability, operational-tests]
+    needs: [java, security, observability, release-coordinator]
     uses: ./.github/workflows/reusable-container.yml
     with:
       publish: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_container == true) }}

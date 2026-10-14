@@ -34,6 +34,7 @@ test("CI verifies every branch while publishing containers only from main", asyn
 test("CI runs the operational Python contract suite", async () => {
   const source = await read(".github/workflows/ci.yml");
 
+  assert.match(source, /name: Release coordinator tests/);
   assert.match(
     source,
     /python3 -m unittest discover -s ford-ai-service\/scripts\/tests -p 'test_\*\.py' -v/,
