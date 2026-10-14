@@ -26,6 +26,20 @@ The workflow requests an installation token limited to those three repositories
 and to Actions write plus Contents read. The token is temporary and is revoked
 when the coordinator job ends.
 
+## Credential-free preflight
+
+Run **Release selected Ford repositories** from `main` with operation
+`validate` to check readiness without dispatching releases. Select at least one
+repository. The preflight reads public GitHub Actions metadata to confirm each
+selected repository has an active release workflow and a successful push CI
+run on `main`; its summary records the exact verified source SHA. It does not
+create the GitHub App token, dispatch a workflow, or enter a production
+environment. `validate` is the default operation.
+
+Choose operation `release` only when you intend to dispatch the selected target
+workflows. That path requires the GitHub App secrets above and each target
+workflow retains its own production approval.
+
 ## Safe dispatch check
 
 Before a cross-repository dispatch, confirm each selected target's production

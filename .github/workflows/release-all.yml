@@ -3,6 +3,12 @@ name: Release selected Ford repositories
 on:
   workflow_dispatch:
     inputs:
+      operation:
+        description: Validate selected release readiness without credentials, or dispatch releases.
+        type: choice
+        required: true
+        default: validate
+        options: [validate, release]
       ford_service:
         description: Release Ford Service
         type: boolean
@@ -54,7 +60,23 @@ jobs:
           if [[ "${FORD_WEB}" == "true" ]]; then args+=(--web); fi
           python3 scripts/release_all.py --validate-only "${args[@]}"
 
+      - name: Run credential-free release preflight
+        if: inputs.operation == 'validate'
+        working-directory: ford-ai-service
+        env:
+          FORD_SERVICE: ${{ inputs.ford_service }}
+          FORD_SCRAPING: ${{ inputs.ford_scraping }}
+          FORD_WEB: ${{ inputs.ford_web }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "${FORD_SERVICE}" == "true" ]]; then args+=(--service); fi
+          if [[ "${FORD_SCRAPING}" == "true" ]]; then args+=(--scraping); fi
+          if [[ "${FORD_WEB}" == "true" ]]; then args+=(--web); fi
+          python3 scripts/release_all.py --preflight-only "${args[@]}"
+
       - name: Create narrowly scoped GitHub App token
+        if: inputs.operation == 'release'
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
@@ -69,6 +91,7 @@ jobs:
           permission-contents: read
 
       - name: Dispatch exact verified versions and report each result
+        if: inputs.operation == 'release'
         working-directory: ford-ai-service
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
