@@ -1,5 +1,8 @@
+import io
+import json
 import sys
 import unittest
+import zipfile
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[1]
@@ -9,20 +12,42 @@ from release_all import (  # noqa: E402
     ReleaseResult,
     TARGETS,
     refresh_release,
+    release_manifest,
     summarize_releases,
 )
 
 
 class FakeGitHubApi:
-    def __init__(self, run):
+    def __init__(self, run, release=None, *, result=None):
         self.run = run
+        self.release = release
+        self.result = result
 
     def request(self, method, path, *, query=None, body=None):
         if method == "GET" and path.endswith("/actions/workflows/release.yml/runs"):
             return {"workflow_runs": [self.run]}
         if method == "GET" and path.endswith("/actions/runs/77/jobs"):
             return {"jobs": [{"name": "Deploy", "status": "completed", "conclusion": "success"}]}
+        if method == "GET" and path.endswith("/actions/runs/77/artifacts"):
+            return {"artifacts": [{"id": 88, "name": "ford-release-result", "expired": False}]}
         raise AssertionError(f"Unexpected API request: {method} {path}")
+
+    def download_artifact(self, repository, artifact_id):
+        if artifact_id != 88 or self.release is None:
+            raise AssertionError("Unexpected artifact download")
+        result = self.result or {
+            "repository": self.release.target.repository,
+            "version": self.release.version,
+            "tag": self.release.version,
+            "sourceSha": self.release.source_sha,
+            "imageDigest": None,
+            "deploymentId": None,
+            "deploymentUrl": None,
+        }
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w") as bundle:
+            bundle.writestr("release-result.json", json.dumps(result))
+        return archive.getvalue()
 
 
 class ReleaseAllSummaryTest(unittest.TestCase):
@@ -56,6 +81,29 @@ class ReleaseAllSummaryTest(unittest.TestCase):
         self.assertIn("https://github.com/migangdelzar/Ford-uruapan/actions/runs/77", summary)
         self.assertIn("b" * 40, summary)
 
+    def test_manifest_records_version_sha_digest_and_run_without_secret_fields(self):
+        release = ReleaseResult(
+            target=next(target for target in TARGETS if target.key == "service"),
+            source_sha="b" * 40,
+            request_id="12345-1",
+            status="success",
+            run_id=77,
+            run_url="https://github.com/migangdelzar/Ford-uruapan/actions/runs/77",
+            version="v1.2.3",
+            image_digest="sha256:" + "c" * 64,
+            deployment_id="deploy-123",
+            deployment_url="https://example.invalid/deployment",
+        )
+
+        manifest = release_manifest([release])
+
+        self.assertEqual(manifest["releases"][0]["repository"], "migangdelzar/Ford-uruapan")
+        self.assertEqual(manifest["releases"][0]["tag"], "v1.2.3")
+        self.assertEqual(manifest["releases"][0]["sourceSha"], "b" * 40)
+        self.assertEqual(manifest["releases"][0]["imageDigest"], "sha256:" + "c" * 64)
+        self.assertEqual(manifest["releases"][0]["deploymentId"], "deploy-123")
+        self.assertNotIn("token", str(manifest).lower())
+
     def test_cancelled_target_run_stays_cancelled(self):
         release = self.release("service", "running")
         api = FakeGitHubApi(
@@ -65,7 +113,8 @@ class ReleaseAllSummaryTest(unittest.TestCase):
                 "status": "completed",
                 "conclusion": "cancelled",
                 "html_url": "https://github.com/ignored",
-            }
+            },
+            release,
         )
 
         updated = refresh_release(api, release)
@@ -81,7 +130,8 @@ class ReleaseAllSummaryTest(unittest.TestCase):
                 "display_title": f"Release Ford Web [12345-1] {'b' * 40}",
                 "status": "waiting",
                 "conclusion": None,
-            }
+            },
+            release,
         )
 
         updated = refresh_release(api, release)
@@ -96,7 +146,8 @@ class ReleaseAllSummaryTest(unittest.TestCase):
                 "display_title": f"Release Ford Web [12345-1] {'c' * 40}",
                 "status": "completed",
                 "conclusion": "success",
-            }
+            },
+            release,
         )
 
         updated = refresh_release(api, release)
@@ -112,7 +163,8 @@ class ReleaseAllSummaryTest(unittest.TestCase):
                 "display_title": f"Release MCP to OCI [12345-1] {'b' * 40}",
                 "status": "completed",
                 "conclusion": "failure",
-            }
+            },
+            release,
         )
 
         updated = refresh_release(api, release)
@@ -133,11 +185,70 @@ class ReleaseAllSummaryTest(unittest.TestCase):
             {"workflow_runs": [api.run]}
             if path.endswith("/actions/workflows/release.yml/runs")
             else {"jobs": [{"name": "Deploy Ford Service", "status": "completed", "conclusion": "skipped"}]}
+            if path.endswith("/actions/runs/77/jobs")
+            else {"artifacts": [{"id": 88, "name": "ford-release-result", "expired": False}]}
         )
+        api.release = release
 
         updated = refresh_release(api, release)
 
         self.assertEqual(updated.status, "skipped")
+
+    def test_completed_release_imports_digest_and_deployment_metadata_from_target_artifact(self):
+        release = self.release("scraping", "running", run_id=77)
+        release = ReleaseResult(
+            **{**release.__dict__, "version": "v2.4.1"}
+        )
+        api = FakeGitHubApi(
+            {
+                "id": 77,
+                "display_title": f"Release MCP to OCI [12345-1] v2.4.1 {'b' * 40}",
+                "status": "completed",
+                "conclusion": "success",
+            },
+            release,
+            result={
+                "repository": release.target.repository,
+                "version": "v2.4.1",
+                "tag": "v2.4.1",
+                "sourceSha": "b" * 40,
+                "imageDigest": "sha256:" + "d" * 64,
+                "deploymentId": "77",
+                "deploymentUrl": "https://ford-mcp.emme.business/mcp",
+            },
+        )
+
+        updated = refresh_release(api, release)
+
+        self.assertEqual(updated.image_digest, "sha256:" + "d" * 64)
+        self.assertEqual(updated.deployment_id, "77")
+        self.assertEqual(updated.deployment_url, "https://ford-mcp.emme.business/mcp")
+
+    def test_missing_result_artifact_fails_the_target_and_preserves_run_link(self):
+        release = self.release("service", "running", run_id=77)
+        api = FakeGitHubApi(
+            {
+                "id": 77,
+                "display_title": f"Ford Service Release [12345-1] {'b' * 40}",
+                "status": "completed",
+                "conclusion": "success",
+            },
+            release,
+        )
+        original_request = api.request
+
+        def without_result_artifact(method, path, *, query=None, body=None):
+            if path.endswith("/actions/runs/77/artifacts"):
+                return {"artifacts": []}
+            return original_request(method, path, query=query, body=body)
+
+        api.request = without_result_artifact
+
+        updated = refresh_release(api, release)
+
+        self.assertEqual(updated.status, "failure")
+        self.assertEqual(updated.run_id, 77)
+        self.assertEqual(updated.run_url, "https://github.com/migangdelzar/Ford-uruapan/actions/runs/77")
 
 
 if __name__ == "__main__":

@@ -21,14 +21,18 @@ test("required workflow contracts exist", async () => {
   }
 });
 
-test("CI verifies every branch while publishing containers only from main", async () => {
+test("CI verifies every branch and publishes images only from immutable SemVer tags", async () => {
   const source = await read(".github/workflows/ci.yml");
   const release = await read(".github/workflows/release.yml");
 
   assert.match(source, /^  push:\s*$/m);
-  assert.match(source, /publish:.*github\.ref == 'refs\/heads\/main'/s);
-  assert.match(release, /PRODUCTION_DEPLOY_ENABLED/);
-  assert.match(release, /branches: \[main\]/);
+  assert.match(source, /name: Container gates \(no publication\)/);
+  assert.match(source, /publish: false/);
+  assert.match(source, /name: Container gates and version publication/);
+  assert.match(source, /github\.ref_type == 'tag'/);
+  assert.match(source, /startsWith\(github\.ref, 'refs\/tags\/v'\)/);
+  assert.match(release, /version:/);
+  assert.match(release, /vars\.PRODUCTION_DEPLOY_ENABLED/);
 });
 
 test("CI runs the operational Python contract suite", async () => {
@@ -156,7 +160,7 @@ test("container tags and provenance subjects use a lowercase GHCR repository", a
   const source = await read(".github/workflows/reusable-container.yml");
   assert.match(source, /id: image-repository/);
   assert.match(source, /echo "name=ghcr\.io\/\$\{REPOSITORY,,\}"/);
-  assert.match(source, /tags: \$\{\{ steps\.image-repository\.outputs\.name \}\}:sha-\$\{\{ github\.sha \}\}/);
+  assert.match(source, /tags: \$\{\{ steps\.tags\.outputs\.tags \}\}/);
   assert.match(source, /subject-name: \$\{\{ steps\.image-repository\.outputs\.name \}\}/);
   assert.doesNotMatch(source, /ghcr\.io\/\$\{\{ github\.repository \}\}/);
 });
@@ -185,7 +189,7 @@ test("service health smoke runs natively before target ARM64 image publication",
   assert.match(source, /curlimages\/curl/);
   assert.match(source, /push: false/);
   assert.match(source, /input: \/tmp\/ford-service-arm64\.tar/);
-  assert.match(source, /image: \$\{\{ steps\.image-repository\.outputs\.name \}\}:sha-\$\{\{ github\.sha \}\}/);
+  assert.match(source, /image: \$\{\{ steps\.tags\.outputs\.sha_tag \}\}/);
 });
 
 test("container build, smoke tests, and vulnerability scan pass before GHCR publication", async () => {
@@ -210,7 +214,7 @@ test("container build, smoke tests, and vulnerability scan pass before GHCR publ
   assert.ok(login < publish, "registry login must precede image publication");
   assert.match(source, /load: true/);
   assert.match(source, /push: false/);
-  assert.match(source, /docker push "\$\{IMAGE_NAME\}"/);
+  assert.match(source, /docker push "\$\{SHA_TAG\}"/);
   assert.match(
     source,
     /if: >-\n\s+always\(\) && github\.event_name != 'pull_request' &&\s+\(github\.event\.repository\.visibility == 'public' \|\| vars\.CODE_SCANNING_ENABLED == 'true'\) &&\s+hashFiles\('trivy-image\.sarif'\) != ''/s,

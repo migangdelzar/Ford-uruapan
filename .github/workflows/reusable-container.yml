@@ -4,6 +4,15 @@ name: Reusable Container Gates
 on:
   workflow_call:
     inputs:
+      source_sha:
+        description: Full commit SHA to build.
+        required: true
+        type: string
+      version:
+        description: Annotated vMAJOR.MINOR.PATCH tag for a published release.
+        required: false
+        default: ''
+        type: string
       publish:
         description: Publish the immutable image.
         required: false
@@ -39,6 +48,9 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
       - name: Verify workflow and container contracts
         run: node --test scripts/workflow-contract.test.mjs
       - name: Set up Docker Buildx
@@ -50,13 +62,63 @@ jobs:
         env:
           REPOSITORY: ${{ github.repository }}
         run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Prepare image tags
+        id: tags
+        env:
+          IMAGE_REPOSITORY: ${{ steps.image-repository.outputs.name }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          VERSION: ${{ inputs.version }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          sha_tag="${IMAGE_REPOSITORY}:sha-${SOURCE_SHA}"
+          version_tag=''
+          plain_version_tag=''
+          tags="${sha_tag}"
+          if [[ "${PUBLISH}" == 'true' ]]; then
+            version_tag="${IMAGE_REPOSITORY}:${VERSION}"
+            plain_version_tag="${IMAGE_REPOSITORY}:${VERSION#v}"
+            tags+=$'\n'"${version_tag}"$'\n'"${plain_version_tag}"
+          fi
+          {
+            echo "sha_tag=${sha_tag}"
+            echo "version_tag=${version_tag}"
+            echo "plain_version_tag=${plain_version_tag}"
+            echo 'tags<<EOF'
+            printf '%s\n' "${tags}"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+      - name: Verify immutable SemVer tag is on main
+        if: inputs.publish
+        env:
+          VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "${VERSION}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+            echo 'Release version must use vMAJOR.MINOR.PATCH.' >&2
+            exit 1
+          }
+          [[ "$(git cat-file -t "refs/tags/${VERSION}")" == tag ]] || {
+            echo 'Release version must be an annotated tag.' >&2
+            exit 1
+          }
+          [[ "$(git rev-parse "refs/tags/${VERSION}^{commit}")" == "${SOURCE_SHA}" ]] || {
+            echo 'Release tag target does not match the selected source SHA.' >&2
+            exit 1
+          }
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "${SOURCE_SHA}" refs/remotes/origin/main || {
+            echo 'Release tag target is not reachable from main.' >&2
+            exit 1
+          }
       - name: Build native smoke image
         id: smoke-build
         uses: docker/build-push-action@v6
         with:
           context: ford-ai-service
           file: ford-ai-service/Dockerfile
-          tags: ${{ steps.image-repository.outputs.name }}:smoke-${{ github.sha }}
+          tags: ${{ steps.image-repository.outputs.name }}:smoke-${{ inputs.source_sha }}
           platforms: linux/amd64
           load: true
           push: false
@@ -109,7 +171,7 @@ jobs:
         with:
           context: ford-ai-service
           file: ford-ai-service/Dockerfile
-          tags: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
+          tags: ${{ steps.tags.outputs.tags }}
           platforms: linux/arm64
           push: false
           outputs: type=docker,dest=/tmp/ford-service-arm64.tar
@@ -132,7 +194,7 @@ jobs:
       - name: Generate SBOM
         uses: anchore/sbom-action@v0.20.0
         with:
-          image: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
+          image: ${{ steps.tags.outputs.sha_tag }}
           format: cyclonedx-json
           output-file: sbom.cdx.json
           artifact-name: ford-service-sbom-${{ github.run_id }}.cdx.json
@@ -147,10 +209,26 @@ jobs:
         id: publish
         if: inputs.publish
         env:
-          IMAGE_NAME: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
+          SHA_TAG: ${{ steps.tags.outputs.sha_tag }}
+          VERSION_TAG: ${{ steps.tags.outputs.version_tag }}
+          PLAIN_VERSION_TAG: ${{ steps.tags.outputs.plain_version_tag }}
         run: |
           set -euo pipefail
-          docker push "${IMAGE_NAME}" | tee "$RUNNER_TEMP/docker-push.log"
+          if [[ -n "${VERSION_TAG}" ]]; then
+            for version_tag in "${VERSION_TAG}" "${PLAIN_VERSION_TAG}"; do
+              if docker buildx imagetools inspect "${version_tag}" >/dev/null 2>&1; then
+                echo "Version image alias already exists: ${version_tag}" >&2
+                exit 1
+              fi
+            done
+          fi
+          docker push "${SHA_TAG}" | tee "$RUNNER_TEMP/docker-push.log"
+          if [[ -n "${VERSION_TAG}" ]]; then
+            docker tag "${SHA_TAG}" "${VERSION_TAG}"
+            docker tag "${SHA_TAG}" "${PLAIN_VERSION_TAG}"
+            docker push "${VERSION_TAG}"
+            docker push "${PLAIN_VERSION_TAG}"
+          fi
           digest="$(sed -n 's/^.*digest: \(sha256:[0-9a-f]*\).*$/\1/p' "$RUNNER_TEMP/docker-push.log" | tail -1)"
           [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]] || {
             echo 'Could not resolve published image digest.' >&2
@@ -180,7 +258,7 @@ jobs:
         env:
           IMAGE_DIGEST: ${{ steps.publish.outputs.digest }}
           IMAGE_REPOSITORY: ${{ steps.image-repository.outputs.name }}
-          IMAGE_NAME: ${{ steps.image-repository.outputs.name }}:sha-${{ github.sha }}
+          IMAGE_NAME: ${{ steps.tags.outputs.sha_tag }}
         run: |
           if [[ -n "${IMAGE_DIGEST}" ]]; then
             echo "image=${IMAGE_REPOSITORY}@${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
@@ -199,7 +277,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           IMAGE: ${{ steps.image.outputs.image }}
+          VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           gh attestation verify "oci://${IMAGE}" \
             --repo "${GITHUB_REPOSITORY}" \
+            --source-ref "refs/tags/${VERSION}" \
+            --source-digest "${SOURCE_SHA}" \
             --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/reusable-container.yml"
