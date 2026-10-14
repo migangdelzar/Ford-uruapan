@@ -31,6 +31,16 @@ test("CI verifies every branch while publishing containers only from main", asyn
   assert.match(release, /branches: \[main\]/);
 });
 
+test("CI runs the operational Python contract suite", async () => {
+  const source = await read(".github/workflows/ci.yml");
+
+  assert.match(source, /name: Release coordinator tests/);
+  assert.match(
+    source,
+    /python3 -m unittest discover -s ford-ai-service\/scripts\/tests -p 'test_\*\.py' -v/,
+  );
+});
+
 test("deployment connectivity preflight is manually runnable from main and stays read-only", async () => {
   const source = await read(".github/workflows/deployment-preflight.yml");
 
@@ -49,8 +59,12 @@ test("Ford Service pins the backup-verified OCI rollout action", async () => {
     source,
     /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@8e32aec3eabf8207c47c7a601d8d32735f7c0b37/,
   );
+  assert.match(source, /host: \$\{\{ vars\.OCI_DEPLOY_HOST \}\}/);
+  assert.match(source, /user: \$\{\{ vars\.OCI_DEPLOY_USER \}\}/);
+  assert.match(source, /backup-host: \$\{\{ vars\.OCI_DATA_DEPLOY_HOST \}\}/);
+  assert.match(source, /backup-user: \$\{\{ vars\.OCI_DATA_DEPLOY_USER \}\}/);
   assert.match(source, /backup-ssh-private-key: \$\{\{ secrets\.OCI_DATA_SSH_PRIVATE_KEY \}\}/);
-  assert.match(source, /backup-host: \$\{\{ secrets\.OCI_DATA_DEPLOY_HOST \}\}/);
+  assert.doesNotMatch(source, /secrets\.OCI_(?:DATA_)?DEPLOY_(?:HOST|USER)/);
 });
 
 test("reusable workflows expose the shared contract", async () => {

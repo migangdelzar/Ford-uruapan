@@ -110,6 +110,16 @@ class OciActionContractTest(unittest.TestCase):
         self.assertIn("${{ github.action_path }}/deploy.sh", action)
         self.assertNotIn("ssh-keyscan", action)
 
+    def test_release_workflow_keeps_host_configuration_in_variables_and_keys_in_secrets(self):
+        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+        for name in ("OCI_DEPLOY_HOST", "OCI_DEPLOY_USER", "OCI_DATA_DEPLOY_HOST", "OCI_DATA_DEPLOY_USER"):
+            self.assertIn(f"vars.{name}", workflow)
+            self.assertNotIn(f"secrets.{name}", workflow)
+        self.assertIn("secrets.OCI_SSH_PRIVATE_KEY", workflow)
+        self.assertIn("secrets.OCI_DATA_SSH_PRIVATE_KEY", workflow)
+        self.assertIn("secrets.OCI_SSH_KNOWN_HOSTS", workflow)
+
     def test_release_workflow_is_closed_until_vault_and_production_gates_pass(self):
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("vars.PRODUCTION_DEPLOY_ENABLED == 'true'", workflow)
@@ -131,7 +141,7 @@ class OciActionContractTest(unittest.TestCase):
 
     def test_vm_preflight_is_branch_scoped_and_read_only(self):
         workflow = PREFLIGHT_WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("chore/platform-secret-management", workflow)
+        self.assertNotIn("chore/platform-secret-management", workflow)
         self.assertIn("environment: deployment-preflight", workflow)
         self.assertIn("/actuator/health", workflow)
         self.assertIn("ford-mcp-mcp-1", workflow)
