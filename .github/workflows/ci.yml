@@ -57,3 +57,4 @@ jobs:
       packages: write
       security-events: write
       id-token: write
+      attestations: write
