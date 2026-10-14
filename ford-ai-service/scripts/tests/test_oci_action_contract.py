@@ -11,6 +11,7 @@ RELEASE_WORKFLOW = REPO_ROOT.parent / ".github/workflows/release.yml"
 CONTAINER_WORKFLOW = REPO_ROOT.parent / ".github/workflows/reusable-container.yml"
 CI_WORKFLOW = REPO_ROOT.parent / ".github/workflows/ci.yml"
 PREFLIGHT_WORKFLOW = REPO_ROOT.parent / ".github/workflows/deployment-preflight.yml"
+BACKUP_WORKFLOW = REPO_ROOT.parent / ".github/workflows/database-backup.yml"
 
 
 class OciActionContractTest(unittest.TestCase):
@@ -186,6 +187,33 @@ class OciActionContractTest(unittest.TestCase):
         self.assertNotIn("docker compose up", workflow)
         self.assertNotIn("docker stop", workflow)
         self.assertNotIn("migrate", workflow)
+
+    def test_database_backup_workflow_supports_manual_run_and_scheduled_verification(self):
+        workflow = BACKUP_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("cron: '30 4 * * *'", workflow)
+        self.assertIn("options: [run, verify]", workflow)
+        self.assertIn("environment: deployment-preflight", workflow)
+        self.assertIn("secrets.DATA_SSH_PRIVATE_KEY", workflow)
+        self.assertIn("secrets.DATA_SSH_KNOWN_HOSTS", workflow)
+        self.assertIn("vars.DATA_SSH_HOST", workflow)
+        self.assertIn("vars.OCI_SSH_USER", workflow)
+        manual_run = workflow.split("- name: Run a backup now", maxsplit=1)[1].split(
+            "- name: Verify the scheduled backup timer and recent backup", maxsplit=1
+        )[0]
+        scheduled_check = workflow.split(
+            "- name: Verify the scheduled backup timer and recent backup", maxsplit=1
+        )[1]
+        self.assertIn("sudo -n systemctl start ford-backup.service", manual_run)
+        self.assertNotIn("systemctl start", scheduled_check)
+        self.assertIn("github.event_name == 'schedule'", scheduled_check)
+        self.assertIn("systemctl is-enabled ford-backup.timer", workflow)
+        self.assertIn("systemctl is-active ford-backup.timer", workflow)
+        self.assertIn("manifest_*.json", workflow)
+        self.assertIn("36 * 60 * 60", workflow)
+        self.assertIn("StrictHostKeyChecking=yes", workflow)
+        self.assertNotIn("actions/upload-artifact", workflow)
+        self.assertNotIn("pg_dump", workflow)
+        self.assertNotIn("systemctl enable", workflow)
 
 
 if __name__ == "__main__":
