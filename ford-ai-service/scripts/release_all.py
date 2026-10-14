@@ -75,9 +75,7 @@ class GitHubApi(Protocol):
 
 
 class GitHubRestApi:
-    def __init__(self, token: str, api_url: str = "https://api.github.com"):
-        if not token:
-            raise ValueError("A GitHub App installation token is required")
+    def __init__(self, token: str = "", api_url: str = "https://api.github.com"):
         self._token = token
         self._api_url = api_url.rstrip("/")
 
@@ -89,21 +87,25 @@ class GitHubRestApi:
         query: dict[str, Any] | None = None,
         body: dict[str, Any] | None = None,
     ) -> Any:
+        if method != "GET" and not self._token:
+            raise ValueError("A GitHub App installation token is required for release dispatch")
         query_string = urllib.parse.urlencode(query or {})
         url = f"{self._api_url}{path}"
         if query_string:
             url = f"{url}?{query_string}"
         payload = json.dumps(body).encode("utf-8") if body is not None else None
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type": "application/json",
+        }
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
         request = urllib.request.Request(
             url,
             data=payload,
             method=method,
-            headers={
-                "Accept": "application/vnd.github+json",
-                "Authorization": f"Bearer {self._token}",
-                "X-GitHub-Api-Version": "2022-11-28",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
         )
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
@@ -126,6 +128,14 @@ class ReleaseResult:
     status: str
     run_id: int | None = None
     run_url: str | None = None
+    detail: str | None = None
+
+
+@dataclass(frozen=True)
+class PreflightResult:
+    target: ReleaseTarget
+    source_sha: str | None
+    status: str
     detail: str | None = None
 
 
@@ -162,6 +172,61 @@ def resolve_verified_sha(api: GitHubApi, target: ReleaseTarget) -> str:
     ):
         raise GitHubApiError("Latest successful CI response was not a verified main commit")
     return source_sha
+
+
+def preflight_selected(
+    api: GitHubApi,
+    targets: tuple[ReleaseTarget, ...],
+) -> list[PreflightResult]:
+    """Check public release readiness without dispatching workflows or using credentials."""
+    results: list[PreflightResult] = []
+    for target in targets:
+        source_sha: str | None = None
+        try:
+            source_sha = resolve_verified_sha(api, target)
+            workflow = api.request(
+                "GET",
+                f"/repos/{target.repository}/actions/workflows/{target.release_workflow}",
+            )
+            if not isinstance(workflow, dict) or workflow.get("state") != "active":
+                raise GitHubApiError("Target release workflow is not active")
+            expected_path = f".github/workflows/{target.release_workflow}"
+            if workflow.get("path") != expected_path:
+                raise GitHubApiError("Target release workflow path did not match")
+            results.append(PreflightResult(target, source_sha, "ready"))
+        except GitHubApiError as error:
+            detail = str(error)
+            if "No successful main CI" in detail:
+                detail = "No successful main CI source is available"
+            elif "release workflow" in detail.lower():
+                detail = "Target release workflow is not active or has an unexpected path"
+            else:
+                detail = "Could not verify target release readiness"
+            results.append(PreflightResult(target, source_sha, "failure", detail))
+    return results
+
+
+def summarize_preflight(results: list[PreflightResult]) -> str:
+    lines = [
+        "## Release-all preflight",
+        "",
+        "| Repository | Verified main CI SHA | Status | Release workflow |",
+        "| --- | --- | --- | --- |",
+    ]
+    for result in results:
+        source_sha = f"`{result.source_sha}`" if result.source_sha else "unavailable"
+        workflow_url = f"https://github.com/{result.target.repository}/actions/workflows/{result.target.release_workflow}"
+        detail = f" — {result.detail}" if result.detail else ""
+        lines.append(
+            f"| {result.target.name} | {source_sha} | {result.status}{detail} | [Workflow]({workflow_url}) |"
+        )
+    lines.extend(
+        [
+            "",
+            "This read-only preflight used public workflow metadata. It did not create a GitHub App token, dispatch releases, or enter a production environment.",
+        ]
+    )
+    return "\n".join(lines) + "\n"
 
 
 def dispatch_selected(
@@ -355,6 +420,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--scraping", action="store_true")
     parser.add_argument("--web", action="store_true")
     parser.add_argument("--validate-only", action="store_true")
+    parser.add_argument("--preflight-only", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -368,7 +434,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.validate_only:
         return 0
 
+    if args.preflight_only:
+        results = preflight_selected(GitHubRestApi(), targets)
+        summary = summarize_preflight(results)
+        summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary_path:
+            with Path(summary_path).open("a", encoding="utf-8") as summary_file:
+                summary_file.write(summary)
+        print(summary)
+        return 1 if any(result.status != "ready" for result in results) else 0
+
     token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        print("A GitHub App installation token is required for release dispatch", file=sys.stderr)
+        return 1
     request_id = f"{os.environ.get('GITHUB_RUN_ID', '')}-{os.environ.get('GITHUB_RUN_ATTEMPT', '')}"
     try:
         api = GitHubRestApi(token)

@@ -53,6 +53,21 @@ class ReleaseAllSelectionTest(unittest.TestCase):
         self.assertIn("permission-contents: read", workflow)
         self.assertNotIn("environment: production", workflow)
 
+    def test_validation_mode_defaults_to_read_only_preflight_before_app_token(self):
+        workflow = (REPOSITORY_ROOT / ".github/workflows/release-all.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("default: validate", workflow)
+        preflight = workflow.index("Run credential-free release preflight")
+        app_token = workflow.index("Create narrowly scoped GitHub App token")
+        dispatch = workflow.index("Dispatch exact verified versions and report each result")
+        self.assertLess(preflight, app_token)
+        self.assertLess(app_token, dispatch)
+        self.assertIn("if: inputs.operation == 'validate'", workflow)
+        self.assertIn("if: inputs.operation == 'release'", workflow)
+        self.assertIn("--preflight-only", workflow)
+
     def test_rejects_empty_repository_selection(self):
         with self.assertRaisesRegex(ValueError, "Select at least one repository"):
             select_targets(service=False, scraping=False, web=False)
