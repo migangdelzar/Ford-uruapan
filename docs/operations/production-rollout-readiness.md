@@ -17,7 +17,7 @@ Checked on 2026-10-13 from the local workspace, authenticated GitHub CLI session
 | Ford-web deployment environments | Only `pages-preview` is configured. The protected `production` environment and its smoke URL are still not configured. |
 | Ford Service private action access | Actions private-repository access level is `none`. Public Ford-scraping cannot call a private action regardless; shared OCI deployment logic needs a reviewed public home before Ford-scraping can use it. |
 | GitHub CLI | Authenticated as `migangdelzar`; repository metadata and the preview/preflight environments are configured. Production environments and protections remain outstanding. |
-| Cloudflare Pages | Project name is `ford-web-ui`; its Pages hostname is `ford-crm-ui.pages.dev`. The active Git integration deploys production from `feat-ford-crm-auth-integration`, while the Actions release workflow targets `main`. A feature-branch Pages preview now deploys and passes UI/API smoke from GitHub Actions. Production ownership still needs to move to one aligned path before release enablement. |
+| Cloudflare Pages | Legacy project `ford-web-ui` remains at `ford-crm-ui.pages.dev`; separate replacement project `emme-crm-ui` was created for `emme-crm-ui.pages.dev` with independent deployment history. Both are retained pending verification through the Spring proxy. |
 
 ## Latest CI status and ordered remaining work
 
@@ -49,6 +49,7 @@ The production state remains **not end-to-end release-ready**. Ford-scraping has
 - The running Ford Service and MCP app containers report no `FORD_SECRETS_PROVIDER` setting and zero `FORD_VAULT_SECRET_OCID_*` references. The local Spring Vault loader is not proof the deployed app uses Vault. The deployment's data/Collector runtime-secret path is also not verified. Keep production Actions disabled until the runtime consumers are migrated and validated.
 - The current Pages production deployment is associated with `feat-ford-crm-auth-integration`; a production Actions release using `--branch main` will not match until ownership/settings are reconciled. No production Pages deployment was made.
 - Ford-web's Wrangler config now targets project `ford-web-ui`, whose Pages hostname is `ford-crm-ui.pages.dev`; the origin is `https://ford-origin.emme.business`. The `pages-preview` GitHub environment successfully deployed a preview and passed UI plus `/api/v1/health` checks. Production still needs its own environment credentials and `FORD_WEB_SMOKE_URL` variable.
+- **2026-10-14 — Pages origin replacement project:** Cloudflare created `emme-crm-ui` (`emme-crm-ui.pages.dev`) as a new Pages project. Cloudflare Pages does not transfer deployment history between projects. The former project `ford-web-ui` (`ford-crm-ui.pages.dev`) remains available; no DNS or public-domain changes were made. See `cloudflare-pages-origin-cutover.md` for staging, verification, and rollback.
 
 ## Gates before enabling production
 

@@ -5,7 +5,7 @@
 | Consumer | Store | Notes |
 | --- | --- | --- |
 | Ford backend on OCI Compute | OCI Vault | The Compute instance should use an instance principal and a narrowly scoped dynamic group policy. Store runtime values in Vault; keep only non-secret configuration and secret OCIDs in deployment config. |
-| Ford web Pages project (`ford-web-ui`) | Cloudflare Pages bindings | The current Pages Functions proxy only uses `FORD_ORIGIN_URL`, which is a URL rather than a credential. Add a Pages secret only when a Pages Function starts consuming one. |
+| Ford web Pages project (`emme-crm-ui`; legacy rollback project `ford-web-ui`) | Cloudflare Pages bindings | The current Pages Functions proxy only uses `FORD_ORIGIN_URL`, which is a URL rather than a credential. Add a Pages secret only when a Pages Function starts consuming one. |
 | GitHub Actions | GitHub Actions environment secrets, only when a workflow needs an external credential | Current container publishing uses the automatically scoped `GITHUB_TOKEN`. Do not copy backend runtime credentials into GitHub. |
 | Local development | macOS Keychain | Keep local provider/API credentials in Keychain. The scraping service can use its local database and local embedding provider without production credentials. |
 

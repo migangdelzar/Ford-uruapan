@@ -120,7 +120,7 @@ logging:
 ford:
   web:
     ui:
-      upstream-url: ${FORD_WEB_UI_UPSTREAM_URL:https://ford-crm-ui.pages.dev}
+      upstream-url: ${FORD_WEB_UI_UPSTREAM_URL:https://emme-crm-ui.pages.dev}
       public-origin: ${FORD_PUBLIC_BASE_URL:https://ford.emme.business}
   mcp:
     enabled: ${FORD_MCP_ENABLED:false}
