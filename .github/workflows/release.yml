@@ -103,13 +103,13 @@ jobs:
           image: ${{ steps.image.outputs.image }}
           operation: ${{ steps.source.outputs.operation }}
           source-sha: ${{ steps.source.outputs.source_sha }}
-          host: ${{ secrets.OCI_DEPLOY_HOST }}
-          user: ${{ secrets.OCI_DEPLOY_USER }}
+          host: ${{ vars.OCI_DEPLOY_HOST }}
+          user: ${{ vars.OCI_DEPLOY_USER }}
           ssh-private-key: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
           backup-ssh-private-key: ${{ secrets.OCI_DATA_SSH_PRIVATE_KEY }}
           ssh-known-hosts: ${{ secrets.OCI_SSH_KNOWN_HOSTS }}
           registry-username: ${{ github.actor }}
           registry-token: ${{ secrets.GITHUB_TOKEN }}
           remote-root: /opt/ford
-          backup-host: ${{ secrets.OCI_DATA_DEPLOY_HOST }}
-          backup-user: ${{ secrets.OCI_DATA_DEPLOY_USER }}
+          backup-host: ${{ vars.OCI_DATA_DEPLOY_HOST }}
+          backup-user: ${{ vars.OCI_DATA_DEPLOY_USER }}

@@ -49,8 +49,12 @@ test("Ford Service pins the backup-verified OCI rollout action", async () => {
     source,
     /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@8e32aec3eabf8207c47c7a601d8d32735f7c0b37/,
   );
+  assert.match(source, /host: \$\{\{ vars\.OCI_DEPLOY_HOST \}\}/);
+  assert.match(source, /user: \$\{\{ vars\.OCI_DEPLOY_USER \}\}/);
+  assert.match(source, /backup-host: \$\{\{ vars\.OCI_DATA_DEPLOY_HOST \}\}/);
+  assert.match(source, /backup-user: \$\{\{ vars\.OCI_DATA_DEPLOY_USER \}\}/);
   assert.match(source, /backup-ssh-private-key: \$\{\{ secrets\.OCI_DATA_SSH_PRIVATE_KEY \}\}/);
-  assert.match(source, /backup-host: \$\{\{ secrets\.OCI_DATA_DEPLOY_HOST \}\}/);
+  assert.doesNotMatch(source, /secrets\.OCI_(?:DATA_)?DEPLOY_(?:HOST|USER)/);
 });
 
 test("reusable workflows expose the shared contract", async () => {
