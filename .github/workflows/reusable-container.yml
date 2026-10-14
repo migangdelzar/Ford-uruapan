@@ -177,5 +177,5 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ${{ steps.image-repository.outputs.name }}
-          subject-digest: ${{ steps.build.outputs.digest }}
+          subject-digest: ${{ steps.publish.outputs.digest }}
           push-to-registry: true

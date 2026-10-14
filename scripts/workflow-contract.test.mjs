@@ -92,6 +92,12 @@ test("container attestation permission is granted by both caller and reusable wo
   assert.match(reusable, /attestations: write/);
 });
 
+test("container provenance attests the digest returned by the registry push", async () => {
+  const source = await read(".github/workflows/reusable-container.yml");
+
+  assert.match(source, /subject-digest: \$\{\{ steps\.publish\.outputs\.digest \}\}/);
+});
+
 test("container tags and provenance subjects use a lowercase GHCR repository", async () => {
   const source = await read(".github/workflows/reusable-container.yml");
   assert.match(source, /id: image-repository/);
