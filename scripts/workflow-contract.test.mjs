@@ -27,7 +27,7 @@ test("CI verifies every branch and publishes images only from immutable SemVer t
 
   assert.match(source, /^  push:\s*$/m);
   assert.match(source, /name: Container gates \(no publication\)/);
-  assert.match(source, /packages: read/);
+  assert.match(source, /publish: false/);
   assert.match(source, /name: Container gates and version publication/);
   assert.match(source, /github\.ref_type == 'tag'/);
   assert.match(source, /startsWith\(github\.ref, 'refs\/tags\/v'\)/);

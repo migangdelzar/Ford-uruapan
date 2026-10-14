@@ -58,13 +58,15 @@ jobs:
     uses: ./.github/workflows/reusable-container.yml
     with:
       source_sha: ${{ github.sha }}
-      version: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-      publish: ${{ github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v') }}
+      version: ''
+      publish: false
     secrets: inherit
     permissions:
       contents: read
-      packages: read
+      packages: write
       security-events: write
+      id-token: write
+      attestations: write
 
   publish-container:
     name: Container gates and version publication

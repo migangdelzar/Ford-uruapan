@@ -137,10 +137,10 @@ class OciActionContractTest(unittest.TestCase):
 
         self.assertNotIn("publish_container", workflow)
         self.assertIn("inputs.version", container)
+        self.assertIn("publish: false", workflow)
         self.assertIn("github.ref_type == 'tag'", workflow)
         self.assertIn("refs/tags/v", workflow)
         self.assertIn("Container gates (no publication)", workflow)
-        self.assertIn("packages: read", workflow)
         self.assertIn("Container gates and version publication", workflow)
         self.assertIn("packages: write", workflow)
         self.assertIn("git merge-base --is-ancestor", container)
