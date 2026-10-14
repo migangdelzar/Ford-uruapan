@@ -84,6 +84,14 @@ test("container workflow contains image, SBOM, and provenance gates", async () =
   assert.match(source, /id-token: write/);
 });
 
+test("container attestation permission is granted by both caller and reusable workflow", async () => {
+  const caller = await read(".github/workflows/ci.yml");
+  const reusable = await read(".github/workflows/reusable-container.yml");
+
+  assert.match(caller, /attestations: write/);
+  assert.match(reusable, /attestations: write/);
+});
+
 test("container tags and provenance subjects use a lowercase GHCR repository", async () => {
   const source = await read(".github/workflows/reusable-container.yml");
   assert.match(source, /id: image-repository/);
