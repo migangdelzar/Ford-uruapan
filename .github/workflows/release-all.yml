@@ -1,0 +1,86 @@
+name: Release selected Ford repositories
+
+on:
+  workflow_dispatch:
+    inputs:
+      ford_service:
+        description: Release Ford Service
+        type: boolean
+        required: true
+        default: false
+      ford_scraping:
+        description: Release Ford MCP
+        type: boolean
+        required: true
+        default: false
+      ford_web:
+        description: Release Ford Web
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ford-release-all
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Dispatch and track selected releases
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    permissions:
+      contents: read
+    steps:
+      - name: Check out coordinator source
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Validate repository selection
+        working-directory: ford-ai-service
+        env:
+          FORD_SERVICE: ${{ inputs.ford_service }}
+          FORD_SCRAPING: ${{ inputs.ford_scraping }}
+          FORD_WEB: ${{ inputs.ford_web }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "${FORD_SERVICE}" == "true" ]]; then args+=(--service); fi
+          if [[ "${FORD_SCRAPING}" == "true" ]]; then args+=(--scraping); fi
+          if [[ "${FORD_WEB}" == "true" ]]; then args+=(--web); fi
+          python3 scripts/release_all.py --validate-only "${args[@]}"
+
+      - name: Create narrowly scoped GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_COORDINATOR_APP_ID }}
+          private-key: ${{ secrets.RELEASE_COORDINATOR_APP_PRIVATE_KEY }}
+          owner: migangdelzar
+          repositories: |
+            Ford-uruapan
+            Ford-scraping
+            Ford-web
+          permission-actions: write
+          permission-contents: read
+
+      - name: Dispatch exact verified versions and report each result
+        working-directory: ford-ai-service
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          FORD_SERVICE: ${{ inputs.ford_service }}
+          FORD_SCRAPING: ${{ inputs.ford_scraping }}
+          FORD_WEB: ${{ inputs.ford_web }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "${FORD_SERVICE}" == "true" ]]; then args+=(--service); fi
+          if [[ "${FORD_SCRAPING}" == "true" ]]; then args+=(--scraping); fi
+          if [[ "${FORD_WEB}" == "true" ]]; then args+=(--web); fi
+          python3 scripts/release_all.py "${args[@]}"
