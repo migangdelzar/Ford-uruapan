@@ -61,7 +61,7 @@ test("Ford Service pins the backup-verified OCI rollout action", async () => {
 
   assert.match(
     source,
-    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@17e8216a4e5b17998ceee4be6aad5147dc1ab5ec/,
+    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@5f33092fdafeae6e548f2e381c074cc9f9b3727c/,
   );
   assert.match(source, /host: \$\{\{ vars\.OCI_DEPLOY_HOST \}\}/);
   assert.match(source, /user: \$\{\{ vars\.OCI_DEPLOY_USER \}\}/);
@@ -106,6 +106,15 @@ test("Ford Service rejects observability endpoint placeholders before deployment
     /for endpoint in GRAFANA_CLOUD_OTLP_ENDPOINT LANGFUSE_OTLP_ENDPOINT; do[\s\S]*\[\[ "\$\{!endpoint\}" =~ \^https:\/\//,
   );
   assert.match(source, /configure \$\{endpoint\} as an HTTPS endpoint URL/);
+});
+
+test("Ford Service passes a validated production operator email to the OCI action", async () => {
+  const source = await read(".github/workflows/release.yml");
+
+  assert.match(source, /FORD_OPERATOR_USERNAME: \$\{\{ vars\.FORD_OPERATOR_USERNAME \}\}/);
+  assert.match(source, /operator-username: \$\{\{ vars\.FORD_OPERATOR_USERNAME \}\}/);
+  assert.match(source, /FORD_OPERATOR_USERNAME" =~ \^\[\^@\[:space:\]\]\+@/);
+  assert.match(source, /configure FORD_OPERATOR_USERNAME as the production operator login email/);
 });
 
 test("database backup actions inspect the deployed archive directory", async () => {
