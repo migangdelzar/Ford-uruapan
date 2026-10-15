@@ -195,7 +195,6 @@ jobs:
       contents: read
       packages: read
     env:
-      FORD_WEB_UI_UPSTREAM_URL: ${{ vars.FORD_WEB_UI_UPSTREAM_URL }}
       FORD_SECRETS_PROVIDER: ${{ vars.FORD_SECRETS_PROVIDER }}
       FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD }}
       FORD_VAULT_SECRET_OCID_SPRING_DATA_REDIS_PASSWORD: ${{ vars.FORD_VAULT_SECRET_OCID_SPRING_DATA_REDIS_PASSWORD }}
@@ -272,9 +271,10 @@ jobs:
           sparse-checkout: deployment/observability/otel-collector/grafana-cloud-config.yaml
           sparse-checkout-cone-mode: false
       - name: Run the shared OCI blue-green deployment action
-        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@7f0b5ac1a533000416d64441ebe0d2091f2f960b
+        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@161471351d0ae1d42de129b60cad207bc9d8ce9f
         with:
           target: ford-service
+          ui-upstream-url: ${{ vars.FORD_WEB_UI_UPSTREAM_URL }}
           image: ${{ needs.verify.outputs.operation == 'rollback' && '' || needs.image.outputs.image }}
           operation: ${{ needs.verify.outputs.operation }}
           source-sha: ${{ needs.verify.outputs.source_sha }}

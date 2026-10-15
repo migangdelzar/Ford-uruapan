@@ -61,7 +61,7 @@ test("Ford Service pins the backup-verified OCI rollout action", async () => {
 
   assert.match(
     source,
-    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@7f0b5ac1a533000416d64441ebe0d2091f2f960b/,
+    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@161471351d0ae1d42de129b60cad207bc9d8ce9f/,
   );
   assert.match(source, /host: \$\{\{ vars\.OCI_DEPLOY_HOST \}\}/);
   assert.match(source, /user: \$\{\{ vars\.OCI_DEPLOY_USER \}\}/);
@@ -70,6 +70,12 @@ test("Ford Service pins the backup-verified OCI rollout action", async () => {
   assert.match(source, /backup-ssh-private-key: \$\{\{ secrets\.OCI_DATA_SSH_PRIVATE_KEY \}\}/);
   assert.match(source, /remote-root: \/opt\/ford-uruapan/);
   assert.doesNotMatch(source, /secrets\.OCI_(?:DATA_)?DEPLOY_(?:HOST|USER)/);
+});
+
+test("Ford Service passes its Pages upstream override explicitly to the OCI action", async () => {
+  const source = await read(".github/workflows/release.yml");
+
+  assert.match(source, /ui-upstream-url: \$\{\{ vars\.FORD_WEB_UI_UPSTREAM_URL \}\}/);
 });
 
 test("Ford Service supplies the data private IP required by app deployment", async () => {
