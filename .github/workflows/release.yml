@@ -220,6 +220,7 @@ jobs:
       FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY }}
       GRAFANA_CLOUD_OTLP_ENDPOINT: ${{ vars.GRAFANA_CLOUD_OTLP_ENDPOINT }}
       GRAFANA_CLOUD_INSTANCE_ID: ${{ vars.GRAFANA_CLOUD_INSTANCE_ID }}
+      FORD_OPERATOR_USERNAME: ${{ vars.FORD_OPERATOR_USERNAME }}
       LANGFUSE_OTLP_ENDPOINT: ${{ vars.LANGFUSE_OTLP_ENDPOINT }}
       LANGFUSE_PUBLIC_KEY: ${{ vars.LANGFUSE_PUBLIC_KEY }}
     steps:
@@ -229,6 +230,10 @@ jobs:
           set -euo pipefail
           [[ "$FORD_SECRETS_PROVIDER" == 'oci-vault' ]] || {
             echo 'Production deployment blocked: configure FORD_SECRETS_PROVIDER=oci-vault in the production environment.' >&2
+            exit 1
+          }
+          [[ "$FORD_OPERATOR_USERNAME" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || {
+            echo 'Production deployment blocked: configure FORD_OPERATOR_USERNAME as the production operator login email.' >&2
             exit 1
           }
           for mapping in \
@@ -267,7 +272,7 @@ jobs:
           sparse-checkout: deployment/observability/otel-collector/grafana-cloud-config.yaml
           sparse-checkout-cone-mode: false
       - name: Run the shared OCI blue-green deployment action
-        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@17e8216a4e5b17998ceee4be6aad5147dc1ab5ec
+        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@5f33092fdafeae6e548f2e381c074cc9f9b3727c
         with:
           target: ford-service
           image: ${{ needs.verify.outputs.operation == 'rollback' && '' || needs.image.outputs.image }}
@@ -291,6 +296,7 @@ jobs:
           langfuse-otlp-endpoint: ${{ vars.LANGFUSE_OTLP_ENDPOINT }}
           langfuse-public-key: ${{ vars.LANGFUSE_PUBLIC_KEY }}
           langfuse-secret-key-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY }}
+          operator-username: ${{ vars.FORD_OPERATOR_USERNAME }}
 
   release-result:
     name: Record release artifact and deployment identity
