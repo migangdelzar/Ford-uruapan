@@ -61,7 +61,7 @@ test("Ford Service pins the backup-verified OCI rollout action", async () => {
 
   assert.match(
     source,
-    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@00bd4c8608cd1c5f5de28a4581a93e1837d6fa2d/,
+    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@9cb6eae7e3803df4684c664a7106873d78550f4f/,
   );
   assert.match(source, /host: \$\{\{ vars\.OCI_DEPLOY_HOST \}\}/);
   assert.match(source, /user: \$\{\{ vars\.OCI_DEPLOY_USER \}\}/);
@@ -142,6 +142,7 @@ test("production service deployment passes Vault secret references to Ansible", 
     "FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY",
   ];
 
+  assert.match(source, /secrets-provider: \$\{\{ vars\.FORD_SECRETS_PROVIDER \}\}/);
   assert.match(source, /FORD_SECRETS_PROVIDER: \$\{\{ vars\.FORD_SECRETS_PROVIDER \}\}/);
   for (const name of requiredReferences) {
     assert.ok(
