@@ -61,7 +61,7 @@ test("Ford Service pins the backup-verified OCI rollout action", async () => {
 
   assert.match(
     source,
-    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@788aac9df41abd953730990a4a32e0d217474c9c/,
+    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@00bd4c8608cd1c5f5de28a4581a93e1837d6fa2d/,
   );
   assert.match(source, /host: \$\{\{ vars\.OCI_DEPLOY_HOST \}\}/);
   assert.match(source, /user: \$\{\{ vars\.OCI_DEPLOY_USER \}\}/);
@@ -76,6 +76,16 @@ test("Ford Service supplies the data private IP required by app deployment", asy
   const source = await read(".github/workflows/release.yml");
 
   assert.match(source, /data-private-ip: \$\{\{ vars\.OCI_DATA_PRIVATE_IP \}\}/);
+  assert.match(source, /grafana-cloud-otlp-endpoint: \$\{\{ vars\.GRAFANA_CLOUD_OTLP_ENDPOINT \}\}/);
+  assert.match(source, /grafana-cloud-instance-id: \$\{\{ vars\.GRAFANA_CLOUD_INSTANCE_ID \}\}/);
+  assert.match(source, /grafana-cloud-api-token-secret-ocid: \$\{\{ vars\.FORD_VAULT_SECRET_OCID_GRAFANA_CLOUD_API_TOKEN \}\}/);
+  assert.match(source, /langfuse-otlp-endpoint: \$\{\{ vars\.LANGFUSE_OTLP_ENDPOINT \}\}/);
+  assert.match(source, /langfuse-public-key: \$\{\{ vars\.LANGFUSE_PUBLIC_KEY \}\}/);
+  assert.match(source, /langfuse-secret-key-secret-ocid: \$\{\{ vars\.FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY \}\}/);
+  assert.match(
+    source,
+    /name: Check out Service observability configuration\n\s+uses: actions\/checkout@v7\n\s+with:\n\s+ref: main/,
+  );
 });
 
 test("database backup actions inspect the deployed archive directory", async () => {
@@ -118,6 +128,8 @@ test("production service deployment passes Vault secret references to Ansible", 
     "FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY",
     "FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY",
     "FORD_VAULT_SECRET_OCID_OPENAI_API_KEY",
+    "FORD_VAULT_SECRET_OCID_GRAFANA_CLOUD_API_TOKEN",
+    "FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY",
   ];
 
   assert.match(source, /FORD_SECRETS_PROVIDER: \$\{\{ vars\.FORD_SECRETS_PROVIDER \}\}/);
