@@ -190,7 +190,7 @@ class OciActionContractTest(unittest.TestCase):
 
     def test_database_backup_workflow_supports_manual_run_and_scheduled_verification(self):
         workflow = BACKUP_WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("cron: '30 4 * * *'", workflow)
+        self.assertIn("cron: '30 4 1 * *'", workflow)
         self.assertIn("options: [run, verify]", workflow)
         self.assertIn("environment: deployment-preflight", workflow)
         self.assertIn("secrets.DATA_SSH_PRIVATE_KEY", workflow)
@@ -209,7 +209,10 @@ class OciActionContractTest(unittest.TestCase):
         self.assertIn("systemctl is-enabled ford-backup.timer", workflow)
         self.assertIn("systemctl is-active ford-backup.timer", workflow)
         self.assertIn("manifest_*.json", workflow)
-        self.assertIn("36 * 60 * 60", workflow)
+        self.assertIn("MAX_BACKUP_AGE_SECONDS", scheduled_check)
+        self.assertIn("'129600'", scheduled_check)
+        self.assertIn("'2764800'", scheduled_check)
+        self.assertIn('"$MAX_BACKUP_AGE_SECONDS"', scheduled_check)
         self.assertIn("StrictHostKeyChecking=yes", workflow)
         self.assertNotIn("actions/upload-artifact", workflow)
         self.assertNotIn("pg_dump", workflow)
