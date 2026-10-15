@@ -144,6 +144,18 @@ class BlueGreenComposeContractTest(unittest.TestCase):
         self.assertIn("src: app.env.j2", source)
         self.assertIn('dest: "{{ remote_root }}/app/.env"', source)
 
+    def test_service_environment_preserves_the_configured_openrouter_fallback(self):
+        template = (APP_TEMPLATES / "app.env.j2").read_text()
+        production = (REPO_ROOT.parent / "ford-ai-service/src/main/resources/application-prod.yml").read_text()
+        example = (REPO_ROOT.parent / "deployment/config/oci.env.example").read_text()
+
+        self.assertIn("FORD_AI_OPENROUTER_MODEL={{ ford_ai_openrouter_model | default('xiaomi/mimo-v2.6-flash') }}", template)
+        self.assertIn("model: ${FORD_AI_OPENROUTER_MODEL:xiaomi/mimo-v2.6-flash}", production)
+        self.assertIn("FORD_AI_OPENROUTER_MODEL=xiaomi/mimo-v2.6-flash", example)
+        self.assertIn("FORD_AI_OPENROUTER_ENABLED={{ (ford_ai_openrouter_enabled | default(true))", template)
+        self.assertIn("FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED={{ (ford_ai_openrouter_tool_calling_verified | default(true))", template)
+        self.assertIn("FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED={{ (ford_ai_openrouter_structured_output_verified | default(true))", template)
+
     def test_app_proxy_keeps_stable_listener_and_routes_to_active_slot(self):
         template = Environment(loader=FileSystemLoader(APP_TEMPLATES)).get_template("proxy.conf.j2")
         rendered = template.render(app_active_port=18082)
