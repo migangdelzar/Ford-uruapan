@@ -39,6 +39,36 @@ Instance Principal; do not copy an OCI API key to it.
 `create_instances`, `manage_data_volume`, and `manage_backup_bucket` remain
 false during adoption. Existing instance OCIDs are recorded in the ignored
 local OCI config and are used by Ansible/operations; they are not committed.
+
+The existing Vault instance-principal access is also available for adoption.
+`manage_runtime_vault_identity` defaults to `false`. It describes the existing
+`ford-runtime-app-emme1` and `ford-runtime-data-emme2` dynamic groups and the
+`ford-runtime-secret-read` tenancy policy. Each group matches one existing VM;
+each policy statement grants `read secret-bundles` for one production secret
+name in the configured Vault. The removed BFF credential is excluded from the
+desired policy. No Vault values enter Terraform state.
+
+Import all three existing resources before any apply. Set the existing
+`emme_1_instance_ocid`, `emme_2_instance_ocid`, `runtime_vault_ocid`,
+`compartment_ocid`, and `tenancy_ocid` in a private tfvars file along with
+`manage_runtime_vault_identity = true`. Use the three OCIDs returned by OCI
+Identity for the existing dynamic groups and policy; never substitute the VM
+or Vault OCIDs for the import IDs:
+
+```bash
+cd deployment/terraform
+terraform init
+terraform import -var-file=private.tfvars 'oci_identity_dynamic_group.runtime_vault["app"]' '<existing-app-dynamic-group-ocid>'
+terraform import -var-file=private.tfvars 'oci_identity_dynamic_group.runtime_vault["data"]' '<existing-data-dynamic-group-ocid>'
+terraform import -var-file=private.tfvars 'oci_identity_policy.runtime_vault[0]' '<existing-policy-ocid>'
+terraform plan -var-file=private.tfvars -out=runtime-vault.tfplan
+```
+
+Review the entire plan and state before applying. The initial policy plan
+should remove the stale BFF secret-name grant while preserving all other named
+grants. If any group replacement, resource creation, or broader policy grant
+appears, stop and reconcile the imported state and desired configuration.
+Keep the private tfvars file and Terraform state outside version control.
 Third-party chat-provider API keys use the separate private Mise/Ansible
 application-environment path; they are not Terraform variables or state.
 Before Terraform owns an existing instance, import it into a reviewed state
