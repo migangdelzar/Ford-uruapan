@@ -284,12 +284,6 @@ jobs:
           langfuse-otlp-endpoint: ${{ vars.LANGFUSE_OTLP_ENDPOINT }}
           langfuse-public-key: ${{ vars.LANGFUSE_PUBLIC_KEY }}
           langfuse-secret-key-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY }}
-          grafana-cloud-otlp-endpoint: ${{ vars.GRAFANA_CLOUD_OTLP_ENDPOINT }}
-          grafana-cloud-instance-id: ${{ vars.GRAFANA_CLOUD_INSTANCE_ID }}
-          grafana-cloud-api-token-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_GRAFANA_CLOUD_API_TOKEN }}
-          langfuse-otlp-endpoint: ${{ vars.LANGFUSE_OTLP_ENDPOINT }}
-          langfuse-public-key: ${{ vars.LANGFUSE_PUBLIC_KEY }}
-          langfuse-secret-key-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY }}
 
   release-result:
     name: Record release artifact and deployment identity
