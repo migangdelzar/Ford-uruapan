@@ -74,7 +74,7 @@ resource "oci_identity_policy" "runtime_vault" {
     prevent_destroy = true
 
     precondition {
-      condition     = can(regex("^ocid1\\.vault\\.", var.runtime_vault_ocid)) && can(regex("^ocid1\\.compartment\\.", var.compartment_ocid))
+      condition     = can(regex("^ocid1\\.vault\\.", var.runtime_vault_ocid)) && can(regex("^ocid1\\.(compartment|tenancy)\\.", var.compartment_ocid))
       error_message = "The existing Vault and secret compartment OCIDs are required before managing Vault identity."
     }
   }

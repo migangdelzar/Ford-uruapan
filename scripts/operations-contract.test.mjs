@@ -157,6 +157,10 @@ test("OCI runtime Vault identity is opt-in and scoped to each instance, vault, a
   assert.match(identity, /read secret-bundles/);
   assert.match(identity, /target\.vault\.id = '\$\{var\.runtime_vault_ocid\}'/);
   assert.match(identity, /target\.secret\.name = '\$\{secret_name\}'/);
+  assert.ok(
+    identity.includes('^ocid1\\\\.(compartment|tenancy)\\\\.'),
+    "runtime Vault identity must accept either a child compartment OCID or the tenancy root OCID"
+  );
   assert.match(identity, /ford-prod-cloudflared-tunnel-token/);
   assert.match(identity, /ford-prod-meta-instagram-access-token/);
   assert.doesNotMatch(identity, /ford-prod-bff-oidc-client-secret/);
