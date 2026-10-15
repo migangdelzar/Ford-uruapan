@@ -237,7 +237,7 @@ jobs:
             }
           done
       - name: Run the shared OCI blue-green deployment action
-        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@7c9eb649e4ffb83ac9ed2a7037c6fc2281f747c2
+        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@870ac05d594f26d72ac2757f0f788f6bd7b02f21
         with:
           target: ford-service
           image: ${{ needs.verify.outputs.operation == 'rollback' && '' || needs.image.outputs.image }}
