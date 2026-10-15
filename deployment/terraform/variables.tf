@@ -79,6 +79,21 @@ variable "emme_2_instance_ocid" {
   default = ""
 }
 
+variable "emme_1_instance_ocid" {
+  type    = string
+  default = ""
+}
+
+variable "runtime_vault_ocid" {
+  type    = string
+  default = ""
+}
+
+variable "manage_runtime_vault_identity" {
+  type    = bool
+  default = false
+}
+
 variable "backup_dynamic_group_name" {
   type    = string
   default = "ford-backup-emme2"
