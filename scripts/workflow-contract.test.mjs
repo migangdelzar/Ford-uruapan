@@ -98,6 +98,16 @@ test("Ford Service supplies the data private IP required by app deployment", asy
   }
 });
 
+test("Ford Service rejects observability endpoint placeholders before deployment", async () => {
+  const source = await read(".github/workflows/release.yml");
+
+  assert.match(
+    source,
+    /for endpoint in GRAFANA_CLOUD_OTLP_ENDPOINT LANGFUSE_OTLP_ENDPOINT; do[\s\S]*\[\[ "\$\{!endpoint\}" =~ \^https:\/\//,
+  );
+  assert.match(source, /configure \$\{endpoint\} as an HTTPS endpoint URL/);
+});
+
 test("database backup actions inspect the deployed archive directory", async () => {
   const source = await read(".github/workflows/database-backup.yml");
 
