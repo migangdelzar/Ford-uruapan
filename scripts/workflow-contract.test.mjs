@@ -86,6 +86,16 @@ test("Ford Service supplies the data private IP required by app deployment", asy
     source,
     /name: Check out Service observability configuration\n\s+uses: actions\/checkout@v7\n\s+with:\n\s+ref: main/,
   );
+  for (const input of [
+    "grafana-cloud-otlp-endpoint:",
+    "grafana-cloud-instance-id:",
+    "grafana-cloud-api-token-secret-ocid:",
+    "langfuse-otlp-endpoint:",
+    "langfuse-public-key:",
+    "langfuse-secret-key-secret-ocid:",
+  ]) {
+    assert.equal(source.split(input).length - 1, 1, `${input} must be unique`);
+  }
 });
 
 test("database backup actions inspect the deployed archive directory", async () => {
