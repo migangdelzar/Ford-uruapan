@@ -11,15 +11,23 @@ services:
         max-size: 20m
         max-file: "3"
     environment: &mcp_environment
-      DATABASE_URL: postgres://ford:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be supplied}@postgres:5432/ford_service?application_name=ford-mcp-blue
+      DATABASE_URL: ${DATABASE_URL:-postgres://ford:${POSTGRES_PASSWORD:-}@postgres:5432/ford_service?application_name=ford-mcp-blue}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_USER: ford
+      DATABASE_NAME: ford_service
+      DATABASE_APPLICATION_NAME: ford-mcp-blue
       FORD_BASE_URL: https://www.forduruapan.mx
+      FORD_SECRETS_PROVIDER: ${FORD_SECRETS_PROVIDER:-environment}
+      FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD: ${FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD:-}
+      FORD_VAULT_SECRET_OCID_MCP_HTTP_BEARER_TOKEN: ${FORD_VAULT_SECRET_OCID_MCP_HTTP_BEARER_TOKEN:-}
       EMBEDDING_PROVIDER: ollama
       EMBEDDING_API_URL: http://ollama:11434/api/embed
       EMBEDDING_MODEL: qllama/bge-m3:q8_0
       EMBEDDING_DIMENSIONS: "1024"
       MCP_HTTP_HOST: 0.0.0.0
       MCP_HTTP_PORT: "3001"
-      MCP_HTTP_BEARER_TOKEN: ${MCP_HTTP_BEARER_TOKEN:?MCP_HTTP_BEARER_TOKEN must be supplied}
+      MCP_HTTP_BEARER_TOKEN: ${MCP_HTTP_BEARER_TOKEN:-}
       MCP_HTTP_ALLOWED_HOSTS: ford-mcp.emme.business,${EMME_2_PRIVATE_IP},127.0.0.1,localhost
       MCP_HTTP_ALLOWED_ORIGINS: ""
       LANGFUSE_ENVIRONMENT: production
@@ -53,7 +61,8 @@ services:
         max-file: "3"
     environment:
       <<: *mcp_environment
-      DATABASE_URL: postgres://ford:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be supplied}@postgres:5432/ford_service?application_name=ford-mcp-green
+      DATABASE_URL: ${DATABASE_URL:-postgres://ford:${POSTGRES_PASSWORD:-}@postgres:5432/ford_service?application_name=ford-mcp-green}
+      DATABASE_APPLICATION_NAME: ford-mcp-green
     command: ["node", "dist/src/cli.js", "mcp-http"]
     ports:
       - "127.0.0.1:{{ mcp_green_port }}:3001"
@@ -74,8 +83,16 @@ services:
         max-size: 20m
         max-file: "3"
     environment:
-      DATABASE_URL: postgres://ford:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be supplied}@postgres:5432/ford_service?application_name=ford-scraping-scheduler
+      DATABASE_URL: ${DATABASE_URL:-postgres://ford:${POSTGRES_PASSWORD:-}@postgres:5432/ford_service?application_name=ford-scraping-scheduler}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_USER: ford
+      DATABASE_NAME: ford_service
+      DATABASE_APPLICATION_NAME: ford-scraping-scheduler
       FORD_BASE_URL: https://www.forduruapan.mx
+      FORD_SECRETS_PROVIDER: ${FORD_SECRETS_PROVIDER:-environment}
+      FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD: ${FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD:-}
+      FORD_VAULT_SECRET_OCID_MCP_HTTP_BEARER_TOKEN: ${FORD_VAULT_SECRET_OCID_MCP_HTTP_BEARER_TOKEN:-}
       EMBEDDING_PROVIDER: ollama
       EMBEDDING_API_URL: http://ollama:11434/api/embed
       EMBEDDING_MODEL: qllama/bge-m3:q8_0

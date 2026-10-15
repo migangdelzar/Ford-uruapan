@@ -70,6 +70,92 @@ class BlueGreenComposeContractTest(unittest.TestCase):
         self.assertEqual(proxy["network_mode"], "host")
         self.assertEqual(proxy["image"], "nginx@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de")
 
+    def test_mcp_vault_environment_passes_only_secret_references_to_containers(self):
+        templates = MCP_TEMPLATES
+        environment = Environment(loader=FileSystemLoader(templates), autoescape=False)
+        values = {
+            "FORD_SECRETS_PROVIDER": "oci-vault",
+            "FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD": "ocid-database",
+            "FORD_VAULT_SECRET_OCID_MCP_HTTP_BEARER_TOKEN": "ocid-mcp-token",
+            "POSTGRES_PASSWORD": "synthetic-db-password",
+            "MCP_HTTP_BEARER_TOKEN": "synthetic-mcp-token",
+        }
+        environment.globals["lookup"] = lambda _plugin, key: values.get(key, "")
+        rendered = environment.get_template("mcp.env.j2").render(
+            mcp_image="ghcr.io/example/mcp@sha256:digest",
+            emme_2_private_ip="10.0.0.2",
+        )
+
+        self.assertIn("FORD_SECRETS_PROVIDER=oci-vault", rendered)
+        self.assertIn("FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD=ocid-database", rendered)
+        self.assertIn("FORD_VAULT_SECRET_OCID_MCP_HTTP_BEARER_TOKEN=ocid-mcp-token", rendered)
+        self.assertNotIn("synthetic-db-password", rendered)
+        self.assertNotIn("synthetic-mcp-token", rendered)
+        self.assertNotRegex(rendered, r"(?m)^POSTGRES_PASSWORD=")
+        self.assertNotRegex(rendered, r"(?m)^MCP_HTTP_BEARER_TOKEN=")
+
+    def test_mcp_compose_delegates_vault_resolution_to_the_mcp_process(self):
+        for template_name in ("compose.yml.j2", "blue-green-compose.yml.j2"):
+            compose = self.render(
+                MCP_TEMPLATES,
+                template_name,
+                mcp_image="ghcr.io/example/ford-mcp@sha256:newdigest",
+                mcp_previous_image="ghcr.io/example/ford-mcp@sha256:olddigest",
+                mcp_candidate_slot="blue",
+                mcp_blue_port=3101,
+                mcp_green_port=3102,
+                mcp_active_port=3101,
+                mcp_proxy_image="nginx@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de",
+                emme_2_private_ip="10.0.0.2",
+                remote_root="/opt/ford",
+                mcp_scheduler_image="ghcr.io/example/ford-mcp@sha256:scheduler",
+            )
+            services = compose["services"]
+            mcp_services = [name for name in services if name.startswith("mcp") and name not in ("mcp-proxy",)]
+            self.assertTrue(mcp_services)
+            for name in mcp_services:
+                environment = services[name]["environment"]
+                self.assertIn("FORD_SECRETS_PROVIDER", environment)
+                self.assertIn("FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD", environment)
+                self.assertIn("DATABASE_HOST", environment)
+                self.assertNotIn("POSTGRES_PASSWORD", environment)
+
+    def test_mcp_protocol_smoke_resolves_vault_token_inside_container(self):
+        playbook = (MCP_TEMPLATES.parent / "tasks" / "blue-green.yml").read_text()
+
+        self.assertIn("loadRuntimeEnvironment", playbook)
+        self.assertIn("command: 'mcp-http'", playbook)
+        self.assertNotIn("process.env.MCP_HTTP_BEARER_TOKEN", playbook)
+
+    def test_mcp_blue_green_refreshes_runtime_environment_from_protected_config(self):
+        playbook = (MCP_TEMPLATES.parent / "tasks" / "blue-green.yml").read_text()
+
+        self.assertIn("src: mcp.env.j2", playbook)
+        self.assertIn('dest: "{{ remote_root }}/mcp/.env"', playbook)
+        self.assertIn("FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD", playbook)
+        candidate_validation = playbook.index("Validate current slot and requested rollback identity")
+        environment_render = playbook.index("Render MCP runtime environment from protected configuration")
+        self.assertLess(candidate_validation, environment_render)
+
+    def test_service_blue_green_refreshes_application_environment(self):
+        playbook = APP_TEMPLATES.parent / "tasks" / "blue-green.yml"
+        source = playbook.read_text()
+
+        self.assertIn("src: app.env.j2", source)
+        self.assertIn('dest: "{{ remote_root }}/app/.env"', source)
+
+    def test_service_environment_preserves_the_configured_openrouter_fallback(self):
+        template = (APP_TEMPLATES / "app.env.j2").read_text()
+        production = (REPO_ROOT.parent / "ford-ai-service/src/main/resources/application-prod.yml").read_text()
+        example = (REPO_ROOT.parent / "deployment/config/oci.env.example").read_text()
+
+        self.assertIn("FORD_AI_OPENROUTER_MODEL={{ ford_ai_openrouter_model | default('xiaomi/mimo-v2.6-flash') }}", template)
+        self.assertIn("model: ${FORD_AI_OPENROUTER_MODEL:xiaomi/mimo-v2.6-flash}", production)
+        self.assertIn("FORD_AI_OPENROUTER_MODEL=xiaomi/mimo-v2.6-flash", example)
+        self.assertIn("FORD_AI_OPENROUTER_ENABLED={{ (ford_ai_openrouter_enabled | default(true))", template)
+        self.assertIn("FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED={{ (ford_ai_openrouter_tool_calling_verified | default(true))", template)
+        self.assertIn("FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED={{ (ford_ai_openrouter_structured_output_verified | default(true))", template)
+
     def test_app_proxy_keeps_stable_listener_and_routes_to_active_slot(self):
         template = Environment(loader=FileSystemLoader(APP_TEMPLATES)).get_template("proxy.conf.j2")
         rendered = template.render(app_active_port=18082)
