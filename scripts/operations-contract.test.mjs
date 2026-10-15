@@ -114,6 +114,12 @@ test("service README links the operational contracts", async () => {
   assert.match(readme, /docs\/observability\.md/);
 });
 
+test("application environment preserves the configured operator username with a safe default", async () => {
+  const appEnv = await read("deployment/ansible/roles/app/templates/app.env.j2");
+
+  assert.match(appEnv, /FORD_OPERATOR_USERNAME=\{\{ ford_operator_username \| default\('operator'\) \}\}/);
+});
+
 test("OCI backup identity is declarative and reproducible", async () => {
   const storage = await read("deployment/terraform/storage.tf");
   const variables = await read("deployment/terraform/variables.tf");
