@@ -242,6 +242,12 @@ jobs:
               exit 1
             }
           done
+          for endpoint in GRAFANA_CLOUD_OTLP_ENDPOINT LANGFUSE_OTLP_ENDPOINT; do
+            [[ "${!endpoint}" =~ ^https://[^[:space:]]+/[^[:space:]]*$ ]] || {
+              echo "Production deployment blocked: configure ${endpoint} as an HTTPS endpoint URL." >&2
+              exit 1
+            }
+          done
           for setting in \
             GRAFANA_CLOUD_OTLP_ENDPOINT \
             GRAFANA_CLOUD_INSTANCE_ID \
