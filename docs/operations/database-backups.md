@@ -1,6 +1,6 @@
 # Database Backups: Operations and Data Flow
 
-This page explains the daily backup on emme-2, the GitHub Actions controls,
+This page explains the monthly backup on emme-2, the GitHub Actions controls,
 where backup files go, and what the current verification has confirmed.
 
 ## System overview
@@ -8,7 +8,7 @@ where backup files go, and what the current verification has confirmed.
 ```mermaid
 flowchart LR
   subgraph GH[GitHub Actions]
-    TimerCheck[Daily verify<br/>04:30 UTC]
+    TimerCheck[Monthly verify<br/>day 1, 04:30 UTC]
     ManualRun[Manual: run]
     ManualVerify[Manual: verify]
     Workflow[Database Backup Operations workflow]
@@ -21,7 +21,7 @@ flowchart LR
 
   subgraph VM[Existing data VM: emme-2]
     SSH[Strict, key-based SSH]
-    SystemdTimer[ford-backup.timer<br/>daily 03:15 UTC<br/>up to 15 min randomized delay]
+    SystemdTimer[ford-backup.timer<br/>monthly day 1, 03:15 UTC<br/>up to 15 min randomized delay]
     Service[ford-backup.service<br/>oneshot]
     Script[backup-databases.sh]
     Postgres[(PostgreSQL<br/>ford_service)]
@@ -49,9 +49,11 @@ flowchart LR
   ManualRun -->|starts existing service| SSH
 ```
 
-The VM systemd timer is the **only automatic backup scheduler**. GitHub's daily
-workflow checks timer state and backup freshness; it does not start a scheduled
-backup. The manual `run` option intentionally starts the existing service on the
+The VM systemd timer is the **only automatic backup scheduler** and runs on the
+first day of each month. GitHub's monthly workflow checks timer state and that
+the scheduled backup completed within 36 hours; it does not start the scheduled
+backup. Manual `verify` allows a 32-day-old backup for checks between monthly
+runs. The manual `run` option intentionally starts the existing service on the
 existing VM. No new VM is created.
 
 ## What happens during a backup
@@ -85,8 +87,8 @@ workflow** and choose an operation:
 | Operation | Effect | Starts a backup? |
 |---|---|---:|
 | `run` | Starts `ford-backup.service` on emme-2; checks systemd success and a newly created manifest. | Yes |
-| `verify` | Checks the timer is enabled and active, then checks that the newest local manifest is no older than 36 hours. | No |
-| Daily schedule | Runs the same timer/freshness checks at 04:30 UTC, after the VM timer's normal window. | No |
+| `verify` | Checks the timer is enabled and active, then checks that the newest local manifest is no older than 32 days. | No |
+| Monthly schedule | Runs timer checks and requires a backup from the current scheduled window at 04:30 UTC on day 1. | No |
 
 The manual `run` check uses the manifest timestamp to ensure the service created
 a fresh backup for that invocation. The workflow does not transfer database

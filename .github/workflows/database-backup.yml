@@ -11,7 +11,7 @@ on:
         default: run
         options: [run, verify]
   schedule:
-    - cron: '30 4 * * *'
+    - cron: '30 4 1 * *'
 
 permissions:
   contents: read
@@ -88,30 +88,32 @@ jobs:
         env:
           DATA_SSH_HOST: ${{ vars.DATA_SSH_HOST }}
           SSH_USER: ${{ vars.OCI_SSH_USER }}
+          MAX_BACKUP_AGE_SECONDS: ${{ github.event_name == 'schedule' && '129600' || '2764800' }}
         run: |
           set -euo pipefail
           ssh -i "$RUNNER_TEMP/ford-backup-ssh/data" \
             -o BatchMode=yes -o ConnectTimeout=15 \
             -o UserKnownHostsFile="$RUNNER_TEMP/ford-backup-ssh/known_hosts" \
             -o StrictHostKeyChecking=yes \
-            "$SSH_USER@$DATA_SSH_HOST" 'bash -se' <<'REMOTE'
+            "$SSH_USER@$DATA_SSH_HOST" 'bash -se' "$MAX_BACKUP_AGE_SECONDS" <<'REMOTE'
           set -euo pipefail
+          max_backup_age_seconds="$1"
           sudo -n systemctl is-enabled ford-backup.timer >/dev/null
           sudo -n systemctl is-active ford-backup.timer >/dev/null
           latest_manifest="$(sudo find /opt/ford-uruapan/backup/archive -maxdepth 1 -type f -name 'manifest_*.json' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)"
           test -n "$latest_manifest"
-          sudo python3 - "$latest_manifest" <<'PY'
+          sudo python3 - "$latest_manifest" "$max_backup_age_seconds" <<'PY'
           import json
           import sys
           from datetime import datetime, timezone
           from pathlib import Path
 
-          manifest_path = sys.argv[1]
+          manifest_path, max_age_seconds = sys.argv[1:]
           manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
           created_at = datetime.strptime(manifest["created_at"], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
           age_seconds = (datetime.now(timezone.utc) - created_at).total_seconds()
-          if age_seconds < -300 or age_seconds > 36 * 60 * 60:
-              raise SystemExit("Latest verified database backup is missing, in the future, or older than 36 hours.")
+          if age_seconds < -300 or age_seconds > int(max_age_seconds):
+              raise SystemExit("Latest verified database backup is missing, in the future, or older than the allowed age.")
           print(f"Scheduled database backup healthy: created_at={manifest['created_at']}")
           PY
           REMOTE
