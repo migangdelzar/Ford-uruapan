@@ -278,6 +278,7 @@ jobs:
           backup-host: ${{ vars.OCI_DATA_DEPLOY_HOST }}
           backup-user: ${{ vars.OCI_DATA_DEPLOY_USER }}
           data-private-ip: ${{ vars.OCI_DATA_PRIVATE_IP }}
+          secrets-provider: ${{ vars.FORD_SECRETS_PROVIDER }}
           grafana-cloud-otlp-endpoint: ${{ vars.GRAFANA_CLOUD_OTLP_ENDPOINT }}
           grafana-cloud-instance-id: ${{ vars.GRAFANA_CLOUD_INSTANCE_ID }}
           grafana-cloud-api-token-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_GRAFANA_CLOUD_API_TOKEN }}

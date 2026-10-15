@@ -142,6 +142,7 @@ test("production service deployment passes Vault secret references to Ansible", 
     "FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY",
   ];
 
+  assert.match(source, /secrets-provider: \$\{\{ vars\.FORD_SECRETS_PROVIDER \}\}/);
   assert.match(source, /FORD_SECRETS_PROVIDER: \$\{\{ vars\.FORD_SECRETS_PROVIDER \}\}/);
   for (const name of requiredReferences) {
     assert.ok(
