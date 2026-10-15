@@ -93,6 +93,21 @@ test("database deployment does not implicitly reinstall the separately managed b
   assert.match(backupTask, /deployment\/ansible\/backup\.yml/);
 });
 
+test("database backups run monthly at the start of the month with a matching Actions check", async () => {
+  const timer = await read("deployment/ansible/roles/backup/templates/ford-backup.timer.j2");
+  const workflow = await read(".github/workflows/database-backup.yml");
+  const docs = await read("docs/operations/database-backups.md");
+
+  assert.match(timer, /Description=Monthly Ford database backup/);
+  assert.ok(timer.includes("OnCalendar=*-*-01 03:15:00 UTC"));
+  assert.match(workflow, /cron: '30 4 1 \* \*'/);
+  assert.match(workflow, /MAX_BACKUP_AGE_SECONDS: \$\{\{ github\.event_name == 'schedule' && '129600' \|\| '2764800' \}\}/);
+  assert.match(workflow, /'bash -se' "\$MAX_BACKUP_AGE_SECONDS"/);
+  assert.match(docs, /first day of each month/i);
+  assert.match(docs, /monthly day 1, 03:15 UTC/);
+  assert.match(docs, /day 1, 04:30 UTC/);
+});
+
 test("service README links the operational contracts", async () => {
   const readme = await read("ford-ai-service/README.md");
   assert.match(readme, /docs\/ci-cd\.md/);
