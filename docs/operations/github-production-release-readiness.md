@@ -8,7 +8,7 @@ Keep credentials in the narrowest scope that needs them:
 
 | Repository and scope | GitHub Actions secrets | GitHub Actions variables |
 | --- | --- | --- |
-| Ford-uruapan / production | OCI_SSH_PRIVATE_KEY, OCI_DATA_SSH_PRIVATE_KEY, OCI_SSH_KNOWN_HOSTS | OCI_DEPLOY_HOST, OCI_DEPLOY_USER, OCI_DATA_DEPLOY_HOST, OCI_DATA_DEPLOY_USER, OCI_DATA_PRIVATE_IP, FORD_SECRETS_PROVIDER, and the `FORD_VAULT_SECRET_OCID_*` mappings consumed by the Spring app |
+| Ford-uruapan / production | OCI_SSH_PRIVATE_KEY, OCI_DATA_SSH_PRIVATE_KEY, OCI_SSH_KNOWN_HOSTS | OCI_DEPLOY_HOST, OCI_DEPLOY_USER, OCI_DATA_DEPLOY_HOST, OCI_DATA_DEPLOY_USER, OCI_DATA_PRIVATE_IP, FORD_SECRETS_PROVIDER, Spring `FORD_VAULT_SECRET_OCID_*` mappings, Grafana Cloud endpoint/instance ID, Langfuse endpoint/public key, and the Grafana/Langfuse Vault secret OCIDs |
 | Ford-scraping / production | OCI_MCP_SSH_PRIVATE_KEY, OCI_SSH_KNOWN_HOSTS | OCI_MCP_HOST, OCI_MCP_PRIVATE_IP, OCI_DEPLOY_USER, OCI_DATA_DEPLOY_HOST, OCI_DATA_DEPLOY_USER, FORD_SECRETS_PROVIDER, FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD, FORD_VAULT_SECRET_OCID_MCP_HTTP_BEARER_TOKEN |
 | Ford-web / production | CLOUDFLARE_API_TOKEN | CLOUDFLARE_ACCOUNT_ID, FORD_WEB_SMOKE_URL |
 | Ford-uruapan / repository variables | None | PRODUCTION_DEPLOY_ENABLED, RUNTIME_VAULT_READY |
@@ -17,6 +17,13 @@ Keep credentials in the narrowest scope that needs them:
 | Ford-uruapan / repository | RELEASE_COORDINATOR_APP_ID, RELEASE_COORDINATOR_APP_PRIVATE_KEY | None |
 
 Host names, account IDs, private IPs, and usernames are configuration, not credentials. Keep them as environment variables. Application provider keys and database credentials belong in OCI Vault and must not be copied into GitHub Actions secrets. GitHub secrets are for workflow credentials such as SSH keys, the Cloudflare deploy token, and the narrowly scoped GitHub App key.
+
+Ford Service's deploy action reads the Grafana Cloud API token and Langfuse
+secret key from OCI Vault on emme-1 using the VM Instance Principal. GitHub
+Actions receives only the secret OCIDs. The Instance Principal policy must
+permit `read secret-bundles` for those exact secrets. The deploy action checks
+all Collector settings before its pre-release backup and redacts secret reads
+from Ansible output.
 
 The Ford Service `OCI_DATA_PRIVATE_IP` production variable now matches Ford MCP's existing `OCI_MCP_PRIVATE_IP` for emme-2. The test-only Vault mapping file contains `ford-test-*` OCIDs; never copy those OCIDs into either production environment.
 
@@ -38,12 +45,17 @@ The release-all workflow currently has no repository-level GitHub App credential
 
 ## Verified infrastructure checks
 
+Status checked on 2026-10-15:
+
+- Ford Service v0.1.4 passed tagged CI, but its production attempt stopped before candidate startup or route switching. The pre-release database/Redis backup and monthly timer installation succeeded; Collector rendering then failed because the shared action did not pass its observability configuration. The shared action and Service workflow fixes are being verified before retrying.
+- Ford MCP v0.1.2 passed tagged CI, but its production workflow stopped at its readiness gate because the production environment variables `PRODUCTION_DEPLOY_ENABLED` and `RUNTIME_VAULT_READY` were unset. Its tagged container was not deployed.
+- Ford Web's production Pages workflow still needs a valid `CLOUDFLARE_API_TOKEN`; do not report a Pages production deploy as ready until that credential is configured and the workflow succeeds.
+
 - The read-only deployment connectivity preflight passed for emme-1 and emme-2 in run [38619942939](https://github.com/migangdelzar/Ford-uruapan/actions/runs/38619942939).
 - Both existing VMs use /opt/ford-uruapan for Service, MCP, and database backup files. Release workflows must pass that root explicitly to the shared OCI deployment action.
 - Manual backup run [38649721472](https://github.com/migangdelzar/Ford-uruapan/actions/runs/38649721472) created a fresh backup at 20261014T224457Z. Its verification step failed because it searched /opt/ford/backup/archive. Read-only host checks then verified the manifest age, both archive checksums, gzip integrity, and PostgreSQL archive readability (710 archive-list entries). The workflow path is corrected here; rerun its verify operation after this change reaches main.
 - Release-all's credential-free version preflight passed for Ford-uruapan v0.1.0, Ford-scraping v0.1.1, and Ford-web v0.1.0 in run [38650061906](https://github.com/migangdelzar/Ford-uruapan/actions/runs/38650061906).
-- The current Ford Service and Ford MCP containers do not have FORD_SECRETS_PROVIDER or any FORD_VAULT_SECRET_OCID_* mappings. Keep RUNTIME_VAULT_READY unset until runtime secret retrieval is configured and verified on both hosts.
-- PRODUCTION_DEPLOY_ENABLED is unset in the three production environments. A release request now fails with a clear gate error instead of succeeding with a skipped deployment. Do not enable it until the runtime Vault gate, the Pages production token, and the release coordinator App credentials are ready.
+- The Service and MCP production readiness flags are not equivalent evidence of live readiness. Verify each host's Instance Principal access and runtime consumers before setting `RUNTIME_VAULT_READY`; the Service collector secret reads still require an on-host production verification.
 
 ## Release operation
 
