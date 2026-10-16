@@ -37,12 +37,44 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.times;
 
 class SpringAiChatCompletionAdapterTest {
+
+    @Test
+    void doesNotExposeConfiguredToolsWhenDecisionHasNoEvidenceOrNoToolFamily() {
+        assertNoToolsAreExposed(new ConversationDecision(ConversationIntent.GENERAL,
+                LeadTemperature.UNKNOWN, LeadStage.NEW, HandoffRecommendation.NONE,
+                ToolFamily.FINANCE_ESTIMATE, SensitiveDataLevel.NONE, List.of()));
+        assertNoToolsAreExposed(new ConversationDecision(ConversationIntent.GENERAL,
+                LeadTemperature.UNKNOWN, LeadStage.NEW, HandoffRecommendation.NONE,
+                ToolFamily.NONE, SensitiveDataLevel.NONE, List.of(new com.ford.service.ai.application.ClassificationEvidence(
+                        com.ford.service.ai.application.ClassifierType.INTENT, "GENERAL", 1.0,
+                        "rules_intent", "rules", "deterministic", 0, true))));
+    }
+
+    private static void assertNoToolsAreExposed(ConversationDecision decision) {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("Puedo ayudarle con información general.");
+        var configured = callback("vehicle_snapshot_search");
+        var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
+                new ToolAuthorizationPolicy(List.of(configured)));
+
+        adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                "¿Me explicas esto?", "BOT_ACTIVE", null, false, decision), null);
+
+        verify(requestSpec, never()).tools(any(Object[].class));
+        verify(requestSpec).call();
+    }
 
     @Test
     void returnsMcpPriceAndSourceLinkWhenTheModelFailsAfterTheToolCall() {
@@ -77,7 +109,7 @@ class SpringAiChatCompletionAdapterTest {
 
         var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
                 LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE,
-                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, List.of());
+                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, testEvidence());
         var renderer = new McpFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper());
         var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
                 new ToolAuthorizationPolicy(List.of(getVehicle)), new DecisionPolicy(), null,
@@ -127,7 +159,7 @@ class SpringAiChatCompletionAdapterTest {
 
         var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
                 LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE,
-                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, List.of());
+                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, testEvidence());
         var renderer = new McpFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper());
         var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
                 new ToolAuthorizationPolicy(List.of(getVehicle)), new DecisionPolicy(), null,
@@ -180,7 +212,7 @@ class SpringAiChatCompletionAdapterTest {
 
         var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
                 LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE,
-                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, List.of());
+                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, testEvidence());
         var renderer = new McpFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper());
         var adapter = new SpringAiChatCompletionAdapter(client, "openrouter",
                 new ToolAuthorizationPolicy(List.of(getVehicle)), new DecisionPolicy(), null,
@@ -210,7 +242,7 @@ class SpringAiChatCompletionAdapterTest {
             @Override
             public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
                 return org.springframework.ai.tool.definition.DefaultToolDefinition.builder()
-                        .name("get_variant_comparisons").description("comparison").inputSchema("{}").build();
+                        .name("compare_vehicles").description("comparison").inputSchema("{}").build();
             }
 
             @Override
@@ -238,7 +270,7 @@ class SpringAiChatCompletionAdapterTest {
                         io.micrometer.observation.ObservationRegistry.NOOP), renderer);
         var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
                 LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE,
-                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, List.of());
+                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, testEvidence());
 
         var result = adapter.complete(new AssistantRequest(tenantId, conversationId,
                         "Compare Expedition King Ranch Max with competitors", "BOT_ACTIVE", null, false, decision),
@@ -261,7 +293,10 @@ class SpringAiChatCompletionAdapterTest {
         when(client.prompt()).thenReturn(requestSpec);
         when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
-        when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenAnswer(invocation -> {
+            invokeFirstToolCallback(invocation.getArgument(0));
+            return requestSpec;
+        });
         when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
         var proposal = new LeadJourneyProposal(LeadJourneyTopic.VEHICLE_DISCOVERY, List.of(), null);
@@ -269,8 +304,11 @@ class SpringAiChatCompletionAdapterTest {
 
         var adapter = new SpringAiChatCompletionAdapter(client, "ollama",
                 new ToolAuthorizationPolicy(List.of(callback)));
-        var result = adapter.complete(
-                new AssistantRequest(tenantId, conversationId, "¿Hay Ranger disponible?", "BOT_ACTIVE", false),
+        var decision = new ConversationDecision(ConversationIntent.INVENTORY, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_SEARCH,
+                SensitiveDataLevel.NONE, testEvidence());
+        var result = adapter.complete(new AssistantRequest(tenantId, conversationId,
+                        "¿Hay Ranger disponible?", "BOT_ACTIVE", null, false, decision),
                 new ToolContext(tenantId, conversationId));
 
         assertThat(result.content()).isEqualTo("Respuesta de catálogo.");
@@ -332,7 +370,7 @@ class SpringAiChatCompletionAdapterTest {
 
         var decision = new ConversationDecision(ConversationIntent.OFFERS, LeadTemperature.WARM,
                 LeadStage.QUALIFYING, HandoffRecommendation.NONE, ToolFamily.OFFERS,
-                SensitiveDataLevel.NONE, List.of());
+                SensitiveDataLevel.NONE, testEvidence());
         var adapter = new SpringAiChatCompletionAdapter(client, "openrouter",
                 new ToolAuthorizationPolicy(List.of(callback("list_promotions"))),
                 new DecisionPolicy(), promptService);
@@ -470,7 +508,7 @@ class SpringAiChatCompletionAdapterTest {
 
         var decision = new ConversationDecision(ConversationIntent.INVENTORY,
                 LeadTemperature.UNKNOWN, LeadStage.NEW, HandoffRecommendation.NONE,
-                ToolFamily.VEHICLE_SEARCH, SensitiveDataLevel.NONE, List.of());
+                ToolFamily.VEHICLE_SEARCH, SensitiveDataLevel.NONE, testEvidence());
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> new SpringAiChatCompletionAdapter(client, "groq",
                 new ToolAuthorizationPolicy(List.of(callback("vehicle_snapshot_search"))))
                 .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
@@ -495,7 +533,7 @@ class SpringAiChatCompletionAdapterTest {
 
         var decision = new ConversationDecision(ConversationIntent.KNOWLEDGE, LeadTemperature.UNKNOWN,
                 LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.KNOWLEDGE_SEARCH,
-                SensitiveDataLevel.NONE, List.of());
+                SensitiveDataLevel.NONE, testEvidence());
         var adapter = new SpringAiChatCompletionAdapter(client, "cloudflare",
                 new ToolAuthorizationPolicy(List.of(callback("approved_knowledge_search"))));
 
@@ -544,7 +582,7 @@ class SpringAiChatCompletionAdapterTest {
         when(responseSpec.content()).thenReturn("{\"answer\":\"La Ranger está disponible.\",\"modelConfidence\":0.99}");
         var decision = new ConversationDecision(ConversationIntent.INVENTORY, LeadTemperature.UNKNOWN,
                 LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_SEARCH,
-                SensitiveDataLevel.NONE, List.of());
+                SensitiveDataLevel.NONE, testEvidence());
 
         var result = new SpringAiChatCompletionAdapter(client, "groq",
                 new ToolAuthorizationPolicy(List.of(callback("search_vehicles"))))
@@ -588,7 +626,7 @@ class SpringAiChatCompletionAdapterTest {
         };
         var decision = new ConversationDecision(ConversationIntent.INVENTORY, LeadTemperature.UNKNOWN,
                 LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_SEARCH,
-                SensitiveDataLevel.NONE, List.of());
+                SensitiveDataLevel.NONE, testEvidence());
 
         var result = new SpringAiChatCompletionAdapter(client, "deepseek",
                 new ToolAuthorizationPolicy(List.of(failedTool)))
@@ -635,7 +673,7 @@ class SpringAiChatCompletionAdapterTest {
         };
         var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS, LeadTemperature.UNKNOWN,
                 LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_DETAILS,
-                SensitiveDataLevel.NONE, List.of());
+                SensitiveDataLevel.NONE, testEvidence());
 
         var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
                 new ToolAuthorizationPolicy(List.of(failedTool)));
@@ -692,7 +730,7 @@ class SpringAiChatCompletionAdapterTest {
         };
         var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS, LeadTemperature.UNKNOWN,
                 LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_DETAILS,
-                SensitiveDataLevel.NONE, List.of());
+                SensitiveDataLevel.NONE, testEvidence());
 
         var result = new SpringAiChatCompletionAdapter(client, "deepseek",
                 new ToolAuthorizationPolicy(List.of(failedTool)))
@@ -736,7 +774,7 @@ class SpringAiChatCompletionAdapterTest {
         };
         var decision = new ConversationDecision(ConversationIntent.INVENTORY, LeadTemperature.UNKNOWN,
                 LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_SEARCH,
-                SensitiveDataLevel.NONE, List.of());
+                SensitiveDataLevel.NONE, testEvidence());
 
         var result = new SpringAiChatCompletionAdapter(client, "deepseek",
                 new ToolAuthorizationPolicy(List.of(emptyTool)))
@@ -961,6 +999,12 @@ class SpringAiChatCompletionAdapterTest {
                         "¿Qué rendimiento tiene la Lobo Raptor?", "BOT_ACTIVE", false), null))
                 .isInstanceOf(InvalidAssistantResponseException.class);
         verify(requestSpec, times(2)).call();
+    }
+
+    private static List<com.ford.service.ai.application.ClassificationEvidence> testEvidence() {
+        return List.of(new com.ford.service.ai.application.ClassificationEvidence(
+                com.ford.service.ai.application.ClassifierType.INTENT, "TEST", 1.0,
+                "test_intent", "test", "test", 0, true));
     }
 
     private static ToolCallback callback(String name) {
