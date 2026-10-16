@@ -174,25 +174,28 @@ test("production service deployment passes Vault secret references to Ansible", 
   }
 });
 
-test("production release requires the DeepSeek Vault key and excludes chat fallbacks", async () => {
+test("production release keeps DeepSeek primary and supports a capability-gated OpenRouter Vault fallback", async () => {
   const workflow = await read(".github/workflows/release.yml");
   const template = await read("deployment/ansible/roles/app/templates/app.env.j2");
 
   assert.match(workflow, /FORD_VAULT_SECRET_OCID_OPENAI_API_KEY: \$\{\{ vars\.FORD_VAULT_SECRET_OCID_OPENAI_API_KEY \}\}/);
   assert.match(workflow, /FORD_VAULT_SECRET_OCID_OPENAI_API_KEY; do/);
-  assert.doesNotMatch(workflow, /FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY/);
-  assert.doesNotMatch(workflow, /FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY; do/);
+  assert.match(workflow, /FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY: \$\{\{ vars\.FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY \}\}/);
+  assert.match(template, /FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY=/);
+  assert.doesNotMatch(workflow, /FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY; do/,
+    "OpenRouter remains optional until its secret is provisioned");
+  assert.match(workflow, /FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED: \$\{\{ vars\.FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED \}\}/);
+  assert.match(workflow, /FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED: \$\{\{ vars\.FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED \}\}/);
   assert.match(template, /FORD_AI_CLOUD_BASE_URL=.*https:\/\/api\.deepseek\.com/);
   assert.match(template, /FORD_AI_CLOUD_MODEL_VERSION=.*deepseek-flash/);
   assert.match(template, /FORD_AI_CLOUD_ENABLED=.*true/);
   assert.match(template, /FORD_AI_LOCAL_ENABLED=.*false/);
-  assert.match(template, /FORD_AI_FALLBACK_ORDER=.*default\(''\)/);
-  assert.match(template, /FORD_AI_OPENROUTER_ENABLED=.*default\(false\)/);
+  assert.match(template, /FORD_AI_FALLBACK_ORDER=.*default\('openrouter'\)/);
+  assert.match(template, /FORD_AI_OPENROUTER_ENABLED=.*default\(true\)/);
   for (const name of [
     "FORD_VAULT_SECRET_OCID_GROQ_API_KEY",
     "FORD_VAULT_SECRET_OCID_GEMINI_API_KEY",
     "FORD_VAULT_SECRET_OCID_CLOUDFLARE_API_TOKEN",
-    "FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY",
   ]) {
     assert.doesNotMatch(template, new RegExp(name), `${name} must not be loaded by the production app`);
   }

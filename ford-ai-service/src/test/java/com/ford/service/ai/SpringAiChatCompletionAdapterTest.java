@@ -617,7 +617,10 @@ class SpringAiChatCompletionAdapterTest {
             ((ToolCallback) passedTools.get()[0]).call("{}");
             return responseSpec;
         });
-        when(responseSpec.content()).thenReturn("Un sistema híbrido combina un motor de combustión y uno eléctrico para apoyar la conducción.");
+        when(responseSpec.content()).thenReturn("""
+                {"answer":"Un sistema híbrido combina un motor de combustión y uno eléctrico para apoyar la conducción.",
+                 "modelConfidence":0.70}
+                """);
         var failedTool = new ToolCallback() {
             @Override
             public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
@@ -644,12 +647,61 @@ class SpringAiChatCompletionAdapterTest {
         assertThat(result.content()).contains("combina un motor", "orientación general", "no están confirmados");
         assertThat(result.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.READ_ONLY_TOOL_FAILED);
 
-        when(responseSpec.content()).thenReturn("El modelo 2027 alcanza 18 km/l en ciclo combinado.");
+        when(responseSpec.content()).thenReturn("""
+                {"answer":"El modelo 2027 alcanza 18 km/l en ciclo combinado.","modelConfidence":0.99}
+                """);
         var unsupported = adapter.complete(new AssistantRequest(tenantId, conversationId,
                 "¿Cómo funciona en general la tecnología híbrida y qué ventajas ofrece?", "BOT_ACTIVE", null, false, decision), null);
 
         assertThat(unsupported.content()).contains("no lo tengo confirmado")
                 .doesNotContain("2027", "18 km/l");
+    }
+
+    @Test
+    void withholdsGeneralModelKnowledgeWhenItsConfidenceIsBelowSeventyPercent() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        var passedTools = new java.util.concurrent.atomic.AtomicReference<Object[]>();
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenAnswer(invocation -> {
+            passedTools.set(invocation.getArguments());
+            return requestSpec;
+        });
+        when(requestSpec.call()).thenAnswer(invocation -> {
+            ((ToolCallback) passedTools.get()[0]).call("{}");
+            return responseSpec;
+        });
+        when(responseSpec.content()).thenReturn("""
+                {"answer":"Un sistema híbrido combina un motor de combustión y uno eléctrico.",
+                 "modelConfidence":0.69}
+                """);
+        var failedTool = new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return org.springframework.ai.tool.definition.DefaultToolDefinition.builder()
+                        .name("search_vehicles").description("search").inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String input) {
+                throw new IllegalStateException("catalog timeout");
+            }
+        };
+        var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_DETAILS,
+                SensitiveDataLevel.NONE, List.of());
+
+        var result = new SpringAiChatCompletionAdapter(client, "deepseek",
+                new ToolAuthorizationPolicy(List.of(failedTool)))
+                .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "¿Qué significa que un vehículo sea híbrido?", "BOT_ACTIVE", null, false, decision), null);
+
+        assertThat(result.content()).contains("no lo tengo confirmado")
+                .doesNotContain("combina un motor");
+        assertThat(result.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.READ_ONLY_TOOL_FAILED);
     }
 
     @Test
@@ -801,6 +853,28 @@ class SpringAiChatCompletionAdapterTest {
         assertThat(result.content()).isEqualTo("Encontré la Ranger.");
         assertThat(result.journeyProposal()).isNotNull();
         assertThat(result.journeyProposal().currentTopic()).isEqualTo(LeadJourneyTopic.VEHICLE_DISCOVERY);
+    }
+
+    @Test
+    void keepsACompleteCustomerAnswerWhenOptionalJourneyMetadataIsTruncated() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("""
+                {"answer":"Claro, con gusto. ¿Qué versión de Territory te gustaría comparar?",
+                 "journeyProposal":{"currentTopic":"VEHICLE_DISCOVERY","facts":[{"key":"model"
+                """);
+
+        var result = new SpringAiChatCompletionAdapter(client, "deepseek")
+                .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "Sí", "BOT_ACTIVE", false), null);
+
+        assertThat(result.content()).isEqualTo("Claro, con gusto. ¿Qué versión de Territory te gustaría comparar?");
+        assertThat(result.journeyProposal()).isNull();
     }
 
     @Test

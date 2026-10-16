@@ -241,7 +241,7 @@ report_ai_fallback_status() {
       groq) enabled="${FORD_AI_GROQ_ENABLED:-false}"; key_name=GROQ_API_KEY ;;
       gemini) enabled="${FORD_AI_GEMINI_ENABLED:-false}"; key_name=GEMINI_API_KEY ;;
       cloudflare) enabled="${FORD_AI_CLOUDFLARE_ENABLED:-false}"; key_name=CLOUDFLARE_API_TOKEN ;;
-      openrouter) enabled="${FORD_AI_OPENROUTER_ENABLED:-false}"; key_name=OPENROUTER_API_KEY ;;
+      openrouter) enabled="${FORD_AI_OPENROUTER_ENABLED:-true}"; key_name=OPENROUTER_API_KEY ;;
     esac
     if [[ "$enabled" != "true" ]]; then
       printf 'AI fallback %-10s disabled\n' "$provider"
@@ -260,7 +260,7 @@ report_ai_fallback_status() {
       openrouter) [[ "${FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED:-false}" == true && "${FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED:-false}" == true ]] || capability_status=unverified ;;
     esac
     evaluation_status=not-required
-    if [[ "$provider" == openrouter && "${FORD_AI_OPENROUTER_MODEL:-openrouter/free}" == "openrouter/free" ]]; then
+    if [[ "$provider" == openrouter && "${FORD_AI_OPENROUTER_MODEL:-xiaomi/mimo-v2.6-flash}" == "openrouter/free" ]]; then
       evaluation_status=evaluation-only
       [[ "${FORD_AI_EVALUATION_MODE:-false}" == true ]] && evaluation_status=enabled
     fi
@@ -394,9 +394,9 @@ render_deploy_inventory() {
   ford_ai_cloud_temperature_yaml="$(yaml_quote "${FORD_AI_CLOUD_TEMPERATURE:-0.1}")"
   ford_ai_cloud_base_url_yaml="$(yaml_quote "${FORD_AI_CLOUD_BASE_URL:-https://api.deepseek.com}")"
   ford_ai_cloud_model_version_yaml="$(yaml_quote "${FORD_AI_CLOUD_MODEL_VERSION:-deepseek-flash}")"
-  ford_ai_provider_max_attempts_yaml="$(yaml_quote "${FORD_AI_PROVIDER_MAX_ATTEMPTS:-1}")"
+  ford_ai_provider_max_attempts_yaml="$(yaml_quote "${FORD_AI_PROVIDER_MAX_ATTEMPTS:-2}")"
   ford_ai_provider_max_retry_after_yaml="$(yaml_quote "${FORD_AI_PROVIDER_MAX_RETRY_AFTER:-PT3S}")"
-  ford_ai_fallback_order_yaml="$(yaml_quote "${FORD_AI_FALLBACK_ORDER:-}")"
+  ford_ai_fallback_order_yaml="$(yaml_quote "${FORD_AI_FALLBACK_ORDER:-openrouter}")"
   ford_ai_evaluation_mode_yaml="$(yaml_quote "${FORD_AI_EVALUATION_MODE:-false}")"
   ford_ai_groq_enabled_yaml="$(yaml_quote "${FORD_AI_GROQ_ENABLED:-false}")"
   ford_ai_groq_model_yaml="$(yaml_quote "${FORD_AI_GROQ_MODEL:-openai/gpt-oss-20b}")"
@@ -413,8 +413,8 @@ render_deploy_inventory() {
   ford_ai_cloudflare_base_url_yaml="$(yaml_quote "${FORD_AI_CLOUDFLARE_BASE_URL:-https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID:-unconfigured}/ai/v1}")"
   ford_ai_cloudflare_tool_calling_verified_yaml="$(yaml_quote "${FORD_AI_CLOUDFLARE_TOOL_CALLING_VERIFIED:-false}")"
   ford_ai_cloudflare_structured_output_verified_yaml="$(yaml_quote "${FORD_AI_CLOUDFLARE_STRUCTURED_OUTPUT_VERIFIED:-false}")"
-  ford_ai_openrouter_enabled_yaml="$(yaml_quote "${FORD_AI_OPENROUTER_ENABLED:-false}")"
-  ford_ai_openrouter_model_yaml="$(yaml_quote "${FORD_AI_OPENROUTER_MODEL:-openrouter/free}")"
+  ford_ai_openrouter_enabled_yaml="$(yaml_quote "${FORD_AI_OPENROUTER_ENABLED:-true}")"
+  ford_ai_openrouter_model_yaml="$(yaml_quote "${FORD_AI_OPENROUTER_MODEL:-xiaomi/mimo-v2.6-flash}")"
   ford_ai_openrouter_base_url_yaml="$(yaml_quote "${FORD_AI_OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}")"
   ford_ai_openrouter_tool_calling_verified_yaml="$(yaml_quote "${FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED:-false}")"
   ford_ai_openrouter_structured_output_verified_yaml="$(yaml_quote "${FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED:-false}")"
