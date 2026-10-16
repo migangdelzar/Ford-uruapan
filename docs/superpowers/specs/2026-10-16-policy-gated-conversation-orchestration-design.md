@@ -1,6 +1,6 @@
 # Policy-Gated Conversation Orchestration Design
 
-**Status:** Draft for review  
+**Status:** Approved; implementation verified locally; production rollout pending
 **Date:** 2026-10-16  
 **Scope:** Ford Service conversation reply, tool authorization, and memory context
 
@@ -147,3 +147,18 @@ running/previous container as part of this change.
 6. Logs distinguish scope, model, tool, quality, and compaction outcomes without
    storing prompt or answer text.
 7. All verification occurs locally before any production rollout.
+
+## Implementation and Verification Record
+
+- Contextual `GENERAL` turns with Ford conversation context now pass the scope
+  policy; explicit unrelated and out-of-scope cases remain blocked.
+- Tool authorization now fails closed for empty evidence and `ToolFamily.NONE`,
+  including memory compaction.
+- Compaction failure retains the prior summary and transcript context, and the
+  bot reply commit still succeeds.
+- Local verification passed: complete Gradle test suite and `bootJar`.
+- Production deployment and live MCP verification are still pending; record
+  their release run, active image digest, health checks, and rollback image after
+  the protected workflow completes.
+- Token-aware context budgeting remains a separate follow-up because the
+  current change intentionally preserves the existing count-based window.
