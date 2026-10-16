@@ -166,4 +166,25 @@ class AssistantScopePolicyTest {
                 "Historial reciente:\n- asistente: Revisemos la Ford Ranger 2026"))
                 .isTrue();
     }
+
+    @Test
+    void allowsGeneralTurnWhenFordConversationMemoryProvidesContext() {
+        var general = new ConversationDecision(
+                ConversationIntent.GENERAL, LeadTemperature.UNKNOWN, LeadStage.NEW,
+                HandoffRecommendation.NONE, ToolFamily.NONE, SensitiveDataLevel.NONE, java.util.List.of());
+
+        assertThat(policy.reason("ok, y ahora qué?", general,
+                "Historial reciente:\n- asistente: Ford Ranger 2026"))
+                .isEqualTo("allowed");
+    }
+
+    @Test
+    void rejectsClearlyUnrelatedGeneralTurnEvenWithFordConversationMemory() {
+        var general = new ConversationDecision(
+                ConversationIntent.GENERAL, LeadTemperature.UNKNOWN, LeadStage.NEW,
+                HandoffRecommendation.NONE, ToolFamily.NONE, SensitiveDataLevel.NONE, java.util.List.of());
+
+        assertThat(policy.allows("Escribe un poema sobre volcanes", general,
+                "Historial reciente:\n- asistente: Ford Ranger 2026")).isFalse();
+    }
 }

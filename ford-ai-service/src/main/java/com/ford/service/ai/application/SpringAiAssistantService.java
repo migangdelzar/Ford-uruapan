@@ -142,8 +142,8 @@ public final class SpringAiAssistantService implements AssistantService {
         var securedInput = inputSecurityPolicy.apply(userText, context.memoryContext(),
                 context.leadJourneyContext(), context.containsSensitiveData());
         var started = System.nanoTime();
-        log.info("AI turn started: conversationId={} memoryChars={} sensitiveData={} inputGuardrail={} piiRedacted={} untrustedContextOmitted={}",
-                conversationId, context.memoryContext() == null ? 0 : context.memoryContext().length(),
+        log.info("AI turn started: conversationId={} sensitiveData={} inputGuardrail={} piiRedacted={} untrustedContextOmitted={}",
+                conversationId,
                 securedInput.containsSensitiveData(), securedInput.reason(), securedInput.piiRedacted(),
                 securedInput.untrustedContextOmitted());
         if (securedInput.blocked()) {
@@ -163,9 +163,10 @@ public final class SpringAiAssistantService implements AssistantService {
         log.info("AI turn classified: conversationId={} intent={} leadTemperature={} leadStage={} toolFamily={} handoff={} nextAction={} evidenceCount={}",
                 conversationId, decision.intent(), decision.leadTemperature(), decision.leadStage(),
                 decision.toolFamily(), decision.handoffRecommendation(), decision.nextAction(), decision.evidence().size());
-        if (!scopePolicy.allows(securedInput.message(), decision, securedInput.memoryContext())) {
-            log.info("AI turn completed by scope guard: conversationId={} durationMs={}",
-                    conversationId, elapsedMs(started));
+        var scopeReason = scopePolicy.reason(securedInput.message(), decision, securedInput.memoryContext());
+        if (!"allowed".equals(scopeReason)) {
+            log.info("AI turn completed by scope guard: conversationId={} reason={} classifiedIntent={} toolFamily={} durationMs={}",
+                    conversationId, scopeReason, decision.intent(), decision.toolFamily(), elapsedMs(started));
             return new AssistantTurn(introduceOnce(scopePolicy.scopeResponse(), conversationId,
                     securedInput.memoryContext()), decision.toLegacyIntent(), false,
                     List.of(), "scope-guard", "none", decision);

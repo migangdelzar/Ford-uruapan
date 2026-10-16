@@ -10,6 +10,7 @@ import com.ford.service.ai.application.ToolResultTracker;
 import com.ford.service.ai.application.McpFactResponseRenderer;
 import com.ford.service.ai.application.DecisionPolicy;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
+import com.ford.service.ai.application.ToolFamily;
 import com.ford.service.ai.application.port.out.ProviderChatCompletionPort;
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantResponse;
@@ -284,13 +285,15 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
     }
 
     private List<ToolCallback> authorizedTools(AssistantRequest request, ToolResultTracker resultTracker) {
+        var decision = request.decision();
+        if (decision.evidence().isEmpty() || decision.toolFamily() == ToolFamily.NONE) {
+            return List.of();
+        }
         var executionContext = new AiExecutionContext(
                 request.tenantId(), request.containsSensitiveData(), request.conversationId(),
-                request.memoryContext(), request.decision());
-        return request.decision().evidence().isEmpty()
-                ? toolPolicy.readOnlyTools(executionContext, null, resultTracker)
-                : toolPolicy.readOnlyTools(executionContext, decisionPolicy.allowedToolNames(
-                        request.decision(), toolPolicy.availableReadOnlyToolNames()), resultTracker);
+                request.memoryContext(), decision);
+        return toolPolicy.readOnlyTools(executionContext, decisionPolicy.allowedToolNames(
+                decision, toolPolicy.availableReadOnlyToolNames()), resultTracker);
     }
 
     private static String confidenceForLog(Double confidence) {

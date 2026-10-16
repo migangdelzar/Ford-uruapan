@@ -325,6 +325,29 @@ class SpringAiAssistantServiceTest {
     }
 
     @Test
+    void sendsGeneralTurnToAssistantWhenFordConversationContextExists() {
+        var orchestrator = mock(AssistantOrchestrator.class);
+        when(orchestrator.respond(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AssistantResponse("La Ranger sigue siendo el modelo que revisamos.", false,
+                        "openai", List.of()));
+        var decision = new ConversationDecision(ConversationIntent.GENERAL, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.NONE,
+                SensitiveDataLevel.NONE, List.of());
+        ConversationDecisionPort classifier = context -> decision;
+        var service = new SpringAiAssistantService(orchestrator, new HumanHandoffPolicy(false),
+                new DefaultModelProviderPolicy(List.of()), false,
+                new ConversationDecisionService(classifier, classifier, new ClassificationProperties()));
+
+        var turn = service.respond(new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID(),
+                        "Historial reciente:\n- asistente: Revisemos la Ford Ranger 2026"),
+                "Ok, y ahora qué?");
+
+        assertThat(turn.text()).isEqualTo("La Ranger sigue siendo el modelo que revisamos.");
+        assertThat(turn.provider()).isEqualTo("openai");
+        verify(orchestrator).respond(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void keepsBuyingIntentInChatForAnOfferBeforeAnyLaterAuthorization() {
         var orchestrator = mock(AssistantOrchestrator.class);
         var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS, LeadTemperature.UNKNOWN,

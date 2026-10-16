@@ -50,9 +50,9 @@ public final class ProviderRoutedConversationMemoryCompactor implements Conversa
         var response = completion.complete(request, new ToolContext(tenantId, conversationId));
         var summary = clean(response.content(), maxChars);
         if (summary.isBlank()) throw new IllegalStateException("Conversation memory compactor returned an empty summary");
-        log.info("Conversation memory compacted: conversationId={} provider={} inputMessages={} durationMs={} summaryChars={}",
+        log.info("Conversation memory compacted: conversationId={} provider={} inputMessages={} durationMs={}",
                 conversationId, response.provider(), expiredMessages.size(),
-                (System.nanoTime() - started) / 1_000_000L, summary.length());
+                (System.nanoTime() - started) / 1_000_000L);
         return summary;
     }
 
