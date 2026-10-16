@@ -36,6 +36,7 @@ locals {
       "ford-prod-postgres-password",
       "ford-prod-redis-password",
       "ford-prod-mcp-http-bearer-token",
+      "ford-prod-mcp-access-client-secret",
       "ford-prod-cloudflared-tunnel-token",
     ]
   }
