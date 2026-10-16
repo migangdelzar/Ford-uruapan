@@ -1,3 +1,14 @@
+# Humanized Ford conversation voice (2026-10-16)
+
+- [x] Audit the CSV and existing prompt, persona, deterministic replies, memory, lead flow, and MCP behavior.
+- [x] Keep existing new-vehicle, promotion, price, memory, and handoff policy scope.
+- [x] Write and self-review the focused MÍA/formal-usted design.
+- [ ] User reviews the design document before implementation planning.
+- [ ] Add failing tests for identity, tone, runtime prompt override, and existing response paths.
+- [ ] Implement the minimum changes; retain runtime-editable prompt support.
+- [ ] Run focused tests, full service checks, deterministic AI evaluation, and container gates.
+- [ ] Merge the verified implementation and confirm its production deployment and live health.
+
 # Jev classification implementation
 
 ## DeepSeek tool-turn response parsing (2026-10-16)
