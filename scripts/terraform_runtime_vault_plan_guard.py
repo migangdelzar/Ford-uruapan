@@ -12,6 +12,26 @@ ALLOWED = {
 }
 
 
+def contains_unknown(value) -> bool:
+    if isinstance(value, dict):
+        return any(contains_unknown(item) for item in value.values())
+    if isinstance(value, list):
+        return any(contains_unknown(item) for item in value)
+    return value is True
+
+
+def is_sensitivity_only_group_update(change: dict) -> bool:
+    before = change.get("before")
+    after = change.get("after")
+    return (
+        change.get("actions") == ["update"]
+        and before is not None
+        and before == after
+        and change.get("before_sensitive") != change.get("after_sensitive")
+        and not contains_unknown(change.get("after_unknown", {}))
+    )
+
+
 def main() -> int:
     plan = json.loads(Path(sys.argv[1]).read_text())
     changes = plan.get("resource_changes", [])
@@ -19,9 +39,13 @@ def main() -> int:
     for item in changes:
         actions = item.get("change", {}).get("actions", [])
         address = item.get("address")
-        allowed_actions = [["no-op"], ["update"]] if address == 'oci_identity_policy.runtime_vault[0]' else [["no-op"]]
-        if address not in ALLOWED or actions not in allowed_actions:
+        if address not in ALLOWED:
             unexpected.append((item.get("address", "<unknown>"), actions))
+        elif address == 'oci_identity_policy.runtime_vault[0]' and actions not in (["no-op"], ["update"]):
+            unexpected.append((address, actions))
+        elif address != 'oci_identity_policy.runtime_vault[0]' and actions != ["no-op"]:
+            if not is_sensitivity_only_group_update(item.get("change", {})):
+                unexpected.append((address, actions))
     if unexpected:
         for address, actions in unexpected:
             print(f"Rejected Terraform plan change: {address} {actions}", file=sys.stderr)
