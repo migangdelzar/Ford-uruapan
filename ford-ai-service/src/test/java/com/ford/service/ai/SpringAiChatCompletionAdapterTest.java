@@ -95,6 +95,57 @@ class SpringAiChatCompletionAdapterTest {
     }
 
     @Test
+    void returnsOnlyApprovedMcpSourceLinksWhenTheModelFailsForAnUnrenderableExactFact() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var getVehicle = new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return org.springframework.ai.tool.definition.DefaultToolDefinition.builder()
+                        .name("get_vehicle").description("vehicle").inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String input) {
+                return "{\"model\":\"Maverick Hybrid\",\"technicalSheetUrl\":"
+                        + "\"https://www.forduruapan.mx/MAVERICK/26/Ficha-Tecnica/\"}";
+            }
+        };
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenAnswer(invocation -> {
+            invokeFirstToolCallback(invocation.getArgument(0));
+            return requestSpec;
+        });
+        when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenThrow(new IllegalStateException("provider unavailable"));
+
+        var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
+                LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE,
+                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, List.of());
+        var renderer = new McpFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper());
+        var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
+                new ToolAuthorizationPolicy(List.of(getVehicle)), new DecisionPolicy(), null,
+                new com.ford.service.ai.application.AssistantResponseQualityPolicy(), new ObjectMapper(),
+                new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP), renderer);
+
+        var result = adapter.complete(new AssistantRequest(tenantId, conversationId,
+                        "¿Qué rendimiento tiene Maverick Hybrid?", "BOT_ACTIVE", null, false, decision),
+                new ToolContext(tenantId, conversationId));
+
+        assertThat(result.content()).contains("prefiero no darle información incompleta",
+                "Ficha técnica: https://www.forduruapan.mx/MAVERICK/26/Ficha-Tecnica/")
+                .doesNotContain("km/l", "rendimiento es");
+        assertThat(result.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED);
+    }
+
+    @Test
     void replacesModelPriceAnswerWithApprovedTemplateAndMcpSourceLink() {
         var client = mock(ChatClient.class);
         var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);

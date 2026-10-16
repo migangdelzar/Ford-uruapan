@@ -8,9 +8,14 @@ import tools.jackson.core.JacksonException;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 
 /** Builds bounded, credential-safe diagnostics for provider failures. */
 public final class AiProviderFailureDiagnostics {
+
+    private static final Set<String> SAFE_ASSISTANT_REASONS = Set.of(
+            "empty_response", "invalid_tool_response_json", "multiple_questions", "internal_payload",
+            "repeated_response", "generic_scope_response", "invalid_response");
 
     private AiProviderFailureDiagnostics() {
     }
@@ -34,6 +39,10 @@ public final class AiProviderFailureDiagnostics {
         append(result, "type", type);
         if (includeProviderDetails) {
             append(result, "exceptionType", failure.getClass().getSimpleName());
+            find(failure, InvalidAssistantResponseException.class)
+                    .map(InvalidAssistantResponseException::reason)
+                    .map(reason -> SAFE_ASSISTANT_REASONS.contains(reason) ? reason : "invalid_response")
+                    .ifPresent(reason -> append(result, "reason", reason));
             var mappingFailure = find(failure, JsonMappingException.class).orElse(null);
             if (mappingFailure != null) {
                 append(result, "mappingPath", safePath(mappingFailure.getPathReference()));

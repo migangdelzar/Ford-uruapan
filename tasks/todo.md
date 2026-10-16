@@ -10,6 +10,22 @@
 - [ ] Verify Meta inbound/outbound delivery separately; Test Lab does not send Meta messages.
 - [ ] Deploy only after the code path and test pass; report Meta delivery separately from Test Lab verification.
 
+## DeepSeek + MCP production follow-up (2026-10-16)
+
+- [x] Reproduce a successful MCP lookup followed by a provider failure without logging content.
+- [x] Preserve approved MCP source links on the safe withheld response when an exact requested fact cannot be rendered and the model fails.
+- [x] Add allowlisted, content-free diagnostics for assistant rejection reasons.
+- [x] Run focused adapter/provider diagnostic tests and `./gradlew check --no-daemon`.
+- [ ] Re-run live Jev + DeepSeek + MCP after deploying this follow-up; diagnose successful-answer source-link behavior separately.
+- [ ] Verify Meta inbound/outbound delivery separately.
+
+### Results
+
+- Live Test Lab proved authentication/inbox and Jev classification work; MCP calls returned successfully. One DeepSeek tool turn failed during response parsing; another completed but did not include a visible source link. Public MCP read-only tools returned current Ranger data and Ford URLs.
+- When generation fails after MCP returned a technical-sheet URL but no renderer-supported requested value, the adapter now returns its safe withheld answer with that exact approved Ford URL. It does not infer the requested spec or leak MCP payload text.
+- Provider failure diagnostics can now report a bounded allowlisted reason such as `invalid_tool_response_json`; arbitrary reason strings become `invalid_response`.
+- Focused tests and `./gradlew check --no-daemon` passed. This follow-up is not yet deployed. The combined production Jev + DeepSeek + MCP result therefore remains partial; Meta delivery remains unverified.
+
 ### Working notes
 
 - Production logs reported `MismatchedInputException` after MCP `get_vehicle` success. Spring AI 2.0.1 documents `entity(...)` as a response conversion operation, but its implementation performs another model request when invoked on the same response spec. Calling `content()` then `entity()` can therefore create a hidden second completion with a different output format.
