@@ -1,0 +1,159 @@
+name: Terraform runtime Vault policy
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Create/review a plan, or apply the reviewed plan from this run.
+        type: choice
+        required: true
+        default: plan
+        options: [plan, apply]
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: terraform-runtime-vault
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Import, plan, and enforce narrow change
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - name: Require protected main
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_REF" == refs/heads/main ]] || { echo 'Dispatch this workflow from main.' >&2; exit 1; }
+
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.5
+          terraform_wrapper: false
+
+      - name: Configure OCI API-key identity
+        working-directory: deployment/terraform
+        env:
+          TF_OCI_TENANCY_OCID: ${{ vars.TF_OCI_TENANCY_OCID }}
+          TF_OCI_USER_OCID: ${{ vars.TF_OCI_USER_OCID }}
+          TF_OCI_FINGERPRINT: ${{ vars.TF_OCI_FINGERPRINT }}
+          TF_OCI_REGION: ${{ vars.TF_OCI_REGION }}
+          TF_OCI_PRIVATE_KEY: ${{ secrets.TF_OCI_PRIVATE_KEY }}
+          TF_OBJECT_STORAGE_NAMESPACE: ${{ vars.TF_OBJECT_STORAGE_NAMESPACE }}
+          TF_EMME_1_INSTANCE_OCID: ${{ vars.TF_EMME_1_INSTANCE_OCID }}
+          TF_EMME_2_INSTANCE_OCID: ${{ vars.TF_EMME_2_INSTANCE_OCID }}
+          TF_RUNTIME_VAULT_OCID: ${{ vars.TF_RUNTIME_VAULT_OCID }}
+        run: bash ../../scripts/configure_terraform_oci.sh
+
+      - name: Require adoption identifiers
+        env:
+          APP_GROUP_ID: ${{ vars.TF_RUNTIME_APP_DYNAMIC_GROUP_OCID }}
+          DATA_GROUP_ID: ${{ vars.TF_RUNTIME_DATA_DYNAMIC_GROUP_OCID }}
+          POLICY_ID: ${{ vars.TF_RUNTIME_VAULT_POLICY_OCID }}
+          APP_INSTANCE_ID: ${{ vars.TF_EMME_1_INSTANCE_OCID }}
+          DATA_INSTANCE_ID: ${{ vars.TF_EMME_2_INSTANCE_OCID }}
+          VAULT_ID: ${{ vars.TF_RUNTIME_VAULT_OCID }}
+        run: |
+          set -euo pipefail
+          for name in APP_GROUP_ID DATA_GROUP_ID POLICY_ID APP_INSTANCE_ID DATA_INSTANCE_ID VAULT_ID; do
+            [[ -n "${!name}" ]] || { echo "Missing required GitHub production variable: $name" >&2; exit 1; }
+          done
+
+      - name: Initialize remote state and provider
+        working-directory: deployment/terraform
+        run: terraform init -input=false -lockfile=readonly
+
+      - name: Adopt existing runtime identities into remote state
+        working-directory: deployment/terraform
+        env:
+          APP_GROUP_ID: ${{ vars.TF_RUNTIME_APP_DYNAMIC_GROUP_OCID }}
+          DATA_GROUP_ID: ${{ vars.TF_RUNTIME_DATA_DYNAMIC_GROUP_OCID }}
+          POLICY_ID: ${{ vars.TF_RUNTIME_VAULT_POLICY_OCID }}
+        run: |
+          set -euo pipefail
+          import_if_missing() {
+            local address="$1" id="$2"
+            if terraform state list | grep -Fxq "$address"; then return; fi
+            terraform import -input=false "$address" "$id"
+          }
+          import_if_missing 'oci_identity_dynamic_group.runtime_vault["app"]' "$APP_GROUP_ID"
+          import_if_missing 'oci_identity_dynamic_group.runtime_vault["data"]' "$DATA_GROUP_ID"
+          import_if_missing 'oci_identity_policy.runtime_vault[0]' "$POLICY_ID"
+
+      - name: Create reviewed plan and reject unrelated changes
+        working-directory: deployment/terraform
+        run: |
+          set -euo pipefail
+          terraform plan -input=false -lock-timeout=5m -out="$RUNNER_TEMP/runtime-vault.tfplan"
+          terraform show -json "$RUNNER_TEMP/runtime-vault.tfplan" > "$RUNNER_TEMP/runtime-vault-plan.json"
+          python3 ../../scripts/terraform_runtime_vault_plan_guard.py "$RUNNER_TEMP/runtime-vault-plan.json"
+          terraform show -no-color "$RUNNER_TEMP/runtime-vault.tfplan" > "$RUNNER_TEMP/runtime-vault-plan.txt"
+          cat "$RUNNER_TEMP/runtime-vault-plan.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload reviewed plan
+        if: inputs.operation == 'apply'
+        uses: actions/upload-artifact@v7
+        with:
+          name: runtime-vault-plan-${{ github.run_id }}
+          path: ${{ runner.temp }}/runtime-vault.tfplan
+          if-no-files-found: error
+          retention-days: 1
+
+  apply:
+    name: Apply approved Vault policy plan
+    if: inputs.operation == 'apply'
+    needs: plan
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.5
+          terraform_wrapper: false
+
+      - name: Configure OCI API-key identity
+        working-directory: deployment/terraform
+        env:
+          TF_OCI_TENANCY_OCID: ${{ vars.TF_OCI_TENANCY_OCID }}
+          TF_OCI_USER_OCID: ${{ vars.TF_OCI_USER_OCID }}
+          TF_OCI_FINGERPRINT: ${{ vars.TF_OCI_FINGERPRINT }}
+          TF_OCI_REGION: ${{ vars.TF_OCI_REGION }}
+          TF_OCI_PRIVATE_KEY: ${{ secrets.TF_OCI_PRIVATE_KEY }}
+          TF_OBJECT_STORAGE_NAMESPACE: ${{ vars.TF_OBJECT_STORAGE_NAMESPACE }}
+          TF_EMME_1_INSTANCE_OCID: ${{ vars.TF_EMME_1_INSTANCE_OCID }}
+          TF_EMME_2_INSTANCE_OCID: ${{ vars.TF_EMME_2_INSTANCE_OCID }}
+          TF_RUNTIME_VAULT_OCID: ${{ vars.TF_RUNTIME_VAULT_OCID }}
+        run: bash ../../scripts/configure_terraform_oci.sh
+
+      - name: Initialize remote state
+        working-directory: deployment/terraform
+        run: terraform init -input=false -lockfile=readonly
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: runtime-vault-plan-${{ github.run_id }}
+          path: ${{ runner.temp }}/reviewed-plan
+
+      - name: Recheck plan scope and apply
+        working-directory: deployment/terraform
+        run: |
+          set -euo pipefail
+          terraform show -json "$RUNNER_TEMP/reviewed-plan/runtime-vault.tfplan" > "$RUNNER_TEMP/reviewed-plan/plan.json"
+          python3 ../../scripts/terraform_runtime_vault_plan_guard.py "$RUNNER_TEMP/reviewed-plan/plan.json"
+          terraform apply -input=false -lock-timeout=5m "$RUNNER_TEMP/reviewed-plan/runtime-vault.tfplan"

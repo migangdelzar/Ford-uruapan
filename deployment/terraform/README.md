@@ -84,3 +84,46 @@ ingress rule is required for either database port.
 The protected data resources have `prevent_destroy = true`. The normal
 destroy task refuses a plan containing them, and data destruction additionally
 requires a verified backup marker plus a separately reviewed target plan.
+
+## Protected GitHub Actions runtime Vault policy
+
+`.github/workflows/terraform-runtime-vault.yml` is the protected Actions path
+for the narrow runtime Vault IAM policy. It is manually dispatched from `main`
+and uses the `production` environment review gate for both planning and applying.
+It imports the two existing runtime dynamic groups and the existing policy into
+remote state, then rejects any plan that changes compute, storage, or either
+dynamic group. Only an in-place update to `ford-runtime-secret-read` is allowed.
+
+The workflow uses a dedicated OCI API user. Do not use a developer/admin key.
+Its OCI native backend is the private, versioned `ford-terraform-state` bucket,
+with state locking and the key `ford-uruapan/runtime-vault-identity/terraform.tfstate`.
+Do not add a lifecycle expiration rule to this bucket.
+
+The OCI bootstrap identity needs these three policy statements, scoped to the
+exact resources it operates on:
+
+```text
+Allow group ford-terraform-actions to manage objects in tenancy where target.bucket.name = 'ford-terraform-state'
+Allow group ford-terraform-actions to read dynamic-groups in tenancy
+Allow group ford-terraform-actions to manage policies in tenancy where target.policy.name = 'ford-runtime-secret-read'
+```
+
+The production GitHub environment needs these non-secret variables:
+
+- `TF_OCI_TENANCY_OCID`, `TF_OCI_USER_OCID`, `TF_OCI_FINGERPRINT`, `TF_OCI_REGION`
+- `TF_OBJECT_STORAGE_NAMESPACE`
+- `TF_EMME_1_INSTANCE_OCID`, `TF_EMME_2_INSTANCE_OCID`, `TF_RUNTIME_VAULT_OCID`
+- `TF_RUNTIME_APP_DYNAMIC_GROUP_OCID`, `TF_RUNTIME_DATA_DYNAMIC_GROUP_OCID`
+- `TF_RUNTIME_VAULT_POLICY_OCID`
+
+Store only the dedicated user's unencrypted API private key in the environment
+secret `TF_OCI_PRIVATE_KEY`. Actions writes it to a permission-restricted runner
+file and removes the runner after the job. No credential value is placed in
+Terraform variables, state, or the plan.
+
+Dispatch `Terraform runtime Vault policy` with `plan` to adopt and review the
+existing resources. Confirm the plan only adds the named MCP Access client
+secret to emme-2. Dispatch `apply` to generate a fresh plan and apply it after
+the protected environment approval. The plan artifact expires after one day.
+The workflow never deploys application code; run the MCP release workflow only
+after this policy apply and the Vault preflight pass.
