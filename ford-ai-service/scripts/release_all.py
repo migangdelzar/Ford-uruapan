@@ -636,6 +636,7 @@ def refresh_release(api: GitHubApi, release: ReleaseResult) -> ReleaseResult:
         deploy_was_skipped = any(
             job.get("conclusion") == "skipped"
             and "deploy" in str(job.get("name", "")).lower()
+            and "approve" not in str(job.get("name", "")).lower()
             for job in jobs
         )
         if deploy_was_skipped:

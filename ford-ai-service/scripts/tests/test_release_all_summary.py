@@ -18,16 +18,19 @@ from release_all import (  # noqa: E402
 
 
 class FakeGitHubApi:
-    def __init__(self, run, release=None, *, result=None):
+    def __init__(self, run, release=None, *, result=None, jobs=None):
         self.run = run
         self.release = release
         self.result = result
+        self.jobs = jobs or [
+            {"name": "Deploy", "status": "completed", "conclusion": "success"}
+        ]
 
     def request(self, method, path, *, query=None, body=None):
         if method == "GET" and path.endswith("/actions/workflows/release.yml/runs"):
             return {"workflow_runs": [self.run]}
         if method == "GET" and path.endswith("/actions/runs/77/jobs"):
-            return {"jobs": [{"name": "Deploy", "status": "completed", "conclusion": "success"}]}
+            return {"jobs": self.jobs}
         if method == "GET" and path.endswith("/actions/runs/77/artifacts"):
             return {"artifacts": [{"id": 88, "name": "ford-release-result", "expired": False}]}
         raise AssertionError(f"Unexpected API request: {method} {path}")
@@ -193,6 +196,44 @@ class ReleaseAllSummaryTest(unittest.TestCase):
         updated = refresh_release(api, release)
 
         self.assertEqual(updated.status, "skipped")
+
+    def test_coordinator_approval_job_skipped_does_not_hide_successful_deployment(self):
+        release = self.release("scraping", "running", run_id=77)
+        release = ReleaseResult(**{**release.__dict__, "version": "v1.2.3"})
+        api = FakeGitHubApi(
+            {
+                "id": 77,
+                "display_title": f"Release MCP to OCI [12345-1] v1.2.3 {'b' * 40}",
+                "status": "completed",
+                "conclusion": "success",
+            },
+            release,
+            result={
+                "repository": release.target.repository,
+                "version": "v1.2.3",
+                "tag": "v1.2.3",
+                "sourceSha": "b" * 40,
+                "imageDigest": None,
+                "deploymentId": "77",
+                "deploymentUrl": "https://ford-mcp.emme.business/mcp",
+            },
+            jobs=[
+                {
+                    "name": "Approve direct Ford MCP deployment",
+                    "status": "completed",
+                    "conclusion": "skipped",
+                },
+                {
+                    "name": "Deploy or roll back Ford MCP",
+                    "status": "completed",
+                    "conclusion": "success",
+                },
+            ],
+        )
+
+        updated = refresh_release(api, release)
+
+        self.assertEqual(updated.status, "success")
 
     def test_completed_release_imports_digest_and_deployment_metadata_from_target_artifact(self):
         release = self.release("scraping", "running", run_id=77)
