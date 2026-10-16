@@ -110,10 +110,22 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  apply-approval:
+    name: Approve runtime Vault policy apply
+    if: inputs.operation == 'apply' && needs.plan.result == 'success'
+    needs: plan
+    runs-on: ubuntu-24.04
+    environment: terraform-runtime-vault-approval
+    steps:
+      - name: Confirm the reviewed Terraform plan before mutation
+        run: echo 'The plan is ready; approval authorizes applying this run’s protected Vault policy plan.'
+
   apply:
     name: Apply approved Vault policy plan
-    if: inputs.operation == 'apply'
-    needs: plan
+    if: >-
+      inputs.operation == 'apply' && needs.plan.result == 'success' &&
+      needs.apply-approval.result == 'success'
+    needs: [plan, apply-approval]
     runs-on: ubuntu-24.04
     environment: production
     timeout-minutes: 15
