@@ -234,6 +234,10 @@ jobs:
       FORD_VAULT_SECRET_OCID_FORD_META_APP_SECRET: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_APP_SECRET }}
       FORD_VAULT_SECRET_OCID_FORD_META_VERIFY_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_VERIFY_TOKEN }}
       FORD_VAULT_SECRET_OCID_FORD_META_WHATSAPP_ACCESS_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_WHATSAPP_ACCESS_TOKEN }}
+      FORD_META_DELIVERY_ENABLED: ${{ vars.FORD_META_DELIVERY_ENABLED }}
+      FORD_OUTBOX_ENABLED: ${{ vars.FORD_OUTBOX_ENABLED }}
+      FORD_META_WHATSAPP_DELIVERY_ENDPOINT: ${{ vars.FORD_META_WHATSAPP_DELIVERY_ENDPOINT }}
+      FORD_META_PHONE_NUMBER_ID: ${{ vars.FORD_META_PHONE_NUMBER_ID }}
       FORD_VAULT_SECRET_OCID_FORD_META_MESSENGER_ACCESS_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_MESSENGER_ACCESS_TOKEN }}
       FORD_VAULT_SECRET_OCID_FORD_META_INSTAGRAM_ACCESS_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_INSTAGRAM_ACCESS_TOKEN }}
       FORD_VAULT_SECRET_OCID_FORD_MCP_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_MCP_TOKEN }}
@@ -286,6 +290,25 @@ jobs:
             echo 'Production deployment requires enabled Ford MCP, its production HTTPS URL, and a valid Cloudflare Access client ID.' >&2
             exit 1
           }
+          [[ "$FORD_META_DELIVERY_ENABLED" == 'true' && "$FORD_OUTBOX_ENABLED" == 'true' ]] || {
+            echo 'Production deployment requires Meta delivery and the durable outbox to be enabled.' >&2
+            exit 1
+          }
+          [[ "$FORD_META_PHONE_NUMBER_ID" =~ ^[0-9]+$ \
+            && "$FORD_META_WHATSAPP_DELIVERY_ENDPOINT" =~ ^https://graph\.facebook\.com/v[0-9]+(\.[0-9]+)?/([0-9]+)/messages$ \
+            && "${BASH_REMATCH[2]}" == "$FORD_META_PHONE_NUMBER_ID" ]] || {
+            echo 'Production deployment requires the official Graph messages endpoint and matching WhatsApp phone number ID.' >&2
+            exit 1
+          }
+          for mapping in \
+            FORD_VAULT_SECRET_OCID_FORD_META_APP_SECRET \
+            FORD_VAULT_SECRET_OCID_FORD_META_VERIFY_TOKEN \
+            FORD_VAULT_SECRET_OCID_FORD_META_WHATSAPP_ACCESS_TOKEN; do
+            [[ "${!mapping}" =~ ^ocid1[.]vaultsecret[.][A-Za-z0-9.]+$ ]] || {
+              echo "Production deployment blocked: configure ${mapping} as a Vault secret OCID variable." >&2
+              exit 1
+            }
+          done
           for endpoint in GRAFANA_CLOUD_OTLP_ENDPOINT LANGFUSE_OTLP_ENDPOINT; do
             [[ "${!endpoint}" =~ ^https://[^[:space:]]+/[^[:space:]]*$ ]] || {
               echo "Production deployment blocked: configure ${endpoint} as an HTTPS endpoint URL." >&2
@@ -311,7 +334,7 @@ jobs:
           sparse-checkout: deployment/observability/otel-collector/grafana-cloud-config.yaml
           sparse-checkout-cone-mode: false
       - name: Run the shared OCI blue-green deployment action
-        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@a9045317cbe5b29fac5c0483c8aa192d696532e9
+        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@5bb32ccbebb5be226b500a4485f8b12d843ff9f5
         with:
           target: ford-service
           ui-upstream-url: ${{ vars.FORD_WEB_UI_UPSTREAM_URL }}
@@ -342,6 +365,13 @@ jobs:
           service-mcp-access-client-id: ${{ vars.FORD_MCP_ACCESS_CLIENT_ID }}
           service-mcp-token-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_MCP_TOKEN }}
           service-mcp-access-client-secret-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_MCP_ACCESS_CLIENT_SECRET }}
+          meta-delivery-enabled: ${{ vars.FORD_META_DELIVERY_ENABLED }}
+          outbox-enabled: ${{ vars.FORD_OUTBOX_ENABLED }}
+          meta-whatsapp-delivery-endpoint: ${{ vars.FORD_META_WHATSAPP_DELIVERY_ENDPOINT }}
+          meta-phone-number-id: ${{ vars.FORD_META_PHONE_NUMBER_ID }}
+          meta-app-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_APP_SECRET }}
+          meta-verify-token-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_VERIFY_TOKEN }}
+          meta-whatsapp-access-token-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_WHATSAPP_ACCESS_TOKEN }}
 
   approval:
     name: Approve direct Ford Service deployment

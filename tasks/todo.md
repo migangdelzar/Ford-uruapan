@@ -304,3 +304,16 @@ Goal: Spring fills separate Markdown templates from returned MCP price/promotion
 - `./gradlew test bootJar` passed. Ansible `site.yml` and `mcp.yml` syntax checks passed; four Ansible Jinja templates parsed; changed shell scripts passed `bash -n`; Python scripts parsed; `git diff --check` and cached diff check passed.
 - The local generated inventory had 18 credential fields removed while retaining unrelated settings and restrictive permissions. No credential values were printed. At the user's request, 20 current configured values were imported into active `ford-test-*` Vault secrets; the ignored test mapping contains only OCIDs and the production mapping is untouched. Two unconfigured Meta tokens were skipped.
 - Production remains on environment mode. OCI browser authentication is active; read-only verification confirmed all 20 test secrets are `ACTIVE`, the test mapping is mode `0600`, and all mapped OCIDs match Vault resource IDs. Issuer-approved production replacements are still needed. Data, MCP, and collector still need direct Vault retrieval before production can switch safely. No deploy, commit, or push was performed.
+# Meta reply delivery and public HTTPS login redirects (2026-10-16)
+
+- [x] Add failing contracts for Meta runtime settings through the shared OCI action and Ford Service release workflow.
+- [x] Pass delivery/outbox config and Meta Vault secret OCIDs to Ansible; snapshot the protected app `.env` and restore it on failed rollout.
+- [x] Validate the Meta endpoint, phone-number ID, flags, and Vault references before production deployment.
+- [x] Configure nonsecret GitHub production variables from the existing local deployment config without exposing values.
+- [ ] Merge the shared action and Ford Service changes into `main`, publish a new service version, and run the protected production deployment.
+- [ ] Verify the public login redirect stays HTTPS and the pending Meta reply is delivered; inspect only redacted delivery status.
+
+### Progress
+
+- Local config passes safety checks; four GitHub production variables were set and three existing Vault OCID variables validated.
+- Shared action and Ford Service release contract tests pass locally. Production release and public login verification are pending CI and protected deployment.
