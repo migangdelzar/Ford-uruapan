@@ -244,8 +244,7 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
         when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
-        when(responseSpec.entity(AssistantGeneration.class))
-                .thenReturn(new AssistantGeneration("Respuesta con memoria.", null));
+        when(responseSpec.content()).thenReturn("Respuesta con memoria.");
 
         var memory = "Resumen: Busca una Ranger\n"
                 + "Historial reciente:\n- usuario: Hola\n"
@@ -279,8 +278,6 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
         when(responseSpec.content()).thenReturn("Respuesta contextual.");
-        when(responseSpec.entity(AssistantGeneration.class))
-                .thenReturn(new AssistantGeneration("Respuesta contextual.", null));
 
         var decision = new ConversationDecision(ConversationIntent.OFFERS, LeadTemperature.WARM,
                 LeadStage.QUALIFYING, HandoffRecommendation.NONE, ToolFamily.OFFERS,
@@ -657,8 +654,8 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
-        when(responseSpec.entity(AssistantGeneration.class))
-                .thenReturn(new AssistantGeneration("Le explico cómo funciona una versión híbrida.", null, 0.62));
+        when(responseSpec.content()).thenReturn(
+                "{\"answer\":\"Le explico cómo funciona una versión híbrida.\",\"modelConfidence\":0.62}");
         var decision = new ConversationDecision(ConversationIntent.GENERAL, LeadTemperature.UNKNOWN,
                 LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.NONE, SensitiveDataLevel.NONE, List.of());
 
@@ -684,8 +681,7 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
-        when(responseSpec.entity(AssistantGeneration.class)).thenReturn(
-                new AssistantGeneration("Hola.\n\n[modelConfidence: 0.9]", null));
+        when(responseSpec.content()).thenReturn("Hola.\n\n[modelConfidence: 0.9]");
 
         var result = new SpringAiChatCompletionAdapter(client, "deepseek")
                 .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
@@ -711,6 +707,27 @@ class SpringAiChatCompletionAdapterTest {
                         "Hola", "BOT_ACTIVE", false), null);
 
         assertThat(result.content()).isEqualTo("Hola, ¿en qué puedo ayudarle?");
+    }
+
+    @Test
+    void doesNotStartASecondCompletionWhenTheProviderReturnsNoText() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn(" ");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new SpringAiChatCompletionAdapter(client, "deepseek")
+                .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "Hola", "BOT_ACTIVE", false), null))
+                .isInstanceOf(InvalidAssistantResponseException.class)
+                .hasFieldOrPropertyWithValue("reason", "empty_response");
+
+        verify(requestSpec, times(1)).call();
+        verify(responseSpec, never()).entity(AssistantGeneration.class);
     }
 
     @Test
@@ -763,9 +780,9 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
-        when(responseSpec.entity(AssistantGeneration.class)).thenReturn(
-                new AssistantGeneration("{\"query\":\"Ford Lobo\"}", null),
-                new AssistantGeneration("La Lobo Raptor ofrece el rendimiento disponible en la ficha vigente.", null));
+        when(responseSpec.content()).thenReturn(
+                "{\"answer\":\"{\\\"query\\\":\\\"Ford Lobo\\\"}\"}",
+                "La Lobo Raptor ofrece el rendimiento disponible en la ficha vigente.");
 
         var result = new SpringAiChatCompletionAdapter(client, "openrouter")
                 .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
@@ -810,9 +827,9 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
-        when(responseSpec.entity(AssistantGeneration.class)).thenReturn(
-                new AssistantGeneration("{\"query\":\"Ford Lobo\"}", null),
-                new AssistantGeneration("{\"query\":\"Ford Lobo\"}", null));
+        when(responseSpec.content()).thenReturn(
+                "{\"answer\":\"{\\\"query\\\":\\\"Ford Lobo\\\"}\"}",
+                "{\"answer\":\"{\\\"query\\\":\\\"Ford Lobo\\\"}\"}");
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> new SpringAiChatCompletionAdapter(client, "openrouter")
                 .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),

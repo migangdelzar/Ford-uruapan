@@ -1,5 +1,22 @@
 # Jev classification implementation
 
+## DeepSeek tool-turn response parsing (2026-10-16)
+
+- [x] Confirm the production failure occurs after a successful MCP tool call and inspect Spring AI 2.0.1 call/entity semantics.
+- [x] Add regression coverage proving an empty response cannot trigger a second hidden model completion.
+- [x] Use only the single response from each provider attempt; preserve plain-text and JSON-text parsing.
+- [x] Run focused adapter tests and full Java checks.
+- [ ] Run the combined Jev + DeepSeek + MCP live E2E flow after the fix is deployed.
+- [ ] Verify Meta inbound/outbound delivery separately; Test Lab does not send Meta messages.
+- [ ] Deploy only after the code path and test pass; report Meta delivery separately from Test Lab verification.
+
+### Working notes
+
+- Production logs reported `MismatchedInputException` after MCP `get_vehicle` success. Spring AI 2.0.1 documents `entity(...)` as a response conversion operation, but its implementation performs another model request when invoked on the same response spec. Calling `content()` then `entity()` can therefore create a hidden second completion with a different output format.
+- The adapter now consumes only `content()` for each model attempt and rejects blank output as `empty_response`; it no longer invokes `entity()` after the initial content read.
+- `./gradlew test --tests com.ford.service.ai.SpringAiChatCompletionAdapterTest --no-daemon` and `./gradlew check --no-daemon` passed.
+- Keep customer content out of logs. Preserve exact-fact evidence checks and one repair bound.
+
 ## Multi-phase workflow and memory/MCP/classifier evaluation (2026-10-08)
 
 - [x] Add structured pending-question confirmation independent of transcript/cache availability.
