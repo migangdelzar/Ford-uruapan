@@ -8,7 +8,9 @@
 - [x] Add a failing persona test, implement MÍA as the fixed name, and verify the first greeting.
 - [x] Add failing tests for formal fixed replies and runtime-prompt precedence.
 - [x] Implement the minimum changes; retain runtime-editable prompt support.
-- [x] Run focused tests, all unit tests (167 reports, zero failures), deterministic Java AI evaluation, Node AI harness (9 tests), and release coordinator Python tests (88 tests).
+- [x] Align model-facing memory, tool retry, source-unavailable, classifier, and compaction instructions with formal address.
+- [x] Run focused tests, all unit tests (167 reports, zero failures), final targeted tests, deterministic Java AI evaluation, Node AI harness (9 tests), and release coordinator Python tests (88 tests).
+- [x] Confirm local GitHub API, HTTPS push, and SSH push are currently unavailable (invalid cached CLI token, GitHub DNS/API connection failure, and SSH `No user exists for uid 501`).
 - [ ] Resolve local Testcontainers PostgreSQL host-port/Ryuk access; integration suite currently fails to connect to Docker-published host ports in this temporary worktree.
 - [ ] Push branch/open PR after restoring GitHub CLI or SSH credentials; current cached CLI token is invalid and local SSH reports `No user exists for uid 501`.
 - [ ] Run required GitHub CI, merge, publish the next annotated Service tag, pass release-all approval, and verify production health and a synthetic conversation.

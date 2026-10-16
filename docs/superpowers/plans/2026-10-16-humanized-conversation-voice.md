@@ -223,9 +223,11 @@ git commit -m "fix(ai): enforce MÍA voice after runtime prompts"
 
 - [x] **Step 1: Run unit tests and deterministic AI evaluation.**
 
-Run from the repository root: `cd ford-ai-service && ./gradlew check --no-daemon`
+Run from the repository root: `cd ford-ai-service && ./gradlew test --no-daemon --no-configuration-cache --max-workers=1`
 
 Expected: PASS for unit tests. The focused test suite and all unit reports passed (167 reports, zero failures).
+
+The complete `check` task is not green locally: PostgreSQL/Testcontainers integration tests fail while connecting to Docker-published host ports (`Could not connect to Ryuk`). The same integration suite must pass in required GitHub CI before release.
 
 Run: `node --test ../scripts/ai/openrouter-chat-eval.test.mjs` and `./gradlew test --tests '*AiRegressionEvaluationTest' --no-daemon --no-configuration-cache`
 
