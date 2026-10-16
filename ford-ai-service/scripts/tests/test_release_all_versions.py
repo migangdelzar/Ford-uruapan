@@ -177,8 +177,8 @@ class ReleaseVersionResolutionTest(unittest.TestCase):
             request_id="321-1",
         )
 
-        self.assertEqual([release.status for release in releases], ["dispatched", "failure"])
-        self.assertEqual([release.version for release in releases], ["v1.2.3", "v3.4.5"])
+        self.assertEqual([release.status for release in releases], ["failure", "dispatched"])
+        self.assertEqual([release.version for release in releases], ["v3.4.5", "v1.2.3"])
         self.assertEqual([release.source_sha for release in releases], [SHA, SHA])
 
 

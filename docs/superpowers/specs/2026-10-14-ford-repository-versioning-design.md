@@ -35,7 +35,7 @@ Give each repository an independent SemVer release history while making every re
 - For explicit `release`, accept an independent version for each selected repository (or a selection map when some repos are omitted). Resolve each `vX.Y.Z` tag to its exact SHA, verify tag immutability/ancestry and successful CI for that SHA, then dispatch the existing repo release workflow with that exact version and SHA.
 - Produce a release manifest in the workflow summary and downloadable artifact. Each entry includes repository, version, tag, full source SHA, artifact digest when applicable, workflow run URL, and deployment URL/ID when a production deployment is approved and completed.
 - A partial failure must retain successful entries and clearly report each failed repository. Rerunning release-all must not retag or overwrite an existing release.
-- Tags do not bypass current production environment approvals or deployment gates. Production gates remain unset until separately authorized and prerequisites are ready.
+- Tags do not bypass release checks. Release-all requires one protected coordinator approval, then deploys selected repositories MCP → Service → Web and stops at the first failed stage. Direct per-repository releases keep their own approval.
 
 ## Safe execution and rollback
 
@@ -48,7 +48,7 @@ Give each repository an independent SemVer release history while making every re
 - Reject malformed, duplicate, or already-used SemVer tags and tags not on protected `main`.
 - Reject a tag whose exact SHA lacks successful required CI.
 - Test that OCI deployment receives a digest, not a SemVer alias; test Pages release receives the tagged commit SHA.
-- Test release-all validate mode uses no credentials and dispatches nothing; test explicit release dispatches each repo's version and SHA and emits a per-repo result even on partial failure.
+- Test release-all validate mode dispatches nothing; test explicit release dispatches selected repos in dependency order, waits for each result, stops after the first failure, and records skipped later targets.
 - Confirm generated build metadata and release manifest do not contain secrets.
 - Perform a non-production/preview verification before enabling production release gates.
 

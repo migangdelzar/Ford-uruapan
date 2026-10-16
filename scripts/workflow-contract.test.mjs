@@ -138,6 +138,8 @@ test("requested releases fail instead of reporting a skipped production deployme
   assert.match(source, /PRODUCTION_DEPLOY_ENABLED: \$\{\{ vars\.PRODUCTION_DEPLOY_ENABLED \}\}/);
   assert.match(source, /RUNTIME_VAULT_READY: \$\{\{ vars\.RUNTIME_VAULT_READY \}\}/);
   assert.match(source, /needs\.production-readiness\.result == 'success'/);
+  assert.match(source, /actions\/runs\/\$\{coordinator_run_id\}\/attempts\/\$\{coordinator_attempt\}\/jobs/);
+  assert.match(source, /Approve and deploy selected releases in order/);
   assert.doesNotMatch(source, /needs\.deploy\.result == 'skipped'/);
 });
 
@@ -194,15 +196,28 @@ test("Ford Service release requires and passes the production MCP connection set
   assert.match(source, /service-mcp-access-client-secret-secret-ocid: \$\{\{ vars\.FORD_VAULT_SECRET_OCID_FORD_MCP_ACCESS_CLIENT_SECRET \}\}/);
 });
 
+test("Ford Service accepts coordinator releases only from the installed App and keeps direct approval", async () => {
+  const source = await read(".github/workflows/release.yml");
+
+  assert.match(source, /ford-release-coordinator\[bot\]/);
+  assert.match(source, /RELEASE_ACTOR.*ford-release-coordinator\[bot\]/);
+  assert.match(source, /\^\[0-9\]\+-\[0-9\]\+\$/);
+  assert.match(source, /approval:[\s\S]*?environment: manual-release-approval/);
+  assert.match(source, /needs\.verify\.outputs\.coordinator_dispatch == 'true' \|\| needs\.approval\.result == 'success'/);
+  assert.match(source, /registry-username: \$\{\{ github\.repository_owner \}\}/);
+});
+
 test("release-all reports missing cross-repository dispatch credentials clearly", async () => {
   const source = await read(".github/workflows/release-all.yml");
 
   assert.match(source, /name: Validate release coordinator credentials/);
   assert.match(source, /RELEASE_COORDINATOR_APP_ID: \$\{\{ secrets\.RELEASE_COORDINATOR_APP_ID \}\}/);
   assert.match(source, /RELEASE_COORDINATOR_APP_PRIVATE_KEY: \$\{\{ secrets\.RELEASE_COORDINATOR_APP_PRIVATE_KEY \}\}/);
-  assert.match(source, /missing the RELEASE_COORDINATOR_APP_PRIVATE_KEY repository secret/);
+  assert.match(source, /Release coordinator App credentials are not configured/);
   assert.match(source, /name: Require coordinator dispatch from main/);
   assert.doesNotMatch(source, /release:\n\s+name: Dispatch and track selected releases\n\s+if:/);
+  assert.match(source, /environment: release-all-approval/);
+  assert.match(source, /Dispatch selected releases sequentially and stop on failure/);
 });
 
 test("reusable workflows expose the shared contract", async () => {

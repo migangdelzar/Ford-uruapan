@@ -25,20 +25,26 @@ class ReleaseAllSelectionTest(unittest.TestCase):
         self.assertIn("Ford-web", workflow)
         self.assertIn("permission-actions: write", workflow)
         self.assertIn("permission-contents: read", workflow)
-        self.assertNotIn("environment: production", workflow)
+        self.assertIn("environment: release-all-approval", workflow)
+        self.assertIn("timeout-minutes: 300", workflow)
+        self.assertIn("permission-actions: read", workflow)
 
-    def test_validation_mode_defaults_to_read_only_preflight_before_app_token(self):
+    def test_validation_preflights_before_approval_and_dispatch_token(self):
         workflow = (REPOSITORY_ROOT / ".github/workflows/release-all.yml").read_text(
             encoding="utf-8"
         )
 
         self.assertIn("default: validate", workflow)
-        preflight = workflow.index("Run credential-free release preflight")
+        preflight = workflow.index("Run read-only selected release preflight")
+        read_token = workflow.index("Create read-only release metadata token")
+        approval_environment = workflow.index("environment: release-all-approval")
         app_token = workflow.index("Create narrowly scoped GitHub App token")
-        dispatch = workflow.index("Dispatch exact verified versions and report each result")
-        self.assertLess(preflight, app_token)
+        dispatch = workflow.index("Dispatch selected releases sequentially and stop on failure")
+        self.assertLess(read_token, preflight)
+        self.assertLess(preflight, approval_environment)
+        self.assertLess(approval_environment, app_token)
         self.assertLess(app_token, dispatch)
-        self.assertIn("if: inputs.operation == 'validate'", workflow)
+        self.assertIn("if: inputs.operation == 'validate' || inputs.operation == 'release'", workflow)
         self.assertIn("if: inputs.operation == 'release'", workflow)
         self.assertIn("--preflight-only", workflow)
 
