@@ -142,8 +142,8 @@ public final class SpringAiAssistantService implements AssistantService {
         var securedInput = inputSecurityPolicy.apply(userText, context.memoryContext(),
                 context.leadJourneyContext(), context.containsSensitiveData());
         var started = System.nanoTime();
-        log.info("AI turn started: conversationId={} memoryChars={} sensitiveData={} inputGuardrail={} piiRedacted={} untrustedContextOmitted={}",
-                conversationId, context.memoryContext() == null ? 0 : context.memoryContext().length(),
+        log.info("AI turn started: conversationId={} sensitiveData={} inputGuardrail={} piiRedacted={} untrustedContextOmitted={}",
+                conversationId,
                 securedInput.containsSensitiveData(), securedInput.reason(), securedInput.piiRedacted(),
                 securedInput.untrustedContextOmitted());
         if (securedInput.blocked()) {

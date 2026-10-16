@@ -44,3 +44,17 @@ Complete. `GENERAL` turns with Ford conversation memory now pass the scope polic
 - Removed `inputChars` and `memoryChars` from the scope-guard log while retaining conversation ID, reason code, classified intent, tool family, and duration.
 - Focused verification passed: `./gradlew test --tests com.ford.service.ai.application.AssistantScopePolicyTest --tests com.ford.service.ai.SpringAiAssistantServiceTest`.
 - This review fix is committed separately; see the follow-up commit in git history.
+
+## Review fix: remove additional length metadata
+
+- Removed `memoryChars` from the AI turn started log and `summaryChars` from the memory compactor log. Both still retain operational IDs and non-content metadata, including message counts where applicable.
+- Focused verification passed: `./gradlew test --tests com.ford.service.ai.SpringAiAssistantServiceTest --tests com.ford.service.conversations.ProviderRoutedConversationMemoryCompactorTest`.
+- Fresh review files: `.superpowers/sdd/task-1-review-context.md` and `.superpowers/sdd/task-1.diff`.
+- Follow-up commit is recorded in git history.
+
+## Review fix: remove additional length metadata
+
+- Removed `memoryChars` from the AI turn started log and `summaryChars` from the memory compactor log. Both still retain operational IDs and non-content metadata, including message counts where applicable.
+- Focused verification passed: `./gradlew test --tests com.ford.service.ai.SpringAiAssistantServiceTest --tests com.ford.service.conversations.ProviderRoutedConversationMemoryCompactorTest`.
+- Fresh review files: `.superpowers/sdd/task-1-review-context.md` and `.superpowers/sdd/task-1.diff`.
+- Follow-up commit is recorded in git history.
