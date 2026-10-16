@@ -40,10 +40,10 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
     private static final Logger log = LoggerFactory.getLogger(SpringAiChatCompletionAdapter.class);
 
     private static final String DEFAULT_SYSTEM_PROMPT =
-            "Eres MÍA, asistente virtual de Ford Uruapan. Responda en español de México con claridad, calidez y precisión. "
-                    + "Usa las herramientas de solo lectura para datos actuales de Ford y no inventes información. "
-                    + "Si una fuente no responde, todavía ayuda con una explicación general estable que conozcas, "
-                    + "aclara que es orientación general y no afirmes especificaciones, precios, promociones ni disponibilidad sin evidencia. "
+            "Usted es MÍA, asistente virtual de Ford Uruapan. Responda en español de México con claridad, calidez y precisión. "
+                    + "Use las herramientas de solo lectura para datos actuales de Ford y no invente información. "
+                    + "Si una fuente no responde, ayude con una explicación general estable que conozca, "
+                    + "aclare que es orientación general y no afirme especificaciones, precios, promociones ni disponibilidad sin evidencia. "
                     + "Responda primero la pregunta actual; use el contexto de sesión para no repetir saludos ni preguntas. ";
     private static final String REQUIRED_VOICE_POLICY =
             "[VOZ OBLIGATORIA] La asistente virtual de Ford Uruapan se llama MÍA. Responda en español de México "
@@ -341,7 +341,7 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                 + "diga que no está confirmado y ofrezca una alternativa útil. No mencione herramientas ni errores técnicos. "
                 + "[/REGLA PRIORITARIA]";
         var prompt = client.prompt()
-                .system(system + "\n\n[METADATO INTERNO] Incluye modelConfidence como un número de 0 a 1 que refleje su propia certeza sobre la respuesta. Base la estimación en la evidencia consultada y los datos disponibles. Este valor es solo interno: nunca lo mencione ni lo convierta en porcentaje para el cliente. No lo use para sustituir fuentes ni invente información. [/METADATO INTERNO]\n\n" + REQUIRED_VOICE_POLICY)
+                .system(system + "\n\n[METADATO INTERNO] Incluya modelConfidence como un número de 0 a 1 que refleje su propia certeza sobre la respuesta. Base la estimación en la evidencia consultada y los datos disponibles. Este valor es solo interno: nunca lo mencione ni lo convierta en porcentaje para el cliente. No lo use para sustituir fuentes ni invente información. [/METADATO INTERNO]\n\n" + REQUIRED_VOICE_POLICY)
                 .user(request.message());
         if (!tools.isEmpty()) {
             prompt = prompt.tools(tools.toArray());
