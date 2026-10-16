@@ -165,11 +165,8 @@ public final class SpringAiAssistantService implements AssistantService {
                 decision.toolFamily(), decision.handoffRecommendation(), decision.nextAction(), decision.evidence().size());
         var scopeReason = scopePolicy.reason(securedInput.message(), decision, securedInput.memoryContext());
         if (!"allowed".equals(scopeReason)) {
-            log.info("AI turn completed by scope guard: conversationId={} reason={} classifiedIntent={} toolFamily={} inputChars={} memoryChars={} durationMs={}",
-                    conversationId, scopeReason, decision.intent(), decision.toolFamily(),
-                    securedInput.message().length(),
-                    securedInput.memoryContext() == null ? 0 : securedInput.memoryContext().length(),
-                    elapsedMs(started));
+            log.info("AI turn completed by scope guard: conversationId={} reason={} classifiedIntent={} toolFamily={} durationMs={}",
+                    conversationId, scopeReason, decision.intent(), decision.toolFamily(), elapsedMs(started));
             return new AssistantTurn(introduceOnce(scopePolicy.scopeResponse(), conversationId,
                     securedInput.memoryContext()), decision.toLegacyIntent(), false,
                     List.of(), "scope-guard", "none", decision);
