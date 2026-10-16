@@ -234,6 +234,16 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         } catch (RuntimeException exception) {
             var deterministic = renderFactResponse(request, toolResults, null);
             if (deterministic != null) return deterministic;
+            var sourcedWithholding = withSourceLinks(VOLATILE_SOURCE_UNAVAILABLE, toolResults);
+            if (sourcedWithholding != null) {
+                var evidenceStatus = evidenceStatus(request, toolResults);
+                recordAssessment(evidenceStatus, null, "withheld");
+                log.info("Model response assessed: conversationId={} provider={} evidenceStatus={} sourceTools={} outcome=withheld_with_sources",
+                        request.conversationId(), provider, evidenceStatus,
+                        new java.util.TreeSet<>(toolResults.returnedToolNames()));
+                return new AssistantResponse(sourcedWithholding, false, provider, List.of(), null,
+                        null, evidenceStatus);
+            }
             if (toolResults.hasFailed() && decisionPolicy.requiresVolatileInformation(request.decision())) {
                 var evidenceStatus = evidenceStatus(request, toolResults);
                 recordAssessment(evidenceStatus, null, "withheld");
@@ -246,6 +256,12 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                     request.conversationId(), provider, AiProviderFailureDiagnostics.describe(routedFailure, true));
             throw routedFailure;
         }
+    }
+
+    private String withSourceLinks(String answer, ToolResultTracker tracker) {
+        if (factResponseRenderer == null || tracker.returnedPayloads().isEmpty()) return null;
+        var answerWithSources = factResponseRenderer.appendSourceLinks(answer, tracker.returnedPayloads());
+        return answerWithSources.equals(answer) ? null : answerWithSources;
     }
 
     private AssistantResponse renderFactResponse(AssistantRequest request, ToolResultTracker tracker,

@@ -85,6 +85,17 @@ class ProviderFailureTest {
     }
 
     @Test
+    void describesOnlyAllowlistedAssistantRejectionReasons() {
+        assertThat(AiProviderFailureDiagnostics.describe(
+                new InvalidAssistantResponseException("invalid_tool_response_json"), true))
+                .contains("reason=invalid_tool_response_json");
+        assertThat(AiProviderFailureDiagnostics.describe(
+                new InvalidAssistantResponseException("customer prompt token=secret"), true))
+                .doesNotContain("customer prompt", "secret")
+                .contains("reason=invalid_response");
+    }
+
+    @Test
     void makesOnlyNonAuthenticationClientRejectionsAfterReadOnlyResultFallbackEligible() {
         var badRequest = openAiFailure(400, null);
         var forbidden = openAiFailure(403, null);
