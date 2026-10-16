@@ -333,7 +333,7 @@ jobs:
           sparse-checkout: deployment/observability/otel-collector/grafana-cloud-config.yaml
           sparse-checkout-cone-mode: false
       - name: Run the shared OCI blue-green deployment action
-        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@5bb32ccbebb5be226b500a4485f8b12d843ff9f5
+        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@3d3f5ba898163a11ee6e77b8e041966bcf74db53
         with:
           target: ford-service
           ui-upstream-url: ${{ vars.FORD_WEB_UI_UPSTREAM_URL }}

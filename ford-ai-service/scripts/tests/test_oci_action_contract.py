@@ -161,7 +161,7 @@ class OciActionContractTest(unittest.TestCase):
     def test_release_workflow_pins_the_meta_aware_shared_action_commit(self):
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn(
-            "migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@5bb32ccbebb5be226b500a4485f8b12d843ff9f5",
+            "migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@3d3f5ba898163a11ee6e77b8e041966bcf74db53",
             workflow,
         )
 
