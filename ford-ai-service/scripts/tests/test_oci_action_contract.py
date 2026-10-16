@@ -125,6 +125,46 @@ class OciActionContractTest(unittest.TestCase):
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("ui-upstream-url: ${{ vars.FORD_WEB_UI_UPSTREAM_URL }}", workflow)
 
+    def test_release_workflow_requires_and_passes_meta_reply_delivery_configuration(self):
+        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+        for name in (
+            "FORD_META_DELIVERY_ENABLED",
+            "FORD_OUTBOX_ENABLED",
+            "FORD_META_WHATSAPP_DELIVERY_ENDPOINT",
+            "FORD_META_PHONE_NUMBER_ID",
+            "FORD_VAULT_SECRET_OCID_FORD_META_APP_SECRET",
+            "FORD_VAULT_SECRET_OCID_FORD_META_VERIFY_TOKEN",
+            "FORD_VAULT_SECRET_OCID_FORD_META_WHATSAPP_ACCESS_TOKEN",
+        ):
+            with self.subTest(name=name):
+                self.assertIn(f"{name}: ${{{{ vars.{name} }}}}", workflow)
+                self.assertIn(name, workflow.split("Validate protected runtime Vault configuration", 1)[1])
+
+        mappings = {
+            "meta-delivery-enabled:": "FORD_META_DELIVERY_ENABLED",
+            "outbox-enabled:": "FORD_OUTBOX_ENABLED",
+            "meta-whatsapp-delivery-endpoint:": "FORD_META_WHATSAPP_DELIVERY_ENDPOINT",
+            "meta-phone-number-id:": "FORD_META_PHONE_NUMBER_ID",
+            "meta-app-secret-ocid:": "FORD_VAULT_SECRET_OCID_FORD_META_APP_SECRET",
+            "meta-verify-token-ocid:": "FORD_VAULT_SECRET_OCID_FORD_META_VERIFY_TOKEN",
+            "meta-whatsapp-access-token-secret-ocid:": "FORD_VAULT_SECRET_OCID_FORD_META_WHATSAPP_ACCESS_TOKEN",
+        }
+        for input_name, variable in mappings.items():
+            with self.subTest(input_name=input_name):
+                self.assertIn(f"{input_name} ${{{{ vars.{variable} }}}}", workflow)
+
+        self.assertIn(r"graph\.facebook\.com", workflow)
+        self.assertIn('"$FORD_OUTBOX_ENABLED" == \'true\'', workflow)
+        self.assertIn('"$FORD_META_DELIVERY_ENABLED" == \'true\'', workflow)
+
+    def test_release_workflow_pins_the_meta_aware_shared_action_commit(self):
+        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn(
+            "migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@5bb32ccbebb5be226b500a4485f8b12d843ff9f5",
+            workflow,
+        )
+
     def test_release_workflow_is_closed_until_vault_and_production_gates_pass(self):
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("vars.PRODUCTION_DEPLOY_ENABLED == 'true'", workflow)
