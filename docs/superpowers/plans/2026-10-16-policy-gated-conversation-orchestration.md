@@ -47,14 +47,14 @@
 **Files:**
 - Modify: `ford-ai-service/src/main/java/com/ford/service/ai/adapter/out/springai/SpringAiChatCompletionAdapter.java`
 - Test: `ford-ai-service/src/test/java/com/ford/service/ai/SpringAiChatCompletionAdapterTest.java`
-- Test: `ford-ai-service/src/test/java/com/ford/service/conversations/adapter/out/ai/ProviderRoutedConversationMemoryCompactorTest.java` (create if absent)
+- Test: `ford-ai-service/src/test/java/com/ford/service/conversations/ProviderRoutedConversationMemoryCompactorTest.java`
 
 **Behavior:** A decision without evidence gets zero tool callbacks. A decision with `ToolFamily.NONE` gets zero tool callbacks. A supported family with evidence gets only the registered names from `DecisionPolicy.allowedToolNames`. The memory compactor's default decision is `NONE`, therefore compaction receives no callbacks.
 
 - [ ] Add adapter tests proving an empty-evidence request and a `NONE` family request expose zero callbacks, even when read-only callbacks are configured.
 - [ ] Run the new adapter tests and confirm the empty-evidence case fails against the current null-allowlist behavior.
 - [ ] Change `authorizedTools` to return `List.of()` when decision evidence is empty or the tool family is `NONE`; otherwise apply the existing family allowlist.
-- [ ] Add a compactor boundary test that captures its `AssistantRequest` and verifies its default decision is `NONE`; integrate through the completion adapter to verify zero model callbacks are supplied.
+- [ ] Extend the existing compactor test to capture its `AssistantRequest` and verify its default decision is `NONE`; verify at the completion adapter boundary that zero model callbacks are supplied.
 - [ ] Run the focused adapter and compactor tests and existing `DecisionPolicyTest`.
 
 ## Task 3: Validate bounded grounded replies and safe diagnostics
