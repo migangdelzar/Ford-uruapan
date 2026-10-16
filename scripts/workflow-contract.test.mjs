@@ -61,7 +61,7 @@ test("Ford Service pins the backup-verified OCI rollout action", async () => {
 
   assert.match(
     source,
-    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@161471351d0ae1d42de129b60cad207bc9d8ce9f/,
+    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@6cd9d8ecee984a8dd43095ba86eb2db2cc8e6539/,
   );
   assert.match(source, /host: \$\{\{ vars\.OCI_DEPLOY_HOST \}\}/);
   assert.match(source, /user: \$\{\{ vars\.OCI_DEPLOY_USER \}\}/);
@@ -175,6 +175,23 @@ test("production service deployment passes Vault secret references to Ansible", 
       `${name} is passed to Ansible`,
     );
   }
+});
+
+test("Ford Service release requires and passes the production MCP connection settings", async () => {
+  const source = await read(".github/workflows/release.yml");
+
+  assert.match(source, /FORD_MCP_ENABLED: \$\{\{ vars\.FORD_MCP_ENABLED \}\}/);
+  assert.match(source, /FORD_MCP_URL: \$\{\{ vars\.FORD_MCP_URL \}\}/);
+  assert.match(source, /FORD_MCP_ACCESS_CLIENT_ID: \$\{\{ vars\.FORD_MCP_ACCESS_CLIENT_ID \}\}/);
+  assert.match(
+    source,
+    /FORD_MCP_ENABLED" == 'true'[\s\S]*FORD_MCP_URL" == 'https:\/\/ford-mcp\.emme\.business'[\s\S]*FORD_MCP_ACCESS_CLIENT_ID" =~ \^\[A-Za-z0-9\._-\]\+\$/,
+  );
+  assert.match(source, /service-mcp-enabled: \$\{\{ vars\.FORD_MCP_ENABLED \}\}/);
+  assert.match(source, /service-mcp-url: \$\{\{ vars\.FORD_MCP_URL \}\}/);
+  assert.match(source, /service-mcp-access-client-id: \$\{\{ vars\.FORD_MCP_ACCESS_CLIENT_ID \}\}/);
+  assert.match(source, /service-mcp-token-secret-ocid: \$\{\{ vars\.FORD_VAULT_SECRET_OCID_FORD_MCP_TOKEN \}\}/);
+  assert.match(source, /service-mcp-access-client-secret-secret-ocid: \$\{\{ vars\.FORD_VAULT_SECRET_OCID_FORD_MCP_ACCESS_CLIENT_SECRET \}\}/);
 });
 
 test("release-all reports missing cross-repository dispatch credentials clearly", async () => {
