@@ -5,7 +5,8 @@
 - [x] Write and self-review the focused MÍA/formal-usted design.
 - [x] User confirmed the scope: keep existing behavior and make it work as expected.
 - [x] Write and self-review the TDD implementation plan.
-- [ ] Add failing tests for identity, tone, runtime prompt override, and existing response paths.
+- [x] Add a failing persona test, implement MÍA as the fixed name, and verify the first greeting.
+- [ ] Add failing tests for formal fixed replies and runtime-prompt precedence.
 - [ ] Implement the minimum changes; retain runtime-editable prompt support.
 - [ ] Run focused tests, full service checks, deterministic AI evaluation, and container gates.
 - [ ] Merge the verified implementation and confirm its production deployment and live health.

@@ -45,7 +45,7 @@
 
 **Produces:** Both methods return the fixed identity MÍA; `SpringAiAssistantService` still introduces the assistant only on a first turn.
 
-- [ ] **Step 1: Write the failing persona tests.** Replace the rotating-name expectation with:
+- [x] **Step 1: Write the failing persona tests.** Replace the rotating-name expectation with:
 
 ```java
 assertThat(persona.nameFor(new UUID(0, 0))).isEqualTo("MÍA");
@@ -56,21 +56,21 @@ assertThat(persona.introductionFor(new UUID(0, 0)))
 
 Update the assistant-service first-turn test so two new conversation IDs start with the same MÍA introduction, and a follow-up with history does not repeat it.
 
-- [ ] **Step 2: Run the focused tests and verify the expected failure.**
+- [x] **Step 2: Run the focused tests and verify the expected failure.**
 
-Run: `./gradlew test --no-daemon --tests com.ford.service.ai.application.AssistantPersonaTest --tests com.ford.service.ai.SpringAiAssistantServiceTest`
+Run from the repository root: `cd ford-ai-service && ./gradlew test --no-daemon --tests com.ford.service.ai.application.AssistantPersonaTest --tests com.ford.service.ai.SpringAiAssistantServiceTest`
 
 Expected: FAIL because `AssistantPersona` still rotates names and its introduction omits “virtual”.
 
-- [ ] **Step 3: Implement the fixed persona.** Keep the method signatures, reject null IDs as today, remove the rotating name list, and return `MÍA`. Use the exact introduction in the test.
+- [x] **Step 3: Implement the fixed persona.** Keep the method signatures, reject null IDs as today, remove the rotating name list, and return `MÍA`. Use the exact introduction in the test.
 
-- [ ] **Step 4: Re-run the focused tests.**
+- [x] **Step 4: Re-run the focused tests.**
 
-Run: `./gradlew test --no-daemon --tests com.ford.service.ai.application.AssistantPersonaTest --tests com.ford.service.ai.SpringAiAssistantServiceTest`
+Run from the repository root: `cd ford-ai-service && ./gradlew test --no-daemon --tests com.ford.service.ai.application.AssistantPersonaTest --tests com.ford.service.ai.SpringAiAssistantServiceTest`
 
 Expected: PASS; first-turn copy uses MÍA and later turns do not add another introduction.
 
-- [ ] **Step 5: Commit this task.**
+- [x] **Step 5: Commit this task.**
 
 ```bash
 git add ford-ai-service/src/test/java/com/ford/service/ai/application/AssistantPersonaTest.java ford-ai-service/src/test/java/com/ford/service/ai/SpringAiAssistantServiceTest.java ford-ai-service/src/main/java/com/ford/service/ai/application/AssistantPersona.java
@@ -107,7 +107,7 @@ Recovery copy must not address the customer as “tú”; it must remain short, 
 
 - [ ] **Step 2: Run focused tests and verify the old copy fails the new assertions.**
 
-Run: `./gradlew test --no-daemon --tests com.ford.service.ai.SpringAiAssistantServiceTest --tests com.ford.service.ai.AssistantResponseQualityPolicyTest --tests com.ford.service.conversations.HumanHandoffPolicyTest`
+Run from the repository root: `cd ford-ai-service && ./gradlew test --no-daemon --tests com.ford.service.ai.SpringAiAssistantServiceTest --tests com.ford.service.ai.AssistantResponseQualityPolicyTest --tests com.ford.service.conversations.HumanHandoffPolicyTest`
 
 Expected: FAIL only on the new formal-address assertions.
 
@@ -115,7 +115,7 @@ Expected: FAIL only on the new formal-address assertions.
 
 - [ ] **Step 4: Re-run the focused tests.**
 
-Run: `./gradlew test --no-daemon --tests com.ford.service.ai.SpringAiAssistantServiceTest --tests com.ford.service.ai.AssistantResponseQualityPolicyTest --tests com.ford.service.conversations.HumanHandoffPolicyTest`
+Run from the repository root: `cd ford-ai-service && ./gradlew test --no-daemon --tests com.ford.service.ai.SpringAiAssistantServiceTest --tests com.ford.service.ai.AssistantResponseQualityPolicyTest --tests com.ford.service.conversations.HumanHandoffPolicyTest`
 
 Expected: PASS with no changes to classification, handoff eligibility, or provider selection.
 
@@ -152,13 +152,13 @@ Hola, ya tomé su conversación. Le responderé por aquí en cuanto tenga una ac
 
 - [ ] **Step 2: Run focused tests and verify the formal-copy assertions fail.**
 
-Run: `./gradlew test --no-daemon --tests com.ford.service.ai.AssistantOrchestratorTest --tests com.ford.service.conversations.DefaultConversationHandoffMessageServiceTest --tests com.ford.service.conversations.PendingTestDriveReplyPolicyTest`
+Run from the repository root: `cd ford-ai-service && ./gradlew test --no-daemon --tests com.ford.service.ai.AssistantOrchestratorTest --tests com.ford.service.conversations.DefaultConversationHandoffMessageServiceTest --tests com.ford.service.conversations.PendingTestDriveReplyPolicyTest`
 
 - [ ] **Step 3: Change only the message text.** Preserve the operator UUID as sender, `operator:handoff:<ticketId>` idempotency key, expected conversation version, and appointment proposal.
 
 - [ ] **Step 4: Re-run focused tests.**
 
-Run: `./gradlew test --no-daemon --tests com.ford.service.ai.AssistantOrchestratorTest --tests com.ford.service.conversations.DefaultConversationHandoffMessageServiceTest --tests com.ford.service.conversations.PendingTestDriveReplyPolicyTest`
+Run from the repository root: `cd ford-ai-service && ./gradlew test --no-daemon --tests com.ford.service.ai.AssistantOrchestratorTest --tests com.ford.service.conversations.DefaultConversationHandoffMessageServiceTest --tests com.ford.service.conversations.PendingTestDriveReplyPolicyTest`
 
 Expected: PASS; takeover remains authored by the operator and a confirmed test-drive offer still requests one date only.
 
@@ -185,7 +185,7 @@ git commit -m "fix(conversations): formalize advisor and test-drive replies"
 
 - [ ] **Step 2: Run focused tests and verify they fail.**
 
-Run: `./gradlew test --no-daemon --tests com.ford.service.ai.SpringAiChatCompletionAdapterTest --tests com.ford.service.ai.SystemPromptServiceTest`
+Run from the repository root: `cd ford-ai-service && ./gradlew test --no-daemon --tests com.ford.service.ai.SpringAiChatCompletionAdapterTest --tests com.ford.service.ai.SystemPromptServiceTest`
 
 Expected: FAIL because no code-owned style rule follows the runtime prompt and the seed contract expects a rotating name.
 
@@ -200,7 +200,7 @@ Append this constant in the single `call(...)` method so both first generation a
 
 - [ ] **Step 4: Re-run focused tests.**
 
-Run: `./gradlew test --no-daemon --tests com.ford.service.ai.SpringAiChatCompletionAdapterTest --tests com.ford.service.ai.SystemPromptServiceTest`
+Run from the repository root: `cd ford-ai-service && ./gradlew test --no-daemon --tests com.ford.service.ai.SpringAiChatCompletionAdapterTest --tests com.ford.service.ai.SystemPromptServiceTest`
 
 Expected: PASS; the saved prompt remains present, and the immutable MÍA/usted rule is last on both attempts.
 
@@ -223,7 +223,7 @@ git commit -m "fix(ai): enforce MÍA voice after runtime prompts"
 
 - [ ] **Step 1: Run the full Java test/check suite and AI evaluation.**
 
-Run: `./gradlew check --no-daemon`
+Run from the repository root: `cd ford-ai-service && ./gradlew check --no-daemon`
 
 Expected: PASS for unit/integration checks available in the configured environment.
 

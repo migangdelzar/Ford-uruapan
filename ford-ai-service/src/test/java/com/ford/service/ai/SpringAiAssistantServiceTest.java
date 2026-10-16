@@ -57,12 +57,12 @@ class SpringAiAssistantServiceTest {
         var firstReply = service.respond(new AiExecutionContext(UUID.randomUUID(), false, firstConversation,
                 "[HISTORIAL DE CONVERSACIÓN]\nResumen de sesión: null"), "Hola");
         var followUp = service.respond(new AiExecutionContext(UUID.randomUUID(), false, firstConversation,
-                "Historial reciente:\n- asistente: Hola, soy *Ana*, su asistente de Ford Uruapan. 👋"), "Hola");
+                "Historial reciente:\n- asistente: Hola, soy *MÍA*, su asistente virtual de Ford Uruapan. 👋"), "Hola");
         var newConversation = service.respond(new AiExecutionContext(UUID.randomUUID(), false, secondConversation), "Hola");
 
-        assertThat(firstReply.text()).startsWith("Hola, soy *Ana*, su asistente de Ford Uruapan.");
+        assertThat(firstReply.text()).startsWith("Hola, soy *MÍA*, su asistente virtual de Ford Uruapan.");
         assertThat(followUp.text()).doesNotStartWith("Hola, soy");
-        assertThat(newConversation.text()).startsWith("Hola, soy *Daniela*, su asistente de Ford Uruapan.");
+        assertThat(newConversation.text()).startsWith("Hola, soy *MÍA*, su asistente virtual de Ford Uruapan.");
     }
 
     @Test
