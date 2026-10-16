@@ -97,7 +97,7 @@
 - [x] Add workflow and coordinator tests proving validate mode needs no App credential and dispatches nothing, selected repositories require their own version inputs, and partial manifests survive target failure.
 - [x] Run the focused contract tests and confirm failure before implementation.
 - [x] Add three independent version inputs; require one version per selected repository and dispatch the resolved tag/SHA pair.
-- [x] Add per-repository result artifacts and a summary with workflow URLs, artifact digests, and deployment identities without changing production approvals.
+- [x] Add per-repository result artifacts and a summary with workflow URLs, artifact digests, and deployment identities. Release-all now uses one protected coordinator approval; direct releases retain their own gate.
 - [x] Run the release-all unit suite, workflow contract tests, YAML parsing, and shell syntax checks. Live preflight on GitHub remains pending because these changes are not pushed.
 
 ## Task 6: Release operations and version safeguards

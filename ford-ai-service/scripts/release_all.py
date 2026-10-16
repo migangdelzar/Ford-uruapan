@@ -193,7 +193,11 @@ def select_targets(*, service: bool, scraping: bool, web: bool) -> tuple[Release
         "scraping": scraping,
         "web": web,
     }
-    targets = tuple(target for target in TARGETS if selected[target.key])
+    deployment_order = {"scraping": 0, "service": 1, "web": 2}
+    targets = tuple(sorted(
+        (target for target in TARGETS if selected[target.key]),
+        key=lambda target: deployment_order[target.key],
+    ))
     if not targets:
         raise ValueError("Select at least one repository")
     return targets
@@ -339,7 +343,7 @@ def summarize_preflight(results: list[PreflightResult]) -> str:
     lines.extend(
         [
             "",
-            "This read-only preflight used public workflow metadata. It did not create a GitHub App token, dispatch releases, or enter a production environment.",
+            "This read-only preflight verified selected tags and CI identities. It did not dispatch releases or enter a production environment.",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -409,6 +413,106 @@ def dispatch_versioned_selected(
                 version=version,
             )
         )
+    return results
+
+
+def dispatch_sequentially_selected(
+    api: GitHubApi,
+    targets: tuple[ReleaseTarget, ...],
+    versions: dict[str, str],
+    *,
+    request_id: str,
+    poll_interval_seconds: int = 15,
+    target_timeout_seconds: int = 3000,
+    sleep: Callable[[float], None] = time.sleep,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> list[ReleaseResult]:
+    """Release selected tags in dependency order and stop after the first failure."""
+    if REQUEST_ID_PATTERN.fullmatch(request_id) is None:
+        raise ValueError("Release request ID must contain the run ID and attempt")
+    selected_keys = {target.key for target in targets}
+    if set(versions) != selected_keys or any(
+        SEMVER_TAG_PATTERN.fullmatch(version) is None for version in versions.values()
+    ):
+        raise ValueError("Provide one version per selected repository using vMAJOR.MINOR.PATCH")
+
+    identities: dict[str, str] = {}
+    failed_identity: ReleaseTarget | None = None
+    for target in targets:
+        try:
+            identities[target.key] = resolve_release_version(api, target, versions[target.key])
+        except GitHubApiError:
+            failed_identity = target
+            break
+
+    if failed_identity is not None:
+        results = [
+            ReleaseResult(
+                target=target,
+                source_sha=identities.get(target.key),
+                request_id=request_id,
+                status="failure" if target.key == failed_identity.key else "skipped",
+                detail=(
+                    "Could not verify the selected version tag and source"
+                    if target.key == failed_identity.key
+                    else "Not dispatched because a selected release identity could not be verified"
+                ),
+                version=versions[target.key],
+            )
+            for target in targets
+        ]
+        return results
+
+    results: list[ReleaseResult] = []
+    for index, target in enumerate(targets):
+        source_sha = identities[target.key]
+        result = ReleaseResult(
+            target=target,
+            source_sha=source_sha,
+            request_id=request_id,
+            status="dispatched",
+            version=versions[target.key],
+        )
+        body = {
+            "ref": "main",
+            "inputs": {
+                "operation": "deploy",
+                "version": versions[target.key],
+                "source_sha": source_sha,
+                "release_request_id": request_id,
+            },
+        }
+        try:
+            api.request(
+                "POST",
+                f"/repos/{target.repository}/actions/workflows/{target.release_workflow}/dispatches",
+                body=body,
+            )
+        except GitHubApiError:
+            result = replace(result, status="failure", detail="Target workflow dispatch failed")
+        else:
+            result = wait_for_releases(
+                api,
+                [result],
+                poll_interval_seconds=poll_interval_seconds,
+                timeout_seconds=target_timeout_seconds,
+                sleep=sleep,
+                monotonic=monotonic,
+            )[0]
+        results.append(result)
+        if result.status != "success":
+            results.extend(
+                ReleaseResult(
+                    target=remaining,
+                    source_sha=identities[remaining.key],
+                    request_id=request_id,
+                    status="skipped",
+                    detail="Not dispatched because an earlier release did not succeed",
+                    version=versions[remaining.key],
+                )
+                for remaining in targets[index + 1 :]
+            )
+            break
     return results
 
 
@@ -592,7 +696,7 @@ def summarize_releases(releases: list[ReleaseResult]) -> str:
     lines.extend(
         [
             "",
-            "Each target workflow keeps its own production approval. Successful targets are not rolled back when another target fails.",
+            "The coordinator approval covers this selected release. Targets run in dependency order and later targets stop after a failure; successful targets are not rolled back automatically.",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -661,7 +765,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.preflight_only:
-        results = preflight_selected(GitHubRestApi(), targets, versions)
+        results = preflight_selected(GitHubRestApi(os.environ.get("GITHUB_TOKEN", "")), targets, versions)
         summary = summarize_preflight(results)
         summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
         if summary_path:
@@ -677,8 +781,7 @@ def main(argv: list[str] | None = None) -> int:
     request_id = f"{os.environ.get('GITHUB_RUN_ID', '')}-{os.environ.get('GITHUB_RUN_ATTEMPT', '')}"
     try:
         api = GitHubRestApi(token)
-        releases = dispatch_versioned_selected(api, targets, versions, request_id=request_id)
-        releases = wait_for_releases(api, releases)
+        releases = dispatch_sequentially_selected(api, targets, versions, request_id=request_id)
     except (ValueError, GitHubApiError) as error:
         print(str(error), file=sys.stderr)
         return 1
@@ -691,7 +794,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.manifest_path:
         write_release_manifest(releases, args.manifest_path)
     print(summary)
-    return 1 if any(release.status in {"failure", "cancelled", "timed-out"} for release in releases) else 0
+    return 1 if any(release.status != "success" for release in releases) else 0
 
 
 if __name__ == "__main__":

@@ -42,6 +42,7 @@ jobs:
       operation: ${{ steps.source.outputs.operation }}
       source_sha: ${{ steps.source.outputs.source_sha }}
       version: ${{ steps.source.outputs.version }}
+      coordinator_dispatch: ${{ steps.source.outputs.coordinator_dispatch }}
     steps:
       - name: Check out release tooling from main
         uses: actions/checkout@v7
@@ -55,6 +56,8 @@ jobs:
           REQUESTED_OPERATION: ${{ inputs.operation }}
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+          RELEASE_REQUEST_ID: ${{ inputs.release_request_id }}
+          RELEASE_ACTOR: ${{ github.actor }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -62,6 +65,32 @@ jobs:
             echo 'Run Ford Service releases from main.' >&2
             exit 1
           }
+          coordinator_dispatch=false
+          if [[ -n "${RELEASE_REQUEST_ID}" ]]; then
+            [[ "${RELEASE_ACTOR}" == 'ford-release-coordinator[bot]' && "${RELEASE_REQUEST_ID}" =~ ^[0-9]+-[0-9]+$ ]] || {
+              echo 'Coordinator release request is not authorized.' >&2
+              exit 1
+            }
+            coordinator_run_id="${RELEASE_REQUEST_ID%-*}"
+            coordinator_attempt="${RELEASE_REQUEST_ID##*-}"
+            coordinator_run="$(gh api "repos/migangdelzar/Ford-uruapan/actions/runs/${coordinator_run_id}")"
+            jq -e --arg attempt "${coordinator_attempt}" \
+              '(.path | startswith(".github/workflows/release-all.yml@")) and
+               .event == "workflow_dispatch" and .head_branch == "main" and
+               .status == "in_progress" and (.run_attempt | tostring) == $attempt' \
+              <<<"${coordinator_run}" >/dev/null || {
+              echo 'Coordinator request does not identify an active release-all run on main.' >&2
+              exit 1
+            }
+            coordinator_jobs="$(gh api "repos/migangdelzar/Ford-uruapan/actions/runs/${coordinator_run_id}/attempts/${coordinator_attempt}/jobs?per_page=100")"
+            jq -e '.jobs | any(.name == "Approve and deploy selected releases in order" and .status == "in_progress")' \
+              <<<"${coordinator_jobs}" >/dev/null || {
+              echo 'Coordinator release job is not active; approval may not have been granted.' >&2
+              exit 1
+            }
+            coordinator_dispatch=true
+          fi
+          echo "coordinator_dispatch=${coordinator_dispatch}" >> "$GITHUB_OUTPUT"
           operation="${REQUESTED_OPERATION}"
           if [[ "${operation}" == 'rollback' ]]; then
             echo 'operation=rollback' >> "$GITHUB_OUTPUT"
@@ -181,11 +210,12 @@ jobs:
 
   deploy:
     name: Deploy Ford Service on the existing OCI VM
-    needs: [verify, image, production-readiness]
+    needs: [verify, image, production-readiness, approval]
     if: >-
       always() && needs.verify.result == 'success' &&
       (needs.verify.outputs.operation == 'rollback' || needs.image.result == 'success') &&
       needs.production-readiness.result == 'success' &&
+      (needs.verify.outputs.coordinator_dispatch == 'true' || needs.approval.result == 'success') &&
       vars.PRODUCTION_DEPLOY_ENABLED == 'true' && vars.RUNTIME_VAULT_READY == 'true'
     environment: production
     runs-on: ubuntu-24.04
@@ -293,7 +323,7 @@ jobs:
           ssh-private-key: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
           backup-ssh-private-key: ${{ secrets.OCI_DATA_SSH_PRIVATE_KEY }}
           ssh-known-hosts: ${{ secrets.OCI_SSH_KNOWN_HOSTS }}
-          registry-username: ${{ github.actor }}
+          registry-username: ${{ github.repository_owner }}
           registry-token: ${{ secrets.GITHUB_TOKEN }}
           remote-root: /opt/ford-uruapan
           backup-host: ${{ vars.OCI_DATA_DEPLOY_HOST }}
@@ -312,6 +342,20 @@ jobs:
           service-mcp-access-client-id: ${{ vars.FORD_MCP_ACCESS_CLIENT_ID }}
           service-mcp-token-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_MCP_TOKEN }}
           service-mcp-access-client-secret-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_MCP_ACCESS_CLIENT_SECRET }}
+
+  approval:
+    name: Approve direct Ford Service deployment
+    needs: [verify, image, production-readiness]
+    if: >-
+      always() && needs.verify.result == 'success' &&
+      (needs.verify.outputs.operation == 'rollback' || needs.image.result == 'success') &&
+      needs.production-readiness.result == 'success' &&
+      needs.verify.outputs.coordinator_dispatch != 'true'
+    runs-on: ubuntu-24.04
+    environment: manual-release-approval
+    steps:
+      - name: Confirm direct production approval
+        run: echo 'Direct Ford Service deployment approved.'
 
   release-result:
     name: Record release artifact and deployment identity
