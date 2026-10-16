@@ -106,8 +106,7 @@ class ToolAuthorizationPolicyTest {
         var failedTool = new ToolAuthorizationPolicy(List.of(callbackThrowing("search_vehicles")))
                 .readOnlyTools(new AiExecutionContext(UUID.randomUUID(), false), Set.of("search_vehicles"),
                         failedTracker).getFirst();
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> failedTool.call("{}"))
-                .isInstanceOf(IllegalStateException.class);
+        assertThat(failedTool.call("{}")).contains("READ_ONLY_SOURCE_UNAVAILABLE");
         assertThat(failedTracker.hasAttempted()).isTrue();
         assertThat(failedTracker.hasFailed()).isTrue();
         assertThat(failedTracker.hasReturnedResult()).isFalse();

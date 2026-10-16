@@ -61,6 +61,8 @@ public class ToolAuthorizationPolicy {
     private static final class SingleAttemptToolCallback implements ToolCallback {
         private static final String ALREADY_ATTEMPTED =
                 "Esta consulta ya se intentó en este turno. Usa el resultado recibido o explica qué dato no se pudo confirmar.";
+        private static final String SOURCE_UNAVAILABLE =
+                "READ_ONLY_SOURCE_UNAVAILABLE: no se obtuvieron datos verificables. Responde solo con orientación general estable; no inventes datos del vehículo.";
         private final ToolCallback delegate;
         private final ToolResultTracker resultTracker;
         private final AtomicBoolean invoked = new AtomicBoolean();
@@ -88,10 +90,10 @@ public class ToolAuthorizationPolicy {
             try {
                 var result = delegate.call(input);
                 resultTracker.resultReturned(name, result);
-                return result;
+                return result == null || result.isBlank() ? SOURCE_UNAVAILABLE : result;
             } catch (RuntimeException exception) {
                 resultTracker.failed(name);
-                throw exception;
+                return SOURCE_UNAVAILABLE;
             }
         }
 
@@ -103,10 +105,10 @@ public class ToolAuthorizationPolicy {
             try {
                 var result = delegate.call(input, context);
                 resultTracker.resultReturned(name, result);
-                return result;
+                return result == null || result.isBlank() ? SOURCE_UNAVAILABLE : result;
             } catch (RuntimeException exception) {
                 resultTracker.failed(name);
-                throw exception;
+                return SOURCE_UNAVAILABLE;
             }
         }
     }

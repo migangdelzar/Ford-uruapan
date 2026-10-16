@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 public final class SpringAiChatCompletionAdapter implements ProviderChatCompletionPort {
 
@@ -35,11 +36,28 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
 
     private static final String DEFAULT_SYSTEM_PROMPT =
             "Eres un asistente de Ford Uruapan. Responde en español de México con claridad, calidez y precisión. "
-                    + "No inventes datos: usa únicamente la información autorizada y las herramientas de solo lectura. "
+                    + "Usa las herramientas de solo lectura para datos actuales de Ford y no inventes información. "
+                    + "Si una fuente no responde, todavía ayuda con una explicación general estable que conozcas, "
+                    + "aclara que es orientación general y no afirmes especificaciones, precios, promociones ni disponibilidad sin evidencia. "
                     + "Responde primero la pregunta actual; usa el contexto de sesión para no repetir saludos ni preguntas. ";
     private static final String VOLATILE_SOURCE_UNAVAILABLE =
             "Ese dato no lo tengo confirmado ahora; prefiero no darle información incompleta. "
                     + "Puedo orientarle con información general sin inventar cifras ni disponibilidad.";
+    private static final String GENERAL_KNOWLEDGE_CAVEAT =
+            "Como orientación general, sin datos actuales del catálogo: ";
+    private static final String GENERAL_KNOWLEDGE_FOOTNOTE =
+            " Los datos específicos del modelo no están confirmados.";
+    private static final Pattern EXACT_VEHICLE_FACT_REQUEST = Pattern.compile(
+            "(?iu)(?:\\bprecio\\b|\\bcu[aá]nto cuesta\\b|\\bdisponib(?:le|ilidad)\\b|\\binventario\\b|"
+                    + "\\bexistencias?\\b|\\bpromoci[oó]n\\b|\\bbono\\b|\\bdescuento\\b|\\bconsumo\\b|"
+                    + "\\brendimiento\\b|\\bkm\\s*/?\\s*l\\b|\\bmpg\\b|\\bautonom[ií]a\\b|"
+                    + "\\bpotencia\\b|\\bcaballos\\b|\\bhp\\b|\\btorque\\b|\\bpar motor\\b|"
+                    + "\\bcilindrada\\b|\\bespecificaciones?\\b|\\bficha t[eé]cnica\\b|\\bdimensiones\\b|"
+                    + "\\bcapacidad\\b|\\bqu[eé] motor tiene\\b|\\bversi[oó]n.*\\btrae\\b|\\bmodelo\\b.*\\b20\\d{2}\\b|\\b20\\d{2}\\b)");
+    private static final Pattern UNSUPPORTED_EXACT_VALUE = Pattern.compile(
+            "(?iu)(?:[$€]|\\b(?:mxn|pesos|d[oó]lares|usd|km/?l|mpg|hp|caballos|nm|lb-ft|%|por ciento)\\b|"
+                    + "\\b20\\d{2}\\b|\\b\\d{1,3}(?:[,.]\\d{3})+(?:[,.]\\d+)?\\b|"
+                    + "\\b\\d+(?:[,.]\\d+)?\\s*(?:l(?:itros)?|km|kg|kwh|cv|mm|cm|metros|asientos|pasajeros|cilindros|marchas)\\b)");
 
     private final ChatClient client;
     private final String provider;
@@ -183,6 +201,17 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
             var evidenceStatus = evidenceStatus(request, toolResults);
             if (evidenceStatus != ResponseEvidenceStatus.NOT_REQUIRED
                     && evidenceStatus != ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED) {
+                if (mayProvideGeneralKnowledge(request.message(), evidenceStatus, generation.answer())) {
+                    var answer = GENERAL_KNOWLEDGE_CAVEAT + generation.answer().strip()
+                            + GENERAL_KNOWLEDGE_FOOTNOTE;
+                    log.info("Model response assessed: conversationId={} provider={} evidenceStatus={} sourceTools={} modelSelfConfidence={} outcome=qualified_general_reply",
+                            request.conversationId(), provider, evidenceStatus,
+                            new java.util.TreeSet<>(toolResults.returnedToolNames()),
+                            confidenceForLog(generation.modelConfidence()));
+                    recordAssessment(evidenceStatus, generation.modelConfidence(), "accepted");
+                    return new AssistantResponse(answer, false, provider, List.of(),
+                            generation.journeyProposal(), generation.modelConfidence(), evidenceStatus);
+                }
                 log.warn("Model completion withheld: conversationId={} provider={} evidenceStatus={} sourceTools={} modelSelfConfidence={}",
                         request.conversationId(), provider, evidenceStatus,
                         new java.util.TreeSet<>(toolResults.returnedToolNames()),
@@ -273,7 +302,14 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                 request.conversationId(), provider, tools.size(), repairInstruction != null);
         var system = systemPrompt(systemPromptService == null
                         ? DEFAULT_SYSTEM_PROMPT : systemPromptService.currentContent(),
-                        request.memoryContext(), request.leadJourneyContext(), request.decision(), repairInstruction);
+                        request.memoryContext(), request.leadJourneyContext(), request.decision(), repairInstruction)
+                + "\n\n[REGLA PRIORITARIA DE RESPUESTA SIN FUENTE] Si una herramienta de solo lectura devuelve "
+                + "READ_ONLY_SOURCE_UNAVAILABLE o no encuentra datos, contesta la parte general y estable de la pregunta "
+                + "con tu conocimiento cuando sea posible. Indica brevemente que es orientación general y que no pudiste "
+                + "confirmar los datos actuales del catálogo. No inventes ni infieras año, versión, equipamiento, "
+                + "especificaciones, cifras, precio, promoción o disponibilidad. Si la pregunta pide uno de esos datos, "
+                + "di que no está confirmado y ofrece una alternativa útil. No menciones herramientas ni errores técnicos. "
+                + "[/REGLA PRIORITARIA]";
         var prompt = client.prompt()
                 .system(system + "\n\n[METADATO INTERNO] Incluye modelConfidence como un número de 0 a 1 que refleje tu propia certeza sobre la respuesta. Basa la estimación en la evidencia consultada y los datos disponibles. Este valor es solo interno: nunca lo menciones ni lo conviertas en porcentaje para el cliente. No lo uses para sustituir fuentes ni inventes información. [/METADATO INTERNO]")
                 .user(request.message());
@@ -355,5 +391,15 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
 
     private static String customerAnswer(String answer) {
         return answer.replaceFirst("(?is)\\s*\\[\\s*modelConfidence\\s*:\\s*(?:0(?:\\.\\d+)?|1(?:\\.0+)?)\\s*]\\s*$", "").strip();
+    }
+
+    private static boolean mayProvideGeneralKnowledge(String message, ResponseEvidenceStatus evidenceStatus,
+                                                       String answer) {
+        if (evidenceStatus != ResponseEvidenceStatus.READ_ONLY_TOOL_FAILED
+                && evidenceStatus != ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED_EMPTY) {
+            return false;
+        }
+        return message != null && !EXACT_VEHICLE_FACT_REQUEST.matcher(message).find()
+                && answer != null && !UNSUPPORTED_EXACT_VALUE.matcher(answer).find();
     }
 }
