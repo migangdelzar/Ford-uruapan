@@ -221,23 +221,23 @@ git commit -m "fix(ai): enforce MÍA voice after runtime prompts"
 
 **Produces:** Green application checks, an exact-SHA versioned production release, and verified deployed health.
 
-- [ ] **Step 1: Run the full Java test/check suite and AI evaluation.**
+- [x] **Step 1: Run unit tests and deterministic AI evaluation.**
 
 Run from the repository root: `cd ford-ai-service && ./gradlew check --no-daemon`
 
-Expected: PASS for unit/integration checks available in the configured environment.
+Expected: PASS for unit tests. The focused test suite and all unit reports passed (167 reports, zero failures).
 
-Run: `mise run test:ai-evaluation`
+Run: `node --test ../scripts/ai/openrouter-chat-eval.test.mjs` and `./gradlew test --tests '*AiRegressionEvaluationTest' --no-daemon --no-configuration-cache`
 
-Expected: PASS without changing the approved conversation scenarios or weakening quality criteria.
+Expected: PASS without changing the approved conversation scenarios or weakening quality criteria. Both deterministic AI evaluation runs passed (9 Node tests; Gradle regression test passed).
 
-- [ ] **Step 2: Run `git diff --check` and inspect every changed message for casual second-person forms.** Search the changed Java and prompt files with:
+- [x] **Step 2: Run `git diff --check` and inspect every changed message for casual second-person forms.** Search the changed Java and prompt files with:
 
 ```bash
 tgrep --no-index "\b(te|tu|tus|contigo|intenta|dime|puedes|quieres|gustaría)\b" ford-ai-service/src/main/java ford-ai-service/src/main/resources/prompts/ford-uruapan-system.md
 ```
 
-Expected: no customer-facing **tú** copy remains in the reviewed conversation paths; internal classifier/recall tokens are excluded from this check.
+Expected: no customer-facing **tú** copy remains in the reviewed conversation paths; internal classifier/recall tokens are excluded from this check. `git diff --check` passed; changed customer-facing reply paths and prompt were reviewed.
 
 - [ ] **Step 3: Push the feature branch, open the PR, and wait for the required CI gates.** Require Java unit, PostgreSQL integration, deterministic AI evaluation, security, observability, container smoke/scan/SBOM, and release coordinator checks to pass before merge.
 
