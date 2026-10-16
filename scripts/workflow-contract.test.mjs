@@ -207,6 +207,14 @@ test("Ford Service accepts coordinator releases only from the installed App and 
   assert.match(source, /registry-username: \$\{\{ github\.repository_owner \}\}/);
 });
 
+test("Ford Service matches the workflow path returned by the GitHub Actions runs API", async () => {
+  const source = await read(".github/workflows/release.yml");
+
+  assert.match(source, /\.path == "\.github\/workflows\/release-all\.yml"/);
+  assert.match(source, /Coordinator request does not identify an active release-all run on main/);
+  assert.match(source, /Coordinator release job is not active; approval may not have been granted/);
+});
+
 test("release-all reports missing cross-repository dispatch credentials clearly", async () => {
   const source = await read(".github/workflows/release-all.yml");
 
