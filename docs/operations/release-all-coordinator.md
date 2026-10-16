@@ -65,6 +65,11 @@ variables in `production`, remove its required reviewer, and limit it to
 protected `main`. This preserves direct release approval while allowing
 coordinator-authorized child runs through the same protected deployment jobs.
 
+In Ford Service, also create `terraform-runtime-vault-approval` with the same
+reviewer and protected `main` policy. Terraform keeps using the `production`
+environment for OCI credentials; the new approval runs after a reviewed plan
+and before applying it.
+
 ## Preflight and release operation
 
 Run **Release selected Ford repositories** from `main` with operation

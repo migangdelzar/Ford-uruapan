@@ -198,6 +198,18 @@ test("CI formats and validates Terraform before accepting infrastructure changes
   assert.match(workflow, /terraform validate/);
 });
 
+test("Terraform Vault apply has a dedicated human approval after plan review", async () => {
+  const workflow = await read(".github/workflows/terraform-runtime-vault.yml");
+
+  assert.match(workflow, /plan:[\s\S]*?environment: production/);
+  assert.match(
+    workflow,
+    /apply-approval:[\s\S]*?environment: terraform-runtime-vault-approval/,
+  );
+  assert.match(workflow, /apply:[\s\S]*?needs: \[plan, apply-approval\]/);
+  assert.match(workflow, /needs\.apply-approval\.result == 'success'/);
+});
+
 test("Ansible propagates the complete Meta webhook configuration", async () => {
   const example = await read("deployment/config/oci.env.example");
   const remote = await read("ford-ai-service/.mise/lib/remote.sh");
