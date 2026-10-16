@@ -252,7 +252,7 @@
           docker compose --project-name ford-service
           --env-file "{{ remote_root }}/app/.env"
           -f "{{ remote_root }}/app/blue-green-compose.yml"
-          up -d app-proxy
+          up -d --force-recreate app-proxy
       changed_when: true
 
     - name: Validate stable Ford Service proxy configuration
@@ -260,10 +260,17 @@
         cmd: docker exec ford-service-proxy nginx -t
       changed_when: false
 
-    - name: Reload stable Ford Service proxy
+    - name: Verify stable Ford Service proxy loaded the candidate route and trusted HTTPS headers
       ansible.builtin.command:
-        cmd: docker exec ford-service-proxy nginx -s reload
-      changed_when: true
+        cmd: docker exec ford-service-proxy nginx -T
+      register: app_effective_proxy_config
+      changed_when: false
+      failed_when: >-
+        app_effective_proxy_config.rc != 0 or
+        ('proxy_pass http://127.0.0.1:' ~ app_candidate_port ~ ';') not in app_effective_proxy_config.stdout or
+        'proxy_set_header X-Forwarded-Proto https;' not in app_effective_proxy_config.stdout or
+        'proxy_set_header X-Forwarded-Host $host;' not in app_effective_proxy_config.stdout or
+        'proxy_set_header Forwarded "";' not in app_effective_proxy_config.stdout
 
     - name: Verify stable Ford Service health
       ansible.builtin.uri:
@@ -329,13 +336,30 @@
             - app_proxy_inspect.rc == 0
             - app_current_slot in ['blue', 'green']
 
-        - name: Reload previous Ford Service proxy route
+        - name: Recreate Ford Service proxy with the restored prior route
           ansible.builtin.command:
-            cmd: docker exec ford-service-proxy nginx -s reload
+            cmd: >-
+              docker compose --project-name ford-service
+              --env-file "{{ remote_root }}/app/.env"
+              -f "{{ remote_root }}/app/blue-green-compose.yml"
+              up -d --force-recreate app-proxy
           when:
             - app_proxy_inspect.rc == 0
             - app_current_slot in ['blue', 'green']
           changed_when: true
+
+        - name: Verify restored Ford Service proxy route
+          ansible.builtin.command:
+            cmd: docker exec ford-service-proxy nginx -T
+          register: app_restored_proxy_config
+          changed_when: false
+          failed_when: >-
+            app_restored_proxy_config.rc != 0 or
+            ('proxy_pass http://127.0.0.1:' ~ ((app_blue_port | default(18081)) if app_current_slot == 'blue' else (app_green_port | default(18082))) ~ ';') not in app_restored_proxy_config.stdout or
+            'proxy_set_header X-Forwarded-Proto https;' not in app_restored_proxy_config.stdout
+          when:
+            - app_proxy_inspect.rc == 0
+            - app_current_slot in ['blue', 'green']
 
         - name: Stop the new proxy when restoring legacy Ford Service
           ansible.builtin.command:

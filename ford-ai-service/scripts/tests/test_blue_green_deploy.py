@@ -168,6 +168,17 @@ class BlueGreenComposeContractTest(unittest.TestCase):
         self.assertIn("proxy_set_header X-Forwarded-Port 443;", rendered)
         self.assertNotIn("proxy_set_header X-Forwarded-Proto $scheme;", rendered)
 
+    def test_service_proxy_is_recreated_after_atomic_route_file_replacement(self):
+        playbook = (APP_TEMPLATES.parent / "tasks" / "blue-green.yml").read_text()
+        switch = playbook[playbook.index("- name: Switch stable Ford Service proxy"):]
+
+        self.assertIn("--force-recreate app-proxy", switch)
+        self.assertNotIn("docker exec ford-service-proxy nginx -s reload", switch)
+        self.assertIn("Verify stable Ford Service proxy loaded the candidate route and trusted HTTPS headers", switch)
+        self.assertIn("docker exec ford-service-proxy nginx -T", switch)
+        self.assertIn("--force-recreate app-proxy", switch[switch.index("rescue:"):])
+        self.assertIn("Verify restored Ford Service proxy route", switch)
+
     def test_mcp_proxy_keeps_tunnel_listener_and_routes_to_active_slot(self):
         template = Environment(loader=FileSystemLoader(MCP_TEMPLATES)).get_template("proxy.conf.j2")
         rendered = template.render(mcp_active_port=3102, emme_2_private_ip="10.0.0.2")

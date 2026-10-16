@@ -320,3 +320,20 @@ Goal: Spring fills separate Markdown templates from returned MCP price/promotion
 - Shared action and Ford Service release contract tests passed. Ford Service `v0.1.15` was tagged, image build/scanning/provenance passed, and the protected production deployment completed successfully.
 - A safe invalid-credential probe exposed the remaining login bug: the live app returned `302 Location: http://ford.emme.business/login?error`. The running proxy config still had `X-Forwarded-Proto $scheme`; its source is the Ford Service repo template used by the shared action, not the similarly named template in the action repo.
 - The correction branch now tests and sets fixed HTTPS forwarding, clears untrusted `Forwarded`, and sets the forwarded host/port explicitly. Production fix and Meta outbox status verification remain pending.
+
+### Follow-up: mounted proxy config must be recreated (2026-10-16)
+
+- [x] Publish `v0.1.16` and deploy the forwarded-header template through the protected production workflow.
+- [x] Inspect the active Nginx container after rollout; it still loaded `$scheme` although `/opt/ford-uruapan/app/proxy.conf` contains the fixed HTTPS header.
+- [ ] Recreate the stable proxy after atomic route-file replacement, assert the running Nginx config has the candidate port and HTTPS forwarded headers, and recreate/verify again on rollback.
+- [ ] Release that correction through protected Actions and verify an invalid-credentials login response redirects to `https://ford.emme.business/login?error`.
+- [x] Confirm the latest production runtime is not using DeepSeek: local Ollama/Qwen is selected, cloud chat is disabled, the Ollama URL is a placeholder, and OpenRouter reports the `openrouter/free` model.
+- [ ] Reconcile production provider configuration and credentials with the agreed DeepSeek-primary/OpenRouter-fallback configuration before diagnosing model wording or changing the production model memory.
+- [ ] Identify the specific WhatsApp thread that received the generic response before restarting its scoped model-memory epoch; keep all transcript rows.
+
+### Follow-up findings
+
+- Production release `v0.1.16` completed, but the mounted Nginx container continued to use its old inode after Ansible atomically replaced `proxy.conf`; `docker compose up -d app-proxy` did not recreate it. The mounted host file has the intended HTTPS headers, but the running container has not loaded them. No login fix is claimed.
+- `v0.1.15` release logs show public MCP initialize, tool-list, and semantic `search_vehicles` smoke checks all passed. The latest outbox delivery also received a Meta provider delivery ID; this is not proof of the wording of the user-reported generic reply.
+- Only seven conversation rows exist in the production database. The latest persisted inbound/outbound activity is around 2026-10-16 12:27 UTC. Do not reset memory by guessing; confirm the intended thread using timestamp/channel, then use the operator restart endpoint that preserves `conversation_message` history.
+- Runtime inspection found `FORD_AI_CHAT_PROVIDER=ollama`, `FORD_AI_LOCAL_MODEL_VERSION=qwen3.5:4b`, `FORD_AI_CLOUD_ENABLED=false`, `FORD_AI_LOCAL_BASE_URL=https://ollama.example.invalid`, `FORD_AI_OPENROUTER_ENABLED=true`, and `FORD_AI_OPENROUTER_MODEL=openrouter/free`. The DeepSeek model is not active in production, so DeepSeek's context window cannot explain the current response.
