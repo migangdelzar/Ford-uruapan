@@ -144,17 +144,28 @@ class BlueGreenComposeContractTest(unittest.TestCase):
         self.assertIn("src: app.env.j2", source)
         self.assertIn('dest: "{{ remote_root }}/app/.env"', source)
 
-    def test_service_environment_preserves_the_configured_openrouter_fallback(self):
+    def test_service_environment_uses_deepseek_without_chat_fallbacks(self):
         template = (APP_TEMPLATES / "app.env.j2").read_text()
         production = (REPO_ROOT.parent / "ford-ai-service/src/main/resources/application-prod.yml").read_text()
         example = (REPO_ROOT.parent / "deployment/config/oci.env.example").read_text()
 
+        self.assertIn("FORD_AI_CHAT_PROVIDER={{ ford_ai_chat_provider | default('openai') }}", template)
+        self.assertIn("FORD_AI_CLOUD_ENABLED={{ (ford_ai_cloud_enabled | default(true))", template)
+        self.assertIn("FORD_AI_LOCAL_ENABLED={{ (ford_ai_local_enabled | default(false))", template)
+        self.assertIn("FORD_AI_CLOUD_BASE_URL={{ ford_ai_cloud_base_url | default('https://api.deepseek.com') }}", template)
+        self.assertIn("FORD_AI_CLOUD_MODEL_VERSION={{ ford_ai_cloud_model_version | default('deepseek-flash') }}", template)
+        self.assertIn("FORD_AI_PROVIDER_MAX_ATTEMPTS={{ ford_ai_provider_max_attempts | default(1) }}", template)
+        self.assertIn("FORD_AI_FALLBACK_ORDER={{ ford_ai_fallback_order | default('') }}", template)
         self.assertIn("FORD_AI_OPENROUTER_MODEL={{ ford_ai_openrouter_model | default('xiaomi/mimo-v2.6-flash') }}", template)
         self.assertIn("model: ${FORD_AI_OPENROUTER_MODEL:xiaomi/mimo-v2.6-flash}", production)
         self.assertIn("FORD_AI_OPENROUTER_MODEL=xiaomi/mimo-v2.6-flash", example)
-        self.assertIn("FORD_AI_OPENROUTER_ENABLED={{ (ford_ai_openrouter_enabled | default(true))", template)
-        self.assertIn("FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED={{ (ford_ai_openrouter_tool_calling_verified | default(true))", template)
-        self.assertIn("FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED={{ (ford_ai_openrouter_structured_output_verified | default(true))", template)
+        self.assertIn("fallback-order: ${FORD_AI_FALLBACK_ORDER:}", production)
+        self.assertIn("FORD_AI_OPENROUTER_ENABLED={{ (ford_ai_openrouter_enabled | default(false))", template)
+        self.assertIn("FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED={{ (ford_ai_openrouter_tool_calling_verified | default(false))", template)
+        self.assertIn("FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED={{ (ford_ai_openrouter_structured_output_verified | default(false))", template)
+        self.assertIn("FORD_AI_FALLBACK_ORDER=", example)
+        self.assertIn("FORD_AI_OPENROUTER_ENABLED=false", example)
+        self.assertNotIn("FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY", template)
 
     def test_app_proxy_keeps_stable_listener_and_routes_to_active_slot(self):
         template = Environment(loader=FileSystemLoader(APP_TEMPLATES)).get_template("proxy.conf.j2")

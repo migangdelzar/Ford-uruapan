@@ -11,6 +11,13 @@
 
 ## Current migration state
 
+### DeepSeek production chat key
+
+- Ford Service production uses DeepSeek's OpenAI-compatible endpoint at `https://api.deepseek.com` with model `deepseek-flash`.
+- The DeepSeek-issued key is stored in OCI Vault and mapped as `FORD_VAULT_SECRET_OCID_OPENAI_API_KEY`; Spring AI reads the resulting runtime property as `OPENAI_API_KEY` because the client uses Spring AI's OpenAI-compatible API.
+- The authenticated DeepSeek `/models` endpoint and Spring AI synthetic tool-call preflight passed on 2026-10-16. This verifies the existing Vault value; it does not mean production has been switched yet.
+- Production configuration disables local Ollama and every chat fallback. Keep `FORD_AI_FALLBACK_ORDER` empty. TypeSafe/Jev remains a separate classifier with rules fallback; it is not a chat-generation fallback.
+
 - Deployment tooling still supports the legacy local `deployment/config/oci.env` file, but migrated values should be read from `com.ford.uruapan.deploy` using `FORD_KEYCHAIN_SERVICE=com.ford.uruapan.deploy`. The ignored file is being retired from local use after Keychain verification.
 - Generated Ansible inventory no longer includes secret values. The existing local inventory was scrubbed of 18 secret fields while preserving non-secret settings and mode `0600`. Ansible reads environment-mode values from its controller process environment; secret-bearing template, registry login, database password update, and MCP authorization tasks use `no_log` where applicable.
 - `mise run deploy:vault-secret -- create PROPERTY` prompts for a new value without terminal echo, sends its encoded request to OCI through stdin, and stores only the returned Secret OCID in the ignored `deployment/config/vault-secret-ocids.env` file. Use `rotate PROPERTY SECRET_OCID` to create a new current version for an existing secret. These commands do not read `oci.env`.

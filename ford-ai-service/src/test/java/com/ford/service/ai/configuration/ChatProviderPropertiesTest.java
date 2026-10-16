@@ -18,7 +18,32 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ChatProviderPropertiesTest {
 
     @Test
-    void enablesOnlyOpenRouterAsTheProductionFallbackWhenCredentialsAreProvided() throws Exception {
+    void productionUsesDeepSeekAsItsOnlyChatProviderByDefault() throws Exception {
+        var loader = new YamlPropertySourceLoader();
+        var environment = new StandardEnvironment();
+        loader.load("application-prod", new ClassPathResource("application-prod.yml"))
+                .forEach(environment.getPropertySources()::addFirst);
+        loader.load("application", new ClassPathResource("application.yml"))
+                .forEach(environment.getPropertySources()::addLast);
+
+        var ai = Binder.get(environment).bind("ford.ai", Bindable.of(AiProperties.class))
+                .orElseThrow(() -> new IllegalStateException("production AI configuration is missing"));
+        var providers = Binder.get(environment).bind("ford.ai.providers", Bindable.of(ChatProviderProperties.class))
+                .orElseThrow(() -> new IllegalStateException("production provider configuration is missing"));
+
+        assertThat(ai.cloudChatProvider()).isEqualTo("openai");
+        assertThat(ai.cloudEnabled()).isTrue();
+        assertThat(ai.localEnabled()).isFalse();
+        assertThat(ai.providerMaxAttempts()).isEqualTo(1);
+        assertThat(environment.getProperty("spring.ai.model.chat")).isEqualTo("openai");
+        assertThat(environment.getProperty("spring.ai.openai.base-url")).isEqualTo("https://api.deepseek.com");
+        assertThat(environment.getProperty("spring.ai.openai.chat.options.model")).isEqualTo("deepseek-flash");
+        assertThat(providers.fallbackOrder()).isEmpty();
+        assertThat(providers.eligibleFallbackIds()).isEmpty();
+    }
+
+    @Test
+    void doesNotEnableOpenRouterAsAProductionFallbackEvenWhenCredentialsArePresent() throws Exception {
         var loader = new YamlPropertySourceLoader();
         var environment = new StandardEnvironment();
         environment.getPropertySources().addFirst(new MapPropertySource("test-credentials",
@@ -33,9 +58,9 @@ class ChatProviderPropertiesTest {
                 Bindable.of(ChatProviderProperties.class))
                 .orElseThrow(() -> new IllegalStateException("production AI provider configuration is missing"));
 
-        assertThat(properties.fallbackOrder()).containsExactly("openrouter");
-        assertThat(properties.providerStatus()).containsEntry("openrouter", "ready");
-        assertThat(properties.eligibleFallbackIds()).containsExactly("openrouter");
+        assertThat(properties.fallbackOrder()).isEmpty();
+        assertThat(properties.providerStatus()).isEmpty();
+        assertThat(properties.eligibleFallbackIds()).isEmpty();
     }
 
     @Test

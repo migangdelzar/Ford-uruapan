@@ -245,12 +245,7 @@ jobs:
       FORD_MCP_ENABLED: ${{ vars.FORD_MCP_ENABLED }}
       FORD_MCP_URL: ${{ vars.FORD_MCP_URL }}
       FORD_MCP_ACCESS_CLIENT_ID: ${{ vars.FORD_MCP_ACCESS_CLIENT_ID }}
-      FORD_VAULT_SECRET_OCID_FORD_AI_OLLAMA_ACCESS_CLIENT_SECRET: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_AI_OLLAMA_ACCESS_CLIENT_SECRET }}
-      FORD_VAULT_SECRET_OCID_GROQ_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_GROQ_API_KEY }}
-      FORD_VAULT_SECRET_OCID_GEMINI_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_GEMINI_API_KEY }}
-      FORD_VAULT_SECRET_OCID_CLOUDFLARE_API_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_CLOUDFLARE_API_TOKEN }}
       FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY }}
-      FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY }}
       FORD_VAULT_SECRET_OCID_OPENAI_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_OPENAI_API_KEY }}
       FORD_VAULT_SECRET_OCID_GRAFANA_CLOUD_API_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_GRAFANA_CLOUD_API_TOKEN }}
       FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY }}
@@ -278,12 +273,16 @@ jobs:
             FORD_VAULT_SECRET_OCID_FORD_SECURITY_JWK_PRIVATE_KEY \
             FORD_VAULT_SECRET_OCID_FORD_MCP_TOKEN \
             FORD_VAULT_SECRET_OCID_FORD_MCP_ACCESS_CLIENT_SECRET \
-            FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY; do
+            FORD_VAULT_SECRET_OCID_OPENAI_API_KEY; do
             [[ -n "${!mapping}" ]] || {
               echo "Production deployment blocked: configure ${mapping} as a Vault secret OCID variable." >&2
               exit 1
             }
           done
+          [[ "$FORD_VAULT_SECRET_OCID_OPENAI_API_KEY" =~ ^ocid1[.]vaultsecret[.][A-Za-z0-9.]+$ ]] || {
+            echo 'Production DeepSeek chat requires FORD_VAULT_SECRET_OCID_OPENAI_API_KEY to reference an OCI Vault secret.' >&2
+            exit 1
+          }
           [[ "$FORD_MCP_ENABLED" == 'true' \
             && "$FORD_MCP_URL" == 'https://ford-mcp.emme.business' \
             && "$FORD_MCP_ACCESS_CLIENT_ID" =~ ^[A-Za-z0-9._-]+$ ]] || {

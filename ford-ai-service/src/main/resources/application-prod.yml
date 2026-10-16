@@ -2,6 +2,14 @@ spring:
   config:
     activate:
       on-profile: prod
+  ai:
+    model:
+      chat: ${FORD_AI_CHAT_PROVIDER:openai}
+    openai:
+      base-url: ${FORD_AI_CLOUD_BASE_URL:https://api.deepseek.com}
+      chat:
+        options:
+          model: ${FORD_AI_CLOUD_MODEL_VERSION:deepseek-flash}
 
 ford:
   security:
@@ -16,17 +24,21 @@ ford:
     human-handoff:
       enabled: ${FORD_HUMAN_HANDOFF_ENABLED:false}
   ai:
-    provider-max-attempts: ${FORD_AI_PROVIDER_MAX_ATTEMPTS:2}
+    cloud-chat-provider: ${FORD_AI_CLOUD_PROVIDER:openai}
+    cloud-chat-model-version: ${FORD_AI_CLOUD_MODEL_VERSION:deepseek-flash}
+    cloud-enabled: ${FORD_AI_CLOUD_ENABLED:true}
+    local-enabled: ${FORD_AI_LOCAL_ENABLED:false}
+    provider-max-attempts: ${FORD_AI_PROVIDER_MAX_ATTEMPTS:1}
     classification:
       enabled: ${FORD_AI_CLASSIFICATION_ENABLED:true}
     providers:
-      fallback-order: ${FORD_AI_FALLBACK_ORDER:openrouter}
+      fallback-order: ${FORD_AI_FALLBACK_ORDER:}
       catalog:
         openrouter:
-          enabled: ${FORD_AI_OPENROUTER_ENABLED:true}
+          enabled: ${FORD_AI_OPENROUTER_ENABLED:false}
           model: ${FORD_AI_OPENROUTER_MODEL:xiaomi/mimo-v2.6-flash}
-          tool-calling-verified: ${FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED:true}
-          structured-output-verified: ${FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED:true}
+          tool-calling-verified: ${FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED:false}
+          structured-output-verified: ${FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED:false}
   channels:
     meta:
       auto-binding:
