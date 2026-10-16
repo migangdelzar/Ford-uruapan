@@ -324,9 +324,7 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         }
         var response = prompt.call();
         var content = response.content();
-        var generation = content == null || content.isBlank()
-                ? response.entity(AssistantGeneration.class)
-                : toolEnabledGeneration(content);
+        var generation = toolEnabledGeneration(content);
         if (generation == null || generation.answer() == null || generation.answer().isBlank()) {
             throw new IllegalStateException("assistant returned an invalid structured response");
         }
