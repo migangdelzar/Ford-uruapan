@@ -208,6 +208,9 @@ jobs:
       FORD_VAULT_SECRET_OCID_FORD_META_INSTAGRAM_ACCESS_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_INSTAGRAM_ACCESS_TOKEN }}
       FORD_VAULT_SECRET_OCID_FORD_MCP_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_MCP_TOKEN }}
       FORD_VAULT_SECRET_OCID_FORD_MCP_ACCESS_CLIENT_SECRET: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_MCP_ACCESS_CLIENT_SECRET }}
+      FORD_MCP_ENABLED: ${{ vars.FORD_MCP_ENABLED }}
+      FORD_MCP_URL: ${{ vars.FORD_MCP_URL }}
+      FORD_MCP_ACCESS_CLIENT_ID: ${{ vars.FORD_MCP_ACCESS_CLIENT_ID }}
       FORD_VAULT_SECRET_OCID_FORD_AI_OLLAMA_ACCESS_CLIENT_SECRET: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_AI_OLLAMA_ACCESS_CLIENT_SECRET }}
       FORD_VAULT_SECRET_OCID_GROQ_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_GROQ_API_KEY }}
       FORD_VAULT_SECRET_OCID_GEMINI_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_GEMINI_API_KEY }}
@@ -240,12 +243,19 @@ jobs:
             FORD_VAULT_SECRET_OCID_FORD_OPERATOR_PASSWORD \
             FORD_VAULT_SECRET_OCID_FORD_SECURITY_JWK_PRIVATE_KEY \
             FORD_VAULT_SECRET_OCID_FORD_MCP_TOKEN \
+            FORD_VAULT_SECRET_OCID_FORD_MCP_ACCESS_CLIENT_SECRET \
             FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY; do
             [[ -n "${!mapping}" ]] || {
               echo "Production deployment blocked: configure ${mapping} as a Vault secret OCID variable." >&2
               exit 1
             }
           done
+          [[ "$FORD_MCP_ENABLED" == 'true' \
+            && "$FORD_MCP_URL" == 'https://ford-mcp.emme.business' \
+            && "$FORD_MCP_ACCESS_CLIENT_ID" =~ ^[A-Za-z0-9._-]+$ ]] || {
+            echo 'Production deployment requires enabled Ford MCP, its production HTTPS URL, and a valid Cloudflare Access client ID.' >&2
+            exit 1
+          }
           for endpoint in GRAFANA_CLOUD_OTLP_ENDPOINT LANGFUSE_OTLP_ENDPOINT; do
             [[ "${!endpoint}" =~ ^https://[^[:space:]]+/[^[:space:]]*$ ]] || {
               echo "Production deployment blocked: configure ${endpoint} as an HTTPS endpoint URL." >&2
@@ -271,7 +281,7 @@ jobs:
           sparse-checkout: deployment/observability/otel-collector/grafana-cloud-config.yaml
           sparse-checkout-cone-mode: false
       - name: Run the shared OCI blue-green deployment action
-        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@161471351d0ae1d42de129b60cad207bc9d8ce9f
+        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@6cd9d8ecee984a8dd43095ba86eb2db2cc8e6539
         with:
           target: ford-service
           ui-upstream-url: ${{ vars.FORD_WEB_UI_UPSTREAM_URL }}
@@ -297,6 +307,11 @@ jobs:
           langfuse-public-key: ${{ vars.LANGFUSE_PUBLIC_KEY }}
           langfuse-secret-key-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY }}
           operator-username: ${{ vars.FORD_OPERATOR_USERNAME }}
+          service-mcp-enabled: ${{ vars.FORD_MCP_ENABLED }}
+          service-mcp-url: ${{ vars.FORD_MCP_URL }}
+          service-mcp-access-client-id: ${{ vars.FORD_MCP_ACCESS_CLIENT_ID }}
+          service-mcp-token-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_MCP_TOKEN }}
+          service-mcp-access-client-secret-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_MCP_ACCESS_CLIENT_SECRET }}
 
   release-result:
     name: Record release artifact and deployment identity
