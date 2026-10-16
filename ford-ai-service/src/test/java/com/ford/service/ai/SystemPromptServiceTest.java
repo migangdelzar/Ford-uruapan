@@ -58,7 +58,7 @@ class SystemPromptServiceTest {
                 .contains("search_vehicles", "get_vehicle", "compare_vehicles", "get_vehicle_provenance",
                         "get_catalog_status", "list_promotions", "search_offers",
                         "vehicle_snapshot_search", "approved_knowledge_search")
-                .contains("nombre mexicano asignado")
+                .contains("se llama MÍA", "trate de usted")
                 .contains("Resuelva primero lo que la persona acaba de pedir")
                 .contains("## Plantillas de respuesta")
                 .contains("`get_vehicle` para un modelo/año exactos")

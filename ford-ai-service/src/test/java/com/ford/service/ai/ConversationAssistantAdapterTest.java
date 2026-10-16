@@ -137,7 +137,7 @@ class ConversationAssistantAdapterTest {
         var reply = adapter(ai).respond(new ConversationTurnRequest(tenantId, conversationId,
                 "Sí, me gustaría", ConversationState.BOT_ACTIVE, memory, null));
 
-        assertThat(reply.text()).isEqualTo("¡Perfecto! ¿Qué día te funciona para la prueba de manejo?");
+        assertThat(reply.text()).isEqualTo("¡Perfecto! ¿Qué día le conviene para la prueba de manejo?");
         assertThat(reply.journeyProposal().pendingQuestionKey()).isEqualTo("TEST_DRIVE_DATE");
         org.mockito.Mockito.verifyNoInteractions(ai);
     }

@@ -385,7 +385,12 @@ class SpringAiChatCompletionAdapterTest {
         assertThat(system.getValue()).contains("CUSTOM FORD PROMPT")
                 .contains("intent=offers")
                 .contains("ya preguntó por Ranger")
-                .contains("Tema actual: PROMOTIONS_PRICING");
+                .contains("Tema actual: PROMOTIONS_PRICING")
+                .contains("La asistente virtual de Ford Uruapan se llama MÍA")
+                .contains("trate a cada persona de usted")
+                .contains("[/VOZ OBLIGATORIA]");
+        assertThat(system.getValue().lastIndexOf("[VOZ OBLIGATORIA]"))
+                .isGreaterThan(system.getValue().lastIndexOf("[METADATO INTERNO]"));
     }
 
     @Test
@@ -953,6 +958,12 @@ class SpringAiChatCompletionAdapterTest {
 
         assertThat(result.content()).contains("Lobo Raptor");
         verify(requestSpec, times(2)).call();
+        var systems = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(requestSpec, times(2)).system(systems.capture());
+        assertThat(systems.getAllValues()).allSatisfy(system ->
+                assertThat(system).contains("La asistente virtual de Ford Uruapan se llama MÍA")
+                        .contains("trate a cada persona de usted")
+                        .endsWith("[/VOZ OBLIGATORIA]"));
     }
 
     @Test

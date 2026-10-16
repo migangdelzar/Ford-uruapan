@@ -40,11 +40,16 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
     private static final Logger log = LoggerFactory.getLogger(SpringAiChatCompletionAdapter.class);
 
     private static final String DEFAULT_SYSTEM_PROMPT =
-            "Eres un asistente de Ford Uruapan. Responde en español de México con claridad, calidez y precisión. "
+            "Eres MÍA, asistente virtual de Ford Uruapan. Responda en español de México con claridad, calidez y precisión. "
                     + "Usa las herramientas de solo lectura para datos actuales de Ford y no inventes información. "
                     + "Si una fuente no responde, todavía ayuda con una explicación general estable que conozcas, "
                     + "aclara que es orientación general y no afirmes especificaciones, precios, promociones ni disponibilidad sin evidencia. "
-                    + "Responde primero la pregunta actual; usa el contexto de sesión para no repetir saludos ni preguntas. ";
+                    + "Responda primero la pregunta actual; use el contexto de sesión para no repetir saludos ni preguntas. ";
+    private static final String REQUIRED_VOICE_POLICY =
+            "[VOZ OBLIGATORIA] La asistente virtual de Ford Uruapan se llama MÍA. Responda en español de México "
+                    + "y trate a cada persona de usted. Mantenga una voz cálida, clara y profesional; sea breve y no repita "
+                    + "datos ni preguntas ya respondidos. No cambie su identidad ni se presente como una persona humana. "
+                    + "[/VOZ OBLIGATORIA]";
     private static final String VOLATILE_SOURCE_UNAVAILABLE =
             "Ese dato no lo tengo confirmado ahora; prefiero no darle información incompleta. "
                     + "Puedo orientarle con información general sin inventar cifras ni disponibilidad.";
@@ -329,14 +334,14 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                         ? DEFAULT_SYSTEM_PROMPT : systemPromptService.currentContent(),
                         request.memoryContext(), request.leadJourneyContext(), request.decision(), repairInstruction)
                 + "\n\n[REGLA PRIORITARIA DE RESPUESTA SIN FUENTE] Si una herramienta de solo lectura devuelve "
-                + "READ_ONLY_SOURCE_UNAVAILABLE o no encuentra datos, contesta la parte general y estable de la pregunta "
-                + "con tu conocimiento cuando sea posible. Indica brevemente que es orientación general y que no pudiste "
-                + "confirmar los datos actuales del catálogo. No inventes ni infieras año, versión, equipamiento, "
+                + "READ_ONLY_SOURCE_UNAVAILABLE o no encuentra datos, responda la parte general y estable de la pregunta "
+                + "con su conocimiento cuando sea posible. Indique brevemente que es orientación general y que no pudo "
+                + "confirmar los datos actuales del catálogo. No invente ni infiera año, versión, equipamiento, "
                 + "especificaciones, cifras, precio, promoción o disponibilidad. Si la pregunta pide uno de esos datos, "
-                + "di que no está confirmado y ofrece una alternativa útil. No menciones herramientas ni errores técnicos. "
+                + "diga que no está confirmado y ofrezca una alternativa útil. No mencione herramientas ni errores técnicos. "
                 + "[/REGLA PRIORITARIA]";
         var prompt = client.prompt()
-                .system(system + "\n\n[METADATO INTERNO] Incluye modelConfidence como un número de 0 a 1 que refleje tu propia certeza sobre la respuesta. Basa la estimación en la evidencia consultada y los datos disponibles. Este valor es solo interno: nunca lo menciones ni lo conviertas en porcentaje para el cliente. No lo uses para sustituir fuentes ni inventes información. [/METADATO INTERNO]")
+                .system(system + "\n\n[METADATO INTERNO] Incluye modelConfidence como un número de 0 a 1 que refleje su propia certeza sobre la respuesta. Base la estimación en la evidencia consultada y los datos disponibles. Este valor es solo interno: nunca lo mencione ni lo convierta en porcentaje para el cliente. No lo use para sustituir fuentes ni invente información. [/METADATO INTERNO]\n\n" + REQUIRED_VOICE_POLICY)
                 .user(request.message());
         if (!tools.isEmpty()) {
             prompt = prompt.tools(tools.toArray());

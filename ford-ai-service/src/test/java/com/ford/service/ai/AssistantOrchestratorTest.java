@@ -31,6 +31,7 @@ class AssistantOrchestratorTest {
         var response = orchestrator.respond(request);
 
         assertThat(response.handoffRequired()).isTrue();
+        assertThat(response.content()).isEqualTo("Un asesor ya está atendiendo su conversación.");
         verifyNoInteractions(completion);
     }
 
