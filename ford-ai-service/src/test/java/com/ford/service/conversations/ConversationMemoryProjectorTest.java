@@ -73,6 +73,22 @@ class ConversationMemoryProjectorTest {
     }
 
     @Test
+    void keepsTheEntireRecentWindowAndDoesNotMutateTheSourceTranscriptWhenCompactionFails() {
+        var originalTranscript = eightTurns();
+        var memory = context("último resumen válido", originalTranscript, List.of());
+        ConversationMemoryCompactionPort compactor = (tenant, conversation, summary, expired, maxChars) -> {
+            throw new IllegalStateException("provider unavailable");
+        };
+
+        var update = new ConversationMemoryProjector(new MemoryProperties(), compactor)
+                .project(memory, "¿Cuánto queda por mes?", UUID.randomUUID());
+
+        assertThat(update.summary()).isEqualTo("último resumen válido");
+        assertThat(memory.recentMessages()).containsExactlyElementsOf(originalTranscript);
+        assertThat(memory.recentMessages()).hasSize(8);
+    }
+
+    @Test
     void persistsADeclinedSpecialistOfferAsDurableConversationState() {
         var update = new ConversationMemoryProjector(new MemoryProperties()).project(
                 context("", List.of(), List.of(new MemoryFact("specialist_offer_offered", "true", null))),
