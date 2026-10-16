@@ -310,10 +310,13 @@ Goal: Spring fills separate Markdown templates from returned MCP price/promotion
 - [x] Pass delivery/outbox config and Meta Vault secret OCIDs to Ansible; snapshot the protected app `.env` and restore it on failed rollout.
 - [x] Validate the Meta endpoint, phone-number ID, flags, and Vault references before production deployment.
 - [x] Configure nonsecret GitHub production variables from the existing local deployment config without exposing values.
-- [ ] Merge the shared action and Ford Service changes into `main`, publish a new service version, and run the protected production deployment.
+- [x] Merge the shared action and Ford Service changes into `main`, publish Ford Service `v0.1.15`, and complete the protected production deployment.
+- [ ] Fix the still-HTTP login failure redirect in the effective Ford Service Nginx template, add a regression contract, publish a follow-up version, and redeploy through the protected workflow.
 - [ ] Verify the public login redirect stays HTTPS and the pending Meta reply is delivered; inspect only redacted delivery status.
 
 ### Progress
 
 - Local config passes safety checks; four GitHub production variables were set and three existing Vault OCID variables validated.
-- Shared action and Ford Service release contract tests pass locally. Production release and public login verification are pending CI and protected deployment.
+- Shared action and Ford Service release contract tests passed. Ford Service `v0.1.15` was tagged, image build/scanning/provenance passed, and the protected production deployment completed successfully.
+- A safe invalid-credential probe exposed the remaining login bug: the live app returned `302 Location: http://ford.emme.business/login?error`. The running proxy config still had `X-Forwarded-Proto $scheme`; its source is the Ford Service repo template used by the shared action, not the similarly named template in the action repo.
+- The correction branch now tests and sets fixed HTTPS forwarding, clears untrusted `Forwarded`, and sets the forwarded host/port explicitly. Production fix and Meta outbox status verification remain pending.

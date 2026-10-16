@@ -162,6 +162,11 @@ class BlueGreenComposeContractTest(unittest.TestCase):
 
         self.assertIn("listen 127.0.0.1:8080", rendered)
         self.assertIn("proxy_pass http://127.0.0.1:18082", rendered)
+        self.assertIn('proxy_set_header Forwarded "";', rendered)
+        self.assertIn("proxy_set_header X-Forwarded-Host $host;", rendered)
+        self.assertIn("proxy_set_header X-Forwarded-Proto https;", rendered)
+        self.assertIn("proxy_set_header X-Forwarded-Port 443;", rendered)
+        self.assertNotIn("proxy_set_header X-Forwarded-Proto $scheme;", rendered)
 
     def test_mcp_proxy_keeps_tunnel_listener_and_routes_to_active_slot(self):
         template = Environment(loader=FileSystemLoader(MCP_TEMPLATES)).get_template("proxy.conf.j2")
