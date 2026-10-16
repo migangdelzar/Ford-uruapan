@@ -276,7 +276,7 @@ test("Ansible propagates the configured cloud AI provider", async () => {
   assert.match(example, /^FORD_AI_LOCAL_ENABLED=false$/m);
   assert.match(example, /^FORD_AI_CLOUD_BASE_URL=https:\/\/api\.deepseek\.com$/m);
   assert.match(example, /^FORD_AI_CLOUD_MODEL_VERSION=deepseek-flash$/m);
-  assert.match(example, /^FORD_AI_FALLBACK_ORDER=$/m);
+  assert.match(example, /^FORD_AI_FALLBACK_ORDER=openrouter$/m);
 });
 
 test("live provider preflight can exercise the configured primary Spring AI provider", async () => {
@@ -306,19 +306,22 @@ test("Ansible propagates isolated AI fallback credentials and evaluation gates",
     assert.match(remote, new RegExp(variable), `${variable} must reach Ansible inventory`);
     assert.match(template, new RegExp(`^${variable}=`, "m"), `${variable} must reach app.env.j2`);
   }
-  for (const variable of ["GROQ_API_KEY", "GEMINI_API_KEY", "CLOUDFLARE_API_TOKEN", "OPENROUTER_API_KEY"]) {
+  for (const variable of ["GROQ_API_KEY", "GEMINI_API_KEY", "CLOUDFLARE_API_TOKEN"]) {
     assert.match(example, new RegExp(`^${variable}=`, "m"), `${variable} remains documented for credential retention`);
     assert.match(remote, new RegExp(variable), `${variable} remains available to local operator tooling`);
     assert.match(vaultSecret, new RegExp(variable), `${variable} must be allowlisted for Vault import`);
     assert.doesNotMatch(template, new RegExp(`(?:FORD_VAULT_SECRET_OCID_)?${variable}`),
       `${variable} must not be loaded into the DeepSeek-only app runtime`);
   }
+  assert.match(template, /FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY/);
+  assert.doesNotMatch(template, /^OPENROUTER_API_KEY=/m,
+    "the OpenRouter value must come from runtime Vault, not deployment rendering");
   assert.match(spring, /provider-max-attempts:.*:5/);
   assert.match(spring, /max-attempts:.*:1/);
   assert.match(template, /FORD_AI_PROVIDER_MAX_ATTEMPTS=/);
   assert.match(remote, /ford_ai_provider_max_attempts/);
-  assert.match(remote, /FORD_AI_PROVIDER_MAX_ATTEMPTS:-1/);
-  assert.match(remote, /FORD_AI_FALLBACK_ORDER:-\}/);
+  assert.match(remote, /FORD_AI_PROVIDER_MAX_ATTEMPTS:-2/);
+  assert.match(remote, /FORD_AI_FALLBACK_ORDER:-openrouter\}/);
   assert.doesNotMatch(terraform, /groq_api_key|gemini_api_key|cloudflare_api_token|openrouter_api_key/,
     "provider API keys must stay out of Terraform variables");
 });

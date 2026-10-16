@@ -15,10 +15,14 @@ import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantResponse;
 import com.ford.service.ai.api.AssistantGeneration;
 import com.ford.service.ai.api.ResponseEvidenceStatus;
+import com.ford.service.leads.domain.LeadJourneyProposal;
 import com.ford.service.observability.AiObservationService;
 import com.ford.service.observability.DefaultAiObservationService;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.micrometer.observation.ObservationRegistry;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.tool.ToolCallback;
@@ -47,6 +51,7 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
             "Como orientación general, sin datos actuales del catálogo: ";
     private static final String GENERAL_KNOWLEDGE_FOOTNOTE =
             " Los datos específicos del modelo no están confirmados.";
+    private static final double MIN_GENERAL_KNOWLEDGE_CONFIDENCE = 0.70;
     private static final Pattern EXACT_VEHICLE_FACT_REQUEST = Pattern.compile(
             "(?iu)(?:\\bprecio\\b|\\bcu[aá]nto cuesta\\b|\\bdisponib(?:le|ilidad)\\b|\\binventario\\b|"
                     + "\\bexistencias?\\b|\\bpromoci[oó]n\\b|\\bbono\\b|\\bdescuento\\b|\\bconsumo\\b|"
@@ -201,7 +206,8 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
             var evidenceStatus = evidenceStatus(request, toolResults);
             if (evidenceStatus != ResponseEvidenceStatus.NOT_REQUIRED
                     && evidenceStatus != ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED) {
-                if (mayProvideGeneralKnowledge(request.message(), evidenceStatus, generation.answer())) {
+                if (mayProvideGeneralKnowledge(request.message(), evidenceStatus, generation.answer(),
+                        generation.modelConfidence())) {
                     var answer = GENERAL_KNOWLEDGE_CAVEAT + generation.answer().strip()
                             + GENERAL_KNOWLEDGE_FOOTNOTE;
                     log.info("Model response assessed: conversationId={} provider={} evidenceStatus={} sourceTools={} modelSelfConfidence={} outcome=qualified_general_reply",
@@ -362,12 +368,67 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         if (!normalized.startsWith("{")) {
             return new AssistantGeneration(normalized, null);
         }
-        try {
-            return objectMapper.readValue(normalized, AssistantGeneration.class);
-        }
-        catch (JsonProcessingException exception) {
+        String answer = null;
+        Double confidence = null;
+        LeadJourneyProposal journey = null;
+        try (JsonParser parser = objectMapper.createParser(normalized)) {
+            if (parser.nextToken() != JsonToken.START_OBJECT) {
+                throw new InvalidAssistantResponseException("invalid_tool_response_json");
+            }
+            while (parser.nextToken() != JsonToken.END_OBJECT) {
+                if (parser.currentToken() != JsonToken.FIELD_NAME) {
+                    throw new InvalidAssistantResponseException("invalid_tool_response_json");
+                }
+                var field = parser.currentName();
+                var valueToken = parser.nextToken();
+                if (valueToken == null) {
+                    throw new InvalidAssistantResponseException("invalid_tool_response_json");
+                }
+                try {
+                    switch (field) {
+                        case "answer" -> {
+                            if (valueToken == JsonToken.VALUE_STRING) answer = parser.getValueAsString();
+                            else parser.skipChildren();
+                        }
+                        case "modelConfidence" -> {
+                            if (valueToken.isNumeric()) {
+                                var candidate = parser.getDoubleValue();
+                                if (Double.isFinite(candidate) && candidate >= 0.0 && candidate <= 1.0) {
+                                    confidence = candidate;
+                                }
+                            } else parser.skipChildren();
+                        }
+                        case "journeyProposal" -> {
+                            JsonNode node = objectMapper.readTree(parser);
+                            if (node != null && !node.isNull()) {
+                                journey = objectMapper.treeToValue(node, LeadJourneyProposal.class);
+                            }
+                        }
+                        default -> parser.skipChildren();
+                    }
+                } catch (JsonProcessingException | IllegalArgumentException malformedOptionalField) {
+                    if (answer != null && !answer.isBlank()) {
+                        log.warn("Model response optional journey metadata ignored: provider={} field={} reason=malformed_metadata",
+                                provider, field);
+                        return new AssistantGeneration(answer, null, confidence);
+                    }
+                    throw new InvalidAssistantResponseException("invalid_tool_response_json");
+                }
+            }
+        } catch (JsonProcessingException exception) {
+            if (answer != null && !answer.isBlank()) {
+                log.warn("Model response truncated after customer answer: provider={} reason=malformed_optional_metadata",
+                        provider);
+                return new AssistantGeneration(answer, null, confidence);
+            }
+            throw new InvalidAssistantResponseException("invalid_tool_response_json");
+        } catch (java.io.IOException exception) {
             throw new InvalidAssistantResponseException("invalid_tool_response_json");
         }
+        if (answer == null || answer.isBlank()) {
+            throw new InvalidAssistantResponseException("invalid_tool_response_json");
+        }
+        return new AssistantGeneration(answer, journey, confidence);
     }
 
     static String systemPrompt(String basePrompt, String memory,
@@ -408,12 +469,13 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
     }
 
     private static boolean mayProvideGeneralKnowledge(String message, ResponseEvidenceStatus evidenceStatus,
-                                                       String answer) {
+                                                       String answer, Double confidence) {
         if (evidenceStatus != ResponseEvidenceStatus.READ_ONLY_TOOL_FAILED
                 && evidenceStatus != ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED_EMPTY) {
             return false;
         }
         return message != null && !EXACT_VEHICLE_FACT_REQUEST.matcher(message).find()
-                && answer != null && !UNSUPPORTED_EXACT_VALUE.matcher(answer).find();
+                && answer != null && !UNSUPPORTED_EXACT_VALUE.matcher(answer).find()
+                && confidence != null && confidence >= MIN_GENERAL_KNOWLEDGE_CONFIDENCE;
     }
 }

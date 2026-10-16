@@ -247,6 +247,12 @@ jobs:
       FORD_MCP_ACCESS_CLIENT_ID: ${{ vars.FORD_MCP_ACCESS_CLIENT_ID }}
       FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY }}
       FORD_VAULT_SECRET_OCID_OPENAI_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_OPENAI_API_KEY }}
+      FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY }}
+      FORD_AI_FALLBACK_ORDER: ${{ vars.FORD_AI_FALLBACK_ORDER }}
+      FORD_AI_OPENROUTER_ENABLED: ${{ vars.FORD_AI_OPENROUTER_ENABLED }}
+      FORD_AI_OPENROUTER_MODEL: ${{ vars.FORD_AI_OPENROUTER_MODEL }}
+      FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED: ${{ vars.FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED }}
+      FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED: ${{ vars.FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED }}
       FORD_VAULT_SECRET_OCID_GRAFANA_CLOUD_API_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_GRAFANA_CLOUD_API_TOKEN }}
       FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY }}
       GRAFANA_CLOUD_OTLP_ENDPOINT: ${{ vars.GRAFANA_CLOUD_OTLP_ENDPOINT }}
@@ -283,6 +289,11 @@ jobs:
             echo 'Production DeepSeek chat requires FORD_VAULT_SECRET_OCID_OPENAI_API_KEY to reference an OCI Vault secret.' >&2
             exit 1
           }
+          if [[ -n "$FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY" \
+            && ! "$FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY" =~ ^ocid1[.]vaultsecret[.][A-Za-z0-9.]+$ ]]; then
+            echo 'OpenRouter fallback Vault reference must be a valid secret OCID when configured.' >&2
+            exit 1
+          fi
           [[ "$FORD_MCP_ENABLED" == 'true' \
             && "$FORD_MCP_URL" == 'https://ford-mcp.emme.business' \
             && "$FORD_MCP_ACCESS_CLIENT_ID" =~ ^[A-Za-z0-9._-]+$ ]] || {

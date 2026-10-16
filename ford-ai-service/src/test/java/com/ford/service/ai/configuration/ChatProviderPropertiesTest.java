@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ChatProviderPropertiesTest {
 
     @Test
-    void productionUsesDeepSeekAsItsOnlyChatProviderByDefault() throws Exception {
+    void productionKeepsDeepSeekPrimaryAndSetsOneOpenRouterFallbackAttempt() throws Exception {
         var loader = new YamlPropertySourceLoader();
         var environment = new StandardEnvironment();
         loader.load("application-prod", new ClassPathResource("application-prod.yml"))
@@ -34,33 +34,36 @@ class ChatProviderPropertiesTest {
         assertThat(ai.cloudChatProvider()).isEqualTo("openai");
         assertThat(ai.cloudEnabled()).isTrue();
         assertThat(ai.localEnabled()).isFalse();
-        assertThat(ai.providerMaxAttempts()).isEqualTo(1);
+        assertThat(ai.providerMaxAttempts()).isEqualTo(2);
         assertThat(environment.getProperty("spring.ai.model.chat")).isEqualTo("openai");
         assertThat(environment.getProperty("spring.ai.openai.base-url")).isEqualTo("https://api.deepseek.com");
         assertThat(environment.getProperty("spring.ai.openai.chat.options.model")).isEqualTo("deepseek-flash");
-        assertThat(providers.fallbackOrder()).isEmpty();
+        assertThat(providers.fallbackOrder()).containsExactly("openrouter");
         assertThat(providers.eligibleFallbackIds()).isEmpty();
+        assertThat(providers.providerStatus()).containsEntry("openrouter", "missing_api_key");
     }
 
     @Test
-    void doesNotEnableOpenRouterAsAProductionFallbackEvenWhenCredentialsArePresent() throws Exception {
+    void enablesOpenRouterOnlyWhenCredentialsAndVerifiedCapabilitiesArePresent() throws Exception {
         var loader = new YamlPropertySourceLoader();
         var environment = new StandardEnvironment();
-        environment.getPropertySources().addFirst(new MapPropertySource("test-credentials",
-                Map.of("OPENROUTER_API_KEY", "test-key",
-                        "ford.ai.providers.catalog.openrouter.api-key", "test-key")));
         loader.load("application-prod", new ClassPathResource("application-prod.yml"))
                 .forEach(environment.getPropertySources()::addFirst);
         loader.load("application", new ClassPathResource("application.yml"))
                 .forEach(environment.getPropertySources()::addLast);
+        environment.getPropertySources().addFirst(new MapPropertySource("test-credentials",
+                Map.of("OPENROUTER_API_KEY", "test-key",
+                        "ford.ai.providers.catalog.openrouter.api-key", "test-key",
+                        "FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED", "true",
+                        "FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED", "true")));
 
         var properties = Binder.get(environment).bind("ford.ai.providers",
                 Bindable.of(ChatProviderProperties.class))
                 .orElseThrow(() -> new IllegalStateException("production AI provider configuration is missing"));
 
-        assertThat(properties.fallbackOrder()).isEmpty();
-        assertThat(properties.providerStatus()).isEmpty();
-        assertThat(properties.eligibleFallbackIds()).isEmpty();
+        assertThat(properties.fallbackOrder()).containsExactly("openrouter");
+        assertThat(properties.providerStatus()).containsEntry("openrouter", "ready");
+        assertThat(properties.eligibleFallbackIds()).containsExactly("openrouter");
     }
 
     @Test
