@@ -123,7 +123,7 @@ class OciActionContractTest(unittest.TestCase):
 
     def test_release_workflow_passes_the_ui_upstream_override_for_cutover_and_rollback(self):
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("FORD_WEB_UI_UPSTREAM_URL: ${{ vars.FORD_WEB_UI_UPSTREAM_URL }}", workflow)
+        self.assertIn("ui-upstream-url: ${{ vars.FORD_WEB_UI_UPSTREAM_URL }}", workflow)
 
     def test_release_workflow_is_closed_until_vault_and_production_gates_pass(self):
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
