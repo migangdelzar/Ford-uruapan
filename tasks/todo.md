@@ -272,8 +272,8 @@ Goal: Spring fills separate Markdown templates from returned MCP price/promotion
 
 # Safe DeepSeek responses and advisor handoff (2026-10-12)
 
-- [x] Keep one-detail assistant replies, log only rejection reasons, bound DeepSeek repair plus OpenRouter fallback, and return safe replies when MCP is unavailable.
-- [x] Enable the verified OpenRouter production fallback and add config/quality/MCP regressions.
+- [x] Keep one-detail assistant replies, log only rejection reasons, bound model repair/attempts, and return safe replies when MCP is unavailable.
+- [x] Verify OpenRouter tool/structured-output behavior for the earlier fallback configuration; production routing was later changed to DeepSeek-only.
 - [x] Send a customer handoff notice after an advisor claims the conversation; persist sender type/identity and expose it through the API/UI.
 - [x] Verify app startup, Modulith listener packaging, DB migration, handoff transcript/outbox, and frontend sender rendering.
 - [x] Run a read-only live MCP vehicle search and confirm catalog source URLs are returned.
@@ -283,9 +283,30 @@ Goal: Spring fills separate Markdown templates from returned MCP price/promotion
 
 - Branch: `fix/advisor-handoff-message-senders` in Ford-uruapan and Ford-web, based on each repo's current `origin/main`.
 - On successful advisor claim, the service appends one outbound advisor-authored notice: “Hola, ya tomé tu conversación. Te responderé por aquí en cuanto pueda.” Message sender type/name now survive DB/API/UI mapping; existing messages receive a safe sender backfill.
-- DeepSeek remains primary; the verified OpenRouter model is the only fallback. Primary gets at most one repair; fallback gets one request. Rejections log only a reason, not prompts or generated text. MCP failures/empty results withhold exact volatile facts; confirmed MCP prices/promotions render deterministic source-linked answers.
+- Historical behavior: DeepSeek was paired with OpenRouter as the only fallback. Response validation logs only a reason, not prompts or generated text. MCP failures/empty results withhold exact volatile facts; confirmed MCP prices/promotions render deterministic source-linked answers. Production was later found running Ollama and is being switched to DeepSeek-only below.
 - Verification passed: full backend unit suite, focused backend suite, Ford-web sender Vitest, `bun run lint`, API contract check (47 paths), app context/Liquibase/Modulith tests, handoff/conversation integration tests, end-to-end Meta-to-outbox flow, and `bootJar` packaging check.
 - Live read-only MCP `search_vehicles` returned three Ford Ranger results and Ford Uruapan source URLs. No deployment was performed. Production log check found no follow-up-service or classifier-failure signatures, but did find one realtime listener `ClassNotFoundException`; recheck after the feature branch is deployed.
+
+## DeepSeek-only production chat (2026-10-16)
+
+- [x] Verify the existing production OCI Vault API key against DeepSeek without printing or persisting it.
+- [x] Set the production profile and Ansible defaults to DeepSeek `deepseek-flash`; disable Ollama and all chat-provider fallbacks.
+- [x] Require the DeepSeek Vault secret reference in the protected service-release workflow and stop forwarding unused fallback keys into the app.
+- [x] Add production config/workflow regressions and support the primary provider in the opt-in live provider preflight.
+- [x] Run the live DeepSeek Spring AI tool-call preflight with a synthetic lookup.
+- [ ] Merge the verified changes to `main`, publish a versioned Ford Service release, and deploy through the protected GitHub Actions workflow.
+- [ ] Verify deployed provider settings and a real Meta chat turn with MCP evidence; confirm exact volatile facts remain withheld when MCP has none.
+- [ ] Add/verify a clearly labeled general-knowledge reply only when separable from MCP-dependent facts; never infer exact specs, prices, promotions, or availability.
+- [ ] Verify deterministic MCP-backed source-linked output when DeepSeek and its one repair fail but tool facts are available.
+- [ ] Identify the exact production conversation before restarting its LLM memory; preserve the stored transcript.
+- [ ] Recheck classifier and Modulith follow-up/realtime listener logs after the release.
+
+### Verification results
+
+- Production `OPENAI_API_KEY` Vault secret authenticated to `https://api.deepseek.com/models` with HTTP 200; the response listed `deepseek-flash`. The secret was piped directly from OCI CLI to the request and never printed.
+- The opt-in Spring AI preflight passed with `provider=openai`, `model=deepseek-flash`, and one synthetic tool call.
+- Java suite and `bootJar` passed (650 tests, no skipped or failed tests); Node workflow/operations contracts passed (71 tests); Ansible app playbook syntax check passed.
+- The production runtime has not changed yet: it still selects Ollama until the approved Actions release is deployed.
 
 # Credential storage hardening (2026-10-12)
 

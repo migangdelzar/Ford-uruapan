@@ -271,6 +271,22 @@ test("Ansible propagates the configured cloud AI provider", async () => {
     assert.match(remote, new RegExp(variable), `${variable} must reach the inventory`);
     assert.match(template, new RegExp(`^${variable}=`, "m"), `${variable} must reach app.env.j2`);
   }
+  assert.match(example, /^FORD_AI_CHAT_PROVIDER=openai$/m);
+  assert.match(example, /^FORD_AI_CLOUD_ENABLED=true$/m);
+  assert.match(example, /^FORD_AI_LOCAL_ENABLED=false$/m);
+  assert.match(example, /^FORD_AI_CLOUD_BASE_URL=https:\/\/api\.deepseek\.com$/m);
+  assert.match(example, /^FORD_AI_CLOUD_MODEL_VERSION=deepseek-flash$/m);
+  assert.match(example, /^FORD_AI_FALLBACK_ORDER=$/m);
+});
+
+test("live provider preflight can exercise the configured primary Spring AI provider", async () => {
+  const source = await read("ford-ai-service/src/providerPreflight/java/com/ford/service/ai/configuration/LiveProviderPreflightTest.java");
+
+  assert.match(source, /PROVIDER_IDS = List\.of\("openai"/);
+  assert.match(source, /case "openai" -> env\("OPENAI_API_KEY"\)/);
+  assert.match(source, /FORD_AI_CLOUD_ENABLED/);
+  assert.match(source, /FORD_AI_CLOUD_BASE_URL/);
+  assert.match(source, /FORD_AI_CLOUD_MODEL_VERSION/);
 });
 
 test("Ansible propagates isolated AI fallback credentials and evaluation gates", async () => {
@@ -284,21 +300,25 @@ test("Ansible propagates isolated AI fallback credentials and evaluation gates",
   for (const variable of [
     "FORD_AI_FALLBACK_ORDER", "FORD_AI_EVALUATION_MODE",
     "FORD_AI_GROQ_ENABLED", "FORD_AI_GEMINI_ENABLED", "FORD_AI_CLOUDFLARE_ENABLED", "FORD_AI_OPENROUTER_ENABLED",
-    "GROQ_API_KEY", "GEMINI_API_KEY", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "OPENROUTER_API_KEY"
+    "CLOUDFLARE_ACCOUNT_ID"
   ]) {
     assert.match(example, new RegExp(`^${variable}=`, "m"), `${variable} must be documented`);
     assert.match(remote, new RegExp(variable), `${variable} must reach Ansible inventory`);
     assert.match(template, new RegExp(`^${variable}=`, "m"), `${variable} must reach app.env.j2`);
   }
   for (const variable of ["GROQ_API_KEY", "GEMINI_API_KEY", "CLOUDFLARE_API_TOKEN", "OPENROUTER_API_KEY"]) {
+    assert.match(example, new RegExp(`^${variable}=`, "m"), `${variable} remains documented for credential retention`);
+    assert.match(remote, new RegExp(variable), `${variable} remains available to local operator tooling`);
     assert.match(vaultSecret, new RegExp(variable), `${variable} must be allowlisted for Vault import`);
-    assert.match(template, new RegExp(`FORD_VAULT_SECRET_OCID_${variable}`), `${variable} must be sourced from Vault in production`);
+    assert.doesNotMatch(template, new RegExp(`(?:FORD_VAULT_SECRET_OCID_)?${variable}`),
+      `${variable} must not be loaded into the DeepSeek-only app runtime`);
   }
   assert.match(spring, /provider-max-attempts:.*:5/);
   assert.match(spring, /max-attempts:.*:1/);
   assert.match(template, /FORD_AI_PROVIDER_MAX_ATTEMPTS=/);
   assert.match(remote, /ford_ai_provider_max_attempts/);
-  assert.match(remote, /FORD_AI_PROVIDER_MAX_ATTEMPTS:-5/);
+  assert.match(remote, /FORD_AI_PROVIDER_MAX_ATTEMPTS:-1/);
+  assert.match(remote, /FORD_AI_FALLBACK_ORDER:-\}/);
   assert.doesNotMatch(terraform, /groq_api_key|gemini_api_key|cloudflare_api_token|openrouter_api_key/,
     "provider API keys must stay out of Terraform variables");
 });
