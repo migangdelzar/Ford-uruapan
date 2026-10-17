@@ -1,3 +1,12 @@
+# Post-login passkey setup
+
+- [x] Implement authoritative passkey status in the authenticated session response and optional UI enrollment prompt.
+- [x] Preserve the profile-menu registration action and allow Later without ending the session.
+- [x] Service unit tests passed; Web tests (138), TypeScript, API contract check (47 paths), and production build passed.
+- [ ] Run Service database integration tests in a working Testcontainers environment; local Ryuk startup failed because the Colima `emme` profile reports stopped.
+- [ ] Release Service before Ford Web. Current GitHub CLI credential is invalid, so push/PR/workflow access is unavailable in this session.
+- [ ] Verify the production prompt and passkey flow after releases.
+
 # Humanized Ford conversation voice (2026-10-16)
 
 - [x] Audit the CSV and existing prompt, persona, deterministic replies, memory, lead flow, and MCP behavior.

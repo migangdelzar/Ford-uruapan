@@ -230,7 +230,8 @@ class OperatorAuthenticationConfigurationIntegrationTest {
 
         mvc.perform(get("/api/auth/me").cookie(sessionCookie))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.operatorId").value(operator.id().toString()));
+                .andExpect(jsonPath("$.operatorId").value(operator.id().toString()))
+                .andExpect(jsonPath("$.hasPasskey").value(false));
         mvc.perform(get("/api/v1/operator/me").cookie(sessionCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.operatorId").value(operator.id().toString()));

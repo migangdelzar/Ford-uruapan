@@ -1724,7 +1724,7 @@ components:
             type: string
     OperatorSession:
       type: object
-      required: [operatorId, displayName, email, roles, tenantIds]
+      required: [operatorId, displayName, email, roles, tenantIds, hasPasskey]
       properties:
         operatorId: { type: string, format: uuid }
         displayName: { type: string }
@@ -1735,6 +1735,8 @@ components:
         tenantIds:
           type: array
           items: { type: string, format: uuid }
+        hasPasskey:
+          type: boolean
     ProblemDetail:
       type: object
       required: [type, title, status, detail]
