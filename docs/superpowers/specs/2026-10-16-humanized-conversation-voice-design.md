@@ -1,6 +1,6 @@
 # Humanized Ford Conversation Voice Design
 
-**Status:** Approved in scope by user direction; implementation pending
+**Status:** Implemented, merged, and deployed as Ford Service `v0.1.23`; authenticated production conversation and rollback-image verification pending
 **Date:** 2026-10-16
 **Scope:** Existing Ford Service customer-facing conversation replies
 

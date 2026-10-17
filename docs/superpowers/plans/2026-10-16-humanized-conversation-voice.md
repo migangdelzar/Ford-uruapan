@@ -91,7 +91,7 @@ git commit -m "fix(ai): use MÍA as the stable assistant identity"
 
 **Produces:** Existing fallback behavior with customer-facing copy consistently using **usted**.
 
-- [ ] **Step 1: Add assertions for each current recovery path.** Assert formal copy for prompt-injection and sensitive-data responses, quality recovery for `repeated_response` and `internal_payload`, and `HumanHandoffPolicy.fallbackText()`. Keep reason codes and handoff behavior unchanged.
+- [x] **Step 1: Add assertions for each current recovery path.** Assert formal copy for prompt-injection and sensitive-data responses, quality recovery for `repeated_response` and `internal_payload`, and `HumanHandoffPolicy.fallbackText()`. Keep reason codes and handoff behavior unchanged.
 
 Expected exact copy:
 
@@ -105,21 +105,21 @@ No pude preparar una respuesta clara con la información disponible. Intente de 
 
 Recovery copy must not address the customer as “tú”; it must remain short, honest, and ask no more than one question.
 
-- [ ] **Step 2: Run focused tests and verify the old copy fails the new assertions.**
+- [x] **Step 2: Run focused tests and verify the old copy fails the new assertions.**
 
 Run from the repository root: `cd ford-ai-service && ./gradlew test --no-daemon --tests com.ford.service.ai.SpringAiAssistantServiceTest --tests com.ford.service.ai.AssistantResponseQualityPolicyTest --tests com.ford.service.conversations.HumanHandoffPolicyTest`
 
 Expected: FAIL only on the new formal-address assertions.
 
-- [ ] **Step 3: Update only the existing message constants/branches.** Use “ayudarle”, “su”, “desea”, and “intente”; retain all current policy branches and error reason codes.
+- [x] **Step 3: Update only the existing message constants/branches.** Use “ayudarle”, “su”, “desea”, and “intente”; retain all current policy branches and error reason codes.
 
-- [ ] **Step 4: Re-run the focused tests.**
+- [x] **Step 4: Re-run the focused tests.**
 
 Run from the repository root: `cd ford-ai-service && ./gradlew test --no-daemon --tests com.ford.service.ai.SpringAiAssistantServiceTest --tests com.ford.service.ai.AssistantResponseQualityPolicyTest --tests com.ford.service.conversations.HumanHandoffPolicyTest`
 
 Expected: PASS with no changes to classification, handoff eligibility, or provider selection.
 
-- [ ] **Step 5: Commit this task.**
+- [x] **Step 5: Commit this task.**
 
 ```bash
 git add ford-ai-service/src/test/java/com/ford/service/ai/SpringAiAssistantServiceTest.java ford-ai-service/src/test/java/com/ford/service/ai/AssistantResponseQualityPolicyTest.java ford-ai-service/src/test/java/com/ford/service/conversations/HumanHandoffPolicyTest.java ford-ai-service/src/main/java/com/ford/service/ai/application/SpringAiAssistantService.java ford-ai-service/src/main/java/com/ford/service/ai/application/AssistantResponseQualityPolicy.java ford-ai-service/src/main/java/com/ford/service/shared/HumanHandoffPolicy.java
@@ -140,7 +140,7 @@ git commit -m "fix(ai): use formal address in recovery replies"
 
 **Produces:** Formal customer copy while retaining actual operator authorship, idempotency, and one pending question.
 
-- [ ] **Step 1: Add copy assertions.** Assert the `HUMAN_ACTIVE` reply uses “su conversación”; assert the handoff message is formal and its `operatorId` remains the author; assert the test-drive reply asks one date question using “le”.
+- [x] **Step 1: Add copy assertions.** Assert the `HUMAN_ACTIVE` reply uses “su conversación”; assert the handoff message is formal and its `operatorId` remains the author; assert the test-drive reply asks one date question using “le”.
 
 Expected customer-facing copy:
 
@@ -150,19 +150,19 @@ Hola, ya tomé su conversación. Le responderé por aquí en cuanto tenga una ac
 ¡Perfecto! ¿Qué día le queda bien para la prueba de manejo?
 ```
 
-- [ ] **Step 2: Run focused tests and verify the formal-copy assertions fail.**
+- [x] **Step 2: Run focused tests and verify the formal-copy assertions fail.**
 
 Run from the repository root: `cd ford-ai-service && ./gradlew test --no-daemon --tests com.ford.service.ai.AssistantOrchestratorTest --tests com.ford.service.conversations.DefaultConversationHandoffMessageServiceTest --tests com.ford.service.conversations.PendingTestDriveReplyPolicyTest`
 
-- [ ] **Step 3: Change only the message text.** Preserve the operator UUID as sender, `operator:handoff:<ticketId>` idempotency key, expected conversation version, and appointment proposal.
+- [x] **Step 3: Change only the message text.** Preserve the operator UUID as sender, `operator:handoff:<ticketId>` idempotency key, expected conversation version, and appointment proposal.
 
-- [ ] **Step 4: Re-run focused tests.**
+- [x] **Step 4: Re-run focused tests.**
 
 Run from the repository root: `cd ford-ai-service && ./gradlew test --no-daemon --tests com.ford.service.ai.AssistantOrchestratorTest --tests com.ford.service.conversations.DefaultConversationHandoffMessageServiceTest --tests com.ford.service.conversations.PendingTestDriveReplyPolicyTest`
 
 Expected: PASS; takeover remains authored by the operator and a confirmed test-drive offer still requests one date only.
 
-- [ ] **Step 5: Commit this task.**
+- [x] **Step 5: Commit this task.**
 
 ```bash
 git add ford-ai-service/src/test/java/com/ford/service/ai/AssistantOrchestratorTest.java ford-ai-service/src/test/java/com/ford/service/conversations/DefaultConversationHandoffMessageServiceTest.java ford-ai-service/src/test/java/com/ford/service/conversations/PendingTestDriveReplyPolicyTest.java ford-ai-service/src/main/java/com/ford/service/ai/application/DefaultAssistantOrchestrator.java ford-ai-service/src/main/java/com/ford/service/conversations/application/DefaultConversationHandoffMessageService.java ford-ai-service/src/main/java/com/ford/service/conversations/application/PendingTestDriveReplyPolicy.java
@@ -181,15 +181,15 @@ git commit -m "fix(conversations): formalize advisor and test-drive replies"
 
 **Produces:** Classpath and database prompts remain editable; an immutable code-owned rule is appended last on every model call.
 
-- [ ] **Step 1: Write failing prompt-contract tests.** Update the seed contract test to expect fixed MÍA rather than “nombre mexicano asignado”. Add an adapter test with a stored prompt containing conflicting name/address text and assert the complete system prompt ends with a code-owned rule that names MÍA and requires **usted**. Extend a response-repair test to assert the same rule appears in both captured system prompt calls.
+- [x] **Step 1: Write failing prompt-contract tests.** Update the seed contract test to expect fixed MÍA rather than “nombre mexicano asignado”. Add an adapter test with a stored prompt containing conflicting name/address text and assert the complete system prompt ends with a code-owned rule that names MÍA and requires **usted**. Extend a response-repair test to assert the same rule appears in both captured system prompt calls.
 
-- [ ] **Step 2: Run focused tests and verify they fail.**
+- [x] **Step 2: Run focused tests and verify they fail.**
 
 Run from the repository root: `cd ford-ai-service && ./gradlew test --no-daemon --tests com.ford.service.ai.SpringAiChatCompletionAdapterTest --tests com.ford.service.ai.SystemPromptServiceTest`
 
 Expected: FAIL because no code-owned style rule follows the runtime prompt and the seed contract expects a rotating name.
 
-- [ ] **Step 3: Add the immutable style rule at the end of `SpringAiChatCompletionAdapter.call(...)`.** Keep it after the runtime prompt, dynamic conversation context, repair instruction, source-unavailable policy, and internal confidence metadata. Use a bounded constant such as:
+- [x] **Step 3: Add the immutable style rule at the end of `SpringAiChatCompletionAdapter.call(...)`.** Keep it after the runtime prompt, dynamic conversation context, repair instruction, source-unavailable policy, and internal confidence metadata. Use a bounded constant such as:
 
 ```java
 private static final String REQUIRED_VOICE_POLICY =
@@ -198,13 +198,13 @@ private static final String REQUIRED_VOICE_POLICY =
 
 Append this constant in the single `call(...)` method so both first generation and repair receive it. Update the classpath prompt’s identity section to state that the application introduces MÍA once. Convert any customer-facing instruction wording in the code-owned source-unavailable rule to formal verbs without changing its fact-safety policy.
 
-- [ ] **Step 4: Re-run focused tests.**
+- [x] **Step 4: Re-run focused tests.**
 
 Run from the repository root: `cd ford-ai-service && ./gradlew test --no-daemon --tests com.ford.service.ai.SpringAiChatCompletionAdapterTest --tests com.ford.service.ai.SystemPromptServiceTest`
 
 Expected: PASS; the saved prompt remains present, and the immutable MÍA/usted rule is last on both attempts.
 
-- [ ] **Step 5: Commit this task.**
+- [x] **Step 5: Commit this task.**
 
 ```bash
 git add ford-ai-service/src/test/java/com/ford/service/ai/SpringAiChatCompletionAdapterTest.java ford-ai-service/src/test/java/com/ford/service/ai/SystemPromptServiceTest.java ford-ai-service/src/main/java/com/ford/service/ai/adapter/out/springai/SpringAiChatCompletionAdapter.java ford-ai-service/src/main/resources/prompts/ford-uruapan-system.md
@@ -241,15 +241,19 @@ tgrep --no-index "\b(te|tu|tus|contigo|intenta|dime|puedes|quieres|gustaría)\b"
 
 Expected: no customer-facing **tú** copy remains in the reviewed conversation paths; internal classifier/recall tokens are excluded from this check. `git diff --check` passed; changed customer-facing reply paths and prompt were reviewed.
 
-- [ ] **Step 3: Push the feature branch, open the PR, and wait for the required CI gates.** Require Java unit, PostgreSQL integration, deterministic AI evaluation, security, observability, container smoke/scan/SBOM, and release coordinator checks to pass before merge.
+- [x] **Step 3: Push the feature branch, open the PR, and wait for the required CI gates.** Require Java unit, PostgreSQL integration, deterministic AI evaluation, security, observability, container smoke/scan/SBOM, and release coordinator checks to pass before merge.
 
-- [ ] **Step 4: Merge to `main`, verify the exact merge SHA, and create the next unused annotated version tag.** Confirm the tag points to that merge SHA and tag-triggered CI passes before running release-all.
+- [x] **Step 4: Merge to `main`, verify the exact merge SHA, and create the next unused annotated version tag.** Confirm the tag points to that merge SHA and tag-triggered CI passes before running release-all.
 
-- [ ] **Step 5: Run release-all for Ford Service only.** Select `operation=release`, `ford_service=true`, `ford_scraping=false`, and `ford_web=false`; provide the exact service version. Confirm preflight reports the same tag and source SHA. Preserve the `release-all-approval` gate and wait for its authorized approval; do not bypass it.
+- [x] **Step 5: Run release-all for Ford Service only.** Selected `operation=release`, `ford_service=true`, `ford_scraping=false`, and `ford_web=false` for `v0.1.23`. Release-all run `38997055479` and Service deployment run `38997076814` succeeded after the authorized release gate.
 
-- [ ] **Step 6: Verify the release result and live service.** Confirm release-all’s result artifact includes the tag, source SHA, image digest, and deployment run; verify public health and the running image identity. Run an approved synthetic conversation using existing test tooling and confirm MÍA, formal **usted**, MCP-grounded current data, source links, memory continuity, and advisor-author reply identity. Do not send a message to a real customer.
+- [ ] **Step 6: Finish runtime verification.**
+  - [x] Release result artifact records tag `v0.1.23`, source SHA `5f16ddec3f743eb7d1a592514f3d99574b7435f7`, image digest `sha256:17199e073111497766c54ad2c6eaf862ba9d27a23b3f8255c1c2ea58f33da338`, and deployment run `38997076814`.
+  - [x] Public health returned `UP`; `/` redirected to same-host `/login`; `/login` and fingerprinted JS/CSS assets returned 200; login HTML did not expose a `pages.dev` origin.
+  - [ ] Independently verify the active and prior blue-green image identities and document the rollback image.
+  - [ ] Run an authenticated synthetic production conversation with MÍA, formal **usted**, MCP-grounded current facts and source URL, memory continuity, and advisor-authored handoff. Do not message a real customer.
 
-- [ ] **Step 7: Record final state in `tasks/todo.md`.** Mark only evidence-backed tests and deployment checks complete, including the release run URL, exact source SHA, image digest, health response, and rollback image identity.
+- [ ] **Step 7: Record final state in `tasks/todo.md` after runtime verification.** Mark only evidence-backed tests and deployment checks complete, including the release run URL, exact source SHA, image digest, health response, and rollback image identity.
 
 ## Dependency order
 
@@ -257,9 +261,9 @@ Tasks 1–3 are independent source slices. Task 4 builds on Task 1’s fixed ide
 
 ## Definition of Done
 
-- [ ] MÍA is the same identity in every new conversation and is introduced once.
-- [ ] Existing generated and fixed replies consistently use formal **usted**.
-- [ ] Editable runtime prompts cannot override MÍA or the formal address rule.
-- [ ] Existing memory, single-question, lead qualification, MCP, pricing, promotion, and handoff rules remain covered and unchanged.
-- [ ] Full checks and protected release workflows pass for the exact merged SHA.
+- [x] MÍA is the same identity in every new conversation and is introduced once.
+- [x] Existing generated and fixed replies consistently use formal **usted**.
+- [x] Editable runtime prompts cannot override MÍA or the formal address rule.
+- [x] Existing memory, single-question, lead qualification, MCP, pricing, promotion, and handoff rules remain covered and unchanged.
+- [x] Full checks and protected release workflows pass for the exact merged SHA.
 - [ ] Production health and synthetic conversation behavior are confirmed; release identity and rollback image are documented.
