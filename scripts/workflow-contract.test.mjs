@@ -123,6 +123,20 @@ test("Ford Service passes a validated production operator email to the OCI actio
   assert.match(source, /configure FORD_OPERATOR_USERNAME as the production operator login email/);
 });
 
+test("production deployment configures a verified Resend sender for one-time login email", async () => {
+  const source = await read(".github/workflows/release.yml");
+
+  assert.match(
+    source,
+    /RESEND_FROM: \$\{\{ vars\.RESEND_FROM \|\| 'Ford Uruapan <no-reply@emme\.business>' \}\}/,
+  );
+  assert.match(
+    source,
+    /re\.fullmatch\(r"\[\^<>\\r\\n\]\+ <\[\^<>\\s@\]\+@emme\\\.business>", sender\)/,
+  );
+  assert.match(source, /configure RESEND_FROM with a sender on the verified emme\.business domain/);
+});
+
 test("database backup actions inspect the deployed archive directory", async () => {
   const source = await read(".github/workflows/database-backup.yml");
 

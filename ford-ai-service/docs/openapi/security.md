@@ -49,8 +49,11 @@ CSRF cookie and its token in `X-XSRF-TOKEN`. Email fallback uses
 the single-use email link at `/login/ott`. Unknown, disabled, and throttled
 accounts receive the same accepted response. Tokens expire after five minutes
 and requests are rate-limited per normalized email. Configure
-`FORD_RESEND_API_KEY` and `RESEND_FROM` to deliver email. Never log or return
-the magic link or token in the API response.
+`FORD_RESEND_API_KEY` and `RESEND_FROM` to deliver email. The production
+release workflow defaults the sender to
+`Ford Uruapan <no-reply@emme.business>`; its `RESEND_FROM` Actions variable can
+override that with another address on the verified `emme.business` domain.
+Never log or return the magic link or token in the API response.
 
 Operator identities are allowlisted in PostgreSQL. Provision operators through
 the controlled onboarding process before they can use email fallback or

@@ -20,7 +20,10 @@ Use environment variables or a deployment profile; keep secrets outside Git.
   not the authenticated `/actuator/prometheus` endpoint.
 - `FORD_SECURITY_AUTH_ENABLED`, `FORD_SECURITY_JWT_ENABLED`, `FORD_SECURITY_ISSUER_URI`, `FORD_SECURITY_AUDIENCE`
 - `FORD_SECURITY_JWK_PRIVATE_KEY`, `FORD_BFF_OIDC_CLIENT_SECRET`, `FORD_BFF_OIDC_REDIRECT_URI`
-- `FORD_RESEND_API_KEY`, `RESEND_FROM` (operator email one-time-token fallback)
+- `FORD_RESEND_API_KEY`, `RESEND_FROM` (operator one-time-token email fallback).
+  The production release uses `Ford Uruapan <no-reply@emme.business>` by
+  default; set the production Actions variable `RESEND_FROM` to override it with
+  another sender on the verified `emme.business` domain.
 - `FORD_META_APP_SECRET`, `FORD_META_VERIFY_TOKEN`
 - `FORD_META_DELIVERY_ENABLED`, channel delivery endpoints and access tokens
 - `FORD_META_WHATSAPP_ACCESS_TOKEN` is reused for authenticated WhatsApp Graph

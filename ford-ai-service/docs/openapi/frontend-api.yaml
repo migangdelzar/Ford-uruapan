@@ -139,7 +139,7 @@ paths:
           description: Current enabled operator profile.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/OperatorSession' }
+              schema: { $ref: '#/components/schemas/BrowserOperatorSession' }
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -1735,6 +1735,21 @@ components:
         tenantIds:
           type: array
           items: { type: string, format: uuid }
+    BrowserOperatorSession:
+      type: object
+      required: [operatorId, displayName, email, roles, tenantIds, hasPasskey]
+      properties:
+        operatorId: { type: string, format: uuid }
+        displayName: { type: string }
+        email: { type: string, format: email }
+        roles:
+          type: array
+          items: { type: string, enum: [OPERATOR, MANAGER, ADMIN] }
+        tenantIds:
+          type: array
+          items: { type: string, format: uuid }
+        hasPasskey:
+          type: boolean
     ProblemDetail:
       type: object
       required: [type, title, status, detail]

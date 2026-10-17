@@ -1,3 +1,12 @@
+# Post-login passkey setup
+
+- [x] Implement authoritative passkey status in the authenticated session response and optional UI enrollment prompt.
+- [x] Preserve the profile-menu registration action and allow Later without ending the session.
+- [x] Service unit tests passed; Web tests (138), TypeScript, API contract check (47 paths), and production build passed.
+- [ ] Run Service database integration tests in a working Testcontainers environment; local Ryuk startup failed because the Colima `emme` profile reports stopped.
+- [ ] Release Service before Ford Web. Current GitHub CLI credential is invalid, so push/PR/workflow access is unavailable in this session.
+- [ ] Verify the production prompt and passkey flow after releases.
+
 # Humanized Ford conversation voice (2026-10-16)
 
 - [x] Audit the CSV and existing prompt, persona, deterministic replies, memory, lead flow, and MCP behavior.
@@ -21,6 +30,7 @@
 
 - Password login reached Spring and was rejected. Production's configured operator email matches the login email, but the login API intentionally returns the same error for a bad password and an inactive identity. The logged-out `/api/auth/me` 401 and blocked Cloudflare Insights beacon do not explain the failed password login.
 - The one-time email flow also intentionally hides account existence. A successful authenticated session is still needed for the synthetic production conversation; no password reset or recovery email was triggered.
+- [ ] Production magic-link delivery was traced to a missing `RESEND_FROM` value. Branch `fix/magic-link-resend-sender` now supplies the verified `emme.business` sender by default and validates overrides; merge and deploy through the existing release workflow, then verify the operator receives the login email and can authenticate. This has not been deployed or tested against a real mailbox.
 
 # Jev classification implementation
 
