@@ -27,6 +27,19 @@ class OpenApiContractTest {
     }
 
     @Test
+    void documentsPasskeyStatusOnlyOnTheBrowserSessionEndpoint() throws Exception {
+        var yaml = Files.readString(CONTRACT);
+        var browserSession = yaml.substring(yaml.indexOf("  /api/auth/me:"), yaml.indexOf("  /api/auth/logout:"));
+        var bearerProfile = yaml.substring(yaml.indexOf("  /api/v1/operator/me:"), yaml.indexOf("  /api/v1/conversations:"));
+
+        assertThat(browserSession).contains("#/components/schemas/BrowserOperatorSession");
+        assertThat(bearerProfile).contains("#/components/schemas/OperatorSession");
+        assertThat(yaml).contains("    BrowserOperatorSession:", "        hasPasskey:");
+        var bearerSchema = yaml.substring(yaml.indexOf("    OperatorSession:"), yaml.indexOf("    BrowserOperatorSession:"));
+        assertThat(bearerSchema).doesNotContain("hasPasskey");
+    }
+
+    @Test
     void doesNotDescribeRawAiDiagnosticsToTheNormalFrontend() throws Exception {
         var yaml = Files.readString(CONTRACT);
 
