@@ -46,7 +46,7 @@ public final class DefaultAssistantOrchestrator implements AssistantOrchestrator
 
     private AssistantResponse respondInternal(AssistantRequest request) {
         if ("HUMAN_ACTIVE".equals(request.conversationState())) {
-            return new AssistantResponse("Un asesor humano ya está atendiendo tu conversación.", true, "none", List.of());
+            return new AssistantResponse("Un asesor ya está atendiendo su conversación.", true, "none", List.of());
         }
         var context = new AiExecutionContext(request.tenantId(), request.containsSensitiveData(),
                 request.conversationId(), request.memoryContext(), request.decision());

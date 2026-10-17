@@ -87,6 +87,24 @@ class AssistantResponseQualityPolicyTest {
     }
 
     @Test
+    void writesRepairInstructionsAndRecoveryRepliesInFormalAddress() {
+        assertThat(policy.repairInstruction("multiple_questions"))
+                .startsWith("Responda directamente")
+                .contains("solicite solo un dato");
+        assertThat(policy.repairInstruction("repeated_response"))
+                .startsWith("Redacte una respuesta nueva");
+        assertThat(policy.repairInstruction("internal_payload"))
+                .startsWith("Responda directamente");
+        assertThat(policy.recoveryMessage("repeated_response"))
+                .isEqualTo("No quiero repetirle la respuesta anterior. ¿Qué detalle desea que revise?");
+        assertThat(policy.recoveryMessage("internal_payload"))
+                .isEqualTo("No pude preparar una respuesta clara con la información disponible. "
+                        + "Intente de nuevo en unos segundos.");
+        assertThat(policy.recoveryMessage("empty_response"))
+                .isEqualTo("No pude responderle en este momento. Intente de nuevo en unos segundos.");
+    }
+
+    @Test
     void logsCanUseTheValidationReasonWithoutIncludingCustomerOrGeneratedText() {
         var customerText = "¿Qué modelo me recomiendas? mi teléfono es 5551234567";
         var generatedText = "¿Qué modelo buscas y cuál es tu presupuesto?";

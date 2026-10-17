@@ -60,9 +60,9 @@ public class ToolAuthorizationPolicy {
 
     private static final class SingleAttemptToolCallback implements ToolCallback {
         private static final String ALREADY_ATTEMPTED =
-                "Esta consulta ya se intentó en este turno. Usa el resultado recibido o explica qué dato no se pudo confirmar.";
+                "Esta consulta ya se intentó en este turno. Use el resultado recibido o explique qué dato no se pudo confirmar.";
         private static final String SOURCE_UNAVAILABLE =
-                "READ_ONLY_SOURCE_UNAVAILABLE: no se obtuvieron datos verificables. Responde solo con orientación general estable; no inventes datos del vehículo.";
+                "READ_ONLY_SOURCE_UNAVAILABLE: no se obtuvieron datos verificables. Responda solo con orientación general estable; no invente datos del vehículo.";
         private final ToolCallback delegate;
         private final ToolResultTracker resultTracker;
         private final AtomicBoolean invoked = new AtomicBoolean();

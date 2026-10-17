@@ -199,9 +199,9 @@ public final class SpringAiAssistantService implements AssistantService {
 
     private static String inputSecurityResponse(InputSecurityPolicy.Reason reason) {
         return switch (reason) {
-            case PROMPT_INJECTION -> "Puedo ayudarte con información de vehículos, ofertas y financiamiento Ford. ¿Qué te gustaría consultar?";
-            case SENSITIVE_DATA_BLOCKED -> "Por seguridad, elimina los datos personales o financieros del mensaje y vuelve a enviarlo. Puedo ayudarte con tu consulta Ford.";
-            case NONE -> "Puedo ayudarte con información de Ford. ¿Qué te gustaría consultar?";
+            case PROMPT_INJECTION -> "Puedo ayudarle con información de vehículos, ofertas y financiamiento Ford. ¿Qué desea consultar?";
+            case SENSITIVE_DATA_BLOCKED -> "Por seguridad, elimine los datos personales o financieros del mensaje y vuelva a enviarlo. Puedo ayudarle con su consulta Ford.";
+            case NONE -> "Puedo ayudarle con información de Ford. ¿Qué desea consultar?";
         };
     }
 

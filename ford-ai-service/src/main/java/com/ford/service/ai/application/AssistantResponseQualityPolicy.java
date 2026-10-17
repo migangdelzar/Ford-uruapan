@@ -51,26 +51,28 @@ public final class AssistantResponseQualityPolicy {
     public String repairInstruction(String reason) {
         return switch (reason == null ? "" : reason) {
             case "internal_payload" ->
-                    "Responde directamente al cliente en español de México. No muestres JSON, argumentos, nombres de herramientas, proveedores ni razonamiento interno.";
+                    "Responda directamente al cliente en español de México. No muestre JSON, argumentos, nombres de herramientas, proveedores ni razonamiento interno.";
             case "repeated_response" ->
-                    "Redacta una respuesta nueva que avance la conversación y responda exactamente el último mensaje. No repitas la respuesta anterior.";
+                    "Redacte una respuesta nueva que avance la conversación y responda exactamente el último mensaje. No repita la respuesta anterior.";
             case "generic_scope_response" ->
-                    "Responde la pregunta actual. No uses una respuesta genérica de alcance ni vuelvas a preguntar qué modelo interesa si ya existe una pregunta concreta.";
+                    "Responda la pregunta actual. No use una respuesta genérica de alcance ni vuelva a preguntar qué modelo interesa si ya existe una pregunta concreta.";
             case "multiple_questions" ->
-                    "Responde directamente y pide solo un dato para avanzar, con una sola pregunta. No combines dos datos ni ofrezcas un menú.";
+                    "Responda directamente y solicite solo un dato para avanzar, con una sola pregunta. No combine dos datos ni ofrezca un menú.";
             default ->
-                    "Entrega una respuesta breve, natural y útil en español de México a la pregunta actual.";
+                    "Entregue una respuesta breve, natural y útil en español de México a la pregunta actual.";
         };
     }
 
     public String recoveryMessage(String reason) {
         return switch (reason == null ? "" : reason) {
             case "repeated_response" ->
-                    "Quiero responderte algo útil y no repetirte lo anterior. ¿Me das un momento e intentas de nuevo?";
+                    "No quiero repetirle la respuesta anterior. ¿Qué detalle desea que revise?";
             case "internal_payload" ->
-                    "No pude convertir la consulta en una respuesta clara. Intenta de nuevo y te ayudo con gusto.";
+                    "No pude preparar una respuesta clara con la información disponible. Intente de nuevo en unos segundos.";
+            case "empty_response" ->
+                    "No pude responderle en este momento. Intente de nuevo en unos segundos.";
             default ->
-                    "No pude generar una respuesta útil en este momento. Intenta de nuevo en unos segundos.";
+                    "No pude generar una respuesta útil en este momento. Intente de nuevo en unos segundos.";
         };
     }
 
