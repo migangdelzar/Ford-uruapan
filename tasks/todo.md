@@ -9,11 +9,18 @@
 - [x] Add failing tests for formal fixed replies and runtime-prompt precedence.
 - [x] Implement the minimum changes; retain runtime-editable prompt support.
 - [x] Align model-facing memory, tool retry, source-unavailable, classifier, and compaction instructions with formal address.
-- [x] Run focused tests, all unit tests (167 reports, zero failures), final targeted tests, deterministic Java AI evaluation, Node AI harness (9 tests), and release coordinator Python tests (88 tests).
-- [x] Confirm local GitHub API, HTTPS push, and SSH push are currently unavailable (invalid cached CLI token, GitHub DNS/API connection failure, and SSH `No user exists for uid 501`).
-- [ ] Resolve local Testcontainers PostgreSQL host-port/Ryuk access; integration suite currently fails to connect to Docker-published host ports in this temporary worktree.
-- [ ] Push branch/open PR after restoring GitHub CLI or SSH credentials; current cached CLI token is invalid and local SSH reports `No user exists for uid 501`.
-- [ ] Run required GitHub CI, merge, publish the next annotated Service tag, pass release-all approval, and verify production health and a synthetic conversation.
+- [x] Run focused and full unit tests, deterministic Java AI evaluation, Node AI harness (9 tests), and release coordinator tests. PostgreSQL integration passed in required GitHub CI.
+- [x] Merge PR [#59](https://github.com/migangdelzar/Ford-uruapan/pull/59) to main at `5f16ddec3f743eb7d1a592514f3d99574b7435f7`; publish and verify tag `v0.1.23`.
+- [x] Complete the Service-only protected blue-green release; release-all run [38997055479](https://github.com/migangdelzar/Ford-uruapan/actions/runs/38997055479) and deployment run [38997076814](https://github.com/migangdelzar/Ford-uruapan/actions/runs/38997076814) succeeded.
+- [x] Verify release result artifact: image `sha256:17199e073111497766c54ad2c6eaf862ba9d27a23b3f8255c1c2ea58f33da338`, source SHA `5f16ddec3f743eb7d1a592514f3d99574b7435f7`.
+- [x] Verify public health (`UP`), `/` to `/login` redirect, `/login` response, and fingerprinted JS/CSS assets at `ford.emme.business`; no `pages.dev` URL appeared in login HTML.
+- [ ] Verify the active and prior blue-green image identities independently and record the rollback image.
+- [ ] Run an authenticated synthetic production conversation covering MÍA/formal `usted`, MCP-grounded current data with source URL, memory continuity, and advisor-authored handoff. Do not message a real customer.
+
+### Remaining access check
+
+- Password login reached Spring and was rejected. Production's configured operator email matches the login email, but the login API intentionally returns the same error for a bad password and an inactive identity. The logged-out `/api/auth/me` 401 and blocked Cloudflare Insights beacon do not explain the failed password login.
+- The one-time email flow also intentionally hides account existence. A successful authenticated session is still needed for the synthetic production conversation; no password reset or recovery email was triggered.
 
 # Jev classification implementation
 
