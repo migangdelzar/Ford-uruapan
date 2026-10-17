@@ -79,7 +79,7 @@ class ConversationWorkflowScenariosTest {
                 "La Bronco Base 2026 está en catálogo. ¿Le gustaría agendar una prueba de manejo?");
         assertThat(first.reply()).contains("Bronco Base"); assertThat(scenario.toolCalls).containsExactly("get_vehicle");
         var second = scenario.turn("Sí, me gustaría", null, null);
-        assertThat(second.reply()).isEqualTo("¡Perfecto! ¿Qué día te funciona para la prueba de manejo?");
+        assertThat(second.reply()).isEqualTo("¡Perfecto! ¿Qué día le conviene para la prueba de manejo?");
         assertThat(second.journey().currentTopic()).isEqualTo(LeadJourneyTopic.TEST_DRIVE_APPOINTMENT);
         assertThat(second.journey().pendingQuestionKey()).isEqualTo("TEST_DRIVE_DATE");
         assertThat(second.decision().intent()).isEqualTo(ConversationIntent.APPOINTMENT);
@@ -182,7 +182,7 @@ class ConversationWorkflowScenariosTest {
                     var permitted = new DecisionPolicy().allowedToolNames(request.decision(), names);
                     if (request.decision().toolFamily()==ToolFamily.APPOINTMENT) {
                         assertThat(permitted).isEmpty(); assertThat(generated).isNull();
-                        return new AssistantResponse("¡Perfecto! ¿Qué día te funciona para la prueba de manejo?",false,"groq",List.of());
+                        return new AssistantResponse("¡Perfecto! ¿Qué día le conviene para la prueba de manejo?",false,"groq",List.of());
                     }
                     var expected = switch(request.decision().toolFamily()) {
                         case VEHICLE_DETAILS -> "get_vehicle"; case OFFERS -> "search_offers";
