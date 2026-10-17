@@ -21,6 +21,7 @@
 
 - Password login reached Spring and was rejected. Production's configured operator email matches the login email, but the login API intentionally returns the same error for a bad password and an inactive identity. The logged-out `/api/auth/me` 401 and blocked Cloudflare Insights beacon do not explain the failed password login.
 - The one-time email flow also intentionally hides account existence. A successful authenticated session is still needed for the synthetic production conversation; no password reset or recovery email was triggered.
+- [ ] Production magic-link delivery was traced to a missing `RESEND_FROM` value. Branch `fix/magic-link-resend-sender` now supplies the verified `emme.business` sender by default and validates overrides; merge and deploy through the existing release workflow, then verify the operator receives the login email and can authenticate. This has not been deployed or tested against a real mailbox.
 
 # Jev classification implementation
 

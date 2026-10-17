@@ -31,6 +31,16 @@ test("operations documentation describes evidence and safe telemetry", async () 
   assert.match(observability, /dashboard/i);
 });
 
+test("production one-time-token email documents its verified sender default", async () => {
+  const operations = await read("ford-ai-service/docs/operations.md");
+  const security = await read("ford-ai-service/docs/openapi/security.md");
+  const release = await read(".github/workflows/release.yml");
+
+  assert.match(operations, /Ford Uruapan <no-reply@emme\.business>/);
+  assert.match(security, /Ford Uruapan <no-reply@emme\.business>/);
+  assert.match(release, /RESEND_FROM: \$\{\{ vars\.RESEND_FROM \|\| 'Ford Uruapan <no-reply@emme\.business>' \}\}/);
+});
+
 test("production telemetry uses internal OTLP push and never exposes a scrape credential", async () => {
   const appEnv = await read("deployment/ansible/roles/app/templates/app.env.j2");
   const cloudCollector = await read("deployment/observability/otel-collector/grafana-cloud-config.yaml");

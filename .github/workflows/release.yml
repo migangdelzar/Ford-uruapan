@@ -258,6 +258,7 @@ jobs:
       GRAFANA_CLOUD_OTLP_ENDPOINT: ${{ vars.GRAFANA_CLOUD_OTLP_ENDPOINT }}
       GRAFANA_CLOUD_INSTANCE_ID: ${{ vars.GRAFANA_CLOUD_INSTANCE_ID }}
       FORD_OPERATOR_USERNAME: ${{ vars.FORD_OPERATOR_USERNAME }}
+      RESEND_FROM: ${{ vars.RESEND_FROM || 'Ford Uruapan <no-reply@emme.business>' }}
       LANGFUSE_OTLP_ENDPOINT: ${{ vars.LANGFUSE_OTLP_ENDPOINT }}
       LANGFUSE_PUBLIC_KEY: ${{ vars.LANGFUSE_PUBLIC_KEY }}
     steps:
@@ -273,6 +274,18 @@ jobs:
             echo 'Production deployment blocked: configure FORD_OPERATOR_USERNAME as the production operator login email.' >&2
             exit 1
           }
+          if ! python3 - "$RESEND_FROM" <<'PY'
+          import re
+          import sys
+
+          sender = sys.argv[1]
+          if re.fullmatch(r"[^<>\r\n]+ <[^<>\s@]+@emme\.business>", sender) is None:
+              raise SystemExit(1)
+          PY
+          then
+            echo 'Production deployment blocked: configure RESEND_FROM with a sender on the verified emme.business domain.' >&2
+            exit 1
+          fi
           for mapping in \
             FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD \
             FORD_VAULT_SECRET_OCID_FORD_OPERATOR_PASSWORD \
