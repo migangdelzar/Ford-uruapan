@@ -15,6 +15,13 @@
 
 **Boundary:** Local MCP deploy/runtime code removal is complete in this worktree, but live MCP resources have not been touched. GitHub token/API and local SSH access were previously unavailable; production retirement remains blocked until protected Actions/host access is available. Historical `tasks/todo.md` entries below intentionally retain past MCP architecture and test facts.
 
+### OCI action pin coordination update (2026-10-18)
+
+- [x] Commit OCI action catalog-runtime wiring and retired `FORD_MCP_*` settings removal at `f6263772b63a83fc3a85d368585ff91fbf88f40b` in `/private/tmp/ford-oci-mia-catalog`; action contract 19/19 and diff check pass.
+- [x] Update this Service release candidate's immutable OCI action pin and contract expectations in commit `8c5034be1742b2ddcb8a21eb762a9f391d01219b`. Stale assertions were changed to require that `ford-mcp` deployment is rejected and that the scheduler target is accepted.
+- [x] Verify `node --test scripts/operations-contract.test.mjs scripts/workflow-contract.test.mjs` (75/75), `python3 -m unittest scripts.tests.test_oci_action_contract` (20/20, run from `ford-ai-service`), and `git diff --check`.
+- [ ] Both commits remain local pending protected publication/PR review. The updated Service workflow will not resolve the action until the action commit is published; production release and cleanup of live MCP resources remain gated on GitHub Actions and OCI verification.
+
 ## Explicit MÍA worktree integration audit (2026-10-18)
 
 User-designated sources reviewed: `/private/tmp/ford-mia-phase1-design`, `/private/tmp/ford-mia-phase1-mcp`, and Ford Service subdirectories in `.worktrees/mia-conversation-handoff`, `.worktrees/mia-whatsapp-operations`, and `.worktrees/mia-shadow-evaluation`.
