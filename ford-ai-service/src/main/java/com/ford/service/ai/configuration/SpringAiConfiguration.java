@@ -183,7 +183,7 @@ public class SpringAiConfiguration {
     ToolAuthorizationPolicy toolAuthorizationPolicy(ObjectProvider<FinanceOperations> finance,
                                                     ObjectProvider<FinanceTermsRepository> terms,
                                                     ObjectProvider<KnowledgeRetrieval> knowledge,
-                                                    ObjectProvider<CatalogPort> mcpCatalog,
+                                                    ObjectProvider<CatalogPort> catalogPortProvider,
                                                     CatalogToolProperties catalogToolProperties,
                                                     ObjectProvider<MeterRegistry> meterRegistries) {
         var toolObjects = new ArrayList<Object>();
@@ -198,7 +198,7 @@ public class SpringAiConfiguration {
         }
         var localCatalogToolNames = new java.util.HashSet<String>();
         if (catalogToolProperties.enabled()) {
-            var catalogPort = mcpCatalog.getIfAvailable();
+            var catalogPort = catalogPortProvider.getIfAvailable();
             if (catalogPort == null) {
                 throw new IllegalStateException("Local catalog tools are enabled but the read-only catalog is unavailable");
             }

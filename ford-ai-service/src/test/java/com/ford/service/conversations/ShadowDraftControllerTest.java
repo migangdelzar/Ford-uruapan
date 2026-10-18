@@ -18,6 +18,7 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -31,6 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ShadowDraftControllerTest {
 
     private static final UUID TENANT = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final UUID OTHER_TENANT = UUID.fromString("22222222-2222-2222-2222-222222222222");
 
     @Autowired
     MockMvc mockMvc;
@@ -89,5 +91,30 @@ class ShadowDraftControllerTest {
                                         .claim("tenant_id", TENANT.toString()))
                                 .authorities(() -> "SCOPE_operator:read")))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void rejectsShadowDraftAccessOutsideTheAuthenticatedTenantSet() throws Exception {
+        var conversationId = UUID.randomUUID();
+        var draftId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/conversations/{id}/shadow-drafts", conversationId)
+                        .param("tenantId", OTHER_TENANT.toString())
+                        .with(jwt().jwt(token -> token.subject("operator-1")
+                                        .claim("tenant_id", TENANT.toString()))
+                                .authorities(() -> "SCOPE_operator:read")))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/conversations/{id}/shadow-drafts/{draftId}/review",
+                        conversationId, draftId)
+                        .param("tenantId", OTHER_TENANT.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"ACCEPTED\",\"note\":\"cross-tenant\"}")
+                        .with(jwt().jwt(token -> token.subject("operator-1")
+                                        .claim("tenant_id", TENANT.toString()))
+                                .authorities(() -> "SCOPE_operator:write")))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(shadowService);
     }
 }

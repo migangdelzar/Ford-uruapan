@@ -83,6 +83,20 @@ test("catalog sync operator task targets emme-2 and reuses the backup-gated play
   assert.doesNotMatch(task, /mcp\.yml|migrate/);
 });
 
+test("coordinated release task dispatches versioned Service, scraper, and Web releases", async () => {
+  const task = await read(`${serviceRoot}/.mise/tasks/deploy/release-all`);
+  const readme = await read(`${serviceRoot}/README.md`);
+
+  await assertExecutable(`${serviceRoot}/.mise/tasks/deploy/release-all`);
+  assert.match(task, /<service-version> <scraping-version> <web-version>/);
+  assert.match(task, /\[\[ \$# -ne 3 \]\]/);
+  assert.match(task, /--web-version "\$web_version"/);
+  assert.match(task, /--field ford_service=true/);
+  assert.match(task, /--field ford_scraping=true/);
+  assert.match(task, /--field ford_web=true/);
+  assert.match(readme, /<service-version> <scraping-version> <web-version>/);
+});
+
 test("Docker task groups support Compose v2 and standalone Compose", async () => {
   const helper = await read(`${serviceRoot}/.mise/lib/compose.sh`);
   assert.match(helper, /docker compose/);

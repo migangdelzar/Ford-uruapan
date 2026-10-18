@@ -163,6 +163,7 @@ test("OCI backup identity is declarative and reproducible", async () => {
 
 test("OCI runtime Vault identity is opt-in and scoped to each instance, vault, and named secret", async () => {
   const identity = await read("deployment/terraform/runtime-vault-identity.tf");
+  const policyContract = JSON.parse(await read("deployment/terraform/runtime-vault-policy.json"));
   const variables = await read("deployment/terraform/variables.tf");
   const example = await read("deployment/terraform/terraform.tfvars.example");
   const instructions = await read("deployment/terraform/README.md");
@@ -171,9 +172,12 @@ test("OCI runtime Vault identity is opt-in and scoped to each instance, vault, a
   assert.match(example, /^manage_runtime_vault_identity\s*=\s*false$/m);
   assert.match(identity, /resource "oci_identity_dynamic_group" "runtime_vault"/);
   assert.match(identity, /resource "oci_identity_policy" "runtime_vault"/);
-  assert.match(identity, /ford-runtime-app-emme1/);
-  assert.match(identity, /ford-runtime-data-emme2/);
   assert.match(identity, /ford-runtime-secret-read/);
+  assert.match(identity, /runtime-vault-policy\.json/);
+  assert.equal(policyContract.instances.app, "ford-runtime-app-emme1");
+  assert.equal(policyContract.instances.data, "ford-runtime-data-emme2");
+  assert.equal(policyContract.secret_names.app.length, 20);
+  assert.equal(policyContract.secret_names.data.length, 3);
   assert.match(identity, /ALL \{instance\.id = '\$\{each\.value\.instance_ocid\}'\}/);
   assert.match(identity, /read secret-bundles/);
   assert.match(identity, /target\.vault\.id = '\$\{var\.runtime_vault_ocid\}'/);
@@ -182,9 +186,9 @@ test("OCI runtime Vault identity is opt-in and scoped to each instance, vault, a
     identity.includes('^ocid1\\\\.(compartment|tenancy)\\\\.'),
     "runtime Vault identity must accept either a child compartment OCID or the tenancy root OCID"
   );
-  assert.match(identity, /ford-prod-cloudflared-tunnel-token/);
-  assert.match(identity, /ford-prod-meta-instagram-access-token/);
-  assert.doesNotMatch(identity, /ford-prod-bff-oidc-client-secret/);
+  assert.ok(policyContract.secret_names.data.includes("ford-prod-cloudflared-tunnel-token"));
+  assert.ok(policyContract.secret_names.app.includes("ford-prod-meta-instagram-access-token"));
+  assert.ok(!JSON.stringify(policyContract).includes("ford-prod-bff-oidc-client-secret"));
   assert.match(instructions, /terraform import/);
   assert.match(instructions, /import.*before.*apply/is);
 });
@@ -208,6 +212,10 @@ test("Terraform Vault apply has a dedicated human approval after plan review", a
   );
   assert.match(workflow, /apply:[\s\S]*?needs: \[plan, apply-approval\]/);
   assert.match(workflow, /needs\.apply-approval\.result == 'success'/);
+  assert.equal((workflow.match(/--vault-ocid "\$EXPECTED_VAULT_OCID"/g) ?? []).length, 2);
+  assert.equal((workflow.match(/--compartment-ocid "\$EXPECTED_COMPARTMENT_OCID"/g) ?? []).length, 2);
+  assert.equal((workflow.match(/EXPECTED_VAULT_OCID: \$\{\{ vars\.TF_RUNTIME_VAULT_OCID \}\}/g) ?? []).length, 2);
+  assert.equal((workflow.match(/EXPECTED_COMPARTMENT_OCID: \$\{\{ vars\.TF_OCI_TENANCY_OCID \}\}/g) ?? []).length, 2);
 });
 
 test("Ansible propagates the complete Meta webhook configuration", async () => {

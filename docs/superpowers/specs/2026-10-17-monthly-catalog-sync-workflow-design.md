@@ -41,7 +41,7 @@ The scheduled job does not run migrations, build or publish an image, deploy For
 - No crawler logic or synchronization behavior is reimplemented in Rust, Python, or Java.
 - Existing published image and release state must identify one immutable digest before scheduled runs are enabled.
 - The current long-running `node dist/src/cli.js scheduler` service must not remain an active trigger alongside GitHub Actions. Cutover must disable it after the manual workflow succeeds, with rollback able to restore the previous trigger and image. MCP deployment must not silently recreate the trigger.
-- Enabling this scheduled sync requires its own protected workflow, backup, image, and rollback checks. It does not wait on Java tool parity; the Node MCP runtime remains in production until the separate Java parity and cutover gates pass.
+- Enabling this scheduled sync requires its own protected workflow, backup, image, and rollback checks. It does not wait on Java tool parity. The retired Node MCP production footprint remains until the protected Service-owned tool configuration and cutover checks pass.
 
 ## Failure and Recovery
 
@@ -59,7 +59,7 @@ The scheduled job does not run migrations, build or publish an image, deploy For
 - Add Ansible contract tests for backup-date validation, pinned image selection, one-shot command, private-network use, no migrations, failure propagation, and old-scheduler cutover/rollback.
 - Add workflow contract checks for monthly UTC cron, manual dispatch, production environment/branch restrictions, minimal permissions, concurrency, summary output, and no direct database credentials.
 - Exercise the Ansible runner against a disposable PostgreSQL database and a test backup marker; cover missing/failed backup and partial sync cases.
-- Do not enable the production workflow until immutable image promotion, the same-day backup check, the one-shot command, rollback, and Java catalog parity/release gates are verified.
+- Do not enable the production workflow until immutable image promotion, the same-day backup check, the one-shot command, rollback, and Service-owned catalog configuration/release gates are verified. Node/MCP parity is not required.
 
 ## Alternatives Considered
 

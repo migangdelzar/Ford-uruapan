@@ -202,7 +202,6 @@ test("production service deployment passes Vault secret references to Ansible", 
     "FORD_VAULT_SECRET_OCID_FORD_META_WHATSAPP_ACCESS_TOKEN",
     "FORD_VAULT_SECRET_OCID_FORD_META_MESSENGER_ACCESS_TOKEN",
     "FORD_VAULT_SECRET_OCID_FORD_META_INSTAGRAM_ACCESS_TOKEN",
-    "FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD",
     "FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY",
     "FORD_VAULT_SECRET_OCID_OPENAI_API_KEY",
     "FORD_VAULT_SECRET_OCID_GRAFANA_CLOUD_API_TOKEN",
@@ -248,13 +247,20 @@ test("production release keeps DeepSeek primary and supports a capability-gated 
 
 test("Ford Service configures local catalog tools without a remote MCP connection", async () => {
   const source = await read(".github/workflows/release.yml");
+  const action = await read(".github/actions/oci-blue-green/action.yml");
 
   assert.match(source, /FORD_CATALOG_TOOLS_ENABLED: \$\{\{ vars\.FORD_CATALOG_TOOLS_ENABLED \|\| 'false' \}\}/);
-  assert.match(source, /FORD_CATALOG_PARITY_READY: \$\{\{ vars\.FORD_CATALOG_PARITY_READY \}\}/);
+  assert.doesNotMatch(source, /FORD_CATALOG_PARITY_READY|Node-to-Java parity/);
+  assert.match(source, /FORD_CATALOG_JDBC_URL/);
+  assert.match(source, /FORD_CATALOG_USERNAME/);
+  assert.match(source, /FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD/);
   assert.match(source, /service-catalog-tools-enabled: \$\{\{ vars\.FORD_CATALOG_TOOLS_ENABLED \|\| 'false' \}\}/);
   assert.match(source, /service-catalog-jdbc-url: \$\{\{ vars\.FORD_CATALOG_JDBC_URL \}\}/);
-  assert.match(source, /service-catalog-password-secret-ocid: \$\{\{ vars\.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD \}\}/);
+  assert.match(source, /FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD: \$\{\{ vars\.FORD_CATALOG_TOOLS_ENABLED == 'true' && vars\.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD \|\| '' \}\}/);
+  assert.match(source, /service-catalog-password-secret-ocid: \$\{\{ vars\.FORD_CATALOG_TOOLS_ENABLED == 'true' && vars\.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD \|\| '' \}\}/);
   assert.doesNotMatch(source, /FORD_MCP_ENABLED|FORD_MCP_URL|FORD_MCP_ACCESS_CLIENT_ID/);
+  assert.doesNotMatch(action, /service-catalog-tools-enabled:[\s\S]*?parity gates pass/);
+  assert.match(action, /service-catalog-tools-enabled:[\s\S]*?read-only datasource and access checks/);
 });
 
 test("Ford Service accepts coordinator releases only from the installed App and keeps direct approval", async () => {

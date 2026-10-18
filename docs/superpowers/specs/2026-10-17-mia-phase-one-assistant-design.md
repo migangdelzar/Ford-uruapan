@@ -72,16 +72,18 @@ catalog. That JDBC module queries Ford Service's own vehicle tables; it is not
 the Ford-scraping catalog contract and must not be reused as if it were. The
 conversation runtime receives catalog data through local Spring AI tool
 callbacks backed by a dedicated `CatalogPort` and separately configured
-read-only datasource. The remote MCP client has been removed. Local catalog
-tools stay disabled until the datasource and parity checks pass; the user
-accepted a temporary period without customer-facing catalog tools.
+read-only datasource. The remote MCP client has been removed. Per the user's
+2026-10-18 clarification, the Service-owned Spring AI tool contract is the
+target; Node MCP output parity is not a requirement or release gate. Keep
+production callbacks disabled until the Service-owned tool configuration,
+read-only datasource access, authorization, and operational rollout checks
+are verified. Do not recreate MCP transport or copy its configuration model.
 
 Ford-scraping remains the single writer for the TypeScript/Node catalog and its
 migrations. It owns Ford page ingestion, relational catalog facts,
 offers/promotions, optional BGE-M3 embeddings, hybrid retrieval, and provenance
-URLs. Its Node MCP runtime has been removed now by user choice, with a temporary
-tool gap accepted before Java parity is complete. Ford Service must not write
-catalog tables or run Ford-scraping migrations. The source review found durable inbound queueing
+URLs. Its Node MCP runtime has been removed by user choice. Ford Service must
+not write catalog tables or run Ford-scraping migrations. The source review found durable inbound queueing
 but no per-conversation WhatsApp debounce or dealership-hours/holiday engine.
 
 The user has uncommitted contextual-follow-up changes in another Ford Service
@@ -124,27 +126,29 @@ language and composes the reply from the approved goal and evidence.
 
 ### Catalog read path
 
-1. Freeze representative request/response fixtures for every Node MCP tool,
-   including prices, effective dates, promotions, comparisons, empty/stale
-   results, provenance, page links, and exact source URLs.
-2. Implement a dedicated Java `CatalogPort` over stable SQL views using a
-   second datasource and least-privilege read-only credentials. Use the
-   project's supported `JdbcClient` for SQL access. Keep the existing Node
-   catalog response contract as the parity reference during migration.
+1. Define tool inputs, outputs, evidence, and safe empty/error behavior from
+   MÍA's Service use cases. The Service contract is authoritative; MCP tool
+   names and output shapes are historical context only.
+2. Implement a dedicated Java `CatalogPort` over stable Ford-scraping read
+   views using a second datasource and least-privilege read-only credentials.
+   Use the project's supported `JdbcClient` for SQL access. Ford Service stays
+   read-only and fails closed when its dedicated datasource is unavailable.
 3. Reuse the catalog's stored BGE-M3 vectors only when model tag, settings, and
    1024 dimensions match. Embed only incoming queries. Preserve the documented
    Spanish full-text/vector retrieval and 0.3/0.7 fusion; if embeddings are
    unavailable, return the supported lexical result rather than failing the
    entire lookup.
-4. Add schema/view contract tests and Node-versus-Java parity tests for facts,
-   prices, freshness, ranking, and byte-for-byte URLs. Do not cut over the chat
-   path until the tests pass.
+4. Add Service-owned tool, schema/view, authorization, and evidence-grounding
+   tests for facts, prices, freshness, ranking behavior, and exact source URLs.
+   Do not require Node-versus-Java parity fixtures or byte-for-byte MCP output
+   matching.
 5. Keep Ford-scraping as the sole schema/migration and data-write owner. Ford
    Service's Spring AI tools call the Java `CatalogPort` directly. The remote
-   MCP client and Node MCP runtime/release path are removed now, before parity,
-   per the user's explicit acceptance of a temporary tool gap. Do not remove
-   the crawler, catalog schema, migrations, catalog read views, or scheduler.
-   Keep local tools disabled until datasource and parity gates pass.
+   MCP client and Node MCP runtime/release path are removed. Do not remove the
+   crawler, catalog schema, migrations, catalog read views, or scheduler. Keep
+   production callbacks disabled until the Service-owned datasource, tool
+   authorization, evidence, and protected release gates pass; parity is not a
+   gate.
 
 ### Spring AI orchestration and retrieval quality
 
@@ -311,8 +315,9 @@ Create a deterministic suite before changing behavior:
   refusals, partial packet, duplicate/burst delivery, opt-out, and human-owned
   conversation.
 - Catalog tests for current and stale facts, exact published prices and
-  promotions, unknown trim/year, source links, empty results, MCP/DB timeout,
-  Java/Node parity, and lexical fallback when embeddings are unavailable.
+  promotions, unknown trim/year, source links, empty results, datasource
+  timeout, and lexical fallback when embeddings are unavailable. Do not require
+  Java/Node parity.
 - At least 200 adversarial cases for price, discount, financing, availability,
   delivery promises, prompt injection, and provider/tool failure. The launch
   gate is zero never-promise violations.
@@ -338,10 +343,10 @@ inputs exist or that production rollout has happened.
 The supplied Phase 1 document spans several separately verifiable changes. Use
 one implementation plan per slice, in dependency order:
 
-1. **Catalog evidence lane:** keep the Node catalog contract as reference,
-   build the Java read-only `CatalogPort`, and prove schema/result parity before
-   enabling local tools. The Node MCP transport is removed immediately; a
-   temporary customer tool gap is accepted.
+1. **Catalog evidence lane:** define the Service-owned tool contract, build the
+   Java read-only `CatalogPort`, and verify datasource, authorization, and
+   evidence behavior before enabling production callbacks. Do not implement or
+   gate on MCP parity.
 2. **Conversation and BDC packet:** align the existing model/policy flow,
    persist the five-field packet with the ticket, and verify idempotent customer
    handoff messages.
@@ -359,8 +364,9 @@ with these changes.
 ## Acceptance and exclusions
 
 Phase 1 implementation is locally acceptable when the slice tests and the
-combined service/MCP checks prove the stated behavior, the catalog parity
-gate passes, and no existing unrelated test regresses. A live launch is
+combined Service/Ford-scraping checks prove the stated behavior and no existing
+unrelated test regresses. Catalog tool acceptance is based on the Service-owned
+contract; MCP parity is excluded. A live launch is
 acceptable only when the external evidence and rollout gates above are
 confirmed. Production release remains a separate action through the existing
 protected deployment path; this design alone does not authorize or claim a

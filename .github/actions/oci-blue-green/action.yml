@@ -46,7 +46,7 @@ inputs:
     description: SSH user for the data VM; defaults to the deployment user.
     required: false
   service-catalog-tools-enabled:
-    description: Enable the Ford Service's local read-only catalog tools. Keep false until parity gates pass.
+    description: Enable the Ford Service's local read-only catalog tools. Keep false until read-only datasource and access checks pass.
     required: false
     default: "false"
   service-catalog-jdbc-url:

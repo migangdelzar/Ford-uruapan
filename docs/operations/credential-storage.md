@@ -11,6 +11,8 @@
 
 ## Current migration state
 
+**Current cutover status (2026-10-18):** Ford Service's protected release path supports and requires OCI Vault configuration, but actual production use is unverified until the protected workflow and both-host checks pass. Local Ford-scraping source no longer contains an MCP runtime or MCP deploy task. Production instance-principal reads and the deployed data/collector consumers still require protected verification. Do not infer that the production MCP footprint or its stored credentials have been removed: keep the old deployment and credentials available for rollback until both hosts pass the protected Java catalog release and cleanup checklist in [`tasks/todo.md`](../../tasks/todo.md). Dated notes below record earlier migration states and are not current deployment instructions where they mention MCP runtime migration.
+
 ### DeepSeek production chat key
 
 - Ford Service production uses DeepSeek's OpenAI-compatible endpoint at `https://api.deepseek.com` with model `deepseek-flash`.
@@ -19,19 +21,19 @@
 - DeepSeek remains primary. Production allows one OpenRouter fallback attempt after DeepSeek's single repair; OpenRouter stays ineligible unless its API key is in OCI Vault and both tool-calling and structured-output capabilities have been verified. Set the optional production variable `FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY` after provisioning that secret. Keep both verification flags false until live preflight proves them. TypeSafe/Jev remains a separate classifier with rules fallback; it is not a chat-generation fallback.
 
 - Deployment tooling still supports the legacy local `deployment/config/oci.env` file, but migrated values should be read from `com.ford.uruapan.deploy` using `FORD_KEYCHAIN_SERVICE=com.ford.uruapan.deploy`. The ignored file is being retired from local use after Keychain verification.
-- Generated Ansible inventory no longer includes secret values. The existing local inventory was scrubbed of 18 secret fields while preserving non-secret settings and mode `0600`. Ansible reads environment-mode values from its controller process environment; secret-bearing template, registry login, database password update, and MCP authorization tasks use `no_log` where applicable.
+- Generated Ansible inventory no longer includes secret values. The existing local inventory was scrubbed of 18 secret fields while preserving non-secret settings and mode `0600`. Ansible reads environment-mode values from its controller process environment; secret-bearing template, registry login, database password update, and Vault/runtime credential tasks use `no_log` where applicable.
 - `mise run deploy:vault-secret -- create PROPERTY` prompts for a new value without terminal echo, sends its encoded request to OCI through stdin, and stores only the returned Secret OCID in the ignored `deployment/config/vault-secret-ocids.env` file. Use `rotate PROPERTY SECRET_OCID` to create a new current version for an existing secret. These commands do not read `oci.env`.
 - The old `mise run deploy:secrets` command is disabled so it cannot add more values to `oci.env`.
 - Local commands load credentials from macOS Keychain through `ford-ai-service/scripts/with-keychain-secrets.sh COMMAND [ARG ...]`. The default service is `com.ford.uruapan.local`; set `FORD_KEYCHAIN_SERVICE=com.ford.uruapan.deploy` for deployment tooling. Each Generic Password account is the environment variable name. `keychain-secrets.swift` imports JSON from stdin, adds missing items without overwriting existing items, and emits only account names. `exec-with-keychain-env.py` places values in the child process environment and execs the requested command. The wrapper itself prints no values.
 - Bitwarden master credentials are held under `com.personal.bitwarden`; `BW_SESSION` remains ephemeral and should be obtained through a fresh Bitwarden unlock when needed. A no-longer-used BFF OIDC client secret is isolated under `com.ford.uruapan.legacy` pending identification of its issuer and safe revocation.
 - The deploy loader accepts only validated `FORD_VAULT_SECRET_OCID_*` entries from that separate mapping file. The app template passes those OCIDs to the Spring loader; it does not put Vault values into the app environment when `FORD_SECRETS_PROVIDER=oci-vault`.
-- Environment-mode app, data, MCP, and collector files still contain runtime values on their target hosts. The data host, MCP service, and collector do not yet retrieve their secrets directly from Vault. Keep production on environment mode until each consumer has been migrated and verified.
+- Earlier host inspections found environment-mode app, data, MCP, and collector files containing runtime values. The present release gate requires the Service app to use OCI Vault. Current instance-principal access and data/collector secret consumers have not been verified in this cutover; retain their current host state and do not claim Vault readiness until protected checks pass on both hosts. The production MCP runtime is pending retirement after the Java catalog cutover, not a target for new deployment work.
 - The backend repo now ignores `deployment/config/oci.env` and its temporary variants, while explicitly allowing the tracked example file.
 - OCI Vault `ford-runtime-secrets` and a software-protected encryption key are created. Instance principals for `emme-1` and `emme-2` have separate dynamic groups and a policy restricted to named secrets in that Vault.
 - The Spring app has an OCI Vault startup loader using the Compute instance principal. It is opt-in through `FORD_SECRETS_PROVIDER=oci-vault`; its default remains `environment` until replacement values and secret OCIDs are provisioned.
 - For the requested test, current configured values were imported into 20 active `ford-test-*` OCI Vault secrets. The ignored `vault-test-secret-ocids.env` file contains only their OCIDs. The production `vault-secret-ocids.env` mapping was not changed, and no runtime was switched to these test values.
 - The test import intentionally reuses current configured values only for testing. Treat them as compromised for production: create issuer-approved replacements before production use, and never copy the test mapping into production.
-- Data-host, MCP, and collector credentials still use the existing deployment environment path. Do not switch production to Vault mode until those consumers are migrated too.
+- The data-host and collector secret paths still require verification. MCP source/deployment code has been retired locally, while deployed MCP resources remain pending the post-cutover cleanup gate. Follow the consolidated release checklist for current sequencing.
 - Cloudflare Pages does not need a secret for the current request proxy. The Pages project has not been changed.
 - GitHub Actions does not need a manually supplied credential for the current container publishing workflow. GitHub secrets were not changed.
 
@@ -44,8 +46,8 @@ For production, never copy old exposed values into a new secret store. Create re
 ## Migration sequence
 
 1. For test-only imports of current local config values, run `mise run deploy:vault-secret -- import-current-test`; the task stores configured values as `ford-test-*` entries and uses a separate ignored OCID mapping. For production, rotate issuer-managed keys and internal credentials first, then use `mise run deploy:vault-secret` to enter replacements and record only their OCIDs in the production mapping.
-2. Migrate the data host, MCP service, and collector to retrieve their needed secrets from OCI Vault.
-3. Verify instance-principal access from the deployed app container and each runtime host before switching production.
+2. Use the protected runtime-Vault Terraform plan/apply process only after reviewing its exact policy diff; do not add grants for the retired MCP runtime.
+3. Verify instance-principal access from the deployed app container and each active runtime host before setting `RUNTIME_VAULT_READY`. Verify production MCP removal only after the Java catalog release and rollback window pass.
 4. Move local development and deployment credentials into their separate macOS Keychain services and run commands through `ford-ai-service/scripts/with-keychain-secrets.sh`; never persist `BW_SESSION`.
 5. Revoke old credentials only after production health checks confirm the replacements are active.
 

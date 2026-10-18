@@ -241,10 +241,9 @@ jobs:
       FORD_VAULT_SECRET_OCID_FORD_META_MESSENGER_ACCESS_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_MESSENGER_ACCESS_TOKEN }}
       FORD_VAULT_SECRET_OCID_FORD_META_INSTAGRAM_ACCESS_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_INSTAGRAM_ACCESS_TOKEN }}
       FORD_CATALOG_TOOLS_ENABLED: ${{ vars.FORD_CATALOG_TOOLS_ENABLED || 'false' }}
-      FORD_CATALOG_PARITY_READY: ${{ vars.FORD_CATALOG_PARITY_READY }}
       FORD_CATALOG_JDBC_URL: ${{ vars.FORD_CATALOG_JDBC_URL }}
       FORD_CATALOG_USERNAME: ${{ vars.FORD_CATALOG_USERNAME }}
-      FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD }}
+      FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD: ${{ vars.FORD_CATALOG_TOOLS_ENABLED == 'true' && vars.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD || '' }}
       FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY }}
       FORD_VAULT_SECRET_OCID_OPENAI_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_OPENAI_API_KEY }}
       FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY }}
@@ -297,10 +296,6 @@ jobs:
             exit 1
           }
           if [[ "$FORD_CATALOG_TOOLS_ENABLED" == 'true' ]]; then
-            [[ "$FORD_CATALOG_PARITY_READY" == 'true' ]] || {
-              echo 'Local catalog tools cannot be enabled before the full Node-to-Java parity gate is confirmed.' >&2
-              exit 1
-            }
             [[ "$FORD_CATALOG_JDBC_URL" =~ ^jdbc:postgresql://[^/]+/[^?]+([?].*)?$ \
               && "$FORD_CATALOG_USERNAME" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ \
               && "$FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD" =~ ^ocid1[.]vaultsecret[.][A-Za-z0-9.]+$ ]] || {
@@ -381,7 +376,7 @@ jobs:
           service-catalog-tools-enabled: ${{ vars.FORD_CATALOG_TOOLS_ENABLED || 'false' }}
           service-catalog-jdbc-url: ${{ vars.FORD_CATALOG_JDBC_URL }}
           service-catalog-username: ${{ vars.FORD_CATALOG_USERNAME }}
-          service-catalog-password-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD }}
+          service-catalog-password-secret-ocid: ${{ vars.FORD_CATALOG_TOOLS_ENABLED == 'true' && vars.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD || '' }}
           meta-delivery-enabled: ${{ vars.FORD_META_DELIVERY_ENABLED }}
           outbox-enabled: ${{ vars.FORD_OUTBOX_ENABLED }}
           meta-whatsapp-delivery-endpoint: ${{ vars.FORD_META_WHATSAPP_DELIVERY_ENDPOINT }}

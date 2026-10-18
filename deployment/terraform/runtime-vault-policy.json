@@ -1,0 +1,35 @@
+{
+  "instances": {
+    "app": "ford-runtime-app-emme1",
+    "data": "ford-runtime-data-emme2"
+  },
+  "secret_names": {
+    "app": [
+      "ford-prod-postgres-password",
+      "ford-prod-redis-password",
+      "ford-prod-operator-password",
+      "ford-prod-jwt-private-key",
+      "ford-prod-resend-api-key",
+      "ford-prod-meta-app-secret",
+      "ford-prod-meta-verify-token",
+      "ford-prod-meta-whatsapp-access-token",
+      "ford-prod-meta-messenger-access-token",
+      "ford-prod-meta-instagram-access-token",
+      "ford-prod-ollama-access-client-id",
+      "ford-prod-ollama-access-client-secret",
+      "ford-prod-openai-api-key",
+      "ford-prod-openrouter-api-key",
+      "ford-prod-groq-api-key",
+      "ford-prod-gemini-api-key",
+      "ford-prod-cloudflare-api-token",
+      "ford-prod-typesafe-api-key",
+      "ford-prod-grafana-cloud-api-token",
+      "ford-prod-langfuse-secret-key"
+    ],
+    "data": [
+      "ford-prod-postgres-password",
+      "ford-prod-redis-password",
+      "ford-prod-cloudflared-tunnel-token"
+    ]
+  }
+}

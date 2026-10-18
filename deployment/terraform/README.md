@@ -99,6 +99,16 @@ Its OCI native backend is the private, versioned `ford-terraform-state` bucket,
 with state locking and the key `ford-uruapan/runtime-vault-identity/terraform.tfstate`.
 Do not add a lifecycle expiration rule to this bucket.
 
+The exact app/data identity names and secret-name allowlist live in
+`runtime-vault-policy.json`, which both Terraform and
+`scripts/terraform_runtime_vault_plan_guard.py` consume. The plan and apply
+steps pass the expected Vault and tenancy/compartment OCIDs to the guard. It
+requires the planned policy to contain exactly the configured `read
+secret-bundles` statements and rejects changes to any other policy attribute;
+extra, missing, unknown, or differently scoped statements fail closed before
+the approval/apply step. No Vault secret values are part of the contract or
+Terraform state.
+
 The OCI bootstrap identity needs these three policy statements, scoped to the
 exact resources it operates on:
 

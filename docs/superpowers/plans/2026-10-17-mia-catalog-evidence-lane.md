@@ -2,25 +2,29 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+Checklist notation: `[-]` means retired from scope by an explicit user decision; it is neither complete nor pending.
+
 **Goal:** Give Ford Service a read-only Java catalog path whose answers preserve Ford-scraping facts, freshness, prices, promotions, and source URLs.
 
-**Architecture:** Ford-scraping stays the only catalog writer and migration owner. Create a dedicated read-only Service datasource/adapter and compare Java output against the existing Node catalog contract. The user approved removing the Node MCP runtime and remote Service client immediately, accepting a temporary customer-tool gap while parity is completed. Keep local Spring AI catalog tools disabled until parity and datasource gates pass. Retain Ford-scraping's crawler, schema, migrations, and scheduler.
+**Architecture (updated 2026-10-18):** Ford-scraping stays the only catalog writer and migration owner. Ford Service owns its local Spring AI tool contract and calls a dedicated read-only datasource/adapter directly. The user explicitly rejected Node-to-Java/MCP parity as a goal. Historical MCP fixtures and reviews remain useful context only; they are not pending work or release gates. Keep production callbacks disabled until the Service-owned configuration, read-only datasource access, authorization, grounding, and protected rollout checks pass. Retain Ford-scraping's crawler, schema, migrations, and scheduler.
 
 **Tech Stack:** Java 25, Spring Boot 4.1.1, Spring JDBC `JdbcClient`, Spring AI 2.0.1, PostgreSQL, TypeScript 5.9, Vitest 3.2.4, Testcontainers.
 
 ## Global Constraints
 
-- Do not change Ford-scraping ingestion, crawler, scheduler, or write ownership. Additive forward-only `ford_read` contract views are allowed when Java parity requires existing source fields; never edit an applied migration.
-- Do not reuse Ford Service's internal `vehicle_model`/`vehicle_variant` schema as the MCP catalog.
+- Do not change Ford-scraping ingestion, crawler, scheduler, or write ownership. Additive forward-only `ford_read` views may be used where the Service-owned catalog contract needs them; never edit an applied migration.
+- Do not reuse Ford Service's internal `vehicle_model`/`vehicle_variant` schema as the Ford-scraping catalog.
 - Java catalog credentials are read-only and use a separately configured datasource.
 - Preserve exact public source URLs, effective dates, and freshness; never turn unavailable evidence into a fact.
 - No catalog write capability moves into Ford Service; no generative-provider fallback is introduced.
-- Do not enable local customer catalog tools until all required tool behavior and datasource checks pass.
+- Do not enable customer-facing production callbacks until the Service-owned tool behavior and datasource checks pass.
 - Do not stop production containers or delete external secrets/tunnel/IAM resources as part of this repository change; document that cutover separately.
 
 ---
 
-### Task 1: Freeze the existing MCP read contract
+### Task 1: Historical Node MCP contract work (complete; not a target contract)
+
+The checked items below document the already completed MCP retirement work. They do not define the Service tool API and do not require further parity changes.
 
 **Files:**
 - Test: `tests/mcp/mia-catalog-contract.test.ts`
@@ -49,7 +53,9 @@
 - [x] Query only stable Ford-scraping read views, with bound parameters. Never issue DDL or mutations. No database password is logged.
 - [x] Re-run `./gradlew test` and `./gradlew bootJar`; both passed. Boot jar contains local adapter/tool classes and no remote MCP client configuration.
 
-### Task 3: Prove result parity before enabling local customer tools
+### Task 3: Service-owned Spring AI tool configuration
+
+**Superseding decision (2026-10-18):** The user wants the better local Ford Service configuration, independent of MCP. Do not implement remaining Node-to-Java output, schema, or ranking parity. The unchecked legacy parity findings below are retired from scope, not outstanding tasks. Keep any prior parity tests as historical regression coverage only; do not use them as a production release gate.
 
 **Files:**
 - Create: `ford-ai-service/src/test/resources/catalog/mia-catalog-parity.json`
@@ -64,18 +70,19 @@
 - Test: `ford-ai-service/src/test/java/com/ford/service/ai/SpringAiConfigurationSliceTest.java`
 
 - [x] Port the three archived Node catalog contract cases into `mia-catalog-parity.json` and a Java adapter-to-tool test; verify search model/year/price/freshness/source URLs, exact detail model/technical-sheet URLs, promotion validity/source, and missing-evidence behavior byte-for-byte where applicable. The five focused fixture tests pass.
-- [ ] Complete field-by-field parity for all catalog capabilities and comparison outputs; the archived Node fixture covers only three cases and does not prove this broader requirement.
+- [-] Retired: field-by-field parity for catalog capabilities and comparisons. The differing schemas/projections noted in the historical review are intentionally not requirements.
+- [-] Retired: MCP-compatible page-link, provenance, and status response shapes. Ford Service defines its own typed output contract.
 - [x] Run `./gradlew integrationTest --tests '*CatalogToolParityIntegrationTest'`; assert behavior against deterministic PostgreSQL Testcontainer rows matching the Ford read-view contract. Node integration tests separately validate actual migration-backed views. Passed in Docker runner.
 - [x] Correct adapter parity: normalize trim keys like Node (remove separators); keep model-only facts model-level; make explicit trim facts exact; omit prices/facts/offers/promotions lacking both source URL and observation time. H2 regression coverage and the real snapshot test pass.
-- [x] Keep search lexical and report semantic ranking parity as not established; Java and Node do not currently expose matching embedding model/settings/dimension.
+- [x] Keep search lexical when no approved Service-side retrieval configuration is available; no MCP ranking parity claim is made.
 - [x] Add Spring AI annotated read-only tools corresponding to every existing MCP capability. Preserve input/output evidence fields where useful; exclude write/booking/handoff actions. Financing search exposes catalog-backed Ford Credit terms only; do not add financial calculation or approval.
 - [x] Test the read-only tool surface against a fake `McpCatalogPort`, including evidence fields, empty exact lookups, validity dates, and exact URLs; preserve the existing `ToolAuthorizationPolicy` allowlist/call limit.
 - [x] Register local tools in `SpringAiConfiguration`; the explicit feature flag and dedicated datasource gate callbacks, and default remains disabled. No remote Ford MCP client remains.
-- [x] Run `./gradlew test` and `./gradlew bootJar`; both pass. The catalog slice is not complete until PostgreSQL parity passes.
+- [x] Run `./gradlew test` and `./gradlew bootJar`; both pass. Local implementation tests pass; production enablement remains subject to direct datasource, authorization, grounding, and protected rollout verification, not PostgreSQL MCP parity.
 
 #### Ranking, reranking, and grounding continuation
 
-- [ ] Add a reviewed Spanish retrieval set (~100 questions) with relevant document IDs, expected fact evidence, model/year/trim selectors, and volatile-vs-document question type.
+- [ ] Add a reviewed Spanish retrieval set (~100 questions) with relevant document IDs, expected fact evidence, model/year/trim selectors, and volatile-vs-document question type. Existing `Ford-scraping/tests/unit/mcp-conversation-scoring.test.ts` cases are synthetic scorer unit inputs; they do not include reviewed catalog document IDs or retrieved source evidence and must not be counted toward this corpus.
 - [x] Verify installed framework versions and APIs: Spring Boot 4.1.1, Spring AI 2.0.1 RAG `RetrievalAugmentationAdvisor`/`DocumentRetriever`/`DocumentPostProcessor`, existing LangGraph4j turn graph, and TypeSafe Spring AI 0.1.0 `JevDocumentReranker`.
 - [x] Keep LangGraph4j as the turn orchestrator and compose Spring AI 2.0.1 `RetrievalAugmentationAdvisor` only for the existing knowledge-search route; do not create another agent graph, memory store, or orchestration framework. Focused route tests verify the advisor is not attached to catalog routes.
 - [x] Bridge the existing `KnowledgeRetrieval` into Spring AI's `DocumentRetriever`, preserving tenant, locale, approved-only, and effective-date filters. The existing document tool remains the configured fallback when advisor wiring is unavailable.
@@ -83,12 +90,12 @@
 - [ ] Add typo retrieval using PostgreSQL's existing trigram capability only if the supported DB extension/index and migrations can be safely applied; fuse full-text, trigram, and vector rankings with the existing `ReciprocalRankFusion` utility generalized to N lists.
 - [ ] For the Ford catalog path, expose only the necessary versioned embedding/document read view from Ford-scraping, query with the exact stored `bge-m3` model through Spring AI's configured `EmbeddingModel` request options, verify model tag/dimension, and preserve lexical fallback. Do not use Service `nomic-embed-text` vectors against catalog embeddings.
 - [ ] Apply trusted model/year filters before candidate ranking and preserve exact selectors through Spring AI's query-transformer extension. Avoid another model call unless the reviewed follow-up cases show it is needed.
-- [ ] Benchmark current Node score fusion and Java RRF on the reviewed set; report recall@5, MRR, nDCG, evidence coverage, and latency. Keep current fusion unless the larger set demonstrates a meaningful gain.
+- [-] Retired: benchmark Node score fusion against Java RRF. Evaluate the Service retrieval configuration directly against the approved Spanish evaluation set; Node parity is out of scope.
 - [ ] Evaluate the existing Jev reranker over a bounded candidate set only after recall is established; measure MRR/nDCG/evidence/answer gains, p50/p95 latency and provider cost. Keep fused order on timeout; leave reranking disabled if it does not justify runtime cost.
 - [x] Add a per-turn evidence ledger for tool results and RAG citations; validate numeric claims and source URLs against exact evidence, with one repair and safe fallback using existing turn/handoff controls. Remaining model-name/length calibration stays in M4b.
 - [ ] Verify LangGraph4j node/edge routing and Spring AI advisor order, retry behavior, and accepted-message-only memory semantics against pinned versions; do not replace or bypass the durable tenant/conversation memory owner.
 - [ ] Keep structured tools authoritative for prices, promotions, inventory, and current specifications; use RAG only for approved documents/narrative knowledge, with calibrated abstention.
-- [ ] Enable callbacks only after complete tool output parity, compatible semantic retrieval behavior, evidence guard, database permissions, and evaluation gates pass.
+- [ ] Verify the Service-owned tools against MÍA acceptance examples, evidence guard, least-privilege datasource permissions, and evaluation gates before enabling production callbacks.
 
 ### Task 4: Remove the Node MCP runtime now; temporary tool gap accepted
 
@@ -118,9 +125,9 @@ Verification: Node lint, build, 138 unit tests, and five container/workflow cont
 ## Completion Gate
 
 - [x] Java adapter and Spring AI tool tests pass (`./gradlew test bootJar --offline --no-build-cache --no-daemon`, isolated Gradle home).
-- [ ] Java/catalog parity is demonstrated for facts, price dates, promotion state, freshness, and exact source links.
-- [ ] Ford-scraping remains the sole catalog schema/data writer; its MCP transport is removed now by user choice.
-- [ ] Customer catalog tools remain disabled until parity passes; temporary tool gap is accepted.
+- [ ] Ford Service-owned catalog behavior is verified for facts, effective dates, promotion state, freshness, and exact source links; this is not a Node/MCP parity requirement.
+- [ ] Ford-scraping remains the sole catalog schema/data writer; its retired MCP transport is not part of the target runtime.
+- [ ] Production catalog callbacks remain disabled until the Service-owned tool configuration, datasource permissions, authorization, grounding, evaluation, and protected rollout checks pass.
 - [ ] Do not claim production cutover or cleanup without live verification and a separately approved rollout.
 
 
@@ -130,7 +137,7 @@ Verification: Node lint, build, 138 unit tests, and five container/workflow cont
 - Added `CatalogToolParityIntegrationTest` using the disposable PostgreSQL Testcontainers contract schema. It compiles; runtime verification is blocked by host-port connectivity in the current Colima context: Ryuk cannot connect to its forwarded localhost port, and with Ryuk disabled the PostgreSQL mapped localhost port refuses connections. No test assertions ran.
 - Focused adapter, datasource configuration, and tool tests pass. Full `test` and `bootJar` pass.
 - Added `docs/operations/catalog-read-only-access.md` and kept `FORD_CATALOG_TOOLS_ENABLED=false` by default in the production profile.
-- Do not mark Task 3 parity or completion gate complete until the PostgreSQL test and captured-contract fixture pass. H2 contract tests and code-level parity checks pass; semantic ranking parity is explicitly not established and search remains lexical. Production rollout remains gated despite the user's explicit deployment goal.
+- Historical note: the PostgreSQL contract and captured MCP fixture checks below were used during earlier implementation. They are not required for current acceptance; production rollout remains gated on direct Service-owned config and operational checks.
 
 ### Real catalog snapshot verification (2026-10-17)
 
@@ -144,7 +151,7 @@ Verification: Node lint, build, 138 unit tests, and five container/workflow cont
 - Real-source coverage now demonstrates vehicle, facts, offers, promotions, and comparison reads from this snapshot. It still does not compare every MCP response field against an archived Node output fixture or exhaustively validate missing-evidence edge cases; completion gate remains open.
 - Source review of Node `ComparisonService` against Java `McpCatalogTools` found a substantive parity gap: Java `compare_trims` and `compare_model_years` currently return independent `find` lookups, while Node emits trim/year pairs, source-backed changed facts, price deltas, promotion evidence, and missing-trim information. Do not enable or deploy these tools as parity-complete until those outputs are implemented and tested.
 - Implemented Java pairwise trim and model-year comparison outputs: sorted found records, source-backed shared fact deltas, price differences, missing requested trims/years, and active promotions per found model year. Added TDD unit coverage. A first snapshot run exposed a null-counterpart `Map.entry` failure; matching counterpart keys are filtered before creating entries. The forced SELECT-only real-snapshot run then passed all 3 tests, including paired Bronco trims and Expedition 2025–2027 year results; full Service `test bootJar` also passed.
-- Cross-model output now returns direct per-vehicle evidence (matching Node's array shape), fails if a requested model/year is missing, and includes image URLs with source/observation evidence. `vehicle_facts_v1.fact_type` is preserved as `McpVehicleFact.type`, so specification and feature facts stay distinguishable. The read view does not expose the source feature category, and a complete archived Node-to-Java fixture comparison is still pending. Keep the feature flag disabled until the full parity checklist passes.
+- Historical implementation note: cross-model output returns direct per-vehicle evidence, errors on a missing requested model/year, and includes image/source/observation evidence. Remaining archived Node shape differences are retired from scope; the Service-owned contract is authoritative.
 - Disk/cache issue: Gradle test output passed, but an attempted build-cache write failed with `No space left on device` at 218 MiB free. Reran `./gradlew test bootJar --no-build-cache`, which passed. Use `--no-build-cache` while disk is critically low; do not prune Docker or user caches speculatively.
 - Latest source state was reverified after duplicate-input normalization: `./gradlew test bootJar --no-build-cache` passed; snapshot suite reran with `--rerun-tasks --no-build-cache` as the SELECT-only role, 3 tests/0 skipped/0 failures. The temporary runner and DB role were removed after capturing the XML and permission check.
 - Cross-model image/fact-kind parity was added with red/green tests: H2 verifies exact image URL/source/time and distinct `feature` vs `specification` kinds; real snapshot verifies direct Bronco/Expedition cross-model results, sourced image freshness, and sourced Bronco feature/specification facts. The forced snapshot run passed 3 tests, and the latest full `./gradlew test bootJar --no-build-cache` passed.
@@ -161,7 +168,7 @@ The approved source-removal task does not yet constitute a deployable production
 
 - [ ] Implement a scraper-only release/deploy path for the existing image, preserving scheduler operation, release backup/migration ordering, health checks, rollback, and no MCP process/listener.
 - [ ] Coordinate Service release workflow inputs with a published OCI action revision; replace legacy `FORD_MCP_*` remote-client validation/inputs with the local Java catalog flag and read-only datasource settings.
-- [ ] Add and pass workflow/action contract tests. Keep local catalog callbacks disabled until complete tool-level parity passes.
+- [x] Add and pass workflow/action contract tests. Production callbacks remain opt-in pending the Service-owned config and read-only datasource checks; parity is not required.
 - [ ] Deploy in safe order, verify customer tool behavior and scraper schedule on emme-1/emme-2, then retire the old Node MCP host resources under the previously authorized rollout.
 
 Evidence so far: Service workflow is at repository root and targets `ford-service` but still wires legacy remote MCP config. Its pinned action SHA is not in local clones. OCI action catalog changes are local and uncommitted. Node scraper CI publishes a versioned image, but its release workflow was deleted. GitHub auth/DNS and SSH probes currently fail, so publishing the action/workflows and production deployment cannot yet be verified. Do not state production is cut over.
@@ -172,9 +179,9 @@ Evidence so far: Service workflow is at repository root and targets `ford-servic
 - [x] Run verified data-host backup before the candidate-image migration; leave the existing scheduler in place until candidate migration succeeds, then replace it and restore the prior digest if health/schedule checks fail.
 - [x] Restore a scraper release workflow that validates annotated version tags, successful tagged CI, immutable image digest and attestation; protect deploy with production/Vault readiness and manual approval.
 - [x] Preserve release-all integration by matching target workflow filename, run-name, correlation input, coordinator authorization, approval bypass, and `ford-release-result` artifact.
-- [x] Update Service release workflow and app env contract: local catalog feature defaults false; enabling requires parity-ready gate, dedicated JDBC URL/user/Vault reference; remove remote MCP client settings.
+- [x] Update Service release workflow and app env contract: local catalog feature defaults false; enabling requires dedicated JDBC URL/user/Vault reference; remove remote MCP client settings. The parity-ready condition recorded in the 2026-10-17 implementation was removed per user direction on 2026-10-18; no other release gate was removed.
 - [x] Local checks pass: Node lint/build/138 unit/workflow-contract tests; Service release coordinator/deployment contract tests (90); OCI action tests (19); shell syntax, YAML parse, Ansible syntax.
-- [ ] Complete field-by-field tool parity and repeat all database integration gates.
+- [-] Retired by user direction: complete field-by-field Node/MCP tool parity. Service-owned datasource and contract checks remain active.
 - [ ] Publish OCI action commit `65fa3f562ae846fc096b6832893e293b0bdf326c` and coordinated branches. Current `gh auth status` says token invalid; `git ls-remote` and emme-1/emme-2 SSH fail with `No user exists for uid 501`.
 - [ ] Run production release and verify local Java catalog tools plus scraper scheduler on both hosts.
 
@@ -194,8 +201,8 @@ The full contract remains incomplete. Node also supports summary/full controls a
 
 - [x] Add tool tests for default query construction, count/envelope fields, and unknown-validity disclosure.
 - [x] Return an `OfferSearch` envelope from Java `search_offers`, preserving evidence records and reporting semantic search as `unavailable` because Java does not implement the archived Node embedding path.
-- [ ] Complete structured term-conflict/data-quality disclosures and verify SQL result/total-count semantics against the archived Node contract.
-- [ ] Continue the remaining field-by-field tool parity matrix; this narrow offer slice does not close Task 3.
+- [-] Retired by user direction: match structured disclosures and result/count semantics to the archived Node contract. Service-owned data-quality behavior is the target.
+- [-] Retired by user direction: continue the Node-based field parity matrix.
 
 Verification: focused `McpCatalogToolsTest` passed after the expected red compile failure; `GRADLE_USER_HOME=/tmp/ford-mia-gradle-isolated ./gradlew test bootJar --offline --no-build-cache --no-daemon` passed (7 tasks, 35 seconds). The later promotion continuation reran both synthetic PostgreSQL parity and restored-snapshot integration. Feature remains disabled.
 
@@ -207,7 +214,7 @@ Verification: focused `McpCatalogToolsTest` passed after the expected red compil
 - [x] Run full Service `test bootJar compileIntegrationTestJava`; passed.
 - [x] Run synthetic `CatalogToolParityIntegrationTest` using the existing host-network Testcontainers runner; passed. Direct Mac-host run fails before assertions because Ryuk cannot reach its forwarded Colima localhost port.
 - [x] Run restored disposable snapshot integration with a temporary SELECT-only role; passed. Revoked grants, dropped the run-specific role, and verified no grants/role remain.
-- [ ] Keep broader parity open: Node promotion benefits remain absent from the versioned views; offer disclosures and remaining tool result projections are still incomplete.
+- [-] Retired by user direction: Node promotion benefit/offer projection parity is not required. Add source-backed fields only when needed by the Service-owned contract.
 
 Feature remains disabled. Production publication/deployment access blockers remain unchanged.
 
@@ -216,9 +223,9 @@ Feature remains disabled. Production publication/deployment access blockers rema
 - [x] Project Node's page-link envelope (`sourceUrl`, `totalLinks`, `offset`, `limit`) and compact each row to `url`, `text`, `type`, and `internal`.
 - [x] Preserve exact input source URL and exact target URL from the versioned read view; do not expose adapter-only duplicate/href/source-page fields.
 - [x] Run focused tool/adapter tests and full Service `test bootJar compileIntegrationTestJava`; passed.
-- [ ] The current `page_links_v1` view has no source page title and cannot distinguish a nonexistent source page from one with zero links. Keep both as parity gaps; do not fabricate a title or claim Node's null behavior.
+- [-] Retired by user direction: matching Node's source-page title/null behavior is not required. The Service contract must still distinguish known-empty from unavailable evidence where MÍA needs it; never fabricate a title.
 
-Feature remains disabled. Other tool parity and production release/deployment remain open.
+At the time of this 2026-10-17 note, the feature remained disabled. Node/MCP parity is now retired from scope; production release/deployment remain open.
 
 ### Offer validity disclosure parity continuation (2026-10-17)
 
@@ -229,15 +236,15 @@ Feature remains disabled. Other tool parity and production release/deployment re
 - [x] Verify the temporary snapshot reader role and grants were removed (0 role rows, 0 grants).
 - [ ] `offers_v1` does not expose metadata `termConflict`; keep the exact term-conflict disclosure gate open until the read contract can supply it. Do not infer source metadata from offer title text.
 
-Feature remains disabled. Production release/deployment remain open.
+Production callbacks remain disabled. Earlier parity investigations below are historical, non-gating implementation notes; production release/deployment remain open.
 
 ### Resume checkpoint (2026-10-17)
 
 - Fresh Node verification passed: lint, 144/144 unit tests, TypeScript build, and 5/5 scraper container/workflow contracts.
 - Fresh Service operations checks passed: 98 Python contracts, 36 workflow contracts, and Ansible catalog-sync syntax.
 - A fresh Java run found stale fixture setup after `vehicle_facts_v2` and JSON metadata were introduced, plus an isolated Spring test context missing Jackson's `ObjectMapper` (6 failures across 704 tests). Fixture/context corrections are in progress; rerun the focused and full gates before closing.
-- The still-open parity list is concrete: finance-only values, per-comparison URL, arbitrary source-page title/existence and known-empty semantics, free-text/semantic ranking and compact result fields, and comparison/promotion edge cases not represented by captured Node outputs. Some require a versioned read-view addition by the Ford-scraping migration owner; do not infer missing evidence in Java.
-- The written plan's global constraint keeps Ford-scraping migrations outside this implementation slice. Therefore local customer catalog tools remain disabled until the migration owner approves/implements any missing view fields and full parity gates pass.
+- Historical review recorded then-open differences in finance fields, comparison URLs, source-page state, ranking, compact result fields, and edge cases. These Node/MCP parity differences are not pending requirements under the 2026-10-18 scope decision. Keep additive read views where the Service-owned contract needs source evidence; do not infer missing evidence in Java.
+- Ford-scraping remains the migration owner. Production callbacks remain disabled until the Service-owned contract, datasource grants, and operational release checks pass; parity is not a prerequisite.
 - GitHub auth check returned an invalid token. No push, workflow run, production deployment, or emme-1/emme-2 change occurred.
 
 ### Forward-only read-contract migration correction (2026-10-17)
@@ -282,7 +289,7 @@ Feature remains disabled. Production release/deployment remain open.
 - [x] Synthetic PostgreSQL `CatalogToolParityIntegrationTest` passed 1/1; restored snapshot integration passed 3/3 under a temporary SELECT-only role.
 - [x] Return source-backed `benefits` and `termConflict` JSON from promotions and offers when present; tests cover populated and null fields.
 
-### Forward-only catalog parity completion (2026-10-17)
+### Forward-only catalog read-view work (2026-10-17; historical MCP parity context)
 
 - [x] Add migration 024 without editing applied migrations: `offers_v2` exposes stored finance fields, `comparison_facts_v2` exposes exact comparison URLs, and `catalog_pages_v1` distinguishes known pages from unknown URLs.
 - [x] Extend Node migration contract and clean-database integration coverage for finance fields, comparison URLs, source-page titles/existence, and unknown URLs.
@@ -291,16 +298,16 @@ Feature remains disabled. Production release/deployment remain open.
 - [x] Run Java unit tests/bootJar/integration compilation, synthetic PostgreSQL parity (2/2), and restored snapshot (3/3, zero skips) after migration 024; temporary read-only role/grants were removed.
 - [x] Add migration 025 for exact per-trim comparison URLs and expose the URL in Java comparison output.
 - [x] Rerun Java full unit/build/integration compilation, synthetic PostgreSQL parity (2/2, zero skips), and restored snapshot (3/3, zero skips) after migration 025; SELECT-only role/grants were removed.
-- [ ] Semantic ranking and complete byte-for-byte tool-output parity remain open; customer catalog callbacks stay disabled.
+- [-] Retired by user direction (2026-10-18): semantic ranking parity and byte-for-byte Node/MCP tool-output parity are not requirements. Customer-facing production callbacks remain subject to the Service-owned readiness gates above.
 
 ### Enablement readiness recheck (2026-10-17)
 
 - [x] Reconcile the stale continuation notes above against migrations 024/025 and current adapter/tests: `offers_v2` now carries finance-only fields, `catalog_pages_v1` distinguishes known-empty from unknown pages, `comparison_facts_v2` carries comparison links, and Java reads these versioned views. Older open bullets saying those fields/views are absent are historical and superseded by the migration-024/025 results.
 - [x] Read the retained disposable `ford_mia_catalog_parity_test` database: 1,026 ready embeddings, one stored model name (`bge-m3`), all vectors 1,024-dimensional; read-view counts include 737 offers, 10 promotions, and 2,447 comparison facts.
 - [x] Fresh Service verification: `GRADLE_USER_HOME=/tmp/ford-mia-gradle-isolated ./gradlew test bootJar compileIntegrationTestJava --offline --no-build-cache --no-daemon --max-workers=1 --rerun-tasks` passed; XML reports 704 tests, 0 failures/errors/skips.
-- [ ] Java catalog adapter still does not perform semantic vector ranking; offers currently identify semantic search as unavailable. Spring Service production embedding config is `nomic-embed-text`, while the catalog vectors are tagged `bge-m3`. Do not equate these models or enable full semantic parity without a tested matching provider/model/dimension path.
-- [ ] Finish fresh byte-for-byte Node-vs-Java callable-tool fixtures for every capability after the latest migrations and mappings; the existing fixture intentionally covers only three archived Node cases.
-- [ ] Preserve `FORD_CATALOG_TOOLS_ENABLED=false` until the complete parity gate and production read-only datasource permissions pass.
+- [-] Retired: match the MCP semantic ranking implementation. Any Service-side semantic retrieval is evaluated against MÍA requirements and its configured embedding model, without Node comparison.
+- [-] Retired: finish byte-for-byte Node-vs-Java callable-tool fixtures. Service-owned contract tests remain active.
+- [ ] Preserve `FORD_CATALOG_TOOLS_ENABLED=false` until the Service-owned configuration and production read-only datasource permissions are verified.
 - [ ] Protected publication/deployment remains blocked: `.zshrc` token is rejected by `gh auth status`, and the current environment cannot resolve `api.github.com`; no production configuration has been changed.
 
 ### Financing model URL field-name parity continuation (2026-10-17)
@@ -334,9 +341,9 @@ Feature remains disabled. Production release/deployment remain open.
 - [x] Preserve the archived Node catalog-status keys (`pages`, `vehicles`, `embedded`) while retaining the richer read-view counts and latest sync details.
 - [x] Run focused provenance/status adapter tests and full Service `test bootJar compileIntegrationTestJava`; passed.
 - [x] Verify empty latest-sync fields and stable legacy count aliases through adapter tests; restored-snapshot aggregate checks are included below.
-- [ ] Broader end-to-end parity gates remain open.
+- [-] Retired by user direction: broader end-to-end Node/MCP parity gates are not pending work.
 
-Feature remains disabled. Production release/deployment remain open.
+Production callback enablement and release/deployment remain open pending the Service-owned readiness checks.
 
 ### Combined vehicle-and-financing projection parity continuation (2026-10-17)
 
@@ -345,7 +352,7 @@ Feature remains disabled. Production release/deployment remain open.
 - [x] Query financing for the selected or explicitly requested model/year, retain financing even when an exact requested vehicle lookup misses, and return Node-style combined `answerSummary`, vehicle summary/count, offer query/count/disclosures/results.
 - [x] Avoid an unfiltered financing result when free-text search finds no exact model; the Java offers port has no relevance query and must not present an arbitrary row as a match.
 - [x] Verify exact alignment, missing-vehicle, and no-selector cases with focused tests; full Service `test bootJar compileIntegrationTestJava` passed.
-- [ ] Complete free-text ranking parity and match Node's compact vehicle/offer subfields; semantic ranking remains unavailable.
+- [-] Retired by user direction: free-text ranking parity and matching Node compact result fields are not required. Evaluate any Service retrieval behavior against MÍA evidence and quality requirements.
 
 Feature remains disabled. Production release/deployment remain open.
 
@@ -365,5 +372,5 @@ Feature remains disabled. Production release/deployment remain open.
 - [x] Fresh synthetic PostgreSQL tool parity: `CatalogToolParityIntegrationTest` passed 2/2.
 - [x] Fresh real snapshot gate: `mise run test:parity -- <restored ford-20261009T101630.207Z.dump>` passed 3/3 as a dedicated reader role; SELECT allowed and INSERT denied; the disposable container and role were removed.
 - [x] Add exact variant comparison URL and finance-field projections from migrations 024/025; older gap notes in this plan are superseded.
-- [ ] Full byte-for-byte Node/Java output fixtures across every callable tool and semantic ranking parity remain open. The archived fixture still covers only a small subset; current catalog callbacks remain disabled.
+- [-] Retired by user direction (2026-10-18): full byte-for-byte Node/Java fixtures and semantic ranking parity are not requirements. Current production callback readiness remains open only for Service-owned configuration, datasource permissions, evidence/authorization, and protected rollout verification.
 - [ ] Production publication/deployment remains blocked by invalid GitHub token/API connectivity and local SSH UID resolution failure; no production setting was changed.

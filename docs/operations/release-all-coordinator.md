@@ -10,7 +10,7 @@ For `release`, one human approval in Ford Service's
 `release-all-approval` environment authorizes the selected rollout. The
 coordinator dispatches only checked repositories in this fixed order:
 
-1. Ford MCP
+1. Ford-scraping (catalog writer and monthly scheduler)
 2. Ford Service
 3. Ford Web
 

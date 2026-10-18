@@ -45,9 +45,13 @@
   },
   "unverifiedCapabilities": [
     "search_vehicle_and_offers and search_offers output parity",
-    "comparison output shape and comparison values",
+    "compare_vehicles input is not currently compatible: Node accepts {models, detail}; Java accepts {vehicles}",
+    "compare_vehicles output projection is not currently compatible: Node returns a compact array; default summary limits specifications to 5, omits features and missingSpecificationNames, and reports specificationCount/specificationsOmitted; detail=full includes all specifications and features",
     "missing observation/source behavior in the archived Node contract",
-    "page links, provenance, catalog status, variant comparisons",
+    "get_page_links adds a Java-only knownSource field; Node compacts only sourceUrl, title, totalLinks, offset, limit, and links shaped as {url, text, type, internal}",
+    "get_vehicle_provenance: Node returns nullable {document_id, document_type, content_hash, source_url, crawled_at, page_content_hash}; Java exposes Optional with camelCase names and adds title/model/year/trim; absent-ID/null equivalence is unverified",
+    "get_catalog_status: Node returns pages, vehicles, documents, embedded, pending, latest_crawled_at; Java adds model/sync counts and uses latestPageCrawlAt instead of latest_crawled_at",
+    "variant comparisons",
     "semantic ranking parity"
   ]
 }

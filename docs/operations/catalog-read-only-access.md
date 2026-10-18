@@ -6,7 +6,7 @@ Ford-scraping owns the `ford` schema, migrations, crawler, and all catalog write
 
 Configure these only when preparing an approved catalog-tool rollout:
 
-- `FORD_CATALOG_TOOLS_ENABLED=false` by default. Keep false until parity and datasource checks pass.
+- `FORD_CATALOG_TOOLS_ENABLED=false` by default. Local development may opt in with a separately configured read-only datasource. Keep production false until the Service-owned tool configuration and datasource permissions are reviewed.
 - `FORD_CATALOG_JDBC_URL=jdbc:postgresql://<catalog-host>:5432/<catalog-db>?connectTimeout=5&socketTimeout=30&tcpKeepAlive=true`
 - `FORD_CATALOG_USERNAME=<read-only-role>`
 - `FORD_CATALOG_PASSWORD=<secret-manager-injected-password>`
@@ -36,9 +36,9 @@ For exact vehicle details, `technicalSheetUrl` is selected from the exact source
 
 Disable catalog callbacks with `FORD_CATALOG_TOOLS_ENABLED=false` and restart Ford Service. This does not stop Ford-scraping or change catalog data. During transition, retain the prior deployment and tunnel/secret resources until the approved rollout verifies Service behavior. No resource cleanup is part of this repository change.
 
-Before enabling: run `CatalogToolParityIntegrationTest` against PostgreSQL, verify the reader role can query required views and cannot write, run Service unit tests and `bootJar`, and perform a read-only smoke test. Production cutover requires a deployment record.
+Before enabling: run the Service-owned catalog tool and adapter tests, verify the reader role can query required views and cannot write, run Service unit tests and `bootJar`, and perform a read-only smoke test. Node/MCP output parity is not a prerequisite. Production cutover requires protected release approval and a deployment record.
 
-Reproduce the real-snapshot evidence at any time with the disposable parity gate. It restores a Ford-scraping dump into a throwaway container, applies the `ford_read` view migrations, runs `CatalogSnapshotParityIntegrationTest` against real rows, then removes the container:
+Optional historical adapter verification can be reproduced with the disposable snapshot harness. It restores a Ford-scraping dump into a throwaway container, applies the `ford_read` view migrations, runs `CatalogSnapshotParityIntegrationTest` against real rows, then removes the container. This is useful datasource/adapter coverage, not a Node/MCP parity gate:
 
 ```bash
 cd ford-ai-service

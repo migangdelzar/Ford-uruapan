@@ -7,8 +7,8 @@
 - [x] Remove MCP/Ollama health checks from the generic production connectivity preflight; it now checks the app, collector, and PostgreSQL.
 - [x] Remove MCP runtime Vault grants from the desired Terraform policy and document the protected apply requirement.
 - [x] Update current catalog alert name, prompt, response-template guidance, and architecture to describe catalog tools.
-- [ ] Finish replacing stale *current-state* operator docs and workflow assertions; preserve dated historical plans and test evidence as history.
-- [ ] From GitHub Actions with protected credentials, inspect emme-1/emme-2 and perform the approved catalog parity/cutover.
+- [x] Reconcile current operator docs with MCP source retirement and current release ownership while preserving dated host/GitHub snapshots as history: credential-storage guidance now distinguishes local retirement from pending production cleanup; production-readiness snapshots are explicitly historical; release-all names Ford-scraping as the catalog writer/scheduler target.
+- [ ] From GitHub Actions with protected credentials, inspect emme-1/emme-2 and perform the approved Service-owned catalog tool rollout; Node/MCP parity is not a gate.
 - [ ] Verify Spring's catalog tools and monthly sync in production; confirm rollback window and backup.
 - [ ] Remove deployed MCP containers, Cloudflare route/tunnel, LaunchAgents, Vault secrets and permissions, and obsolete GitHub secrets/variables only after direct production verification.
 - [ ] Run Terraform plan/apply for the reviewed least-privilege Vault grant removal; retain plan/apply evidence.
@@ -19,32 +19,59 @@
 
 This is the authoritative remaining checklist for the MÍA/Spring AI production cutover, including OCI Vault. Do not mark a gate complete based only on local config or a successful workflow dispatch; retain command/workflow evidence.
 
+Checklist notation: `[-]` means retired from scope by an explicit user decision; it is neither complete nor pending.
+
+### OCI runtime Vault plan guard hardening (2026-10-18)
+
+- [x] Add failing tests proving the Terraform plan guard rejects broad, unexpected, missing, and differently attached/renamed Vault policy changes while accepting the exact configured app/data read grants; broadening and metadata tests failed against the old guard and all 11 focused guard tests now pass.
+- [x] Put the allowed runtime identities and secret-name lists in one checked-in contract consumed by both Terraform and the plan guard.
+- [x] Require the expected Vault and compartment OCIDs in both the protected plan and apply guard invocations.
+- [x] Pass the catalog-reader Vault OCID into the app environment/action only when catalog tools are enabled; keep the exact OCI name-to-grant verification as an explicit pre-enable gate.
+- [x] Update the active Terraform plan/spec documentation from the retired MCP-only grant to the current named runtime consumers and guarded exact policy.
+- [x] Verify guard and release workflow contracts, Terraform formatting, and whitespace without contacting OCI or applying changes.
+- [ ] Run `terraform validate` with the workflow's locked OCI provider version; local init is currently blocked because `registry.terraform.io` cannot resolve and no OCI provider plugin is cached.
+
+Results: `node --test scripts/operations-contract.test.mjs scripts/workflow-contract.test.mjs scripts/mise-contract.test.mjs` passed 83/83; Terraform Vault guard tests passed 11/11; release-all Python tests passed 34/34; Terraform 1.16.6 `fmt -check -recursive` and `git diff --check` passed. The contract retains exactly the prior app/data grant list (20 app secrets, 3 data secrets). `terraform init -backend=false -lockfile=readonly` could not reach `registry.terraform.io`; no OCI plan/apply was run.
+
+Acceptance: plan output contains exactly the configured `read secret-bundles` statements for the named app/data groups and target Vault/compartment; no additional or missing policy entries pass. Dynamic-group safety and resource-address restrictions remain intact. Rollback is fail-closed: any mismatch stops before apply, and reverting the reviewed source change restores the prior validator.
+
 ### A. Publish and validate the coordinated source
 
 - [ ] Confirm protected `main` rules require reviewed PRs and required CI; no direct push or force-push for release changes.
 - [ ] Keep GitHub Actions job permissions minimal, production credentials environment-scoped, and release-coordinator App credentials in GitHub Actions secrets. Local tooling may use the mode-0600 App key file by path; never copy its contents into `.zshrc`, repo files, or logs.
 - [ ] From the authenticated workstation, fetch current GitHub refs and reconcile the local Ford Service and Ford-scraping commits with the latest protected `main`; preserve unrelated worktree files and do not force-push.
-- [ ] Publish the Ford Service and Ford-scraping changes through reviewed PRs; confirm the MCP runtime removal is paired with the in-process Spring AI catalog tools and scheduler-only scraper deployment.
+- [ ] Publish the Ford Service, Ford-scraping, and Ford-web changes through reviewed PRs; confirm the MCP runtime removal is paired with the in-process Spring AI catalog tools and scheduler-only scraper deployment. Ford-web's `feat/mia-phase-one-web` adds the tenant-scoped shadow-draft review panel and OpenAPI contract; include its protected Pages release in the coordinator after merging to protected `main`.
 - [ ] Confirm every third-party/shared action uses the reviewed immutable commit SHA; confirm the pinned OCI blue-green action revision is published and reviewed.
 - [ ] Pass required CI, migration, release-contract, container-contract, integration, provenance, backup-before-sync, scheduler rollback, and release coordinator checks.
 - [ ] Confirm image builds/scans produce signed provenance attestations and deployment verifies the exact digest and source SHA reachable from protected `main`.
-- [ ] Confirm both versioned release tags point to the reviewed commits and the coordinator's read-only preflight accepts both exact versions.
-- [ ] Run the protected coordinated release from `main` through `release-all-approval`; retain coordinator correlation ID/run ID, both child release run IDs, source SHAs, image digests, and approval evidence.
+- [ ] Confirm all three versioned release tags point to reviewed commits and the coordinator's read-only preflight accepts the exact Service, scraper, and Web versions.
+- [ ] Run the protected coordinated release from `main` through `release-all-approval`; retain coordinator correlation ID/run ID, all three child release run IDs, source SHAs, image digests/deployment IDs, and approval evidence.
 
-### B. Complete catalog behavior parity before enabling tools
+### B. Verify the Service-owned catalog tool configuration
 
-- [ ] Complete field-by-field Node-to-Java parity for every customer-visible tool, including empty/error cases, filtering, ordering, source URLs, finance-only offers, promotions, vehicle details, trim/year comparisons, and evidence envelopes.
-- [ ] Implement and measure a semantic retrieval path compatible with the stored `bge-m3` vectors; compare the current fusion with RRF on the same reviewed set, then evaluate a cross-encoder only if measured quality justifies its latency and resource cost.
-- [ ] Add approximately 100 reviewed Spanish retrieval cases and record retrieval/ranking metrics, answer fact coverage, latency, and abstention outcomes.
+- [ ] Define and validate customer-facing tool inputs/outputs against MÍA use cases in Ford Service; Node MCP behavior is historical context, not a target contract.
+- [ ] Verify datasource URL/user/password injection, read-only SELECT grants on `ford_read`, exact source evidence, and clear failure behavior when catalog access is unavailable.
 - [ ] Verify per-turn evidence-ledger grounding, calibrated abstention for missing/ambiguous facts, and exact-version Spring AI 2.0.1 advisor, retry, and conversation-memory behavior.
-- [ ] Pass full tool-level parity and regression checks. Until then keep `FORD_CATALOG_TOOLS_ENABLED=false` and do not set `FORD_CATALOG_PARITY_READY=true`.
+- [ ] Use the reviewed Spanish retrieval corpus when supplied to measure retrieval, fact coverage, latency, and abstention quality; this evaluation does not compare against Node/MCP output.
+- [ ] Keep production `FORD_CATALOG_TOOLS_ENABLED=false` until the Service-owned configuration and least-privilege access have been reviewed; local development may opt in against a separately configured read-only datasource. No `FORD_CATALOG_PARITY_READY` setting is required.
+
+Local configuration verification (2026-10-18): `cd ford-ai-service && ./gradlew test --offline --no-daemon --tests 'com.ford.service.catalog.CatalogDataSourceConfigurationTest' --tests 'com.ford.service.ai.CatalogToolArchitectureTest' --tests 'com.ford.service.ai.CatalogToolsTest'` passed 25 tests (3 datasource configuration, 1 architecture, 21 tool), with zero failures/errors/skips. This proves the H2-backed local composition path and missing-credential fail-closed behavior; it does not prove a live catalog connection or production grants.
+
+#### Catalog release-gate scope update (2026-10-18)
+
+- [x] Remove `FORD_CATALOG_PARITY_READY` from the protected Service release environment and deployment condition while retaining the opt-in tool flag, JDBC URL/user validation, Vault secret OCID validation, coordinator approval, attestation, and production readiness gates.
+- [x] Update the release/action contract to assert the parity gate is absent and the read-only datasource inputs remain required.
+- [x] Update the catalog spec, implementation plan, operations guide, shadow rollout guide, and this ledger to use the Service-owned Spring AI contract and keep legacy MCP parity historical/non-gating.
+- [x] Verify the release contract red before the workflow edit and green afterward; `git diff --check` passes.
+- [ ] Keep production tool callbacks disabled until Service-owned configuration, least-privilege permissions, evidence grounding, and protected host rollout are verified.
 
 ### C. Verify OCI Vault and runtime identity end to end
 
 - [ ] Inspect protected `production` environment configuration without exposing secret values. Confirm `FORD_SECRETS_PROVIDER=oci-vault`, `PRODUCTION_DEPLOY_ENABLED=true` only after readiness review, and `RUNTIME_VAULT_READY=true` only after verifying every runtime consumer on both OCI hosts.
 - [ ] Verify the required Vault OCID variables and secret names against `release.yml`, `app.env.j2`, and `runtime-vault-identity.tf`: database, Redis, operator password, JWT signing key, DeepSeek/OpenAI-compatible provider key, Meta app/verify/WhatsApp credentials, and observability credentials. Validate optional provider/Meta integrations only when enabled.
 - [ ] Verify emme-1 and emme-2 instance principals can read only their named runtime secrets; confirm app/data dynamic groups match the intended instance OCIDs and no application secret value enters GitHub variables, Terraform state, logs, or committed files.
-- [ ] Keep Java catalog database credentials separate: when parity permits enabling tools, use the dedicated read-only database user, the `ford_read` views, its Vault secret OCID, and production JDBC URL. Verify SELECT succeeds and writes are denied.
+- [ ] Keep Java catalog database credentials separate: when the Service-owned tool configuration is ready, use the dedicated read-only database user, the `ford_read` views, its Vault secret OCID, and production JDBC URL. Verify SELECT succeeds and writes are denied.
+- [ ] Before enabling catalog tools, verify the actual OCI Vault secret name behind `FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD` and add that exact name to the emme-1 app grant contract. The current policy contract does not include this catalog-reader secret; the release now passes its OCID only when tools are enabled.
 - [ ] Run the protected Terraform runtime-Vault workflow from `main` with `plan`; inspect its artifact and ensure it changes only the reviewed least-privilege policy entries (removing obsolete MCP grants while preserving active app/data consumers). Stop on any group replacement, resource creation/destruction, or broader grant.
 - [ ] Apply only that reviewed plan through the protected production approval, then verify policy state and both instance-principal reads. Record plan/apply run IDs and retain evidence.
 - [ ] Verify Terraform uses the dedicated OCI API user, private/versioned `ford-terraform-state` bucket, state locking, and exact `ford-runtime-secret-read` scope; import all three existing identity resources before Terraform manages them.
@@ -55,8 +82,8 @@ This is the authoritative remaining checklist for the MÍA/Spring AI production 
 - [ ] Confirm the required production environment settings pass the release workflow: operator username; official Meta Graph messages endpoint and matching phone number ID; Meta delivery and durable outbox enabled; required secret OCIDs; Grafana Cloud and Langfuse endpoints/keys; deployment hosts/users/SSH secrets; and registry access.
 - [ ] Confirm environment reviewers/approvals are configured for `release-all-approval`, `production`, `manual-release-approval`, and Terraform plan/apply; keep production deployment disabled until readiness review is recorded.
 - [ ] Keep the existing production scheduler active until the protected replacement workflow and backup-gated catalog sync have succeeded. Verify `deployment-preflight` backup age/manifest, restore/rollback readiness, no overlapping manual/monthly sync, and failure behavior before cutover.
-- [ ] Deploy the versioned Service and scraper releases through the protected blue-green/coordinated workflows. Verify health, image/source identity, DB/Redis connectivity, Vault resolution, service logs, and exactly one intended scheduler on emme-1/emme-2.
-- [ ] Verify catalog tools with read-only production smoke cases only after parity is approved; verify monthly sync, backup-before-sync, scheduler ownership, and rollback window on the data host.
+- [ ] Deploy the versioned Service, scraper, and Web releases through the protected coordinator. Verify Ford Service health, image/source identity, DB/Redis connectivity, Vault resolution, service logs, exactly one intended scheduler on emme-1/emme-2, and Ford-web Pages production smoke/asset/API checks.
+- [ ] Verify catalog tools with read-only production smoke cases after Service configuration and database permissions are approved; verify monthly sync, backup-before-sync, scheduler ownership, and rollback window on the data host.
 - [ ] Run a synthetic authenticated conversation for formal `usted`, current catalog evidence/source URLs, memory continuity, and advisor handoff; do not message a real customer. Verify Meta inbound/outbound delivery separately and record its evidence.
 - [ ] Record both-host health and permissions, scheduler status, backup identity, release/run IDs, image digests, and rollback image. Exercise rollback if any protected gate or smoke check fails.
 
@@ -68,13 +95,18 @@ This is the authoritative remaining checklist for the MÍA/Spring AI production 
 
 ### Current status and constraints
 
+- Publication recheck (2026-10-18): local `gh auth status` reports an invalid token and `api.github.com` fails DNS resolution. Release-coordinator App ID/client ID/key-path variables are configured in `~/.zshrc`, and the referenced private key is mode `0600`; network access is required to mint a short-lived installation token. No push, protected workflow dispatch, or production change occurred.
+- OCI placement recheck (2026-10-18): the read-only OCI compartment-list request using the configured `migueldelzar` session profile timed out without returning compartment data. Vault/compartment placement and live instance-principal permissions remain unverified; no OCI write request was made.
+- Local release-dispatch recheck (2026-10-18): `node --test scripts/mise-contract.test.mjs` passed 8/8; `python3 -m unittest discover -s ford-ai-service/scripts/tests -p 'test_release_all*.py'` passed 34/34; dispatcher `bash -n` and `git diff --check` passed. These checks do not prove publication or production readiness.
+- Local Spring AI tool recheck (2026-10-18): `cd ford-ai-service && ./gradlew test --tests 'com.ford.service.ai.CatalogToolArchitectureTest' --tests 'com.ford.service.ai.CatalogToolsTest'` passed 22 tests (1 architecture, 21 tool tests; zero failures/errors/skips). This verifies local code only; the production flag remains false and deployment is unverified.
 - Local Ford-scraping MCP-removal commit: `f4f1880` on `feat/mia-phase-one-mcp`; Ford Service dispatcher/docs commits: `e362d3b` and `24e42db` on local `main`. All are unpushed and must be reconciled with current GitHub refs before PRs.
 - GitHub authentication and `git ls-remote` succeeded in the user's terminal; the agent runtime still cannot use the host keychain, SSH exits with UID 501 lookup failure, and its Docker package/network workaround stalled. Use the authenticated workstation to fetch/publish if agent networking remains unavailable.
-- Catalog parity/retrieval evidence is incomplete. Production was not changed; catalog callbacks must remain off and deployed MCP resources must remain until the protected replacement passes.
+- Service-owned catalog datasource and production verification remain incomplete. Production was not changed; catalog callbacks must remain off and deployed MCP resources must remain until the protected replacement passes.
+- User direction and implementation (2026-10-18): do not pursue Node-to-Java parity work. The Spring AI `CatalogTools` implementation exists locally; production callbacks remain opt-in pending Service-owned configuration and least-privilege datasource verification. Removed the parity-only release variable and condition; Vault, datasource, approval, provenance, and rollout checks remain.
 - The `.zshrc` exports only the release coordinator App ID, Client ID, and private-key path. Keep the private key in its mode-0600 file and use the protected GitHub App secrets for Actions.
 - Older dated task sections below are historical records; the consolidated checklist above controls current release readiness. Preserve their evidence, but treat an old unchecked item as current only when it is represented in this checklist.
 
-### Subtitle: Make both deploy lanes work, contracted, and verified. Local implementation is in progress; protected production cutover is still blocked by host/GitHub access and outstanding parity/evidence gates.
+### Subtitle: Make both deploy lanes work, contracted, and verified. Local implementation is in progress; protected production cutover is still blocked by host/GitHub access and outstanding evidence gates.
 
 ## Findings (probed 2026-10-17)
 - Tools present: mise, ansible-playbook/inventory/galaxy, rsync, ssh, docker, gh. On 2026-10-18 `gh auth status` reported an invalid token and `gh api user` could not connect; SSH to both production aliases failed locally with `No user exists for uid 501`.
@@ -542,7 +574,7 @@ Goal: Spring fills separate Markdown templates from returned MCP price/promotion
 - [x] Add `vehicle_facts_v2` with exact variant ID, category, normalized fact name, numeric value, and source-complete evidence; switch the Java reader to this view.
 - [x] Run Node read-view integration after the migration change in a disposable `ford_catalog_test` database: 6/6 passed. No MCP or production DB was used.
 - [x] Run Java H2 adapter/tool tests and PostgreSQL Testcontainers parity: passed, including structured offer metadata and variant-aware facts.
-- [ ] Continue the other documented parity gaps; current local checks do not close the full Node/Java parity gate.
+- [-] Retired by user direction (2026-10-18): do not continue Node/Java parity gaps. Keep this earlier entry as historical status only.
 - [ ] Publish through GitHub and run protected production rollout; GitHub CLI auth is invalid, device login cannot connect to github.com, and production has not changed.
 
 #### Resume verification (2026-10-17)
@@ -553,7 +585,7 @@ Goal: Spring fills separate Markdown templates from returned MCP price/promotion
 - [x] Refresh Java fixture setup to match `vehicle_facts_v2`, JSON offer columns, and the narrow datasource context's Jackson dependency; focused rerun passes.
 - [x] Run fresh full Java `test bootJar compileIntegrationTestJava`; 704 tests pass and integration sources compile. Synthetic PostgreSQL Testcontainers parity passes 2/2.
 - [x] Apply migrations 023 and 024 to the retained restored snapshot; Java parity passed 3/3 with zero skips as a temporary SELECT-only role (SELECT allowed, INSERT denied); role/grants removed.
-- [ ] Keep local catalog callbacks disabled: comparison URLs and finance-only source fields are now available through migrations 024/025, but full archived callable-output parity, all promotion page title/existence cases, and free-text semantic ranking remain unproven. See the fresh status in `2026-10-17-mia-catalog-evidence-lane.md`.
+- [ ] Keep production catalog callbacks disabled until Service-owned datasource permissions, authorization, evidence grounding, and direct host checks pass. Archived callable-output parity and MCP ranking comparisons are out of scope by user direction; see the updated acceptance criteria in `2026-10-17-mia-catalog-evidence-lane.md`.
 - [ ] Production stays blocked pending valid GitHub authentication, publication of the coordinated OCI action/workflows, and protected rollout/host verification on emme-1 and emme-2.
 # MÍA Phase 1 expanded delivery (2026-10-17)
 
@@ -564,24 +596,36 @@ The supplied plan broadens the active catalog replacement into the full MÍA Pha
 ## Milestones and required exit evidence
 
 - [x] **M0 — Foundations baseline:** pin/current stack verified (Spring Boot 4.1.1, Spring AI 2.0.1); existing Node catalog contract and read-only Service adapter identified. Full reviewed fixtures, dealership evidence, and external voice-bank inputs are still incomplete.
-- [ ] **M0 — Complete evidence set:** capture/approve the remaining Node-versus-Java tool fixtures, 50–100 anonymized conversation examples, dealership voice samples, holiday/special-hours calendar, and price policy sign-off. These are required external inputs; they were not supplied, so do not fabricate them.
+- [ ] **M0 — Complete evidence set:** capture/approve 50–100 anonymized conversation examples, dealership voice samples, holiday/special-hours calendar, and price policy sign-off. These are required external inputs; they were not supplied, so do not fabricate them. Node-versus-Java parity fixtures are out of scope per user direction.
 - [x] **M1 — Safe skeleton audit:** verified the existing webhook guard, durable receipts, LangGraph4j checkpoint/workers, ownership, and handoff queue; filled only turn-interception and shadow-draft gaps. Full unit/integration suites pass.
 - [ ] **M2 — Understanding and conversation behavior:** unit/integration behavior is covered, but verify extracted intent/slots, pending-question context, answer-first behavior, interruptions, one-question limit, and no-reask behavior against the approved real golden set when supplied.
-- [ ] **M3 — Catalog read path:** schema-backed adapter and read-only snapshot checks pass, but full field-by-field Node/Java callable-output parity, semantic ranking, and the production reader credential/host check remain open. Keep callbacks disabled until every gate passes.
+- [ ] **M3 — Catalog read path:** schema-backed adapter and read-only snapshot checks pass. The user explicitly excluded Node/MCP parity; active gates are the Service-owned tool contract, direct read-only datasource credentials/permissions, evidence grounding, and production host verification. Keep production callbacks disabled until these pass.
 - [x] **M4a — Writer, RAG, and guardrails:** Spring AI advisor routing (knowledge-search route only), route-scoped retrieval via `KnowledgeRagAdvisorFactory`, volatile-fact evidence enforcement, source citations, and the shared evidence policy wired into the adapter repair loop.
 - [x] **M4b implementation — Guardrail checks:** shared policy checks exact model/variant names, numeric claims, URLs, promises, and response length; it reuses `VehicleModelNames` and the existing response-quality policy. Targeted policy/adapter tests pass. **Reviewed real Spanish evaluation set remains blocked** on missing supplied examples.
 - [ ] **M5 — Retrieval and quality evaluation:** synthetic guardrail evaluation passes; the reviewed Spanish retrieval set and end-to-end latency/reranker-cost comparison remain open. Existing Spring AI hybrid retrieval/RRF and TypeSafe document reranking are reused; reranking stays disabled by default until evaluation demonstrates a gain.
-- [x] **M6 — BDC handoff implementation:** typed evidence-backed packet, partial-packet metadata, transactional/idempotent persistence, direct/complaint/refusal escalation, truthful queued copy, and regression tests are implemented. Real conversation golden-set validation remains blocked on supplied examples. CRM integration and the 8:45 digest remain out of this slice.
+- [x] **M6 — BDC handoff implementation:** typed evidence-backed packet, partial-packet metadata, transactional/idempotent persistence, direct/complaint/refusal escalation, truthful queued copy, and regression tests are implemented. Real conversation golden-set validation remains blocked on supplied examples. CRM is Ford-web, operated locally; no separate external CRM provider is in scope. The existing BDC queue stays authoritative. The 8:45 digest remains open for delivery through the local CRM workflow.
 - [x] **M7 implementation — WhatsApp operations and shadow review:** property-bound dealership hours, response planning, durable debounce, API-only unsent-draft review, and human kill switch are implemented and tested. Live after-hours rollout remains blocked on external calendar/evidence, operator dry-run, privacy, and end-to-end latency gates.
 - [x] **Monthly catalog sync implementation:** protected monthly/manual workflow, host backup verification, one-shot runner, rollback path, and local contract tests are implemented. **Production run/cutover remains blocked** until the coordinated workflow is published and its protected manual run succeeds.
-- [ ] **Production release:** publish the coordinated Ford-scraping, Ford Service, and OCI workflow changes; pass protected CI/release checks; deploy and verify emme-1 and emme-2, catalog permissions/parity, and exactly one active monthly trigger on each required host.
+- [ ] **Production release:** publish the coordinated Ford-scraping, Ford Service, and OCI workflow changes; pass protected CI/release checks; deploy and verify emme-1 and emme-2, catalog read permissions, and exactly one active monthly trigger on each required host. MCP parity is not a release gate.
 - [ ] **Final review:** code review all worktree commits, integrate only reviewed commits, run end-to-end verification, record release/run IDs and both-host evidence, and update the lessons/results ledger.
 
 ### Scope reconciliation
 
 - Use these detailed implementation plans as the task source: `2026-10-17-mia-catalog-evidence-lane.md`, `2026-10-17-mia-conversation-handoff.md`, `2026-10-17-mia-whatsapp-operations.md`, `2026-10-17-mia-shadow-evaluation.md`, and `2026-10-17-monthly-catalog-sync-workflow.md`.
 - The full supplied M0–M7 plan is the outcome map, not a mandate to rebuild working Ford Service components. Validate existing functionality first and keep changes punctual.
-- Do not call production ready or enable customer-facing catalog callbacks until all parity, evidence, safety, release, and host-verification gates pass.
+- User scope clarification (2026-10-18): Ford-web is the CRM and will run locally. Do not add a separate external CRM provider integration. Preserve the internal BDC queue; the 8:45 digest should be handled through the local CRM workflow once its recipient and delivery behavior are specified.
+- User scope clarification (2026-10-18): catalog tools belong in Ford Service's in-process Spring AI configuration, independent of MCP. Do not implement or require Node-to-Java/MCP parity. Keep catalog access read-only and Ford-scraping-owned. Production callbacks still require Service-owned evidence/authorization checks, least-privilege datasource access, protected release, and host verification.
+- Do not call production ready until evidence, safety, release, and host-verification gates pass.
+
+### Ford-web shadow-review surface (2026-10-18)
+
+- [x] Add tenant-scoped draft list and CSRF-protected ACCEPTED/REJECTED annotation calls to `Ford-web`.
+- [x] Add the inbox review panel; state plainly that drafts are internal and are never sent; add no send action.
+- [x] Sync the generated Ford-web OpenAPI copies from the Service-owned contract.
+- [x] Verify web TypeScript lint, full unit/component suite (134 tests), production build, and API contract consistency (49 paths).
+- [ ] Merge the reviewed frontend change (`453a8a2` shadow-draft review panel; `6fd7de2` Ford-web local-CRM task ledger) into Ford-web main and include the exact source commit in the protected three-repository release. Current evidence: local focused release/production-smoke contract tests pass 12/12; GitHub publication remains pending because this environment's `gh` token is invalid and SSH Git fails with `No user exists for uid 501`.
+
+Results: frontend changes are in the isolated `/private/tmp/ford-mia-phase1-web` worktree on `feat/mia-phase-one-web`. `bun run lint`, `bun run test` (33 files, 134 tests), `bun run build`, OpenAPI sync/check, and `git diff --check` passed. Production was not changed.
 
 ## Resume results (2026-10-17, design worktree)
 
@@ -597,7 +641,7 @@ The supplied plan broadens the active catalog replacement into the full MÍA Pha
   - Registered the policy through the existing conversation configuration and added fixed-instant boundary, timezone, Sunday/next-opening, and override tests.
   - `./gradlew test --tests '*DealershipHoursPolicyTest' --tests '*ConversationConfiguration*' --offline --no-build-cache --no-daemon` → BUILD SUCCESSFUL.
 - [x] Bind/verify weekly and special-date property examples and wire hours information into response planning without suppressing after-hours catalog answers; focused tests plus fresh full Service tests pass.
-- [x] Complete local implementation for WhatsApp durable debounce, BDC packet/handoff, shadow review API/evaluation, and monthly sync workflow. Remaining evidence, real frontend integration, production proof, and full catalog parity stay explicitly open below.
+- [x] Complete local implementation for WhatsApp durable debounce, BDC packet/handoff, shadow review API/evaluation, and monthly sync workflow. Remaining evidence, real frontend integration, production proof, and Service-owned catalog datasource verification stay explicitly open below.
 
 ### Task: RAG-route compile break + M4a guardrails
 
@@ -642,8 +686,8 @@ The supplied plan broadens the active catalog replacement into the full MÍA Pha
 ### Open / blocked (not fabricated)
 
 - Migration collisions were resolved in the integrated Service worktree with unique forward-only changesets `025`–`027`; fresh integration tests are the verification gate.
-- M0 evidence, M2 real golden-set review, M3 full parity, M5 retrieval/latency evaluation, CRM/8:45 digest scope, M7 live rollout, monthly-sync production proof, and release/host verification remain open or external.
-- Shadow plan Task 2 (frontend inbox review surface) is blocked: no frontend in this repo (separate `Ford-web`).
+- M0 evidence, M2 real golden-set review, M3 production datasource/config verification, M5 retrieval/latency evaluation, the 8:45 digest in the local CRM, M7 live rollout, monthly-sync production proof, and release/host verification remain open or external. A separate external CRM provider integration is out of scope; Ford-web is the locally operated CRM.
+- Shadow plan Task 2 is implemented across Service and `Ford-web`: the inbox loads tenant-scoped unsent drafts and records accept/reject annotations only. Web API contract and frontend tests pass; this does not authorize or perform customer delivery.
 - Production stays blocked on valid GitHub authentication and the protected rollout/host verification.
 
 ## Resume results (2026-10-17, integration verification — Colima fixed)
@@ -661,7 +705,8 @@ The supplied plan broadens the active catalog replacement into the full MÍA Pha
 - [x] Add the requested repository-level `AGENTS.md` workflow and task-management rules; `git diff --check` passes.
 - [x] Validate the development Compose configuration with a throwaway `GRAFANA_ADMIN_PASSWORD` value and syntax-check both catalog-sync and scheduler rollback Ansible playbooks.
 - [ ] Run the actual development image health workflow; local Docker Hub image pull previously failed DNS at `auth.docker.io`, and GitHub Actions cannot be triggered while GitHub API access/auth is unavailable.
-- [ ] M0/M2 real review corpus and dealership/policy inputs, M3 full callable-output/ranking parity, M5 retrieval/latency evaluation, and live M7 operator evidence remain open as listed above.
+- [ ] M0/M2 real review corpus and dealership/policy inputs, M3 production datasource/config verification, M5 retrieval/latency evaluation, and live M7 operator evidence remain open as listed above.
+- [x] Re-audit M5 evidence sources (2026-10-18): Ford-scraping `tests/unit/mcp-conversation-scoring.test.ts` contains synthetic scorer unit inputs; these do not provide reviewed questions paired with real retrieved document IDs/evidence and are not the required ~100-case retrieval corpus. The authoritative plan now states this explicitly to prevent counting unit examples as evaluation evidence. No retrieval or production readiness gate is claimed complete.
 - [ ] Production publication/cutover remains blocked: GitHub token invalid/API unavailable and SSH fails locally with `No user exists for uid 501`; no host or production configuration was changed.
 
 ### Naming and reuse correction (2026-10-18)
@@ -717,6 +762,6 @@ The supplied plan broadens the active catalog replacement into the full MÍA Pha
 
 ## Task: Add a protected MÍA production release dispatcher
 
-- [x] Add executable `ford-ai-service/.mise/tasks/deploy/release-all` that requires explicit Service and Ford-scraping versions, clean `main` synchronized with GitHub, valid GitHub CLI authentication, and validates inputs before dispatching the existing protected release coordinator for both repos.
+- [x] Add executable `ford-ai-service/.mise/tasks/deploy/release-all` that requires explicit Service, Ford-scraping, and Ford-web versions; checks clean `main`, GitHub synchronization/authentication; and validates all three inputs before dispatching the protected release coordinator for all three repos.
 - [x] Document usage and state clearly that the task queues `.github/workflows/release-all.yml`; it does not deploy over SSH or bypass approval, provenance, parity, readiness, and rollback controls.
-- [x] `bash -n ford-ai-service/.mise/tasks/deploy/release-all` and `git diff --check` pass. Mise task listing was attempted but blocked because `mise.dev.toml` in this temporary worktree is untrusted; no trust setting was changed. No production release was dispatched.
+- [x] `bash -n ford-ai-service/.mise/tasks/deploy/release-all`, `node --test scripts/mise-contract.test.mjs` (8/8), `python3 -m unittest discover -s ford-ai-service/scripts/tests -p 'test_release_all*.py'` (34/34), and `git diff --check` pass. The release helper selects all three repositories in the intended order (scraper, Service, Web), requires one SemVer per selected target, validates exact tagged source/CI identity, and stops sequential dispatch after a failed child. Mise task listing was attempted but blocked because `mise.dev.toml` in this temporary worktree is untrusted; no trust setting was changed. Current local main is dirty and GitHub auth is invalid, so the dispatcher did not run and no production release was dispatched.

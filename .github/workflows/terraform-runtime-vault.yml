@@ -93,11 +93,17 @@ jobs:
 
       - name: Create reviewed plan and reject unrelated changes
         working-directory: deployment/terraform
+        env:
+          EXPECTED_VAULT_OCID: ${{ vars.TF_RUNTIME_VAULT_OCID }}
+          EXPECTED_COMPARTMENT_OCID: ${{ vars.TF_OCI_TENANCY_OCID }}
         run: |
           set -euo pipefail
           terraform plan -input=false -lock-timeout=5m -out="$RUNNER_TEMP/runtime-vault.tfplan"
           terraform show -json "$RUNNER_TEMP/runtime-vault.tfplan" > "$RUNNER_TEMP/runtime-vault-plan.json"
-          python3 ../../scripts/terraform_runtime_vault_plan_guard.py "$RUNNER_TEMP/runtime-vault-plan.json"
+          python3 ../../scripts/terraform_runtime_vault_plan_guard.py \
+            "$RUNNER_TEMP/runtime-vault-plan.json" \
+            --vault-ocid "$EXPECTED_VAULT_OCID" \
+            --compartment-ocid "$EXPECTED_COMPARTMENT_OCID"
           terraform show -no-color "$RUNNER_TEMP/runtime-vault.tfplan" > "$RUNNER_TEMP/runtime-vault-plan.txt"
           cat "$RUNNER_TEMP/runtime-vault-plan.txt" >> "$GITHUB_STEP_SUMMARY"
 
@@ -164,8 +170,14 @@ jobs:
 
       - name: Recheck plan scope and apply
         working-directory: deployment/terraform
+        env:
+          EXPECTED_VAULT_OCID: ${{ vars.TF_RUNTIME_VAULT_OCID }}
+          EXPECTED_COMPARTMENT_OCID: ${{ vars.TF_OCI_TENANCY_OCID }}
         run: |
           set -euo pipefail
           terraform show -json "$RUNNER_TEMP/reviewed-plan/runtime-vault.tfplan" > "$RUNNER_TEMP/reviewed-plan/plan.json"
-          python3 ../../scripts/terraform_runtime_vault_plan_guard.py "$RUNNER_TEMP/reviewed-plan/plan.json"
+          python3 ../../scripts/terraform_runtime_vault_plan_guard.py \
+            "$RUNNER_TEMP/reviewed-plan/plan.json" \
+            --vault-ocid "$EXPECTED_VAULT_OCID" \
+            --compartment-ocid "$EXPECTED_COMPARTMENT_OCID"
           terraform apply -input=false -lock-timeout=5m "$RUNNER_TEMP/reviewed-plan/runtime-vault.tfplan"

@@ -1,5 +1,7 @@
 # Production Rollout Readiness
 
+> **Historical snapshot (2026-10-13; superseded for current cutover):** This document captures the earlier MCP-based production topology and must not be used as a current inventory or deployment procedure. The active MÍA/Spring AI cutover checklist is [`tasks/todo.md`](../../tasks/todo.md). Current source removes the MCP runtime; production MCP resources remain until the protected Service + scraper + Ford-web release, both-host verification, and rollback gates pass. Preserve this snapshot as historical evidence only.
+
 Status: **blocked from public production cutover**. The isolated `emme-crm-ui` Pages origin may be deployed and verified independently. Do not release Ford Service to emme-1, change public DNS, or switch customer traffic until every blocking runtime gate below is cleared and rechecked.
 
 Checked on 2026-10-13 from the local workspace, authenticated GitHub CLI session, read-only SSH sessions, and read-only Cloudflare Pages API/CLI queries. No secret values were read or recorded.

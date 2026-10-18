@@ -43,9 +43,10 @@ calendar, and price-policy approval remain pending.
 ## Launch gate
 
 After-hours shadow rollout remains blocked until the external evidence above is
-provided, operators complete the dry run, and retrieval/catalog parity and
-privacy checks pass. Do not enable customer-facing shadow mode or catalog tools
-in production based only on synthetic tests.
+provided, operators complete the dry run, and retrieval-quality and privacy
+checks pass. Catalog tools use Ford Service's own Spring AI contract; Node/MCP
+parity is not a launch gate. Do not enable customer-facing shadow mode or
+catalog tools in production based only on synthetic tests.
 
 ## Rollback
 

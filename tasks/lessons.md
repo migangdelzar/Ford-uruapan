@@ -1,5 +1,9 @@
 # Implementation lessons
 
+- Failure mode: the protected Terraform Vault plan guard constrained resource addresses and change actions but accepted arbitrary in-place policy statement changes, including a synthetic `manage all-resources in tenancy` grant. Detection: a new regression case passed against the old guard when it should have been rejected. Prevention: have Terraform and the guard consume the same exact identity/secret contract; validate every planned statement against expected Vault and compartment OCIDs in both plan and apply jobs.
+- Failure mode: an OCID validator allowed only alphanumerics and periods, rejecting valid OCI-shaped identifiers containing underscores. Detection: a regression case using an underscore-bearing vault/compartment identifier failed validation. Prevention: accept the OCI identifier character set and keep an underscore/hyphen case in the plan-guard tests.
+- Failure mode: a policy guard checked exact grant statements but ignored changes to the IAM policy's metadata or attachment compartment. Detection: a renamed policy with otherwise valid statements passed the guard. Prevention: compare all before/after policy fields except the intended `statements` field and reject unknown values.
+
 - Failure mode: an exact-trim comparison URL was added to the versioned view and row mapper but omitted from the trim lookup SELECT list. Detection: focused H2 lookups failed with a missing-column SQL error before exercising the mapper. Prevention: verify each view-backed output field in the migration, production query projection, row mapper, and restored-snapshot assertion together; fixture availability alone is insufficient.
 
 - Spring proxies require transactional adapter classes to remain subclassable; do not mark a proxied repository `final`.
