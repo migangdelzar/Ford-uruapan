@@ -86,6 +86,6 @@ Tasks 1–3 are Service-side and precede Task 4's Web integration. Rollback is a
 
 ## Local verification results (2026-10-18)
 
-- Ford Service: full `test bootJar compileIntegrationTestJava` passed (807 unit tests, 0 failures/errors/skips); focused authenticated digest controller HTTP test and H2 JDBC range test passed.
+- Ford Service: full `test bootJar compileIntegrationTestJava` passed (808 unit tests, 0 failures/errors/skips); focused authenticated digest controller HTTP test and H2 JDBC range test passed.
 - Ford-web: full suite 35 files / 142 tests passed; lint, production build, 50-path API check, and Pages function build passed.
 - Remaining verification: dedicated PostgreSQL test of the bounded JDBC query; approved calendar and operator dry-run; protected release and production 08:45 evidence.
