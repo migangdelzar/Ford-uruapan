@@ -6,14 +6,14 @@ Enable Ford Service's in-process Spring AI catalog tools with database-enforced 
 
 ## Approved decision
 
-Reuse the existing `FORD_DATABASE_PASSWORD` secret value for a separate PostgreSQL login named `ford_catalog_reader`. The new login receives only `CONNECT`, `USAGE` on `ford_read`, and `SELECT` on current/future `ford_read` views. Ford Service's existing OCI Vault property loader already places `FORD_DATABASE_PASSWORD` in the same JVM; the catalog datasource uses that value with the reader username. No new Vault secret, OCID, GitHub secret, or Terraform secret-name grant is introduced.
+Reuse the existing `FORD_DATABASE_PASSWORD` secret value for a separate PostgreSQL login named `ford_catalog_reader`. The login receives only `CONNECT`, `USAGE` on `ford_read`, and `SELECT` on current/future `ford_read` views. Provisioning removes existing role memberships and any prior base-schema/write grants before applying the allowlist. Ford Service's existing OCI Vault property loader already places `FORD_DATABASE_PASSWORD` in the same JVM; the catalog datasource uses that value with the reader username. No new Vault secret, OCID, GitHub secret, or Terraform secret-name grant is introduced.
 
 The shared password does not make the reader login writable: PostgreSQL privileges follow the login role. The Service process already has the primary `ford` writer credential for conversation persistence, so this reader boundary limits the catalog adapter's connection and SQL capabilities, not a compromised Service process.
 
 ## Ownership and rollout sequence
 
 1. Ford-scraping remains the sole schema/migration/catalog writer. Its protected scheduler release first verifies a database backup and applies forward-only catalog read-view migrations.
-2. The same protected data-host rollout provisions or repairs `ford_catalog_reader` using the existing `POSTGRES_PASSWORD` already in the mode-0600 runtime file. Ansible tasks suppress password/SQL output. It applies only the documented grants and verifies `SELECT` succeeds while `INSERT` and schema mutation are denied.
+2. The same protected data-host rollout provisions or repairs `ford_catalog_reader` using the existing `POSTGRES_PASSWORD` already in the mode-0600 runtime file. Ansible tasks suppress password/SQL output. It removes inherited memberships and prior broad grants, applies only the documented allowlist, and verifies `SELECT` succeeds while writes and base-schema access are denied.
 3. If migration, role creation, or permission verification fails, the existing scheduler stays active. The replacement scheduler does not start and Service is not cut over.
 4. Ford Service binds its catalog datasource to the existing `FORD_DATABASE_PASSWORD` value, `FORD_CATALOG_USERNAME=ford_catalog_reader`, and the configured private JDBC URL. `FORD_CATALOG_TOOLS_ENABLED` remains false by default and is enabled only after the protected reader check passes.
 5. The protected Service release performs a read-only catalog smoke (vehicle evidence and source URL) before the old MCP consumer is considered for retirement. On failure, roll back the Service image or disable the flag; keep the old MCP endpoint/resources until the Service smoke passes.
