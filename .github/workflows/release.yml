@@ -243,7 +243,6 @@ jobs:
       FORD_CATALOG_TOOLS_ENABLED: ${{ vars.FORD_CATALOG_TOOLS_ENABLED || 'false' }}
       FORD_CATALOG_JDBC_URL: ${{ vars.FORD_CATALOG_JDBC_URL }}
       FORD_CATALOG_USERNAME: ${{ vars.FORD_CATALOG_USERNAME }}
-      FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD: ${{ vars.FORD_CATALOG_TOOLS_ENABLED == 'true' && vars.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD || '' }}
       FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY }}
       FORD_VAULT_SECRET_OCID_OPENAI_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_OPENAI_API_KEY }}
       FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY }}
@@ -297,9 +296,8 @@ jobs:
           }
           if [[ "$FORD_CATALOG_TOOLS_ENABLED" == 'true' ]]; then
             [[ "$FORD_CATALOG_JDBC_URL" =~ ^jdbc:postgresql://[^/]+/[^?]+([?].*)?$ \
-              && "$FORD_CATALOG_USERNAME" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ \
-              && "$FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD" =~ ^ocid1[.]vaultsecret[.][A-Za-z0-9.]+$ ]] || {
-              echo 'Enabled local catalog tools require the dedicated PostgreSQL reader URL, username, and Vault secret OCID.' >&2
+              && "$FORD_CATALOG_USERNAME" == 'ford_catalog_reader' ]] || {
+              echo 'Enabled local catalog tools require a PostgreSQL URL and ford_catalog_reader username.' >&2
               exit 1
             }
           fi
@@ -346,8 +344,61 @@ jobs:
           ref: main
           sparse-checkout: deployment/observability/otel-collector/grafana-cloud-config.yaml
           sparse-checkout-cone-mode: false
+      - name: Verify catalog reader permissions before deployment
+        if: vars.FORD_CATALOG_TOOLS_ENABLED == 'true'
+        shell: bash
+        env:
+          DATA_SSH_HOST: ${{ vars.OCI_DATA_DEPLOY_HOST }}
+          DATA_SSH_USER: ${{ vars.OCI_DATA_DEPLOY_USER }}
+          DATA_SSH_PRIVATE_KEY: ${{ secrets.OCI_DATA_SSH_PRIVATE_KEY }}
+          DATA_SSH_KNOWN_HOSTS: ${{ secrets.OCI_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/catalog-reader-data-key"
+          known_hosts="$RUNNER_TEMP/catalog-reader-known-hosts"
+          install -m 0600 /dev/null "$key"
+          printf '%s\n' "$DATA_SSH_PRIVATE_KEY" > "$key"
+          printf '%s\n' "$DATA_SSH_KNOWN_HOSTS" > "$known_hosts"
+          chmod 0600 "$known_hosts"
+          reader_check="$(ssh -i "$key" \
+            -o BatchMode=yes -o ConnectTimeout=15 \
+            -o UserKnownHostsFile="$known_hosts" \
+            -o StrictHostKeyChecking=yes \
+            "$DATA_SSH_USER@$DATA_SSH_HOST" \
+            'docker exec -i -u postgres data-postgres-1 psql -X -q -A -t -F "|" -v ON_ERROR_STOP=1 -U postgres -d ford_service' <<'SQL'
+          SELECT
+            has_database_privilege('ford_catalog_reader', 'ford_service', 'CONNECT'),
+            has_schema_privilege('ford_catalog_reader', 'ford_read', 'USAGE'),
+            has_table_privilege('ford_catalog_reader', 'ford_read.vehicle_search_v1', 'SELECT'),
+            has_table_privilege('ford_catalog_reader', 'ford_read.vehicle_search_v1', 'INSERT'),
+            has_table_privilege('ford_catalog_reader', 'ford_read.vehicle_search_v1', 'UPDATE'),
+            has_table_privilege('ford_catalog_reader', 'ford_read.vehicle_search_v1', 'DELETE'),
+            has_table_privilege('ford_catalog_reader', 'ford_read.vehicle_search_v1', 'TRUNCATE'),
+            has_schema_privilege('ford_catalog_reader', 'ford', 'USAGE'),
+            NOT EXISTS (
+              SELECT 1 FROM pg_auth_members
+              WHERE member = (SELECT oid FROM pg_roles WHERE rolname = 'ford_catalog_reader')
+            ),
+            EXISTS (
+              SELECT 1
+              FROM pg_roles AS reader_role
+              CROSS JOIN LATERAL unnest(reader_role.rolconfig) AS settings(setting)
+              WHERE reader_role.rolname = 'ford_catalog_reader'
+                AND settings.setting = 'default_transaction_read_only=on'
+            );
+          SET ROLE ford_catalog_reader;
+          SELECT count(*) FROM ford_read.vehicle_search_v1;
+          RESET ROLE;
+          SQL
+          )"
+          permissions="${reader_check%%$'\n'*}"
+          row_count="${reader_check#*$'\n'}"
+          [[ "$permissions" == 't|t|t|f|f|f|f|f|t|t' && "$row_count" =~ ^[0-9]+$ ]] || {
+            echo 'Catalog reader verification failed: SELECT must pass and writes/base-schema access must be denied.' >&2
+            exit 1
+          }
       - name: Run the shared OCI blue-green deployment action
-        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@8acc8bd8f05281317304d482ae5c20abe19cfce4
+        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@60e44cc9a508f7a8300656ff8149e32c0d540b18
         with:
           target: ford-service
           ui-upstream-url: ${{ vars.FORD_WEB_UI_UPSTREAM_URL }}
@@ -376,7 +427,6 @@ jobs:
           service-catalog-tools-enabled: ${{ vars.FORD_CATALOG_TOOLS_ENABLED || 'false' }}
           service-catalog-jdbc-url: ${{ vars.FORD_CATALOG_JDBC_URL }}
           service-catalog-username: ${{ vars.FORD_CATALOG_USERNAME }}
-          service-catalog-password-secret-ocid: ${{ vars.FORD_CATALOG_TOOLS_ENABLED == 'true' && vars.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD || '' }}
           meta-delivery-enabled: ${{ vars.FORD_META_DELIVERY_ENABLED }}
           outbox-enabled: ${{ vars.FORD_OUTBOX_ENABLED }}
           meta-whatsapp-delivery-endpoint: ${{ vars.FORD_META_WHATSAPP_DELIVERY_ENDPOINT }}

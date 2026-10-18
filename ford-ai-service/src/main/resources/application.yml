@@ -117,7 +117,7 @@ ford:
     datasource:
       url: ${FORD_CATALOG_JDBC_URL:}
       username: ${FORD_CATALOG_USERNAME:}
-      password: ${FORD_CATALOG_PASSWORD:}
+      password: ${FORD_DATABASE_PASSWORD:}
       driver-class-name: ${FORD_CATALOG_DRIVER:org.postgresql.Driver}
   knowledge:
     rag:

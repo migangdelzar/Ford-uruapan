@@ -2,11 +2,14 @@ package com.ford.service.catalog;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ford.service.catalog.adapter.out.CatalogDataSourceConfiguration;
+import com.ford.service.catalog.adapter.out.CatalogDataSourceProperties;
 import com.ford.service.catalog.api.CatalogPort;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import javax.sql.DataSource;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -48,6 +51,25 @@ class CatalogDataSourceConfigurationTest {
                     assertThat(context).hasBean("catalogDataSource");
                     assertThat(context).hasSingleBean(CatalogPort.class);
                     assertThat(context.getBean("catalogDataSource", DataSource.class)).isNotNull();
+                });
+    }
+
+    @Test
+    void catalogPasswordFallsBackToExistingDatabasePassword() throws Exception {
+        assertThat(Files.readString(Path.of("src/main/resources/application.yml")))
+                .contains("password: ${FORD_DATABASE_PASSWORD:}");
+
+        contextRunner.withPropertyValues(
+                        "ford.catalog.tools.enabled=true",
+                        "ford.catalog.datasource.url=jdbc:h2:mem:catalog-password-fallback",
+                        "ford.catalog.datasource.username=ford_catalog_reader",
+                        "ford.catalog.datasource.password=${FORD_DATABASE_PASSWORD}",
+                        "FORD_DATABASE_PASSWORD=existing-db-password",
+                        "ford.catalog.datasource.driver-class-name=org.h2.Driver")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(CatalogDataSourceProperties.class).password())
+                            .isEqualTo("existing-db-password");
                 });
     }
 }

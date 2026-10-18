@@ -487,8 +487,8 @@ test("Ansible accepts the source catalog configuration names", async () => {
   }
   assert.match(example, /^FORD_CATALOG_READ_ONLY_TOOL_NAMES=/m);
   assert.match(appEnv, /FORD_CATALOG_READ_ONLY_TOOL_NAMES/);
-  assert.match(appEnv, /FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD/);
-  assert.match(vaultSecret, /FORD_CATALOG_PASSWORD/);
+  assert.doesNotMatch(appEnv, /FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD/);
+  assert.doesNotMatch(vaultSecret, /FORD_CATALOG_PASSWORD/);
 });
 
 test("Ford catalog keeps combined vehicle and financing search in app allowlists", async () => {

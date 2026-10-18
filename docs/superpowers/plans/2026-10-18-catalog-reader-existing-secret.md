@@ -35,9 +35,9 @@
 
 **Interfaces:**
 - Consumes: Existing `FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD` → `FORD_DATABASE_PASSWORD` mapping from `OciVaultEnvironmentPostProcessor`.
-- Produces: `ford.catalog.datasource.password` resolves `${FORD_CATALOG_PASSWORD:${FORD_DATABASE_PASSWORD:}}`; there is no catalog-password OCID input.
+- Produces: `ford.catalog.datasource.password` resolves `${FORD_DATABASE_PASSWORD:}`; there is no catalog-specific password setting or OCID input.
 
-- [ ] Add a focused configuration test proving the existing database password is used when `FORD_CATALOG_PASSWORD` is absent:
+- [ ] Add a focused configuration test proving the existing database password is used by the catalog datasource:
 
 Add this import to `CatalogDataSourceConfigurationTest.java`:
 
@@ -65,9 +65,9 @@ void catalogPasswordFallsBackToExistingDatabasePassword() {
 }
 ```
 
-- [ ] Run `./gradlew test --tests 'com.ford.service.catalog.CatalogDataSourceConfigurationTest'`; observe the new fallback test fail against `password: ${FORD_CATALOG_PASSWORD:}`.
-- [ ] Change the application property to `password: ${FORD_CATALOG_PASSWORD:${FORD_DATABASE_PASSWORD:}}`; retain `CatalogDataSourceProperties.validate()` so enabled tools still fail if both properties are blank.
-- [ ] Remove `service-catalog-password-secret-ocid` and `FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD` action plumbing. Keep only the disabled-by-default feature flag, JDBC URL, and `ford_catalog_reader` username.
+- [ ] Run `./gradlew test --tests 'com.ford.service.catalog.CatalogDataSourceConfigurationTest'`; prove the existing password value binds to the catalog datasource.
+- [ ] Set the application property to `password: ${FORD_DATABASE_PASSWORD:}`; retain `CatalogDataSourceProperties.validate()` so enabled tools fail if the existing password is blank.
+- [ ] Remove all catalog-specific password settings, Vault imports, and action plumbing. Keep only the disabled-by-default feature flag, JDBC URL, and `ford_catalog_reader` username.
 - [ ] Remove catalog-password OCID validation from `.github/actions/oci-blue-green/deploy.sh`; enabled catalog tools still require a PostgreSQL URL and dedicated reader username.
 - [ ] Update Service `release.yml` and its contracts to require the existing database password OCID (already required for Service) and never require a second catalog secret.
 - [ ] Run the focused Gradle test, all Action Python contracts, all Service Python contracts, Node workflow contracts, and `git diff --check`; all pass.
@@ -78,21 +78,21 @@ void catalogPasswordFallsBackToExistingDatabasePassword() {
 - Modify: `.github/actions/oci-blue-green/action.yml`
 - Modify: `.github/actions/oci-blue-green/deploy.sh`
 - Modify: `deployment/ansible/roles/scraper_scheduler/tasks/release.yml`
-- Create: `deployment/ansible/roles/scraper_scheduler/templates/scheduler.env.j2`
 - Modify: `deployment/ansible/roles/scraper_scheduler/templates/compose.yml.j2`
 - Modify: `.github/workflows/release.yml` in Ford-scraping
 - Test: `tests/test_action_package_contract.py`
 - Validate: `deployment/ansible/scraper-scheduler-blue-green.yml`
 
 **Interfaces:**
-- Consumes: Candidate image and the existing `FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD` reference, read with emme-2's already-authorized Instance Principal.
-- Produces: A mode-0600 scheduler environment and `ford_catalog_reader` login with the same existing password value as `ford`, view-only grants, a verified read/write-denied result, and a release manifest for the coordinator.
+- Consumes: Candidate image and the existing `FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD` reference; the Node scheduler resolves it in-process through `FORD_SECRETS_PROVIDER=oci-vault`.
+- Produces: Scheduler/migration containers with only the Vault secret OCID and database host/user/name, plus `ford_catalog_reader` with the same existing password value as `ford`, view-only grants, verified read/write denial, and a release manifest.
 
-- [ ] Add an Action contract test requiring secret fetch and `scheduler.env` rendering before `Migrate the catalog`, and reader setup after migration but before `Replace the single active scheduler`; require `no_log: true` for secret output, password facts, and psql role commands.
+- [ ] Add Action contract tests requiring OCI Vault settings in the scheduler Compose environment, reader setup after `Migrate the catalog` but before `Replace the single active scheduler`, and `no_log: true` for secret output, password facts, and psql role commands.
 - [ ] Run `python3 -m unittest tests.test_action_package_contract.ActionPackageContractTest.test_scheduler_reader_is_provisioned_after_migrations`; observe failure before the role task exists.
 - [ ] Add `scheduler-postgres-password-secret-ocid` to the action, map it to `OCI_SCHEDULER_POSTGRES_PASSWORD_SECRET_OCID`, and wire the existing `FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD` production variable from Ford-scraping `release.yml`. Validate the OCID for scheduler deploy/rollback; create no new secret.
-- [ ] Install/verify OCI CLI on emme-2 and fetch that existing secret with `oci secrets secret-bundle get --auth instance_principal --secret-id "$OCI_SCHEDULER_POSTGRES_PASSWORD_SECRET_OCID"`; register the base64 content `no_log: true`, decode into `scheduler_database_password`, and assert it is non-empty.
-- [ ] Render `scheduler.env.j2` to `{{ remote_root }}/mcp/scheduler.env` before migration, with only `POSTGRES_PASSWORD={{ scheduler_database_password }}`, owner `ansible_user`, mode `0600`, and `no_log: true`. Change migration/start/rollback Compose commands to use `scheduler.env`, removing the old MCP `.env` dependency.
+- [ ] Update `compose.yml.j2` to pass `FORD_SECRETS_PROVIDER=oci-vault`, `FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD`, `DATABASE_HOST=postgres`, `DATABASE_USER=ford`, `DATABASE_NAME=ford_service`, `DATABASE_PORT=5432`, and `DATABASE_APPLICATION_NAME=ford-scraping-scheduler`. Do not interpolate or persist `POSTGRES_PASSWORD` in Compose or a host file.
+- [ ] Install/verify OCI CLI on emme-2 and fetch the existing secret with `oci secrets secret-bundle get --auth instance_principal --secret-id "$OCI_SCHEDULER_POSTGRES_PASSWORD_SECRET_OCID"`; register the base64 content `no_log: true`, decode into `scheduler_database_password` in memory, and assert it is non-empty for the psql role command.
+- [ ] Remove `--env-file` arguments that point to the old MCP `.env`. Scheduler migration/start/rollback commands use only the Compose file and the Vault OCID environment; Node resolves the password inside the process.
 - [ ] Execute psql inside `data-postgres-1` as the container's `postgres` OS/database user, with `catalog_reader_password` passed by psql's quoted variable form and task output hidden. Create the role only if absent; otherwise reassert its login flags/password:
 
 ```sql
@@ -144,13 +144,17 @@ ALTER ROLE ford_catalog_reader SET default_transaction_read_only = on;
 **Files:**
 - Modify: `ford-ai-service/README.md`
 - Modify: `docs/operations/catalog-read-only-access.md`
+- Modify: `.github/workflows/release.yml`
 - Modify: `ford-ai-service/scripts/tests/test_oci_action_contract.py`
 - Modify: `scripts/workflow-contract.test.mjs`
+- Modify: `.github/workflows/deployment-preflight.yml`
 
 - [ ] Document that the existing `FORD_DATABASE_PASSWORD` Vault value is reused with `FORD_CATALOG_USERNAME=ford_catalog_reader`; no catalog password mapping is required.
 - [ ] Keep `FORD_CATALOG_TOOLS_ENABLED=false` by default. Set it true only after the protected scheduler release verifies reader privileges.
 - [ ] Set the protected Service variables to `FORD_CATALOG_TOOLS_ENABLED=true`, `FORD_CATALOG_JDBC_URL=jdbc:postgresql://10.0.0.29:5432/ford_service?ApplicationName=ford-service-catalog&connectTimeout=5&socketTimeout=30&tcpKeepAlive=true`, and `FORD_CATALOG_USERNAME=ford_catalog_reader`.
+- [ ] Add a catalog-enabled Service release preflight that verifies the reader's existing database privileges and a SELECT on `ford_read.vehicle_search_v1` from emme-2 before the OCI action starts. It must not read or print password values.
 - [ ] Verify Service release validation still requires the existing database password OCID but no separate catalog secret. Run Service Python/workflow contracts and `git diff --check`.
+- [ ] Remove the preflight's obsolete MCP `.env` file requirement; the scheduler runtime resolves the existing Vault password in-process and creates no password file.
 
 ### Task 4: Protected deployment and live verification
 
