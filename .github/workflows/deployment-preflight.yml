@@ -79,7 +79,21 @@ jobs:
             "$SSH_USER@$DATA_SSH_HOST" 'bash -se' <<'REMOTE'
           set -euo pipefail
           docker exec -u postgres data-postgres-1 pg_isready -U ford -d ford_service >/dev/null
-          echo 'emme-2 PostgreSQL health passed'
+          scheduler_containers="$(docker ps -a --format '{{.Names}} {{.State}}' | awk 'tolower($1) ~ /sched/ { print }')"
+          [[ -n "$scheduler_containers" ]] || {
+            echo 'No scraper scheduler container was found on emme-2.' >&2
+            exit 1
+          }
+          [[ "$(printf '%s\n' "$scheduler_containers" | wc -l | tr -d ' ')" == '1' \
+            && "$scheduler_containers" == *' running' ]] || {
+            echo 'Expected exactly one running scraper scheduler on emme-2.' >&2
+            exit 1
+          }
+          test -s /opt/ford-uruapan/mcp/.env || {
+            echo 'The existing scheduler runtime environment is missing.' >&2
+            exit 1
+          }
+          printf 'emme-2 PostgreSQL is ready; scheduler: %s\n' "$scheduler_containers"
           REMOTE
 
       - name: Summarize read-only preflight
@@ -89,6 +103,6 @@ jobs:
             echo '### Deployment connectivity preflight'
             echo "- Source: $GITHUB_SHA"
             echo '- emme-1 SSH and Ford Service health: checked'
-            echo '- emme-2 SSH and PostgreSQL health: checked'
+            echo '- emme-2 SSH, PostgreSQL, and exactly-one scheduler check: completed'
             echo '- Deployment, migration, image pull, and route switch: not run'
           } >> "$GITHUB_STEP_SUMMARY"
