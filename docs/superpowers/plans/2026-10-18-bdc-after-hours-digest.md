@@ -52,7 +52,7 @@ The policy method returns `AfterHoursDigestWindow(businessDate, timeZone, availa
 ## Task 2: Add tenant-bounded read contract and query
 
 - [x] Add service tests proving unauthenticated/non-operator/unauthorized-tenant requests fail, pre-08:45 responses expose no tickets, after-hours tickets appear, in-hours tickets do not, and partial packet counts are accurate.
-- [x] Add a bounded JDBC repository read; endpoint integration test exercises the scoped digest response. A dedicated PostgreSQL boundary test for the new range query remains a follow-up verification gap.
+- [x] Add a bounded JDBC repository read; endpoint integration test exercises the scoped digest response. The H2 PostgreSQL-mode test passes; native PostgreSQL-backed verification remains open because localhost:5432 refused connections and the prescribed Colima start failed with `unknown userid 501`.
 - [x] Add `HandoffRepository.listCreatedBetween(tenantId, startInclusive, endExclusive)` and implement it using existing `JdbcClient`; no writes or broad fetch-all filtering.
 - [x] Implement the typed digest response/service using `DealershipHoursPolicy` and injected `Clock`; validate operator and tenant before reading.
 - [x] Rerun focused unit tests and authenticated digest HTTP integration test.
@@ -88,4 +88,4 @@ Tasks 1–3 are Service-side and precede Task 4's Web integration. Rollback is a
 
 - Ford Service: full `test bootJar compileIntegrationTestJava` passed (808 unit tests, 0 failures/errors/skips); focused authenticated digest controller HTTP test and H2 JDBC range test passed.
 - Ford-web: full suite 35 files / 142 tests passed; lint, production build, 50-path API check, and Pages function build passed.
-- Remaining verification: dedicated PostgreSQL test of the bounded JDBC query; approved calendar and operator dry-run; protected release and production 08:45 evidence.
+- Remaining verification: native PostgreSQL run of the bounded JDBC query; approved calendar and operator dry-run; protected release and production 08:45 evidence.
