@@ -7,7 +7,6 @@ from jinja2 import Environment, FileSystemLoader
 
 REPO_ROOT = Path(__file__).parents[2]
 APP_TEMPLATES = REPO_ROOT.parent / "deployment/ansible/roles/app/templates"
-MCP_TEMPLATES = REPO_ROOT.parent / "deployment/ansible/roles/mcp/templates"
 
 
 class BlueGreenComposeContractTest(unittest.TestCase):
@@ -41,101 +40,6 @@ class BlueGreenComposeContractTest(unittest.TestCase):
         proxy = compose["services"]["app-proxy"]
         self.assertEqual(proxy["network_mode"], "host")
         self.assertEqual(proxy["image"], "nginx@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de")
-
-    def test_mcp_slots_do_not_run_migrations_at_container_start(self):
-        compose = self.render(
-            MCP_TEMPLATES,
-            "blue-green-compose.yml.j2",
-            mcp_image="ghcr.io/example/ford-mcp@sha256:newdigest",
-            mcp_previous_image="ghcr.io/example/ford-mcp@sha256:olddigest",
-            mcp_candidate_slot="blue",
-            mcp_blue_port=3101,
-            mcp_green_port=3102,
-            mcp_active_port=3101,
-            mcp_proxy_image="nginx@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de",
-            emme_2_private_ip="10.0.0.2",
-            remote_root="/opt/ford",
-        )
-
-        self.assertIn("mcp-blue", compose["services"])
-        self.assertIn("mcp-green", compose["services"])
-        blue = compose["services"]["mcp-blue"]
-        green = compose["services"]["mcp-green"]
-        self.assertEqual(blue["image"], "ghcr.io/example/ford-mcp@sha256:newdigest")
-        self.assertEqual(green["image"], "ghcr.io/example/ford-mcp@sha256:olddigest")
-        self.assertEqual(blue["ports"], ["127.0.0.1:3101:3001"])
-        self.assertEqual(green["ports"], ["127.0.0.1:3102:3001"])
-        self.assertNotIn("migrate", blue.get("command", []))
-        proxy = compose["services"]["mcp-proxy"]
-        self.assertEqual(proxy["network_mode"], "host")
-        self.assertEqual(proxy["image"], "nginx@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de")
-
-    def test_mcp_vault_environment_passes_only_secret_references_to_containers(self):
-        templates = MCP_TEMPLATES
-        environment = Environment(loader=FileSystemLoader(templates), autoescape=False)
-        values = {
-            "FORD_SECRETS_PROVIDER": "oci-vault",
-            "FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD": "ocid-database",
-            "FORD_VAULT_SECRET_OCID_MCP_HTTP_BEARER_TOKEN": "ocid-mcp-token",
-            "POSTGRES_PASSWORD": "synthetic-db-password",
-            "MCP_HTTP_BEARER_TOKEN": "synthetic-mcp-token",
-        }
-        environment.globals["lookup"] = lambda _plugin, key: values.get(key, "")
-        rendered = environment.get_template("mcp.env.j2").render(
-            mcp_image="ghcr.io/example/mcp@sha256:digest",
-            emme_2_private_ip="10.0.0.2",
-        )
-
-        self.assertIn("FORD_SECRETS_PROVIDER=oci-vault", rendered)
-        self.assertIn("FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD=ocid-database", rendered)
-        self.assertIn("FORD_VAULT_SECRET_OCID_MCP_HTTP_BEARER_TOKEN=ocid-mcp-token", rendered)
-        self.assertNotIn("synthetic-db-password", rendered)
-        self.assertNotIn("synthetic-mcp-token", rendered)
-        self.assertNotRegex(rendered, r"(?m)^POSTGRES_PASSWORD=")
-        self.assertNotRegex(rendered, r"(?m)^MCP_HTTP_BEARER_TOKEN=")
-
-    def test_mcp_compose_delegates_vault_resolution_to_the_mcp_process(self):
-        for template_name in ("compose.yml.j2", "blue-green-compose.yml.j2"):
-            compose = self.render(
-                MCP_TEMPLATES,
-                template_name,
-                mcp_image="ghcr.io/example/ford-mcp@sha256:newdigest",
-                mcp_previous_image="ghcr.io/example/ford-mcp@sha256:olddigest",
-                mcp_candidate_slot="blue",
-                mcp_blue_port=3101,
-                mcp_green_port=3102,
-                mcp_active_port=3101,
-                mcp_proxy_image="nginx@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de",
-                emme_2_private_ip="10.0.0.2",
-                remote_root="/opt/ford",
-                mcp_scheduler_image="ghcr.io/example/ford-mcp@sha256:scheduler",
-            )
-            services = compose["services"]
-            mcp_services = [name for name in services if name.startswith("mcp") and name not in ("mcp-proxy",)]
-            self.assertTrue(mcp_services)
-            for name in mcp_services:
-                environment = services[name]["environment"]
-                self.assertIn("FORD_SECRETS_PROVIDER", environment)
-                self.assertIn("FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD", environment)
-                self.assertIn("DATABASE_HOST", environment)
-                self.assertNotIn("POSTGRES_PASSWORD", environment)
-
-    def test_mcp_protocol_smoke_resolves_vault_token_inside_container(self):
-        playbook = (MCP_TEMPLATES.parent / "tasks" / "blue-green.yml").read_text()
-
-        self.assertIn("loadRuntimeEnvironment", playbook)
-        self.assertIn("command: 'mcp-http'", playbook)
-        self.assertNotIn("process.env.MCP_HTTP_BEARER_TOKEN", playbook)
-
-    def test_mcp_blue_green_refreshes_runtime_environment_from_protected_config(self):
-        playbook = (MCP_TEMPLATES.parent / "tasks" / "blue-green.yml").read_text()
-
-        self.assertIn("src: mcp.env.j2", playbook)
-        self.assertIn('dest: "{{ remote_root }}/mcp/.env"', playbook)
-        self.assertIn("FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD", playbook)
-        candidate_validation = playbook.index("Validate current slot and requested rollback identity")
-        environment_render = playbook.index("Render MCP runtime environment from protected configuration")
-        self.assertLess(candidate_validation, environment_render)
 
     def test_service_blue_green_refreshes_application_environment(self):
         playbook = APP_TEMPLATES.parent / "tasks" / "blue-green.yml"
@@ -179,48 +83,12 @@ class BlueGreenComposeContractTest(unittest.TestCase):
         self.assertIn("proxy_set_header X-Forwarded-Port 443;", rendered)
         self.assertNotIn("proxy_set_header X-Forwarded-Proto $scheme;", rendered)
 
-    def test_mcp_proxy_keeps_tunnel_listener_and_routes_to_active_slot(self):
-        template = Environment(loader=FileSystemLoader(MCP_TEMPLATES)).get_template("proxy.conf.j2")
-        rendered = template.render(mcp_active_port=3102, emme_2_private_ip="10.0.0.2")
-
-        self.assertIn("listen 127.0.0.1:3001", rendered)
-        self.assertIn("listen 10.0.0.2:3001", rendered)
-        self.assertIn("proxy_pass http://127.0.0.1:3102", rendered)
-
-    def test_mcp_deploy_checks_candidate_before_switch_and_retains_rollback_path(self):
-        task_file = REPO_ROOT.parent / "deployment/ansible/roles/mcp/tasks/blue-green.yml"
-        self.assertTrue(task_file.exists(), "blue-green MCP deployment tasks must exist")
-        task_text = task_file.read_text(encoding="utf-8")
-
-        candidate_check = task_text.index("Wait for candidate MCP health")
-        switch = task_text.index("Switch stable MCP proxy")
-        stable_check = task_text.index("Verify stable MCP route")
-        state_write = task_text.index("Record active and previous MCP release slots")
-        recovery = task_text.index("Restore prior MCP route after failed smoke")
-        self.assertLess(candidate_check, switch)
-        self.assertLess(switch, stable_check)
-        self.assertLess(stable_check, state_write)
-        self.assertLess(state_write, recovery)
-        self.assertIn("@sha256:", task_text)
-        self.assertNotIn("FORD_MCP_TOKEN", task_text)
-
-    def test_regular_mcp_deployment_runs_migrations_once_before_startup(self):
-        task_file = REPO_ROOT.parent / "deployment/ansible/roles/mcp/tasks/main.yml"
-        compose_file = MCP_TEMPLATES / "compose.yml.j2"
-        task_text = task_file.read_text(encoding="utf-8")
-        compose_text = compose_file.read_text(encoding="utf-8")
-
-        migration = task_text.index("Run MCP catalog migrations once before starting the service")
-        startup = task_text.index("Start MCP and embedding service")
-        self.assertLess(migration, startup)
-        self.assertIn("node dist/src/cli.js migrate", task_text[migration:startup])
-        self.assertNotIn("migrate", compose_text)
-
-    def test_legacy_mcp_listener_must_be_unique_before_switch(self):
-        task_file = REPO_ROOT.parent / "deployment/ansible/roles/mcp/tasks/blue-green.yml"
-        task_text = task_file.read_text(encoding="utf-8")
-        self.assertIn("Validate legacy MCP listener count", task_text)
-        self.assertIn("mcp_legacy_listener.stdout_lines | length <= 1", task_text)
+    def test_retired_mcp_runtime_has_no_deployment_playbooks_or_templates(self):
+        deployment = REPO_ROOT.parent / "deployment/ansible"
+        self.assertFalse((deployment / "mcp.yml").exists())
+        self.assertFalse((deployment / "mcp-blue-green.yml").exists())
+        self.assertFalse((deployment / "roles/mcp").exists())
+        self.assertTrue((deployment / "catalog-sync.yml").exists())
 
     def test_app_deploy_checks_candidate_switches_and_restores_prior_route(self):
         task_file = REPO_ROOT.parent / "deployment/ansible/roles/app/tasks/blue-green.yml"
