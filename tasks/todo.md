@@ -655,3 +655,9 @@ The supplied plan broadens the active catalog replacement into the full MÍA Pha
     - Started throwaway `pgvector/pgvector:pg16` (`ford-test-pg`), created `ford_test`, enabled `vector`+`pg_trgm`, ran `npm run migrate`, then removed the container (no volumes).
   - **Verification**
     - `npm run lint` clean; `npm run build` clean; `npm run test:unit` 278/278; `npm run test:integration` 18/18 (7 files).
+
+## Task: Add a protected MÍA production release dispatcher
+
+- [x] Add executable `ford-ai-service/.mise/tasks/deploy/release-all` that requires explicit Service and Ford-scraping versions, clean `main` synchronized with GitHub, valid GitHub CLI authentication, and validates inputs before dispatching the existing protected release coordinator for both repos.
+- [x] Document usage and state clearly that the task queues `.github/workflows/release-all.yml`; it does not deploy over SSH or bypass approval, provenance, parity, readiness, and rollback controls.
+- [x] `bash -n ford-ai-service/.mise/tasks/deploy/release-all` and `git diff --check` pass. Mise task listing was attempted but blocked because `mise.dev.toml` in this temporary worktree is untrusted; no trust setting was changed. No production release was dispatched.

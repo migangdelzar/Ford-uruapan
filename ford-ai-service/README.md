@@ -206,6 +206,25 @@ and scheduled syncs concurrently; Actions concurrency and the database
 advisory lock coordinate workflow/database runs, while the local task remains
 operator-controlled.
 
+To release the MÍA catalog cutover, dispatch the coordinated protected release
+for Ford Service and Ford-scraping together, using the versions already
+published by their CI workflows:
+
+```bash
+mise run deploy:release-all -- <service-version> <scraping-version>
+```
+
+For example, versions use `vMAJOR.MINOR.PATCH`. This operator task requires a
+clean local `main` matching GitHub `main` and a valid `gh` login. It only
+dispatches `.github/workflows/release-all.yml`; GitHub Actions performs the
+release preflight, immutable image provenance checks, protected approvals,
+production readiness and deployment. Catalog parity must be complete before
+the production workflow allows the Spring AI catalog tools to be enabled. The
+Ford-scraping release removes the obsolete Node MCP runtime while retaining
+the catalog writer and scheduler deployment. Follow the workflow run and
+complete its host health, read-only permission, scheduler and rollback checks
+before considering production cutover complete.
+
 `mise run deploy:secrets` is the single secret-entry task. It generates
 missing database and operator credentials, then securely prompts for missing
 Meta, Grafana Cloud, and Langfuse credentials without echoing them. The task
