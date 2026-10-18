@@ -106,8 +106,16 @@ Local configuration verification (2026-10-18): `cd ford-ai-service && ./gradlew 
 - [ ] Verify emme-1 and emme-2 instance principals can read only their named runtime secrets; confirm app/data dynamic groups match the intended instance OCIDs and no application secret value enters GitHub variables, Terraform state, logs, or committed files.
 - [ ] Keep Java catalog database credentials separate: when the Service-owned tool configuration is ready, use the dedicated read-only database user, the `ford_read` views, its Vault secret OCID, and production JDBC URL. Verify SELECT succeeds and writes are denied.
 - [ ] Before enabling catalog tools, verify the actual OCI Vault secret name behind `FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD` and add that exact name to the emme-1 app grant contract. The current policy contract does not include this catalog-reader secret; the release now passes its OCID only when tools are enabled.
-- [ ] Run the protected Terraform runtime-Vault workflow from `main` with `plan`; inspect its artifact and ensure it changes only the reviewed least-privilege policy entries (removing obsolete MCP grants while preserving active app/data consumers). Stop on any group replacement, resource creation/destruction, or broader grant.
-- [ ] Apply only that reviewed plan through the protected production approval, then verify policy state and both instance-principal reads. Record plan/apply run IDs and retain evidence.
+- [ ] Run the protected Terraform runtime-Vault workflow from `main` with `plan`; inspect its artifact and confirm the emme-2 data identity retains `ford-prod-postgres-password` for the replacement scheduler. Stop on any group replacement, resource creation/destruction, or broader grant.
+  - **Actions Applied**
+    - `tasks/todo.md` — narrowed the plan gate to preserve the scheduler's shared PostgreSQL secret grant.
+  - **Verification**
+    - `deployment/terraform/runtime-vault-policy.json` retains `ford-prod-postgres-password` in the data identity's secret allowlist.
+- [ ] Defer applying policy changes that revoke MCP-only credentials until after section E has stopped every old MCP consumer. Old processes may need those grants to restart or roll back; the scheduler still requires the shared PostgreSQL secret.
+  - **Actions Applied**
+    - `tasks/todo.md` — moved MCP-only grant revocation after consumer shutdown and documented rollback dependency.
+  - **Verification**
+    - `Ford-scraping/src/secrets/runtime-secrets.ts` resolves `POSTGRES_PASSWORD` from Vault at startup; no Terraform apply was run.
 - [ ] Verify Terraform uses the dedicated OCI API user, private/versioned `ford-terraform-state` bucket, state locking, and exact `ford-runtime-secret-read` scope; import all three existing identity resources before Terraform manages them.
 - [ ] Keep Terraform API credentials in the dedicated OCI Actions secret and private state; never put OCI private keys or Vault values in `.zshrc`, command output, repository files, Terraform variables, or state.
 
@@ -123,8 +131,17 @@ Local configuration verification (2026-10-18): `cd ford-ai-service && ./gradlew 
 
 ### E. Retire the old production MCP footprint after successful cutover
 
-- [ ] Only after both hosts pass the checks above, remove old MCP containers, MCP-only Cloudflare route/tunnel configuration, MCP LaunchAgents, MCP-specific Vault secrets/grants, and obsolete GitHub secrets/variables.
+- [ ] Only after both hosts pass the checks above, stop/remove old MCP containers, MCP-only Cloudflare route/tunnel configuration, and MCP LaunchAgents. Preserve catalog writer/migrations/scheduler and the data identity's `ford-prod-postgres-password` grant.
+  - **Actions Applied**
+    - `tasks/todo.md` — split host/runtime retirement from MCP-only Vault secret/grant removal.
+  - **Verification**
+    - No production resources were stopped or removed in this session.
 - [ ] Verify no remaining MCP endpoint, process, route, secret consumer, or alert is active; retain catalog migrations, crawler, catalog writer, and the approved scheduler/refresh ownership.
+- [ ] After MCP consumers are confirmed stopped, run the protected Terraform plan/apply to revoke only MCP-specific Vault access while keeping the data scheduler's PostgreSQL grant; then remove obsolete MCP-only Vault secrets/GitHub variables if no consumer remains.
+  - **Actions Applied**
+    - `tasks/todo.md` — requires separate protected Terraform approval after direct post-cutover consumer verification.
+  - **Verification**
+    - No Terraform plan/apply or Vault cleanup has run; shared scheduler database grant remains in the checked-in policy contract.
 - [ ] Re-run health, catalog sync, scheduler, and rollback checks after cleanup; attach evidence and update this checklist with exact completion dates and run IDs.
 
 ### Current status and constraints

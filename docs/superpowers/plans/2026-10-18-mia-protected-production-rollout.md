@@ -55,7 +55,7 @@
 - [ ] Confirm environment reviewers, required variables/secrets, SSH host keys, registry access, deployment enablement, and Vault readiness. Do not print secret values.
 - [ ] Verify exact catalog reader secret name/OCID and read-only `ford_read` SELECT grant; leave catalog callbacks disabled if name, scope, or access is unverified.
 - [ ] Run the protected Terraform plan and inspect its artifact for only approved least-privilege Vault policy edits; stop for unexpected create/destroy/replacement or widened grants.
-- [ ] Apply the reviewed plan only after protected approval, then verify app/data instance-principal reads and denied writes.
+- [ ] Defer applying MCP-only grant revocation until Task 5 confirms old consumers are stopped. Keep the shared `ford-prod-postgres-password` grant for the scheduler and preserve grants needed for old-process rollback until retirement is complete.
 
 ### Task 4: Protected preflight and coordinated production release
 
@@ -77,7 +77,8 @@
 
 - [ ] Verify Service health, database/Redis connectivity, Vault resolution, catalog read-only permissions, source-grounded synthetic conversation, and Web Pages/API/assets.
 - [ ] Verify one intended monthly scheduler, successful backup-gated catalog sync, and rollback readiness on the data host.
-- [ ] Only after all replacement checks pass, remove old MCP containers/routes/tunnel/LaunchAgents and MCP-only secrets/grants via reviewed protected procedures; rerun health/scheduler checks.
+- [ ] Only after all replacement checks pass, stop/remove old MCP containers/routes/tunnel/LaunchAgents via reviewed protected procedures; rerun health/scheduler checks while preserving the data scheduler's PostgreSQL grant.
+- [ ] After MCP consumers are confirmed stopped, apply the reviewed MCP-only Vault grant revocation through protected approval and verify remaining app/data instance-principal reads and denied writes.
 - [ ] Record deployment and cleanup run IDs, digests, backup identity, both-host evidence, rollback image, and any remaining user-provided operational inputs.
 
 ## Acceptance Criteria
