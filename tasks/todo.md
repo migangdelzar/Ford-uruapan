@@ -15,6 +15,59 @@
 
 **Boundary:** Local MCP deploy/runtime code removal is complete in this worktree, but live MCP resources have not been touched. GitHub token/API and local SSH access were previously unavailable; production retirement remains blocked until protected Actions/host access is available. Historical `tasks/todo.md` entries below intentionally retain past MCP architecture and test facts.
 
+## Consolidated end-to-end completion requirements (2026-10-18)
+
+This is the authoritative remaining checklist for the MÍA/Spring AI production cutover, including OCI Vault. Do not mark a gate complete based only on local config or a successful workflow dispatch; retain command/workflow evidence.
+
+### A. Publish and validate the coordinated source
+
+- [ ] From the authenticated workstation, fetch current GitHub refs and reconcile the local Ford Service and Ford-scraping commits with the latest protected `main`; preserve unrelated worktree files and do not force-push.
+- [ ] Publish the Ford Service and Ford-scraping changes through reviewed PRs; confirm the MCP runtime removal is paired with the in-process Spring AI catalog tools and scheduler-only scraper deployment.
+- [ ] Confirm the pinned OCI blue-green action revision used by Ford Service is published and reviewed; confirm the workflows use immutable action/image references and source attestations.
+- [ ] Pass required CI, migration, release-contract, container-contract, integration, provenance, backup-before-sync, scheduler rollback, and release coordinator checks.
+- [ ] Confirm both versioned release tags point to the reviewed commits and the coordinator's read-only preflight accepts both exact versions.
+- [ ] Run the protected coordinated release from `main`; retain coordinator run ID, both child release run IDs, source SHAs, image digests, and approval evidence.
+
+### B. Complete catalog behavior parity before enabling tools
+
+- [ ] Complete field-by-field Node-to-Java parity for every customer-visible tool, including empty/error cases, filtering, ordering, source URLs, finance-only offers, promotions, vehicle details, trim/year comparisons, and evidence envelopes.
+- [ ] Implement and measure a semantic retrieval path compatible with the stored `bge-m3` vectors; compare the current fusion with RRF on the same reviewed set, then evaluate a cross-encoder only if measured quality justifies its latency and resource cost.
+- [ ] Add approximately 100 reviewed Spanish retrieval cases and record retrieval/ranking metrics, answer fact coverage, latency, and abstention outcomes.
+- [ ] Verify per-turn evidence-ledger grounding, calibrated abstention for missing/ambiguous facts, and exact-version Spring AI 2.0.1 advisor, retry, and conversation-memory behavior.
+- [ ] Pass full tool-level parity and regression checks. Until then keep `FORD_CATALOG_TOOLS_ENABLED=false` and do not set `FORD_CATALOG_PARITY_READY=true`.
+
+### C. Verify OCI Vault and runtime identity end to end
+
+- [ ] Inspect protected `production` environment configuration without exposing secret values. Confirm `FORD_SECRETS_PROVIDER=oci-vault`, `PRODUCTION_DEPLOY_ENABLED=true` only after readiness review, and `RUNTIME_VAULT_READY=true` only after verifying every runtime consumer on both OCI hosts.
+- [ ] Verify the required Vault OCID variables and secret names against `release.yml`, `app.env.j2`, and `runtime-vault-identity.tf`: database, Redis, operator password, JWT signing key, DeepSeek/OpenAI-compatible provider key, Meta app/verify/WhatsApp credentials, and observability credentials. Validate optional provider/Meta integrations only when enabled.
+- [ ] Verify emme-1 and emme-2 instance principals can read only their named runtime secrets; confirm app/data dynamic groups match the intended instance OCIDs and no application secret value enters GitHub variables, Terraform state, logs, or committed files.
+- [ ] Keep Java catalog database credentials separate: when parity permits enabling tools, use the dedicated read-only database user, the `ford_read` views, its Vault secret OCID, and production JDBC URL. Verify SELECT succeeds and writes are denied.
+- [ ] Run the protected Terraform runtime-Vault workflow from `main` with `plan`; inspect its artifact and ensure it changes only the reviewed least-privilege policy entries (removing obsolete MCP grants while preserving active app/data consumers). Stop on any group replacement, resource creation/destruction, or broader grant.
+- [ ] Apply only that reviewed plan through the protected production approval, then verify policy state and both instance-principal reads. Record plan/apply run IDs and retain evidence.
+- [ ] Keep Terraform API credentials in the dedicated OCI Actions secret and private state; never put OCI private keys or Vault values in `.zshrc`, command output, repository files, Terraform variables, or state.
+
+### D. Deploy and verify both production hosts
+
+- [ ] Confirm the required production environment settings pass the release workflow: operator username; official Meta Graph messages endpoint and matching phone number ID; Meta delivery and durable outbox enabled; required secret OCIDs; Grafana Cloud and Langfuse endpoints/keys; deployment hosts/users/SSH secrets; and registry access.
+- [ ] Keep the existing production scheduler active until the protected replacement workflow and backup-gated catalog sync have succeeded. Verify backup freshness, restore/rollback readiness, no overlapping manual/monthly sync, and failure behavior before cutover.
+- [ ] Deploy the versioned Service and scraper releases through the protected blue-green/coordinated workflows. Verify health, image/source identity, DB/Redis connectivity, Vault resolution, service logs, and exactly one intended scheduler on emme-1/emme-2.
+- [ ] Verify catalog tools with read-only production smoke cases only after parity is approved; verify monthly sync, backup-before-sync, scheduler ownership, and rollback window on the data host.
+- [ ] Run a synthetic authenticated conversation for formal `usted`, current catalog evidence/source URLs, memory continuity, and advisor handoff; do not message a real customer. Verify Meta inbound/outbound delivery separately and record its evidence.
+- [ ] Record both-host health and permissions, scheduler status, backup identity, release/run IDs, image digests, and rollback image. Exercise rollback if any protected gate or smoke check fails.
+
+### E. Retire the old production MCP footprint after successful cutover
+
+- [ ] Only after both hosts pass the checks above, remove old MCP containers, MCP-only Cloudflare route/tunnel configuration, MCP LaunchAgents, MCP-specific Vault secrets/grants, and obsolete GitHub secrets/variables.
+- [ ] Verify no remaining MCP endpoint, process, route, secret consumer, or alert is active; retain catalog migrations, crawler, catalog writer, and the approved scheduler/refresh ownership.
+- [ ] Re-run health, catalog sync, scheduler, and rollback checks after cleanup; attach evidence and update this checklist with exact completion dates and run IDs.
+
+### Current status and constraints
+
+- Local Ford-scraping MCP-removal commit: `f4f1880` on `feat/mia-phase-one-mcp`; Service dispatcher/docs commit: `e362d3b` on local `main`. Both are unpushed and must be reconciled with current GitHub refs before PRs.
+- GitHub authentication and `git ls-remote` succeeded in the user's terminal; the agent runtime still cannot use the host keychain, SSH exits with UID 501 lookup failure, and its Docker package/network workaround stalled. Use the authenticated workstation to fetch/publish if agent networking remains unavailable.
+- Catalog parity/retrieval evidence is incomplete. Production was not changed; catalog callbacks must remain off and deployed MCP resources must remain until the protected replacement passes.
+- The `.zshrc` exports only the release coordinator App ID, Client ID, and private-key path. Keep the private key in its mode-0600 file and use the protected GitHub App secrets for Actions.
+
 ### Subtitle: Make both deploy lanes work, contracted, and verified. Local implementation is in progress; protected production cutover is still blocked by host/GitHub access and outstanding parity/evidence gates.
 
 ## Findings (probed 2026-10-17)
