@@ -19,6 +19,8 @@ test("required workflow contracts exist", async () => {
   for (const path of requiredWorkflows) {
     await assert.doesNotReject(() => read(path), path);
   }
+  await assert.doesNotReject(() => read(".github/workflows/monthly-catalog-sync.yml"));
+  await assert.doesNotReject(() => read(".github/workflows/deploy-dev.yml"));
 });
 
 test("CI verifies every branch and publishes images only from immutable SemVer tags", async () => {
@@ -45,6 +47,21 @@ test("CI runs the operational Python contract suite", async () => {
   );
 });
 
+test("local and Actions catalog sync flows use the same protected backup gate", async () => {
+  const local = await read("ford-ai-service/.mise/tasks/deploy/catalog-sync");
+  const workflow = await read(".github/workflows/monthly-catalog-sync.yml");
+  const playbook = await read("deployment/ansible/catalog-sync.yml");
+  const readme = await read("ford-ai-service/README.md");
+
+  assert.match(local, /catalog-sync\.yml/);
+  assert.match(local, /render_backup_inventory/);
+  assert.match(workflow, /deployment\/ansible\/catalog-sync\.yml/);
+  assert.match(workflow, /vars\.FORD_CATALOG_SYNC_ENABLED == 'true'/);
+  assert.match(playbook, /role: catalog_sync/);
+  assert.match(readme, /mise run deploy:catalog-sync/);
+  assert.match(readme, /deployment-preflight/);
+});
+
 test("deployment connectivity preflight is manually runnable from main and stays read-only", async () => {
   const source = await read(".github/workflows/deployment-preflight.yml");
 
@@ -54,6 +71,37 @@ test("deployment connectivity preflight is manually runnable from main and stays
   assert.match(source, /Deployment, migration, image pull, and route switch: not run/);
   assert.doesNotMatch(source, /^  push:/m);
   assert.doesNotMatch(source, /PRODUCTION_DEPLOY_ENABLED|oci-blue-green|reusable-deploy/);
+  assert.match(source, /docker ps -a --filter 'label=com\.docker\.compose\.service=otel-collector'/);
+  assert.doesNotMatch(source, /docker inspect --format[^\n]*app-otel-collector-1/);
+});
+
+test("development deployment boots the local Compose stack behind a health gate", async () => {
+  const source = await read(".github/workflows/deploy-dev.yml");
+
+  assert.match(source, /^name:/m);
+  assert.match(source, /^  workflow_dispatch:\s*$/m);
+  assert.match(source, /^permissions:/m);
+  assert.match(source, /^concurrency:/m);
+  assert.match(source, /environment: development/);
+  assert.match(source, /docker compose config --quiet/);
+  assert.match(source, /docker compose up --build -d postgres redis ford-service/);
+  assert.match(source, /actuator\/health/);
+  assert.match(source, /FORD_AI_LOCAL_ENABLED=false/);
+  assert.match(source, /FORD_AI_CLOUD_ENABLED=false/);
+  assert.match(source, /docker compose down -v/);
+  assert.doesNotMatch(source, /PRODUCTION_DEPLOY_ENABLED|oci-blue-green|reusable-deploy|secrets\.OCI_/);
+});
+
+test("local and Actions development flows start the same Compose services", async () => {
+  const workflow = await read(".github/workflows/deploy-dev.yml");
+  const fullStart = await read("ford-ai-service/.mise/tasks/full/start");
+  const compose = await read("ford-ai-service/docker-compose.yml");
+
+  assert.match(compose, /^  ford-service:$/m);
+  assert.match(compose, /\$\{FORD_SERVICE_PORT:-18080\}:8080/);
+  assert.match(fullStart, /ford_compose/);
+  assert.match(workflow, /ford-service/);
+  assert.match(workflow, /http:\/\/localhost:18080\/actuator\/health/);
 });
 
 test("Ford Service pins the backup-verified OCI rollout action", async () => {
@@ -61,7 +109,7 @@ test("Ford Service pins the backup-verified OCI rollout action", async () => {
 
   assert.match(
     source,
-    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@972fe859e907753d60e163ecef2ee5cd1fb044f3/,
+    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@8acc8bd8f05281317304d482ae5c20abe19cfce4/,
   );
   assert.match(source, /host: \$\{\{ vars\.OCI_DEPLOY_HOST \}\}/);
   assert.match(source, /user: \$\{\{ vars\.OCI_DEPLOY_USER \}\}/);
@@ -156,8 +204,6 @@ test("production service deployment passes Vault secret references to Ansible", 
     "FORD_VAULT_SECRET_OCID_FORD_META_WHATSAPP_ACCESS_TOKEN",
     "FORD_VAULT_SECRET_OCID_FORD_META_MESSENGER_ACCESS_TOKEN",
     "FORD_VAULT_SECRET_OCID_FORD_META_INSTAGRAM_ACCESS_TOKEN",
-    "FORD_VAULT_SECRET_OCID_FORD_MCP_TOKEN",
-    "FORD_VAULT_SECRET_OCID_FORD_MCP_ACCESS_CLIENT_SECRET",
     "FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY",
     "FORD_VAULT_SECRET_OCID_OPENAI_API_KEY",
     "FORD_VAULT_SECRET_OCID_GRAFANA_CLOUD_API_TOKEN",
@@ -201,21 +247,22 @@ test("production release keeps DeepSeek primary and supports a capability-gated 
   }
 });
 
-test("Ford Service release requires and passes the production MCP connection settings", async () => {
+test("Ford Service configures local catalog tools without a remote MCP connection", async () => {
   const source = await read(".github/workflows/release.yml");
+  const action = await read(".github/actions/oci-blue-green/action.yml");
 
-  assert.match(source, /FORD_MCP_ENABLED: \$\{\{ vars\.FORD_MCP_ENABLED \}\}/);
-  assert.match(source, /FORD_MCP_URL: \$\{\{ vars\.FORD_MCP_URL \}\}/);
-  assert.match(source, /FORD_MCP_ACCESS_CLIENT_ID: \$\{\{ vars\.FORD_MCP_ACCESS_CLIENT_ID \}\}/);
-  assert.match(
-    source,
-    /FORD_MCP_ENABLED" == 'true'[\s\S]*FORD_MCP_URL" == 'https:\/\/ford-mcp\.emme\.business'[\s\S]*FORD_MCP_ACCESS_CLIENT_ID" =~ \^\[A-Za-z0-9\._-\]\+\$/,
-  );
-  assert.match(source, /service-mcp-enabled: \$\{\{ vars\.FORD_MCP_ENABLED \}\}/);
-  assert.match(source, /service-mcp-url: \$\{\{ vars\.FORD_MCP_URL \}\}/);
-  assert.match(source, /service-mcp-access-client-id: \$\{\{ vars\.FORD_MCP_ACCESS_CLIENT_ID \}\}/);
-  assert.match(source, /service-mcp-token-secret-ocid: \$\{\{ vars\.FORD_VAULT_SECRET_OCID_FORD_MCP_TOKEN \}\}/);
-  assert.match(source, /service-mcp-access-client-secret-secret-ocid: \$\{\{ vars\.FORD_VAULT_SECRET_OCID_FORD_MCP_ACCESS_CLIENT_SECRET \}\}/);
+  assert.match(source, /FORD_CATALOG_TOOLS_ENABLED: \$\{\{ vars\.FORD_CATALOG_TOOLS_ENABLED \|\| 'false' \}\}/);
+  assert.doesNotMatch(source, /FORD_CATALOG_PARITY_READY|Node-to-Java parity/);
+  assert.match(source, /FORD_CATALOG_JDBC_URL/);
+  assert.match(source, /FORD_CATALOG_USERNAME/);
+  assert.match(source, /FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD/);
+  assert.match(source, /service-catalog-tools-enabled: \$\{\{ vars\.FORD_CATALOG_TOOLS_ENABLED \|\| 'false' \}\}/);
+  assert.match(source, /service-catalog-jdbc-url: \$\{\{ vars\.FORD_CATALOG_JDBC_URL \}\}/);
+  assert.match(source, /FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD: \$\{\{ vars\.FORD_CATALOG_TOOLS_ENABLED == 'true' && vars\.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD \|\| '' \}\}/);
+  assert.match(source, /service-catalog-password-secret-ocid: \$\{\{ vars\.FORD_CATALOG_TOOLS_ENABLED == 'true' && vars\.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD \|\| '' \}\}/);
+  assert.doesNotMatch(source, /FORD_MCP_ENABLED|FORD_MCP_URL|FORD_MCP_ACCESS_CLIENT_ID/);
+  assert.doesNotMatch(action, /service-catalog-tools-enabled:[\s\S]*?parity gates pass/);
+  assert.match(action, /service-catalog-tools-enabled:[\s\S]*?read-only datasource and access checks/);
 });
 
 test("Ford Service accepts coordinator releases only from the installed App and keeps direct approval", async () => {
@@ -443,49 +490,34 @@ test("observability workflow points to files in the checked-in deployment tree",
   assert.doesNotMatch(source, /ford-ai-service\/deployment\/observability/);
 });
 
-test("MCP containers run the protected HTTP command instead of the scheduler default", async () => {
-  const composeFiles = [
-    "deployment/ansible/roles/mcp/templates/compose.yml.j2",
-    "deployment/ansible/roles/mcp/templates/blue-green-compose.yml.j2",
-  ];
-
-  for (const path of composeFiles) {
-    const source = await read(path);
-    assert.match(
-      source,
-      /command:\s*\["node", "dist\/src\/cli\.js", "mcp-http"\]/,
-      `${path} must explicitly start mcp-http`,
-    );
-  }
+test("new deployment workflows do not expose the retired MCP runtime", async () => {
+  const action = await read(".github/actions/oci-blue-green/action.yml");
+  const deploy = await read(".github/actions/oci-blue-green/deploy.sh");
+  const workflow = await read(".github/workflows/deployment-preflight.yml");
+  assert.doesNotMatch(action, /ford-mcp|mcp-private-ip/i);
+  assert.doesNotMatch(deploy, /ford-mcp|mcp-blue-green|mcp_operation|mcp_image/i);
+  assert.doesNotMatch(workflow, /ford-mcp|ollama/i);
 });
 
-test("scraper migrations use the candidate image and the service Compose environment", async () => {
-  const compose = await read(
-    "deployment/ansible/roles/mcp/templates/compose.yml.j2",
+test("monthly sync uses the protected backup-gated Ansible playbook", async () => {
+  const sync = await read(".github/workflows/monthly-catalog-sync.yml");
+  const task = await read("ford-ai-service/.mise/tasks/deploy/catalog-sync");
+  const playbook = await read("deployment/ansible/catalog-sync.yml");
+  assert.match(sync, /deployment\/ansible\/catalog-sync\.yml/);
+  assert.match(sync, /Verify backup and run the one-shot sync with Ansible/);
+  assert.match(task, /catalog-sync\.yml/);
+  assert.match(task, /deployment\/ansible\/catalog-sync\.yml/);
+  assert.match(playbook, /hosts: data/);
+  assert.match(playbook, /hosts: data/);
+  assert.match(
+    await read("deployment/ansible/roles/catalog_sync/tasks/main.yml"),
+    /Verify the newest same-day backup manifest and both artifact hashes/,
   );
-  const override = await read(
-    "deployment/ansible/roles/mcp/templates/migration-compose.yml.j2",
-  );
-  const tasks = await read("deployment/ansible/roles/mcp/tasks/blue-green.yml");
-  const migrationStart = tasks.indexOf(
-    "Run catalog migrations once from the immutable candidate image",
-  );
-  const migrationEnd = tasks.indexOf("\n- name:", migrationStart + 1);
-  const migration = tasks.slice(migrationStart, migrationEnd);
-
-  assert.match(compose, /DATABASE_URL: \$\{DATABASE_URL:-postgres:\/\//);
-  assert.match(compose, /\$\{POSTGRES_PASSWORD:-\}/);
-  assert.match(compose, /DATABASE_HOST: postgres/);
-  assert.match(compose, /FORD_BASE_URL: https:\/\/www\.forduruapan\.mx/);
-  assert.match(override, /image: \{\{ mcp_candidate_image \}\}/);
-  assert.match(migration, /-f "\{\{ remote_root \}\}\/mcp\/migration-compose\.yml"/);
-  assert.match(migration, /run --rm --no-deps mcp node dist\/src\/cli\.js migrate/);
-  assert.match(migration, /no_log: true/);
 });
 
 test("production scheduler runs privately on the data network", async () => {
   const source = await read(
-    "deployment/ansible/roles/mcp/templates/blue-green-compose.yml.j2",
+    "deployment/ansible/roles/scraper_scheduler/templates/compose.yml.j2",
   );
 
   assert.match(source, /scheduler:/);
@@ -494,7 +526,7 @@ test("production scheduler runs privately on the data network", async () => {
     /command:\s*\["node", "dist\/src\/cli\.js", "scheduler"\]/,
   );
   assert.match(source, /networks:\s*\[data_default\]/);
-  const scheduler = source.split("\n  scheduler:")[1]?.split("\n  mcp-proxy:")[0];
+  const scheduler = source.split("\n  scheduler:")[1]?.split("\nnetworks:")[0];
   assert.ok(scheduler, "scheduler service definition must be present");
   assert.doesNotMatch(scheduler, /ports:/);
   assert.match(source, /SYNC_SCHEDULE: "0 12 1 \* \*"/);

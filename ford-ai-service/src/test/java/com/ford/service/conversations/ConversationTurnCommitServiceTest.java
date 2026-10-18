@@ -34,8 +34,116 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class ConversationTurnCommitServiceTest {
+
+    @Test
+    void complaintCreatesPartialHandoffWithoutDependingOnModelDecision() {
+        var fixture = handoffFixture("Estoy muy molesta por la atención que recibí.", List.of(), true);
+
+        var route = fixture.service.commit(fixture.reference, fixture.inbound, fixture.snapshot, fixture.memory,
+                new LeadJourneySnapshot(fixture.tenantId, fixture.conversationId, null, null, null, null,
+                        null, null, 0, null, 0, Instant.now()), new AssistantReply("Lamento lo ocurrido.", false));
+
+        assertThat(route).isEqualTo(ConversationGraphRoute.HUMAN_PENDING);
+        verify(fixture.repository).requestHumanHandoff(eq(fixture.tenantId), eq(fixture.conversationId),
+                eq(fixture.snapshot.version()), eq(fixture.inbound.providerMessageId()), any(), any());
+    }
+
+    @Test
+    void secondRefusalToProvideQualificationDetailsCreatesPartialHandoff() {
+        var prior = message(UUID.randomUUID(), ConversationMessage.Direction.INBOUND,
+                "in-previous", "No quiero compartir mi nombre.");
+        var fixture = handoffFixture("No quiero compartir mi nombre.", List.of(prior), true);
+
+        var route = fixture.service.commit(fixture.reference, fixture.inbound, fixture.snapshot, fixture.memory,
+                new LeadJourneySnapshot(fixture.tenantId, fixture.conversationId, null, null, null, null,
+                        null, null, 0, null, 0, Instant.now()), new AssistantReply("Entiendo.", false));
+
+        assertThat(route).isEqualTo(ConversationGraphRoute.HUMAN_PENDING);
+        verify(fixture.repository).requestHumanHandoff(eq(fixture.tenantId), eq(fixture.conversationId),
+                eq(fixture.snapshot.version()), eq(fixture.inbound.providerMessageId()), any(), any());
+    }
+
+    @Test
+    void handoffConfirmationNamesFordServiceQueueWithoutEta() {
+        var fixture = handoffFixture("Quiero hablar con un asesor.", List.of(), true);
+
+        fixture.service.commit(fixture.reference, fixture.inbound, fixture.snapshot, fixture.memory,
+                new LeadJourneySnapshot(fixture.tenantId, fixture.conversationId, null, null, null, null,
+                        null, null, 0, null, 0, Instant.now()), new AssistantReply("Claro.", false));
+
+        var confirmation = org.mockito.ArgumentCaptor.forClass(ConversationTurn.class);
+        verify(fixture.repository).requestHumanHandoff(eq(fixture.tenantId), eq(fixture.conversationId),
+                eq(fixture.snapshot.version()), eq(fixture.inbound.providerMessageId()), any(), confirmation.capture());
+        assertThat(confirmation.getValue().text()).contains("Ford Service");
+        assertThat(confirmation.getValue().text().toLowerCase())
+                .doesNotContain("cuanto antes", "en breve", "en minutos", "notificad", "le contactar", "le llamar");
+    }
+
+    @Test
+    void rejectedHandoffEmitsNoCustomerCopyAndNoEvent() {
+        var fixture = handoffFixture("Quiero hablar con un asesor.", List.of(), false);
+
+        var route = fixture.service.commit(fixture.reference, fixture.inbound, fixture.snapshot, fixture.memory,
+                new LeadJourneySnapshot(fixture.tenantId, fixture.conversationId, null, null, null, null,
+                        null, null, 0, null, 0, Instant.now()), new AssistantReply("Claro.", false));
+
+        assertThat(route).isEqualTo(ConversationGraphRoute.IGNORED);
+        assertThat(fixture.events.events).isEmpty();
+        verify(fixture.repository, org.mockito.Mockito.never())
+                .completeBotTurn(any(), any(), org.mockito.ArgumentMatchers.anyLong(), any(), any());
+    }
+
+    @Test
+    void retriedHandoffReusesIdempotencyKeyAndDoesNotDuplicateEvent() {
+        var fixture = handoffFixture("Quiero hablar con un asesor.", List.of(), true);
+        var journey = new LeadJourneySnapshot(fixture.tenantId, fixture.conversationId, null, null, null, null,
+                null, null, 0, null, 0, Instant.now());
+
+        fixture.service.commit(fixture.reference, fixture.inbound, fixture.snapshot, fixture.memory, journey,
+                new AssistantReply("Claro.", false));
+        org.mockito.Mockito.when(fixture.repository.requestHumanHandoff(eq(fixture.tenantId),
+                eq(fixture.conversationId), eq(fixture.snapshot.version()), eq(fixture.inbound.providerMessageId()),
+                any(), any())).thenReturn(false);
+        var retry = fixture.service.commit(fixture.reference, fixture.inbound, fixture.snapshot, fixture.memory, journey,
+                new AssistantReply("Claro.", false));
+
+        assertThat(retry).isEqualTo(ConversationGraphRoute.IGNORED);
+        assertThat(fixture.events.events)
+                .filteredOn(com.ford.service.conversations.api.HandoffRequested.class::isInstance).hasSize(1);
+    }
+
+    private static HandoffFixture handoffFixture(String currentText, List<ConversationMessage> priorTurns,
+                                                 boolean handoffAccepted) {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var inbound = new AcceptedInboundMessage("in-current", "customer", currentText, Instant.now());
+        var reference = new ConversationTurnReference(tenantId, conversationId, UUID.randomUUID());
+        var snapshot = new ConversationSnapshot(tenantId, conversationId, Channel.WHATSAPP,
+                "account", "customer", ConversationState.BOT_ACTIVE, 3, currentText, inbound.providerMessageId());
+        var key = new ConversationMemoryKey(tenantId, Channel.WHATSAPP, "account", "customer", conversationId);
+        var memory = new ConversationMemoryContext(key, "", priorTurns, List.of(), 0);
+        var repository = mock(ConversationRepository.class);
+        when(repository.requestHumanHandoff(eq(tenantId), eq(conversationId), eq(snapshot.version()),
+                eq(inbound.providerMessageId()), any(), any())).thenReturn(handoffAccepted);
+        var events = new RecordingPublisher();
+        var service = new ConversationTurnCommitService(repository, (id, messageId, decision) -> { },
+                mock(LeadJourneyService.class), new HumanHandoffPolicy(true), mock(ConversationMemoryService.class),
+                events);
+        return new HandoffFixture(tenantId, conversationId, inbound, reference, snapshot, memory, repository,
+                service, events);
+    }
+
+    private record HandoffFixture(UUID tenantId, UUID conversationId, AcceptedInboundMessage inbound,
+                                  ConversationTurnReference reference, ConversationSnapshot snapshot,
+                                  ConversationMemoryContext memory, ConversationRepository repository,
+                                  ConversationTurnCommitService service, RecordingPublisher events) { }
 
     @Test
     void compactionFailureDoesNotPreventReplyCommitOrChangeCanonicalTranscript() {

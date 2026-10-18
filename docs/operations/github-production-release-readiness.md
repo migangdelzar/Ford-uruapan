@@ -1,5 +1,7 @@
 # GitHub Production Release Readiness
 
+> **Historical snapshot (2026-10-14; superseded for current cutover):** Repository names, branch protection, environment configuration, credentials, and release workflow state below are point-in-time observations from the former MCP release topology. Do not use them as current configuration instructions. The active checklist is [`tasks/todo.md`](../../tasks/todo.md); verify current GitHub state through the protected release workflows before taking action. Ford-scraping is the catalog writer/scheduler release; Ford-web is the local CRM Pages release.
+
 Status checked on 2026-10-14: **production releases remain blocked pending runtime Vault and credential setup**. The workflows below deploy to existing OCI hosts and Cloudflare Pages; they do not create infrastructure. Production environments keep their required reviewer.
 
 ## Credential placement

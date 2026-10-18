@@ -12,6 +12,12 @@ from release_all import (  # noqa: E402
 
 
 class ReleaseAllSelectionTest(unittest.TestCase):
+    def test_scraping_target_dispatches_scheduler_release_workflow(self):
+        target = next(item for item in select_targets(service=False, scraping=True, web=False) if item.key == "scraping")
+
+        self.assertEqual(target.release_workflow, "release.yml")
+        self.assertEqual(target.release_run_name, "Release Ford scraper scheduler")
+
     def test_coordinator_is_main_only_and_scopes_app_access_to_three_repositories(self):
         workflow = (REPOSITORY_ROOT / ".github/workflows/release-all.yml").read_text(
             encoding="utf-8"

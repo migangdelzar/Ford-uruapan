@@ -217,7 +217,7 @@ class ConversationRepositoryIntegrationTest {
                 .param("id", conversationId).query(UUID.class).single()).isEqualTo(principal.operatorId());
         assertThat(jdbc.sql("select content from conversation_message where conversation_id = :id")
                 .param("id", conversationId).query(String.class).single())
-                .isEqualTo("Hola, he tomado su conversación. Le responderé por aquí en cuanto me sea posible.");
+                .isEqualTo("Hola, he tomado su conversación. Puede escribirme por aquí.");
         assertThat(jdbc.sql("select count(*) from outbox_event where aggregate_id = :id "
                         + "and event_type = 'OUTBOUND_DELIVERY_REQUESTED'")
                 .param("id", conversationId).query(Integer.class).single()).isEqualTo(1);

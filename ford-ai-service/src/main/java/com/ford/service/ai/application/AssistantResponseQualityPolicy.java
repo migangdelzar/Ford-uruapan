@@ -25,10 +25,14 @@ public final class AssistantResponseQualityPolicy {
     private static final List<String> STRUCTURED_MARKERS = List.of(
             "\"query\"", "\"modelyear\"", "\"arguments\"", "\"tool\"", "\"function\"", "```json");
     private static final String GENERIC_SCOPE_FRAGMENT = "qué modelo le interesa revisar";
+    private static final int MAX_RESPONSE_CHARS = 1_600;
 
     public Verdict evaluate(String currentMessage, String memory, String response) {
         if (response == null || response.isBlank()) {
             return rejected("empty_response");
+        }
+        if (response.length() > MAX_RESPONSE_CHARS) {
+            return rejected("response_too_long");
         }
         var normalizedResponse = normalize(response);
         if (looksLikeInternalPayload(response)) {
@@ -58,6 +62,8 @@ public final class AssistantResponseQualityPolicy {
                     "Responda la pregunta actual. No use una respuesta genérica de alcance ni vuelva a preguntar qué modelo interesa si ya existe una pregunta concreta.";
             case "multiple_questions" ->
                     "Responda directamente y solicite solo un dato para avanzar, con una sola pregunta. No combine dos datos ni ofrezca un menú.";
+            case "response_too_long" ->
+                    "Redacte una respuesta breve, directa y natural en español de México. Mantenga la respuesta dentro del límite indicado.";
             default ->
                     "Entregue una respuesta breve, natural y útil en español de México a la pregunta actual.";
         };

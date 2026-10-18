@@ -23,6 +23,7 @@ public class LeadJourneyPolicy {
     private static final Pattern LONG_DIGIT_RUN = Pattern.compile("\\d{7,}");
     private static final Pattern CONTACT_OR_ACCOUNT = Pattern.compile(
             "(?i)([\\w.+-]+@[\\w.-]+\\.[a-z]{2,}|(?:\\+?\\d[\\s().-]*){8,}|\\b(?:tarjeta|cuenta|clabe|cvv|curp|rfc)\\b)");
+    private static final Pattern NUMBER = Pattern.compile("\\d+(?:[.,]\\d+)?");
 
     public LeadJourneySnapshot apply(LeadJourneySnapshot current,
                                      LeadJourneyProposal proposal,
@@ -79,7 +80,41 @@ public class LeadJourneyPolicy {
         return !value.isEmpty() && value.length() <= MAX_FACT_LENGTH
                 && !evidence.isBlank() && evidence.length() <= MAX_EVIDENCE_LENGTH
                 && message.contains(evidence)
-                && !hasSensitivePattern(value) && !hasSensitivePattern(evidence);
+                && !hasSensitivePattern(value) && !hasSensitivePattern(evidence)
+                && isSupportedPacketFact(fact.key(), value, evidence);
+    }
+
+    private static boolean isSupportedPacketFact(LeadJourneyFactKey key, String value, String evidence) {
+        return switch (key) {
+            case CUSTOMER_NAME -> evidence.toLowerCase().contains(value.toLowerCase())
+                    && Pattern.compile("(?i)\\b(me llamo|mi nombre es|soy)\\b").matcher(evidence).find();
+            case DOWN_PAYMENT -> {
+                var evidenceNumbers = numbers(evidence);
+                yield !evidenceNumbers.isEmpty() && evidenceNumbers.equals(numbers(value));
+            }
+            case PAYMENT_METHOD -> {
+                var valueLower = value.toLowerCase();
+                var evidenceLower = evidence.toLowerCase();
+                if (valueLower.matches(".*\\b(contado|efectivo)\\b.*")) {
+                    yield Pattern.compile("(?i)\\b(contado|efectivo)\\b").matcher(evidenceLower).find();
+                }
+                if (valueLower.matches(".*\\b(financiamiento|financiar|cr[eé]dito|mensualidades)\\b.*")) {
+                    yield Pattern.compile("(?i)\\b(financiamiento|financiar|cr[eé]dito|mensualidades)\\b").matcher(evidenceLower).find();
+                }
+                if (valueLower.matches(".*\\b(arrendamiento|leasing)\\b.*")) {
+                    yield Pattern.compile("(?i)\\b(arrendamiento|leasing)\\b").matcher(evidenceLower).find();
+                }
+                yield false;
+            }
+            default -> true;
+        };
+    }
+
+    private static java.util.List<String> numbers(String text) {
+        var matcher = NUMBER.matcher(text);
+        var result = new java.util.ArrayList<String>();
+        while (matcher.find()) result.add(matcher.group());
+        return result;
     }
 
     private static boolean hasSensitivePattern(String text) {

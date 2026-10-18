@@ -72,7 +72,7 @@ test("PostgreSQL logs identify the service and SQLSTATE without recording statem
   }
 });
 
-test("Prometheus alert rules cover service, MCP tool, and model provider failures", async () => {
+test("Prometheus alert rules cover service, catalog tool, and model provider failures", async () => {
   const alerts = await read("deployment/observability/prometheus/alerts.yml");
   const prometheus = await read("deployment/observability/prometheus/prometheus.yml");
   const compose = await read("ford-ai-service/docker-compose.yml");
@@ -80,7 +80,7 @@ test("Prometheus alert rules cover service, MCP tool, and model provider failure
   assert.match(prometheus, /rule_files:[\s\S]*ford-alerts\.yml/);
   assert.match(compose, /ford-alerts\.yml/);
   assert.match(alerts, /alert: FordCollectorUnavailable/);
-  assert.match(alerts, /alert: FordMcpToolFailures/);
+  assert.match(alerts, /alert: FordCatalogToolFailures/);
   assert.match(alerts, /alert: FordProviderFailures/);
 });
 
@@ -163,6 +163,7 @@ test("OCI backup identity is declarative and reproducible", async () => {
 
 test("OCI runtime Vault identity is opt-in and scoped to each instance, vault, and named secret", async () => {
   const identity = await read("deployment/terraform/runtime-vault-identity.tf");
+  const policyContract = JSON.parse(await read("deployment/terraform/runtime-vault-policy.json"));
   const variables = await read("deployment/terraform/variables.tf");
   const example = await read("deployment/terraform/terraform.tfvars.example");
   const instructions = await read("deployment/terraform/README.md");
@@ -171,9 +172,12 @@ test("OCI runtime Vault identity is opt-in and scoped to each instance, vault, a
   assert.match(example, /^manage_runtime_vault_identity\s*=\s*false$/m);
   assert.match(identity, /resource "oci_identity_dynamic_group" "runtime_vault"/);
   assert.match(identity, /resource "oci_identity_policy" "runtime_vault"/);
-  assert.match(identity, /ford-runtime-app-emme1/);
-  assert.match(identity, /ford-runtime-data-emme2/);
   assert.match(identity, /ford-runtime-secret-read/);
+  assert.match(identity, /runtime-vault-policy\.json/);
+  assert.equal(policyContract.instances.app, "ford-runtime-app-emme1");
+  assert.equal(policyContract.instances.data, "ford-runtime-data-emme2");
+  assert.equal(policyContract.secret_names.app.length, 20);
+  assert.equal(policyContract.secret_names.data.length, 3);
   assert.match(identity, /ALL \{instance\.id = '\$\{each\.value\.instance_ocid\}'\}/);
   assert.match(identity, /read secret-bundles/);
   assert.match(identity, /target\.vault\.id = '\$\{var\.runtime_vault_ocid\}'/);
@@ -182,9 +186,9 @@ test("OCI runtime Vault identity is opt-in and scoped to each instance, vault, a
     identity.includes('^ocid1\\\\.(compartment|tenancy)\\\\.'),
     "runtime Vault identity must accept either a child compartment OCID or the tenancy root OCID"
   );
-  assert.match(identity, /ford-prod-cloudflared-tunnel-token/);
-  assert.match(identity, /ford-prod-meta-instagram-access-token/);
-  assert.doesNotMatch(identity, /ford-prod-bff-oidc-client-secret/);
+  assert.ok(policyContract.secret_names.data.includes("ford-prod-cloudflared-tunnel-token"));
+  assert.ok(policyContract.secret_names.app.includes("ford-prod-meta-instagram-access-token"));
+  assert.ok(!JSON.stringify(policyContract).includes("ford-prod-bff-oidc-client-secret"));
   assert.match(instructions, /terraform import/);
   assert.match(instructions, /import.*before.*apply/is);
 });
@@ -208,6 +212,10 @@ test("Terraform Vault apply has a dedicated human approval after plan review", a
   );
   assert.match(workflow, /apply:[\s\S]*?needs: \[plan, apply-approval\]/);
   assert.match(workflow, /needs\.apply-approval\.result == 'success'/);
+  assert.equal((workflow.match(/--vault-ocid "\$EXPECTED_VAULT_OCID"/g) ?? []).length, 2);
+  assert.equal((workflow.match(/--compartment-ocid "\$EXPECTED_COMPARTMENT_OCID"/g) ?? []).length, 2);
+  assert.equal((workflow.match(/EXPECTED_VAULT_OCID: \$\{\{ vars\.TF_RUNTIME_VAULT_OCID \}\}/g) ?? []).length, 2);
+  assert.equal((workflow.match(/EXPECTED_COMPARTMENT_OCID: \$\{\{ vars\.TF_OCI_TENANCY_OCID \}\}/g) ?? []).length, 2);
 });
 
 test("Ansible propagates the complete Meta webhook configuration", async () => {
@@ -468,26 +476,57 @@ test("Ansible propagates the human handoff feature flag", async () => {
   }
 });
 
-test("Ansible accepts the source Ford MCP configuration names", async () => {
+test("Ansible accepts the source catalog configuration names", async () => {
   const example = await read("deployment/config/oci.env.example");
-  const remote = await read("ford-ai-service/.mise/lib/remote.sh");
+  const appEnv = await read("deployment/ansible/roles/app/templates/app.env.j2");
   const vaultSecret = await read("ford-ai-service/.mise/tasks/deploy/vault-secret");
 
-  for (const variable of ["FORD_MCP_URL", "FORD_MCP_ENDPOINT", "FORD_MCP_TOKEN"]) {
+  for (const variable of ["FORD_CATALOG_TOOLS_ENABLED", "FORD_CATALOG_JDBC_URL", "FORD_CATALOG_USERNAME"]) {
     assert.match(example, new RegExp(`^${variable}=`, "m"), `${variable} must be documented`);
-    assert.match(remote, new RegExp(variable), `${variable} must reach the inventory`);
+    assert.match(appEnv, new RegExp(`^${variable}=`, "m"), `${variable} must reach the app environment`);
   }
-  assert.match(remote, /FORD_MCP_API_TOKEN/);
-  assert.match(vaultSecret, /FORD_MCP_API_TOKEN/);
-  assert.match(vaultSecret, /FORD_MCP_TOKEN/);
+  assert.match(example, /^FORD_CATALOG_READ_ONLY_TOOL_NAMES=/m);
+  assert.match(appEnv, /FORD_CATALOG_READ_ONLY_TOOL_NAMES/);
+  assert.match(appEnv, /FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD/);
+  assert.match(vaultSecret, /FORD_CATALOG_PASSWORD/);
 });
 
-test("Ford MCP keeps combined vehicle and financing search in app allowlists", async () => {
+test("Ford catalog keeps combined vehicle and financing search in app allowlists", async () => {
   const application = await read("ford-ai-service/src/main/resources/application.yml");
-  const template = await read("deployment/ansible/roles/app/templates/app.env.j2");
 
   assert.match(application, /read-only-tool-names:.*search_vehicle_and_offers/);
-  assert.match(template, /^FORD_MCP_READ_ONLY_TOOL_NAMES=.*search_vehicle_and_offers/m);
+  for (const tool of [
+    "search_vehicles",
+    "search_vehicle_and_offers",
+    "get_vehicle",
+    "compare_vehicles",
+    "compare_trims",
+    "compare_model_years",
+    "get_variant_comparisons",
+    "search_offers",
+    "list_promotions",
+    "get_page_links",
+    "get_vehicle_provenance",
+    "get_catalog_status",
+  ]) {
+    assert.match(application, new RegExp(tool), `${tool} must stay in the read-only catalog allowlist`);
+  }
+});
+
+test("Ford Service and deployment configuration no longer carry MCP runtime credentials", async () => {
+  const example = await read("deployment/config/oci.env.example");
+  const appEnv = await read("deployment/ansible/roles/app/templates/app.env.j2");
+  const runtimeTemplate = await read("deployment/runtime/app/.env.template");
+  const remote = await read("ford-ai-service/.mise/lib/remote.sh");
+
+  for (const [name, contents] of [
+    ["app.env.j2", appEnv],
+    ["deployment/runtime/app/.env.template", runtimeTemplate],
+    ["ford-ai-service/.mise/lib/remote.sh", remote],
+  ]) {
+    assert.doesNotMatch(contents, /FORD_MCP_(ENABLED|URL|ENDPOINT|REQUEST_TIMEOUT|ACCESS_CLIENT|READ_ONLY_TOOL_NAMES|REQUIRED_FOR_VOLATILE)/, `${name} must not keep remote MCP client settings`);
+  }
+  assert.doesNotMatch(example, /FORD_MCP_TOKEN|FORD_MCP_API_TOKEN|MCP_HTTP_BEARER_TOKEN/);
 });
 
 test("app deployment transfers local images and checks the webhook route", async () => {

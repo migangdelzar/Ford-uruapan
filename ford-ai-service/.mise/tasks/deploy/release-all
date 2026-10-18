@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+#MISE description="Dispatch the protected coordinated Ford Service, catalog, and Web production release"
+set -euo pipefail
+
+usage() {
+  printf 'Usage: mise run deploy:release-all -- <service-version> <scraping-version> <web-version>\n' >&2
+  printf 'Example: mise run deploy:release-all -- v0.1.24 v0.1.11 v0.1.4\n' >&2
+}
+
+if [[ $# -ne 3 ]]; then
+  usage
+  exit 2
+fi
+
+service_version="$1"
+scraping_version="$2"
+web_version="$3"
+for version in "$service_version" "$scraping_version" "$web_version"; do
+  [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+    printf 'Release versions must use vMAJOR.MINOR.PATCH; got: %s\n' "$version" >&2
+    exit 2
+  }
+done
+
+cd "$MISE_PROJECT_ROOT"
+repo_root="$(cd "$MISE_PROJECT_ROOT/.." && pwd -P)"
+repository="migangdelzar/Ford-uruapan"
+
+for command_name in git gh python3; do
+  command -v "$command_name" >/dev/null 2>&1 || {
+    printf 'Required command not found: %s\n' "$command_name" >&2
+    exit 1
+  }
+done
+
+branch="$(git -C "$repo_root" branch --show-current)"
+[[ "$branch" == main ]] || {
+  printf 'Release dispatch requires the main branch; current branch is %s.\n' "${branch:-detached}" >&2
+  exit 1
+}
+
+dirty_paths="$(git -C "$repo_root" status --porcelain --untracked-files=all | awk 'substr($0, 4) !~ /^\.tgrep\//')"
+[[ -z "$dirty_paths" ]] || {
+  printf 'Release dispatch requires a clean checkout. Uncommitted paths:\n%s\n' "$dirty_paths" >&2
+  exit 1
+}
+
+gh auth status --hostname github.com >/dev/null
+remote_main_sha="$(gh api "repos/${repository}/commits/main" --jq .sha)"
+local_sha="$(git -C "$repo_root" rev-parse HEAD)"
+[[ "$local_sha" == "$remote_main_sha" ]] || {
+  printf 'Local main (%s) must match GitHub main (%s) before dispatch.\n' "$local_sha" "$remote_main_sha" >&2
+  exit 1
+}
+
+python3 "$MISE_PROJECT_ROOT/scripts/release_all.py" \
+  --validate-only \
+  --service \
+  --scraping \
+  --web \
+  --service-version "$service_version" \
+  --scraping-version "$scraping_version" \
+  --web-version "$web_version"
+
+gh workflow run release-all.yml \
+  --repo "$repository" \
+  --ref main \
+  --field operation=release \
+  --field ford_service=true \
+  --field ford_scraping=true \
+  --field ford_web=true \
+  --field service_version="$service_version" \
+  --field scraping_version="$scraping_version" \
+  --field web_version="$web_version"
+
+printf '\nDispatched the protected coordinated release for Ford Service, Ford-scraping, and Ford-web.\n'
+printf 'Track approval and deployment at: https://github.com/%s/actions/workflows/release-all.yml\n' "$repository"

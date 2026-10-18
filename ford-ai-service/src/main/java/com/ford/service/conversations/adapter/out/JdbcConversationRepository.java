@@ -180,9 +180,10 @@ public class JdbcConversationRepository implements ConversationRepository {
 
         jdbc.sql("""
                 insert into handoff_ticket
-                    (id, tenant_id, conversation_id, status, priority, reason, idempotency_key, version, created_at)
+                    (id, tenant_id, conversation_id, status, priority, reason, idempotency_key, version,
+                     created_at, packet, packet_partial, packet_completeness)
                 values (:id, :tenantId, :conversationId, 'HUMAN_PENDING', :priority, :reason,
-                        :idempotencyKey, 0, :createdAt)
+                        :idempotencyKey, 0, :createdAt, cast(:packet as jsonb), :packetPartial, :packetCompleteness)
                 """)
                 .param("id", UUID.randomUUID())
                 .param("tenantId", tenantId)
@@ -191,6 +192,9 @@ public class JdbcConversationRepository implements ConversationRepository {
                 .param("reason", decision.reason())
                 .param("idempotencyKey", decision.idempotencyKey())
                 .param("createdAt", Timestamp.from(Instant.now()))
+                .param("packet", packetJson(decision.packet()))
+                .param("packetPartial", decision.packet().partial())
+                .param("packetCompleteness", decision.packet().completeness())
                 .update();
         if (confirmation != null && inboundProviderMessageId != null) {
             var responseProviderMessageId = assistantMessageId(tenantId, conversationId, inboundProviderMessageId);
@@ -286,6 +290,14 @@ public class JdbcConversationRepository implements ConversationRepository {
                 .update();
         if (updated != 1) {
             throw new IllegalStateException("Conversation transition lost its version race");
+        }
+    }
+
+    private String packetJson(com.ford.service.conversations.api.BdcHandoffPacket packet) {
+        try {
+            return objectMapper.writeValueAsString(packet.arguments());
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Could not serialize BDC handoff packet", exception);
         }
     }
 

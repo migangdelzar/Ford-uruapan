@@ -99,6 +99,16 @@ Its OCI native backend is the private, versioned `ford-terraform-state` bucket,
 with state locking and the key `ford-uruapan/runtime-vault-identity/terraform.tfstate`.
 Do not add a lifecycle expiration rule to this bucket.
 
+The exact app/data identity names and secret-name allowlist live in
+`runtime-vault-policy.json`, which both Terraform and
+`scripts/terraform_runtime_vault_plan_guard.py` consume. The plan and apply
+steps pass the expected Vault and tenancy/compartment OCIDs to the guard. It
+requires the planned policy to contain exactly the configured `read
+secret-bundles` statements and rejects changes to any other policy attribute;
+extra, missing, unknown, or differently scoped statements fail closed before
+the approval/apply step. No Vault secret values are part of the contract or
+Terraform state.
+
 The OCI bootstrap identity needs these three policy statements, scoped to the
 exact resources it operates on:
 
@@ -122,8 +132,9 @@ file and removes the runner after the job. No credential value is placed in
 Terraform variables, state, or the plan.
 
 Dispatch `Terraform runtime Vault policy` with `plan` to adopt and review the
-existing resources. Confirm the plan only adds the named MCP Access client
-secret to emme-2. Dispatch `apply` to generate a fresh plan and apply it after
-the protected environment approval. The plan artifact expires after one day.
-The workflow never deploys application code; run the MCP release workflow only
-after this policy apply and the Vault preflight pass.
+existing resources. Confirm the plan grants only the named runtime secrets
+listed in `runtime-vault-identity.tf`. Dispatch `apply` to generate a fresh plan
+and apply it after the protected environment approval. The plan artifact
+expires after one day. This workflow never deploys application code. The data
+instance's former catalog-service secret grants are removed from the desired
+policy; apply that reviewed policy change during the protected runtime cleanup.

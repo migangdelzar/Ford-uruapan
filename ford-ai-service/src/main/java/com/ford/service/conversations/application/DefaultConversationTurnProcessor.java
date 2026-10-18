@@ -11,6 +11,7 @@ import com.ford.service.ai.application.InboundContentResolutionService;
 import com.ford.service.ai.application.InboundContentStatus;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
+import com.ford.service.conversations.application.port.out.ShadowDraftRecorder;
 import com.ford.service.conversations.domain.ConversationMemoryKey;
 import com.ford.service.conversations.domain.MemoryQuery;
 import com.ford.service.conversations.domain.ConversationState;
@@ -21,6 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
+import java.time.Instant;
 
 @Component
 @ConditionalOnProperty(prefix = "ford.conversations.workflow", name = "graph-enabled", havingValue = "true")
@@ -35,6 +37,9 @@ public class DefaultConversationTurnProcessor implements ConversationTurnProcess
     private final ConversationAssistant assistant;
     private final ConversationTurnCommitService commitService;
     private final InboundContentResolutionService contentResolutionService;
+    private final DealershipResponsePlanner responsePlanner;
+    private final ShadowDraftRecorder shadowRecorder;
+    private final ShadowReviewGate shadowGate;
 
     public DefaultConversationTurnProcessor(AcceptedInboundMessageRepository inboundRepository,
                                             ConversationRepository conversationRepository,
@@ -43,6 +48,47 @@ public class DefaultConversationTurnProcessor implements ConversationTurnProcess
                                             ConversationAssistant assistant,
                                             ConversationTurnCommitService commitService,
                                             InboundContentResolutionService contentResolutionService) {
+        this(inboundRepository, conversationRepository, memoryService, leadJourneyService, assistant,
+                commitService, contentResolutionService, null, ShadowDraftRecorder.disabled(), ShadowReviewGate.disabled());
+    }
+
+    public DefaultConversationTurnProcessor(AcceptedInboundMessageRepository inboundRepository,
+                                            ConversationRepository conversationRepository,
+                                            ConversationMemoryService memoryService,
+                                            LeadJourneyService leadJourneyService,
+                                            ConversationAssistant assistant,
+                                            ConversationTurnCommitService commitService,
+                                            InboundContentResolutionService contentResolutionService,
+                                            DealershipResponsePlanner responsePlanner) {
+        this(inboundRepository, conversationRepository, memoryService, leadJourneyService, assistant,
+                commitService, contentResolutionService, responsePlanner,
+                ShadowDraftRecorder.disabled(), ShadowReviewGate.disabled());
+    }
+
+    public DefaultConversationTurnProcessor(AcceptedInboundMessageRepository inboundRepository,
+                                            ConversationRepository conversationRepository,
+                                            ConversationMemoryService memoryService,
+                                            LeadJourneyService leadJourneyService,
+                                            ConversationAssistant assistant,
+                                            ConversationTurnCommitService commitService,
+                                            InboundContentResolutionService contentResolutionService,
+                                            ShadowDraftRecorder shadowRecorder,
+                                            ShadowReviewGate shadowGate) {
+        this(inboundRepository, conversationRepository, memoryService, leadJourneyService, assistant,
+                commitService, contentResolutionService, null, shadowRecorder, shadowGate);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public DefaultConversationTurnProcessor(AcceptedInboundMessageRepository inboundRepository,
+                                            ConversationRepository conversationRepository,
+                                            ConversationMemoryService memoryService,
+                                            LeadJourneyService leadJourneyService,
+                                            ConversationAssistant assistant,
+                                            ConversationTurnCommitService commitService,
+                                            InboundContentResolutionService contentResolutionService,
+                                            DealershipResponsePlanner responsePlanner,
+                                            ShadowDraftRecorder shadowRecorder,
+                                            ShadowReviewGate shadowGate) {
         this.inboundRepository = Objects.requireNonNull(inboundRepository);
         this.conversationRepository = Objects.requireNonNull(conversationRepository);
         this.memoryService = Objects.requireNonNull(memoryService);
@@ -50,6 +96,9 @@ public class DefaultConversationTurnProcessor implements ConversationTurnProcess
         this.assistant = Objects.requireNonNull(assistant);
         this.commitService = Objects.requireNonNull(commitService);
         this.contentResolutionService = Objects.requireNonNull(contentResolutionService);
+        this.responsePlanner = responsePlanner;
+        this.shadowRecorder = Objects.requireNonNull(shadowRecorder);
+        this.shadowGate = Objects.requireNonNull(shadowGate);
     }
 
     @Override
@@ -93,12 +142,28 @@ public class DefaultConversationTurnProcessor implements ConversationTurnProcess
                 resolved.text(), inbound.receivedAt());
         var memory = memoryService.load(new MemoryQuery(memoryKey, resolved.text(), inbound.providerMessageId()));
         var journey = leadJourneyService.load(reference.tenantId(), reference.conversationId());
+        if (shadowGate.killSwitchEnabled()) {
+            log.info("Shadow review kill switch active; routing turn to human queue: conversationId={} receiptId={}",
+                    reference.conversationId(), reference.receiptId());
+            var route = commitService.forceHumanHandoff(reference, inbound, conversation, memory, journey);
+            return new ConversationTurnOutcome(route);
+        }
         log.info("Conversation turn invoking assistant: conversationId={} memoryVersion={} recentMessages={} journeyPresent={}",
                 reference.conversationId(), memory.memoryVersion(), memory.recentMessages().size(), journey != null);
         var reply = resolved.status() == InboundContentStatus.CLARIFICATION_REQUIRED
                 ? new AssistantReply(resolved.text(), false)
                 : assistant.respond(new ConversationTurnRequest(reference.tenantId(),
                         reference.conversationId(), resolved.text(), conversation.state(), memory, journey));
+        if (responsePlanner != null) {
+            reply = responsePlanner.apply(reply, resolved.text());
+        }
+        if (shadowGate.shadowEnabled()) {
+            shadowRecorder.record(reference.tenantId(), reference.conversationId(), reference.receiptId(),
+                    inbound.providerMessageId(), reply.text(), Instant.now());
+            log.info("Shadow draft recorded without send: conversationId={} receiptId={} route=SHADOW_DRAFT",
+                    reference.conversationId(), reference.receiptId());
+            return new ConversationTurnOutcome(ConversationGraphRoute.IGNORED);
+        }
         log.info("Conversation turn assistant completed: conversationId={} handoffRequired={} decisionPresent={} replyChars={}",
                 reference.conversationId(), reply.handoffRequired(), reply.decision() != null,
                 reply.text() == null ? 0 : reply.text().length());

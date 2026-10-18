@@ -21,6 +21,13 @@ public interface HandoffRepository {
 
     List<HandoffTicket> list(UUID tenantId);
 
+    default List<HandoffTicket> listCreatedBetween(UUID tenantId, Instant startInclusive, Instant endExclusive) {
+        return list(tenantId).stream()
+                .filter(ticket -> !ticket.createdAt().isBefore(startInclusive)
+                        && ticket.createdAt().isBefore(endExclusive))
+                .toList();
+    }
+
     UUID findConversationTenant(UUID conversationId);
 
     default boolean transitionConversationToPending(UUID tenantId, UUID conversationId) { return true; }

@@ -1,0 +1,7 @@
+---
+- name: Verify backup and run one-shot Ford catalog sync
+  hosts: data
+  become: true
+  gather_facts: false
+  roles:
+    - role: catalog_sync

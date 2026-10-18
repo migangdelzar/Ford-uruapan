@@ -73,21 +73,6 @@ spring:
       embedding:
         options:
           model: ${FORD_AI_EMBEDDING_MODEL_VERSION:nomic-embed-text}
-    mcp:
-      client:
-        enabled: ${FORD_MCP_ENABLED:false}
-        name: ford-advisor
-        version: 1.0.0
-        initialized: true
-        type: SYNC
-        request-timeout: ${FORD_MCP_REQUEST_TIMEOUT:30s}
-        toolcallback:
-          enabled: true
-        streamable-http:
-          connections:
-            ford-uruapan:
-              url: ${FORD_MCP_URL:http://127.0.0.1:3001}
-              endpoint: ${FORD_MCP_ENDPOINT:/mcp}
   autoconfigure:
     exclude:
       - org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
@@ -118,20 +103,26 @@ logging:
     correlation: "[conversationId=%X{conversationId:-}] [receiptId=%X{receiptId:-}] [providerMessageId=%X{providerMessageId:-}] [stage=%X{workflowStage:-}] [trace_id=%X{traceId:-}] [span_id=%X{spanId:-}] "
 
 ford:
+  dealership:
+    hours:
+      zone: ${FORD_DEALERSHIP_TIME_ZONE:America/Mexico_City}
   web:
     ui:
       upstream-url: ${FORD_WEB_UI_UPSTREAM_URL:https://emme-crm-ui.pages.dev}
       public-origin: ${FORD_PUBLIC_BASE_URL:https://ford.emme.business}
-  mcp:
-    enabled: ${FORD_MCP_ENABLED:false}
-    url: ${FORD_MCP_URL:http://127.0.0.1:3001}
-    endpoint: ${FORD_MCP_ENDPOINT:/mcp}
-    token: ${FORD_MCP_TOKEN:}
-    access-client-id: ${FORD_MCP_ACCESS_CLIENT_ID:}
-    access-client-secret: ${FORD_MCP_ACCESS_CLIENT_SECRET:}
-    request-timeout: ${FORD_MCP_REQUEST_TIMEOUT:30s}
-    required-for-volatile-information: ${FORD_MCP_REQUIRED_FOR_VOLATILE_INFORMATION:true}
-    read-only-tool-names: ${FORD_MCP_READ_ONLY_TOOL_NAMES:search_vehicles,search_vehicle_and_offers,get_vehicle,compare_vehicles,search_offers,list_promotions,get_vehicle_provenance,get_catalog_status}
+  catalog:
+    tools:
+      enabled: ${FORD_CATALOG_TOOLS_ENABLED:false}
+      read-only-tool-names: ${FORD_CATALOG_READ_ONLY_TOOL_NAMES:search_vehicles,search_vehicle_and_offers,get_vehicle,compare_vehicles,search_offers,list_promotions,get_vehicle_provenance,get_catalog_status,get_page_links,compare_trims,compare_model_years,get_variant_comparisons}
+    datasource:
+      url: ${FORD_CATALOG_JDBC_URL:}
+      username: ${FORD_CATALOG_USERNAME:}
+      password: ${FORD_CATALOG_PASSWORD:}
+      driver-class-name: ${FORD_CATALOG_DRIVER:org.postgresql.Driver}
+  knowledge:
+    rag:
+      reranker-enabled: ${FORD_KNOWLEDGE_RERANKER_ENABLED:false}
+      reranker-top-k: ${FORD_KNOWLEDGE_RERANKER_TOP_K:5}
   security:
     jwt:
       enabled: ${FORD_SECURITY_JWT_ENABLED:false}
@@ -159,6 +150,15 @@ ford:
       publication-retry-age: ${FORD_CONVERSATION_PUBLICATION_RETRY_AGE:PT1M}
     human-handoff:
       enabled: ${FORD_HUMAN_HANDOFF_ENABLED:true}
+    hours:
+      zone: ${FORD_CONVERSATION_HOURS_ZONE:America/Mexico_City}
+      weekday-opens: ${FORD_CONVERSATION_HOURS_WEEKDAY_OPENS:09:00}
+      weekday-closes: ${FORD_CONVERSATION_HOURS_WEEKDAY_CLOSES:19:00}
+      saturday-opens: ${FORD_CONVERSATION_HOURS_SATURDAY_OPENS:09:00}
+      saturday-closes: ${FORD_CONVERSATION_HOURS_SATURDAY_CLOSES:14:00}
+    shadow-review:
+      enabled: ${FORD_SHADOW_REVIEW_ENABLED:false}
+      kill-switch: ${FORD_SHADOW_REVIEW_KILL_SWITCH:false}
   memory:
     enabled: ${FORD_MEMORY_ENABLED:true}
     recent-message-limit: ${FORD_MEMORY_RECENT_MESSAGE_LIMIT:20}
@@ -185,6 +185,10 @@ ford:
     manual-csv-path: ${FORD_MANUAL_CSV_PATH:}
     max-attempts: ${FORD_INGESTION_MAX_ATTEMPTS:3}
   channels:
+    debounce:
+      enabled: ${FORD_INBOUND_DEBOUNCE_ENABLED:false}
+      window: ${FORD_INBOUND_DEBOUNCE_WINDOW:PT5S}
+      claim-batch-size: ${FORD_INBOUND_DEBOUNCE_CLAIM_BATCH_SIZE:50}
     meta:
       app-secret: ${FORD_META_APP_SECRET:}
       verify-token: ${FORD_META_VERIFY_TOKEN:}

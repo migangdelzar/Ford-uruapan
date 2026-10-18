@@ -52,7 +52,7 @@ class OciActionContractTest(unittest.TestCase):
     def test_action_rejects_unknown_target(self):
         result = self.run_validation(OCI_TARGET="unknown")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("target must be ford-service or ford-mcp", result.stderr)
+        self.assertIn("target must be ford-service or ford-scraper-scheduler", result.stderr)
 
     def test_ford_service_requires_an_existing_backup_host(self):
         result = self.run_validation(OCI_BACKUP_HOST="")
@@ -87,13 +87,13 @@ class OciActionContractTest(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("immutable GHCR image digest", result.stderr)
 
-    def test_mcp_requires_existing_private_ip_and_rollback_resolves_recorded_digest(self):
-        missing_ip = self.run_validation(OCI_TARGET="ford-mcp", OCI_MCP_PRIVATE_IP="")
-        self.assertNotEqual(missing_ip.returncode, 0)
-        self.assertIn("existing VM private IPv4", missing_ip.stderr)
+    def test_retired_mcp_target_is_rejected_and_scheduler_target_is_supported(self):
+        retired = self.run_validation(OCI_TARGET="ford-mcp")
+        self.assertNotEqual(retired.returncode, 0)
+        self.assertIn("target must be ford-service or ford-scraper-scheduler", retired.stderr)
 
-        rollback = self.run_validation(OCI_TARGET="ford-mcp", OCI_OPERATION="rollback", OCI_SOURCE_SHA="recorded-rollback", OCI_IMAGE="")
-        self.assertEqual(rollback.returncode, 0, rollback.stderr)
+        scheduler = self.run_validation(OCI_TARGET="ford-scraper-scheduler")
+        self.assertEqual(scheduler.returncode, 0, scheduler.stderr)
 
     def test_validation_never_prints_deployment_secrets(self):
         result = self.run_validation(OCI_TARGET="unknown")
@@ -161,9 +161,25 @@ class OciActionContractTest(unittest.TestCase):
     def test_release_workflow_pins_the_meta_aware_shared_action_commit(self):
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn(
-            "migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@972fe859e907753d60e163ecef2ee5cd1fb044f3",
+            "migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@8acc8bd8f05281317304d482ae5c20abe19cfce4",
             workflow,
         )
+
+    def test_service_release_wires_local_catalog_reader_and_removes_remote_mcp_client(self):
+        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        app_template = (REPO_ROOT.parent / "deployment/ansible/roles/app/templates/app.env.j2").read_text(encoding="utf-8")
+        action_template = (REPO_ROOT.parent / ".github/actions/oci-blue-green/deploy.sh").read_text(encoding="utf-8")
+
+        for name in (
+            "FORD_CATALOG_TOOLS_ENABLED",
+            "FORD_CATALOG_JDBC_URL",
+            "FORD_CATALOG_USERNAME",
+            "FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD",
+        ):
+            self.assertIn(name, workflow + action_template)
+        self.assertNotIn("FORD_MCP_", workflow)
+        self.assertNotIn("service-mcp-", workflow)
+        self.assertNotIn("FORD_MCP_", app_template)
 
     def test_release_workflow_is_closed_until_vault_and_production_gates_pass(self):
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
@@ -222,7 +238,7 @@ class OciActionContractTest(unittest.TestCase):
         self.assertNotIn("chore/platform-secret-management", workflow)
         self.assertIn("environment: deployment-preflight", workflow)
         self.assertIn("/actuator/health", workflow)
-        self.assertIn("ford-mcp-mcp-1", workflow)
+        self.assertNotIn("ford-mcp-mcp-1", workflow)
         self.assertIn("data-postgres-1", workflow)
         self.assertNotIn("docker compose up", workflow)
         self.assertNotIn("docker stop", workflow)

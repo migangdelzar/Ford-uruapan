@@ -53,7 +53,7 @@ TARGETS = (
         name="Ford-scraping",
         repository=f"{OWNER}/Ford-scraping",
         release_workflow="release.yml",
-        release_run_name="Release MCP to OCI",
+        release_run_name="Release Ford scraper scheduler",
     ),
     ReleaseTarget(
         key="web",

@@ -49,18 +49,18 @@ public final class ObservedToolCallback implements ToolCallback {
         var conversationId = safeContextId(context, "conversationId");
         var started = System.nanoTime();
         var toolFamily = ToolFailureDiagnostics.toolFamily(toolName);
-        log.info("MCP tool call started: tool={} tenantId={} conversationId={}",
+        log.info("catalog tool call started: tool={} tenantId={} conversationId={}",
                 toolName, tenantId, conversationId);
         try {
             var result = invocation.invoke();
             record(toolFamily, "success", null, started);
-            log.info("MCP tool call completed: tool={} tenantId={} conversationId={} outcome=success durationMs={}",
+            log.info("catalog tool call completed: tool={} tenantId={} conversationId={} outcome=success durationMs={}",
                     toolName, tenantId, conversationId, elapsedMs(started));
             return result;
         } catch (RuntimeException exception) {
             var diagnostics = ToolFailureDiagnostics.describe(toolName, exception);
             record(diagnostics.tool(), "failure", diagnostics.category(), started);
-            log.warn("MCP tool call completed: tool={} tenantId={} conversationId={} outcome=failure failureCategory={} rootCauseType={} status={} durationMs={}",
+            log.warn("catalog tool call completed: tool={} tenantId={} conversationId={} outcome=failure failureCategory={} rootCauseType={} status={} durationMs={}",
                     toolName, tenantId, conversationId, diagnostics.category(), diagnostics.rootCauseType(),
                     diagnostics.status() == null ? "-" : diagnostics.status(), elapsedMs(started));
             throw exception;

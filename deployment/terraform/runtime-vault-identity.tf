@@ -1,45 +1,13 @@
 # Adopt the existing runtime identities by importing all three resources before
 # enabling Terraform management. The default leaves OCI identity unchanged.
 locals {
-  runtime_vault_instances = {
-    app  = { name = "ford-runtime-app-emme1", instance_ocid = var.emme_1_instance_ocid }
-    data = { name = "ford-runtime-data-emme2", instance_ocid = var.emme_2_instance_ocid }
-  }
+  runtime_vault_policy_contract = jsondecode(file("${path.module}/runtime-vault-policy.json"))
 
-  runtime_vault_secret_names = {
-    app = [
-      "ford-prod-postgres-password",
-      "ford-prod-redis-password",
-      "ford-prod-operator-password",
-      "ford-prod-jwt-private-key",
-      "ford-prod-resend-api-key",
-      "ford-prod-meta-app-secret",
-      "ford-prod-meta-verify-token",
-      "ford-prod-meta-whatsapp-access-token",
-      "ford-prod-meta-messenger-access-token",
-      "ford-prod-meta-instagram-access-token",
-      "ford-prod-mcp-http-bearer-token",
-      "ford-prod-mcp-access-client-id",
-      "ford-prod-mcp-access-client-secret",
-      "ford-prod-ollama-access-client-id",
-      "ford-prod-ollama-access-client-secret",
-      "ford-prod-openai-api-key",
-      "ford-prod-openrouter-api-key",
-      "ford-prod-groq-api-key",
-      "ford-prod-gemini-api-key",
-      "ford-prod-cloudflare-api-token",
-      "ford-prod-typesafe-api-key",
-      "ford-prod-grafana-cloud-api-token",
-      "ford-prod-langfuse-secret-key",
-    ]
-    data = [
-      "ford-prod-postgres-password",
-      "ford-prod-redis-password",
-      "ford-prod-mcp-http-bearer-token",
-      "ford-prod-mcp-access-client-secret",
-      "ford-prod-cloudflared-tunnel-token",
-    ]
+  runtime_vault_instances = {
+    app  = { name = local.runtime_vault_policy_contract.instances.app, instance_ocid = var.emme_1_instance_ocid }
+    data = { name = local.runtime_vault_policy_contract.instances.data, instance_ocid = var.emme_2_instance_ocid }
   }
+  runtime_vault_secret_names = local.runtime_vault_policy_contract.secret_names
 }
 
 resource "oci_identity_dynamic_group" "runtime_vault" {

@@ -105,6 +105,50 @@ class LeadJourneyPolicyTest {
         assertThat(updated).isEqualTo(current);
     }
 
+    @Test
+    void capturesPaymentMethodAndCustomerWordingForNewPacketFacts() {
+        var proposal = proposal(LeadJourneyTopic.FINANCING_TRADE_IN,
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.PAYMENT_METHOD, "financiamiento", "Quiero financiar"),
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.DOWN_PAYMENT, "20 mil pesos", "mi enganche sería de 20 mil pesos"),
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.CUSTOMER_NAME, "María Elena", "Me llamo María Elena"));
+
+        var updated = policy.apply(emptyJourney(), proposal,
+                "Quiero financiar; mi enganche sería de 20 mil pesos. Me llamo María Elena", false, "in-packet", NOW);
+
+        assertThat(updated.facts()).containsEntry(LeadJourneyFactKey.PAYMENT_METHOD,
+                new LeadJourneyFact("financiamiento", "in-packet", NOW));
+        assertThat(updated.facts()).containsEntry(LeadJourneyFactKey.DOWN_PAYMENT,
+                new LeadJourneyFact("20 mil pesos", "in-packet", NOW));
+        assertThat(updated.facts()).containsEntry(LeadJourneyFactKey.CUSTOMER_NAME,
+                new LeadJourneyFact("María Elena", "in-packet", NOW));
+    }
+
+    @Test
+    void rejectsInferredPaymentDownPaymentAndNameEvenWhenUnrelatedEvidenceIsQuoted() {
+        var proposal = proposal(LeadJourneyTopic.FINANCING_TRADE_IN,
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.PAYMENT_METHOD, "financiamiento", "Quiero una Ranger"),
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.DOWN_PAYMENT, "20 mil pesos", "Quiero una Ranger"),
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.CUSTOMER_NAME, "María", "Quiero una Ranger"));
+
+        var updated = policy.apply(emptyJourney(), proposal, "Quiero una Ranger", false, "in-1", NOW);
+
+        assertThat(updated.facts()).isEmpty();
+    }
+
+    @Test
+    void unsupportedProposalCannotOverwritePreviouslyAcceptedFact() {
+        var accepted = new LeadJourneyFact("contado", "in-1", NOW);
+        var current = new LeadJourneySnapshot(UUID.randomUUID(), UUID.randomUUID(), null,
+                LeadJourneyTopic.FINANCING_TRADE_IN, Set.of(LeadJourneyTopic.FINANCING_TRADE_IN), Set.of(),
+                Map.of(LeadJourneyFactKey.PAYMENT_METHOD, accepted), null, 0, "in-1", 1, NOW);
+        var proposal = proposal(LeadJourneyTopic.FINANCING_TRADE_IN,
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.PAYMENT_METHOD, "financiamiento", "Me interesa una Ranger"));
+
+        var updated = policy.apply(current, proposal, "Me interesa una Ranger", false, "in-2", NOW.plusSeconds(1));
+
+        assertThat(updated.facts().get(LeadJourneyFactKey.PAYMENT_METHOD)).isEqualTo(accepted);
+    }
+
     private static LeadJourneyProposal proposal(LeadJourneyTopic topic, ProposedLeadJourneyFact... facts) {
         return new LeadJourneyProposal(topic, List.of(facts), null);
     }

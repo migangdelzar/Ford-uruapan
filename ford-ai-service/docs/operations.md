@@ -230,7 +230,7 @@ to `true` to restore authorized handoff behavior.
 `FORD_CONVERSATION_GRAPH_ENABLED` selects the bounded LangGraph4j inbound
 workflow. It defaults to `true` and is the canonical active path. The graph runs one
 accepted inbound turn at a time and invokes the existing Spring AI assistant
-once; the model, authorized Ford MCP/RAG tools, conversation transcript, lead
+once; the model, authorized Ford catalog/RAG tools, conversation transcript, lead
 journey, and outbox remain owned by their existing application services and
 PostgreSQL tables. Graph checkpoints live in the separate `ford_graph` schema
 and contain only tenant, conversation, and receipt identifiers plus route
@@ -570,6 +570,16 @@ mise run test:ai-evaluation
 mise run test:check
 ```
 
+`mise run test:parity` is the opt-in real-catalog gate: it boots a disposable
+PostgreSQL container, restores a Ford-scraping catalog snapshot, applies the
+`ford_read` view migrations, and runs `CatalogSnapshotParityIntegrationTest`
+against real data. Pass a snapshot path or set `FORD_CATALOG_SNAPSHOT` /
+`FORD_CATALOG_REPO`; it never touches the deployed catalog.
+
+```bash
+mise run test:parity -- /path/to/ford-<timestamp>.dump
+```
+
 The integration gate requires Docker/Testcontainers. The AI evaluation task
 runs deterministic Java and Node fixture tests without contacting OpenRouter;
 `mise run test:ai-evaluation --live` is a separate, opt-in model call and must
@@ -618,7 +628,7 @@ For a production release, additionally validate `mise run deploy:check` and
 `mise run deploy:status`, record the immutable current app image for rollback,
 then publish/deploy only after explicit release approval. The app deploy targets
 `emme-1`; database and Redis services remain on `emme-2`. Verify health and
-redacted startup/provider/MCP summaries after rollout. Do not reset data volumes
+redacted startup/provider/tool summaries after rollout. Do not reset data volumes
 or send a customer test message as part of release verification.
 
 ## Provider and safety controls

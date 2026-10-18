@@ -1,7 +1,9 @@
 package com.ford.service.handoff.adapter.in.web;
 
 import com.ford.service.handoff.api.OperatorPrincipal;
+import com.ford.service.handoff.api.AfterHoursDigest;
 import com.ford.service.handoff.application.HandoffService;
+import com.ford.service.handoff.application.AfterHoursDigestService;
 import com.ford.service.handoff.domain.HandoffRequest;
 import com.ford.service.handoff.domain.HandoffStatus;
 import com.ford.service.handoff.domain.HandoffTicket;
@@ -25,9 +27,12 @@ import java.util.UUID;
 public class OperatorConversationHandoffController {
 
     private final HandoffService service;
+    private final AfterHoursDigestService afterHoursDigestService;
 
-    public OperatorConversationHandoffController(HandoffService service) {
+    public OperatorConversationHandoffController(HandoffService service,
+                                                AfterHoursDigestService afterHoursDigestService) {
         this.service = service;
+        this.afterHoursDigestService = afterHoursDigestService;
     }
 
     @PostMapping("/conversations/{conversationId}/takeover")
@@ -67,6 +72,12 @@ public class OperatorConversationHandoffController {
                 .limit(pageSize)
                 .toList();
         return new HandoffPage(items, items.size(), false);
+    }
+
+    @GetMapping("/handoffs/after-hours-digest")
+    @PreAuthorize("hasAuthority('SCOPE_operator:read') || hasRole('ADMIN')")
+    public AfterHoursDigest afterHoursDigest(@RequestParam UUID tenantId, Authentication authentication) {
+        return afterHoursDigestService.get(tenantId, principal(authentication));
     }
 
     @PostMapping("/handoffs")

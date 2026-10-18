@@ -12,6 +12,9 @@ spring:
           model: ${FORD_AI_CLOUD_MODEL_VERSION:deepseek-flash}
 
 ford:
+  catalog:
+    tools:
+      enabled: ${FORD_CATALOG_TOOLS_ENABLED:false}
   security:
     jwt:
       enabled: ${FORD_SECURITY_JWT_ENABLED:true}
@@ -23,6 +26,9 @@ ford:
       graph-enabled: ${FORD_CONVERSATION_GRAPH_ENABLED:true}
     human-handoff:
       enabled: ${FORD_HUMAN_HANDOFF_ENABLED:false}
+    shadow-review:
+      enabled: ${FORD_SHADOW_REVIEW_ENABLED:false}
+      kill-switch: ${FORD_SHADOW_REVIEW_KILL_SWITCH:false}
   ai:
     cloud-chat-provider: ${FORD_AI_CLOUD_PROVIDER:openai}
     cloud-chat-model-version: ${FORD_AI_CLOUD_MODEL_VERSION:deepseek-flash}
@@ -40,6 +46,9 @@ ford:
           tool-calling-verified: ${FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED:false}
           structured-output-verified: ${FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED:false}
   channels:
+    debounce:
+      enabled: ${FORD_INBOUND_DEBOUNCE_ENABLED:true}
+      window: ${FORD_INBOUND_DEBOUNCE_WINDOW:PT5S}
     meta:
       auto-binding:
         enabled: ${FORD_META_AUTO_BINDING_ENABLED:false}
