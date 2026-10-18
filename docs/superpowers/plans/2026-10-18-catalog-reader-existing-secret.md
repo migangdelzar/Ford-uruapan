@@ -88,11 +88,11 @@ void catalogPasswordFallsBackToExistingDatabasePassword() {
 - Consumes: Candidate image and the existing `FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD` reference, read with emme-2's already-authorized Instance Principal.
 - Produces: A mode-0600 scheduler environment and `ford_catalog_reader` login with the same existing password value as `ford`, view-only grants, a verified read/write-denied result, and a release manifest for the coordinator.
 
-- [ ] Add an Action contract test requiring reader setup after `Migrate the catalog` and before `Replace the single active scheduler`; require `no_log: true` for the environment slurp, password fact, and psql role command.
+- [ ] Add an Action contract test requiring secret fetch and `scheduler.env` rendering before `Migrate the catalog`, and reader setup after migration but before `Replace the single active scheduler`; require `no_log: true` for secret output, password facts, and psql role commands.
 - [ ] Run `python3 -m unittest tests.test_action_package_contract.ActionPackageContractTest.test_scheduler_reader_is_provisioned_after_migrations`; observe failure before the role task exists.
 - [ ] Add `scheduler-postgres-password-secret-ocid` to the action, map it to `OCI_SCHEDULER_POSTGRES_PASSWORD_SECRET_OCID`, and wire the existing `FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD` production variable from Ford-scraping `release.yml`. Validate the OCID for scheduler deploy/rollback; create no new secret.
 - [ ] Install/verify OCI CLI on emme-2 and fetch that existing secret with `oci secrets secret-bundle get --auth instance_principal --secret-id "$OCI_SCHEDULER_POSTGRES_PASSWORD_SECRET_OCID"`; register the base64 content `no_log: true`, decode into `scheduler_database_password`, and assert it is non-empty.
-- [ ] Render `scheduler.env.j2` to `{{ remote_root }}/mcp/scheduler.env` with only `POSTGRES_PASSWORD={{ scheduler_database_password }}`, owner `ansible_user`, mode `0600`, and `no_log: true`. Change scheduler migration/start/rollback Compose commands to use `scheduler.env`, removing the dependency on the old MCP `.env`.
+- [ ] Render `scheduler.env.j2` to `{{ remote_root }}/mcp/scheduler.env` before migration, with only `POSTGRES_PASSWORD={{ scheduler_database_password }}`, owner `ansible_user`, mode `0600`, and `no_log: true`. Change migration/start/rollback Compose commands to use `scheduler.env`, removing the old MCP `.env` dependency.
 - [ ] Execute psql inside `data-postgres-1` as the container's `postgres` OS/database user, with `catalog_reader_password` passed by psql's quoted variable form and task output hidden. Create the role only if absent; otherwise reassert its login flags/password:
 
 ```sql
