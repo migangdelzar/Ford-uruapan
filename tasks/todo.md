@@ -21,12 +21,15 @@ This is the authoritative remaining checklist for the MÍA/Spring AI production 
 
 ### A. Publish and validate the coordinated source
 
+- [ ] Confirm protected `main` rules require reviewed PRs and required CI; no direct push or force-push for release changes.
+- [ ] Keep GitHub Actions job permissions minimal, production credentials environment-scoped, and release-coordinator App credentials in GitHub Actions secrets. Local tooling may use the mode-0600 App key file by path; never copy its contents into `.zshrc`, repo files, or logs.
 - [ ] From the authenticated workstation, fetch current GitHub refs and reconcile the local Ford Service and Ford-scraping commits with the latest protected `main`; preserve unrelated worktree files and do not force-push.
 - [ ] Publish the Ford Service and Ford-scraping changes through reviewed PRs; confirm the MCP runtime removal is paired with the in-process Spring AI catalog tools and scheduler-only scraper deployment.
-- [ ] Confirm the pinned OCI blue-green action revision used by Ford Service is published and reviewed; confirm the workflows use immutable action/image references and source attestations.
+- [ ] Confirm every third-party/shared action uses the reviewed immutable commit SHA; confirm the pinned OCI blue-green action revision is published and reviewed.
 - [ ] Pass required CI, migration, release-contract, container-contract, integration, provenance, backup-before-sync, scheduler rollback, and release coordinator checks.
+- [ ] Confirm image builds/scans produce signed provenance attestations and deployment verifies the exact digest and source SHA reachable from protected `main`.
 - [ ] Confirm both versioned release tags point to the reviewed commits and the coordinator's read-only preflight accepts both exact versions.
-- [ ] Run the protected coordinated release from `main`; retain coordinator run ID, both child release run IDs, source SHAs, image digests, and approval evidence.
+- [ ] Run the protected coordinated release from `main` through `release-all-approval`; retain coordinator correlation ID/run ID, both child release run IDs, source SHAs, image digests, and approval evidence.
 
 ### B. Complete catalog behavior parity before enabling tools
 
@@ -44,12 +47,14 @@ This is the authoritative remaining checklist for the MÍA/Spring AI production 
 - [ ] Keep Java catalog database credentials separate: when parity permits enabling tools, use the dedicated read-only database user, the `ford_read` views, its Vault secret OCID, and production JDBC URL. Verify SELECT succeeds and writes are denied.
 - [ ] Run the protected Terraform runtime-Vault workflow from `main` with `plan`; inspect its artifact and ensure it changes only the reviewed least-privilege policy entries (removing obsolete MCP grants while preserving active app/data consumers). Stop on any group replacement, resource creation/destruction, or broader grant.
 - [ ] Apply only that reviewed plan through the protected production approval, then verify policy state and both instance-principal reads. Record plan/apply run IDs and retain evidence.
+- [ ] Verify Terraform uses the dedicated OCI API user, private/versioned `ford-terraform-state` bucket, state locking, and exact `ford-runtime-secret-read` scope; import all three existing identity resources before Terraform manages them.
 - [ ] Keep Terraform API credentials in the dedicated OCI Actions secret and private state; never put OCI private keys or Vault values in `.zshrc`, command output, repository files, Terraform variables, or state.
 
 ### D. Deploy and verify both production hosts
 
 - [ ] Confirm the required production environment settings pass the release workflow: operator username; official Meta Graph messages endpoint and matching phone number ID; Meta delivery and durable outbox enabled; required secret OCIDs; Grafana Cloud and Langfuse endpoints/keys; deployment hosts/users/SSH secrets; and registry access.
-- [ ] Keep the existing production scheduler active until the protected replacement workflow and backup-gated catalog sync have succeeded. Verify backup freshness, restore/rollback readiness, no overlapping manual/monthly sync, and failure behavior before cutover.
+- [ ] Confirm environment reviewers/approvals are configured for `release-all-approval`, `production`, `manual-release-approval`, and Terraform plan/apply; keep production deployment disabled until readiness review is recorded.
+- [ ] Keep the existing production scheduler active until the protected replacement workflow and backup-gated catalog sync have succeeded. Verify `deployment-preflight` backup age/manifest, restore/rollback readiness, no overlapping manual/monthly sync, and failure behavior before cutover.
 - [ ] Deploy the versioned Service and scraper releases through the protected blue-green/coordinated workflows. Verify health, image/source identity, DB/Redis connectivity, Vault resolution, service logs, and exactly one intended scheduler on emme-1/emme-2.
 - [ ] Verify catalog tools with read-only production smoke cases only after parity is approved; verify monthly sync, backup-before-sync, scheduler ownership, and rollback window on the data host.
 - [ ] Run a synthetic authenticated conversation for formal `usted`, current catalog evidence/source URLs, memory continuity, and advisor handoff; do not message a real customer. Verify Meta inbound/outbound delivery separately and record its evidence.
@@ -63,10 +68,11 @@ This is the authoritative remaining checklist for the MÍA/Spring AI production 
 
 ### Current status and constraints
 
-- Local Ford-scraping MCP-removal commit: `f4f1880` on `feat/mia-phase-one-mcp`; Service dispatcher/docs commit: `e362d3b` on local `main`. Both are unpushed and must be reconciled with current GitHub refs before PRs.
+- Local Ford-scraping MCP-removal commit: `f4f1880` on `feat/mia-phase-one-mcp`; Ford Service dispatcher/docs commits: `e362d3b` and `24e42db` on local `main`. All are unpushed and must be reconciled with current GitHub refs before PRs.
 - GitHub authentication and `git ls-remote` succeeded in the user's terminal; the agent runtime still cannot use the host keychain, SSH exits with UID 501 lookup failure, and its Docker package/network workaround stalled. Use the authenticated workstation to fetch/publish if agent networking remains unavailable.
 - Catalog parity/retrieval evidence is incomplete. Production was not changed; catalog callbacks must remain off and deployed MCP resources must remain until the protected replacement passes.
 - The `.zshrc` exports only the release coordinator App ID, Client ID, and private-key path. Keep the private key in its mode-0600 file and use the protected GitHub App secrets for Actions.
+- Older dated task sections below are historical records; the consolidated checklist above controls current release readiness. Preserve their evidence, but treat an old unchecked item as current only when it is represented in this checklist.
 
 ### Subtitle: Make both deploy lanes work, contracted, and verified. Local implementation is in progress; protected production cutover is still blocked by host/GitHub access and outstanding parity/evidence gates.
 
