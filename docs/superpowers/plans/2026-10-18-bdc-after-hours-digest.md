@@ -31,7 +31,7 @@
 - `ford-ai-service/src/main/java/com/ford/service/handoff/application/AfterHoursDigestService.java`: authorization, schedule, inclusion, and summary counts.
 - `ford-ai-service/src/main/java/com/ford/service/handoff/api/AfterHoursDigest.java`: response and item records.
 - `ford-ai-service/src/main/java/com/ford/service/handoff/adapter/in/web/OperatorConversationHandoffController.java`: authenticated `GET /api/v1/handoffs/after-hours-digest?tenantId=...` endpoint.
-- Focused tests for policy, application service, and controller; `docs/openapi/frontend-api.yaml`; `tasks/todo.md`. The new SQL range query is bounded in the JDBC adapter; dedicated database-backed repository verification remains a release follow-up.
+- Focused tests for policy, application service, and controller; `docs/openapi/frontend-api.yaml`; `tasks/todo.md`. `JdbcHandoffRepositoryDigestTest` uses H2 PostgreSQL mode to verify tenant isolation, `[startInclusive, endExclusive)` boundaries, and ordering.
 
 ### Ford-web (`/private/tmp/ford-mia-phase1-web`)
 
@@ -86,6 +86,6 @@ Tasks 1–3 are Service-side and precede Task 4's Web integration. Rollback is a
 
 ## Local verification results (2026-10-18)
 
-- Ford Service: full `test bootJar compileIntegrationTestJava` passed (807 unit tests, 0 failures/errors/skips); focused authenticated digest HTTP integration test passed.
+- Ford Service: full `test bootJar compileIntegrationTestJava` passed (807 unit tests, 0 failures/errors/skips); focused authenticated digest controller HTTP test and H2 JDBC range test passed.
 - Ford-web: full suite 35 files / 142 tests passed; lint, production build, 50-path API check, and Pages function build passed.
 - Remaining verification: dedicated PostgreSQL test of the bounded JDBC query; approved calendar and operator dry-run; protected release and production 08:45 evidence.
