@@ -74,6 +74,7 @@ test("deployment connectivity preflight is manually runnable from main and stays
   assert.match(source, /docker ps -a --filter 'label=com\.docker\.compose\.service=otel-collector'/);
   assert.doesNotMatch(source, /docker inspect --format[^\n]*app-otel-collector-1/);
   assert.match(source, /docker ps -a --format .*sched/i);
+  assert.match(source, /test -s \/opt\/ford-uruapan\/mcp\/\.env/);
 });
 
 test("development deployment boots the local Compose stack behind a health gate", async () => {

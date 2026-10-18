@@ -89,6 +89,10 @@ jobs:
             echo 'Expected exactly one running scraper scheduler on emme-2.' >&2
             exit 1
           }
+          test -s /opt/ford-uruapan/mcp/.env || {
+            echo 'The existing scheduler runtime environment is missing.' >&2
+            exit 1
+          }
           printf 'emme-2 PostgreSQL is ready; scheduler: %s\n' "$scheduler_containers"
           REMOTE
 
