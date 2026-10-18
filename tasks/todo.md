@@ -45,8 +45,8 @@ Design approved by user: authenticated, read-only Service query; Ford-web in-app
 ## MÍA Phase 1 source-of-truth reconciliation (2026-10-18)
 
 - [x] Compared the supplied implementation plan `/Users/miguelangeldelgadillozarate/Downloads/mia-ford-uruapan-plan.html` with the approved Service design `docs/superpowers/specs/2026-10-17-mia-phase-one-assistant-design.md` and delivery plans.
-- [ ] Resolve the 08:45 BDC digest scope before coding: the supplied HTML lists the digest in Phase 1, while the approved Service design explicitly excludes it and the later task record says a local CRM recipient/delivery path has not been specified. The user later approved an in-app-only digest design on 2026-10-18. Implementation is tracked in the BDC digest section below. No external alert or delivery channel is authorized.
-- [ ] Reconcile the HTML's “CRM contact and deal creation” with the approved design's explicit exclusion of external CRM contact/deal creation. Current boundary is Ford-web's local CRM/operator workflow and Ford Service's internal queue.
+- [x] Resolve the 08:45 BDC digest scope: the user approved the in-app-only Ford-web card on 2026-10-18; Service endpoint and Web card implementation/tests are tracked in the BDC digest sections below. No external alert or delivery channel is authorized.
+- [x] Reconcile the HTML's “CRM contact and deal creation” with the approved design: Ford-web is the local CRM/operator workflow and Ford Service owns the internal queue; no separate external CRM provider integration is planned.
 - [ ] Other plan gates still open and not demonstrated by local test results alone: real anonymized conversation corpus and dealership inputs (M0/M2), holiday/calendar approval, provider-backed sub-minute end-to-end latency, real BDC operator review and no-reask evidence, production datasource/Vault grant validation, monthly scheduler production proof, protected coordinated release, and live emme-1/emme-2 behavior.
 
 ## Consolidated end-to-end completion requirements (2026-10-18)
