@@ -163,7 +163,7 @@ class ReleaseAllSummaryTest(unittest.TestCase):
         api = FakeGitHubApi(
             {
                 "id": 77,
-                "display_title": f"Release MCP to OCI [12345-1] {'b' * 40}",
+                "display_title": f"Release Ford scraper scheduler [12345-1] {'b' * 40}",
                 "status": "completed",
                 "conclusion": "failure",
             },
@@ -203,7 +203,7 @@ class ReleaseAllSummaryTest(unittest.TestCase):
         api = FakeGitHubApi(
             {
                 "id": 77,
-                "display_title": f"Release MCP to OCI [12345-1] v1.2.3 {'b' * 40}",
+                "display_title": f"Release Ford scraper scheduler [12345-1] v1.2.3 {'b' * 40}",
                 "status": "completed",
                 "conclusion": "success",
             },
@@ -215,16 +215,16 @@ class ReleaseAllSummaryTest(unittest.TestCase):
                 "sourceSha": "b" * 40,
                 "imageDigest": None,
                 "deploymentId": "77",
-                "deploymentUrl": "https://ford-mcp.emme.business/mcp",
+                "deploymentUrl": "https://github.com/migangdelzar/Ford-scraping/actions/runs/77",
             },
             jobs=[
                 {
-                    "name": "Approve direct Ford MCP deployment",
+                    "name": "Approve scraper scheduler production change",
                     "status": "completed",
                     "conclusion": "skipped",
                 },
                 {
-                    "name": "Deploy or roll back Ford MCP",
+                    "name": "Deploy scheduler on emme-2",
                     "status": "completed",
                     "conclusion": "success",
                 },
@@ -243,7 +243,7 @@ class ReleaseAllSummaryTest(unittest.TestCase):
         api = FakeGitHubApi(
             {
                 "id": 77,
-                "display_title": f"Release MCP to OCI [12345-1] v2.4.1 {'b' * 40}",
+                "display_title": f"Release Ford scraper scheduler [12345-1] v2.4.1 {'b' * 40}",
                 "status": "completed",
                 "conclusion": "success",
             },
@@ -255,7 +255,7 @@ class ReleaseAllSummaryTest(unittest.TestCase):
                 "sourceSha": "b" * 40,
                 "imageDigest": "sha256:" + "d" * 64,
                 "deploymentId": "77",
-                "deploymentUrl": "https://ford-mcp.emme.business/mcp",
+                "deploymentUrl": "https://github.com/migangdelzar/Ford-scraping/actions/runs/77",
             },
         )
 
@@ -263,7 +263,7 @@ class ReleaseAllSummaryTest(unittest.TestCase):
 
         self.assertEqual(updated.image_digest, "sha256:" + "d" * 64)
         self.assertEqual(updated.deployment_id, "77")
-        self.assertEqual(updated.deployment_url, "https://ford-mcp.emme.business/mcp")
+        self.assertEqual(updated.deployment_url, "https://github.com/migangdelzar/Ford-scraping/actions/runs/77")
 
     def test_missing_result_artifact_fails_the_target_and_preserves_run_link(self):
         release = self.release("service", "running", run_id=77)

@@ -84,7 +84,7 @@ class ConversationWorkflowScenariosTest {
         assertThat(second.journey().pendingQuestionKey()).isEqualTo("TEST_DRIVE_DATE");
         assertThat(second.decision().intent()).isEqualTo(ConversationIntent.APPOINTMENT);
         assertThat(second.decision().evidence()).allSatisfy(e -> assertThat(e.fallbackUsed()).isTrue());
-        assertThat(scenario.toolCalls).containsExactly("get_vehicle"); // booking MCP tool is not exposed
+        assertThat(scenario.toolCalls).containsExactly("get_vehicle"); // booking tool is not exposed
         var third = scenario.turn("Mejor dime la mensualidad", DecisionKind.RULES_FINANCE,
                 "Puedo estimarla. ¿Qué enganche considerarías?");
         assertThat(third.memory()).contains("Sí, me gustaría", "prueba de manejo");

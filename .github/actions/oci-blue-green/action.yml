@@ -1,8 +1,8 @@
 name: OCI blue-green deploy
-description: Deploy or roll back Ford Service or MCP on its existing OCI VM.
+description: Deploy or roll back Ford Service or the catalog sync scheduler on its existing OCI VM.
 inputs:
   target:
-    description: Deployment target (ford-service or ford-mcp).
+    description: Deployment target (ford-service or ford-scraper-scheduler).
     required: true
   image:
     description: Immutable GHCR digest for deploy. Rollback resolves the recorded prior digest.
@@ -21,7 +21,7 @@ inputs:
     description: SSH user for the existing VM.
     required: true
   ssh-private-key:
-    description: SSH private key for the target VM (emme-1 for Ford Service, emme-2 for MCP).
+    description: SSH private key for the target VM.
     required: true
   backup-ssh-private-key:
     description: Separate SSH private key for the existing data VM backup before Ford Service deploys.
@@ -40,13 +40,23 @@ inputs:
     required: false
     default: /opt/ford
   backup-host:
-    description: Existing data VM host to back up before deploying Ford Service; also the MCP target host.
+    description: Existing data VM host to back up before deploying Ford Service or the scheduler.
     required: false
   backup-user:
     description: SSH user for the data VM; defaults to the deployment user.
     required: false
-  mcp-private-ip:
-    description: Existing MCP VM private IP used in the stable listener configuration.
+  service-catalog-tools-enabled:
+    description: Enable the Ford Service's local read-only catalog tools. Keep false until parity gates pass.
+    required: false
+    default: "false"
+  service-catalog-jdbc-url:
+    description: Dedicated read-only Ford catalog JDBC URL for the Service.
+    required: false
+  service-catalog-username:
+    description: Least-privilege Ford catalog reader role.
+    required: false
+  service-catalog-password-secret-ocid:
+    description: OCI Vault OCID for the dedicated catalog reader password.
     required: false
 runs:
   using: composite
@@ -68,5 +78,8 @@ runs:
         OCI_REMOTE_ROOT: ${{ inputs['remote-root'] }}
         OCI_BACKUP_HOST: ${{ inputs['backup-host'] }}
         OCI_BACKUP_USER: ${{ inputs['backup-user'] }}
-        OCI_MCP_PRIVATE_IP: ${{ inputs['mcp-private-ip'] }}
+        OCI_SERVICE_CATALOG_TOOLS_ENABLED: ${{ inputs['service-catalog-tools-enabled'] }}
+        OCI_SERVICE_CATALOG_JDBC_URL: ${{ inputs['service-catalog-jdbc-url'] }}
+        OCI_SERVICE_CATALOG_USERNAME: ${{ inputs['service-catalog-username'] }}
+        FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD: ${{ inputs['service-catalog-password-secret-ocid'] }}
       run: ${{ github.action_path }}/deploy.sh

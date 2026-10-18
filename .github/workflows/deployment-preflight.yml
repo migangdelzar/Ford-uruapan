@@ -61,7 +61,7 @@ jobs:
           echo 'emme-1 app and collector health passed'
           REMOTE
 
-      - name: Verify MCP and PostgreSQL host health on emme-2
+      - name: Verify PostgreSQL host health on emme-2
         shell: bash
         env:
           DATA_SSH_HOST: ${{ vars.DATA_SSH_HOST }}
@@ -74,10 +74,8 @@ jobs:
             -o StrictHostKeyChecking=yes \
             "$SSH_USER@$DATA_SSH_HOST" 'bash -se' <<'REMOTE'
           set -euo pipefail
-          test "$(docker inspect --format '{{.State.Health.Status}}' ford-mcp-mcp-1)" = healthy
           docker exec -u postgres data-postgres-1 pg_isready -U ford -d ford_service >/dev/null
-          test "$(docker inspect --format '{{.State.Health.Status}}' ford-mcp-ollama-1)" = healthy
-          echo 'emme-2 MCP, PostgreSQL, and Ollama health passed'
+          echo 'emme-2 PostgreSQL health passed'
           REMOTE
 
       - name: Summarize read-only preflight
@@ -87,6 +85,6 @@ jobs:
             echo '### Deployment connectivity preflight'
             echo "- Source: $GITHUB_SHA"
             echo '- emme-1 SSH and Ford Service health: checked'
-            echo '- emme-2 SSH and MCP/PostgreSQL/Ollama health: checked'
+            echo '- emme-2 SSH and PostgreSQL health: checked'
             echo '- Deployment, migration, image pull, and route switch: not run'
           } >> "$GITHUB_STEP_SUMMARY"

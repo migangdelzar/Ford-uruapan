@@ -46,7 +46,7 @@ public class DefaultHandoffService implements HandoffService {
                 UUID.randomUUID(), tenantId, request.conversationId(), request.leadId(),
                 HandoffStatus.HUMAN_PENDING, com.ford.service.handoff.domain.HandoffPriority.NORMAL,
                 null, request.reason(), "operator:" + tenantId + ":" + request.conversationId(), 0,
-                Instant.now(), null, null));
+                Instant.now(), null, null, request.packet()));
         if (!repository.transitionConversationToPending(tenantId, request.conversationId())) {
             throw new IllegalStateException("Conversation cannot enter human handoff from its current state");
         }

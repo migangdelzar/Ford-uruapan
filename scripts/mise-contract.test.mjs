@@ -69,6 +69,20 @@ test("grouped mise task files exist and are executable", async () => {
   }
 });
 
+test("catalog sync operator task targets emme-2 and reuses the backup-gated playbook", async () => {
+  const task = await read(`${serviceRoot}/.mise/tasks/deploy/catalog-sync`);
+  const helpers = await read(`${serviceRoot}/.mise/lib/remote.sh`);
+
+  await assertExecutable(`${serviceRoot}/.mise/tasks/deploy/catalog-sync`);
+  assert.match(task, /render_backup_inventory/);
+  assert.match(task, /catalog-sync\.yml/);
+  assert.match(task, /EMME_2_SSH_KEY/);
+  assert.match(task, /ansible-playbook/);
+  assert.match(helpers, /backup_inventory_file\(\)/);
+  assert.doesNotMatch(task, /require_deploy_config/);
+  assert.doesNotMatch(task, /mcp\.yml|migrate/);
+});
+
 test("Docker task groups support Compose v2 and standalone Compose", async () => {
   const helper = await read(`${serviceRoot}/.mise/lib/compose.sh`);
   assert.match(helper, /docker compose/);

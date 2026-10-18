@@ -1,6 +1,8 @@
 package com.ford.service.conversations.application;
 
 import com.ford.service.channels.api.InboundMessageAccepted;
+import com.ford.service.channels.api.InboundTurnReleased;
+import com.ford.service.channels.api.InboundDebounceGate;
 import com.ford.service.channels.api.AcceptedInboundMessageRepository;
 import com.ford.service.conversations.api.ConversationMemoryProjectionRefreshRequested;
 import com.ford.service.conversations.api.ConversationTurnRequest;
@@ -54,9 +56,12 @@ public class ConversationWorkflow {
     private final ConversationGraphRunner graphRunner;
     private final AcceptedInboundMessageRepository inboundTurns;
     private final ConversationTurnLeasePort turnLeases;
+    private final InboundDebounceGate debounceGate;
     private final String leaseOwner = UUID.randomUUID().toString();
     private final CustomerHandoffAuthorizationPolicy customerAuthorization =
             new CustomerHandoffAuthorizationPolicy();
+    private final CustomerHandoffEscalationPolicy handoffEscalationPolicy =
+            new CustomerHandoffEscalationPolicy();
     private final SpecialistHandoffPayloadFactory handoffPayloadFactory = new SpecialistHandoffPayloadFactory();
     private final CustomerHandoffOfferPolicy handoffOfferPolicy = new CustomerHandoffOfferPolicy();
 
@@ -122,6 +127,20 @@ public class ConversationWorkflow {
                                 AiObservationService observations,
                                 AcceptedInboundMessageRepository inboundTurns,
                                 ConversationTurnLeasePort turnLeases) {
+        this(repository, assistant, eventPublisher, handoffPolicy, memoryService, decisionRepository,
+                observations, inboundTurns, turnLeases, null);
+    }
+
+    public ConversationWorkflow(ConversationRepository repository,
+                                ConversationAssistant assistant,
+                                ApplicationEventPublisher eventPublisher,
+                                HumanHandoffPolicy handoffPolicy,
+                                ConversationMemoryService memoryService,
+                                ConversationDecisionRepository decisionRepository,
+                                AiObservationService observations,
+                                AcceptedInboundMessageRepository inboundTurns,
+                                ConversationTurnLeasePort turnLeases,
+                                InboundDebounceGate debounceGate) {
         this.repository = Objects.requireNonNull(repository);
         this.assistant = Objects.requireNonNull(assistant);
         this.eventPublisher = Objects.requireNonNull(eventPublisher);
@@ -132,6 +151,7 @@ public class ConversationWorkflow {
         this.graphRunner = null;
         this.inboundTurns = inboundTurns;
         this.turnLeases = turnLeases;
+        this.debounceGate = debounceGate;
     }
 
     public ConversationWorkflow(ConversationGraphRunner graphRunner, AiObservationService observations) {
@@ -140,6 +160,11 @@ public class ConversationWorkflow {
 
     public ConversationWorkflow(ConversationGraphRunner graphRunner, AiObservationService observations,
                                 ConversationTurnLeasePort turnLeases) {
+        this(graphRunner, observations, turnLeases, null);
+    }
+
+    public ConversationWorkflow(ConversationGraphRunner graphRunner, AiObservationService observations,
+                                ConversationTurnLeasePort turnLeases, InboundDebounceGate debounceGate) {
         this.repository = null;
         this.assistant = null;
         this.eventPublisher = null;
@@ -150,6 +175,7 @@ public class ConversationWorkflow {
         this.graphRunner = Objects.requireNonNull(graphRunner);
         this.inboundTurns = null;
         this.turnLeases = turnLeases;
+        this.debounceGate = debounceGate;
     }
 
     private static ConversationMemoryService noOpMemoryService() {
@@ -175,6 +201,16 @@ public class ConversationWorkflow {
     @ApplicationModuleListener
     @Async("conversationTurnExecutor")
     public void on(InboundMessageAccepted event) {
+        dispatch(event, true);
+    }
+
+    @ApplicationModuleListener
+    @Async("conversationTurnExecutor")
+    public void on(InboundTurnReleased event) {
+        dispatch(event.asInboundMessageAccepted(), false);
+    }
+
+    private void dispatch(InboundMessageAccepted event, boolean honorDebounce) {
         var started = System.nanoTime();
         var previousConversationId = MDC.get("conversationId");
         var previousReceiptId = MDC.get("receiptId");
@@ -196,6 +232,13 @@ public class ConversationWorkflow {
                             event.conversationId(), event.receiptId());
                     throw new ConversationTurnLeaseUnavailableException(event.conversationId());
                 }
+            }
+            if (honorDebounce && debounceGate != null
+                    && !debounceGate.isDue(event.tenantId(), event.conversationId(), event.receiptId())) {
+                MDC.put("workflowStage", "DEBOUNCE_DEFERRED");
+                log.info("Conversation workflow deferred for debounce: conversationId={} receiptId={}",
+                        event.conversationId(), event.receiptId());
+                return;
             }
             MDC.put("workflowStage", "WORKFLOW_STARTED");
             log.info("Conversation workflow executing: conversationId={} mode={}", event.conversationId(),
@@ -273,7 +316,8 @@ public class ConversationWorkflow {
         }
 
         var customerAuthorized = customerAuthorization.isAuthorized(currentMessage, memory);
-        if (customerAuthorized && handoffPolicy.shouldCreateHandoff(snapshot.tenantId(), true)) {
+        var requested = customerAuthorized || handoffEscalationPolicy.shouldEscalate(currentMessage, memory);
+        if (requested && handoffPolicy.shouldCreateHandoff(snapshot.tenantId(), true)) {
             var payload = handoffPayloadFactory.create(currentMessage, memory, reply.text());
             var accepted = repository.requestHumanHandoff(snapshot.conversationId(), snapshot.version(),
                     new HandoffDecision(payload.reason()));
@@ -290,7 +334,7 @@ public class ConversationWorkflow {
                 && handoffOfferPolicy.shouldOffer(currentMessage, reply.text(),
                         reply.decision() == null ? com.ford.service.ai.application.LeadTemperature.UNKNOWN
                                 : reply.decision().leadTemperature(), memory);
-        var text = customerAuthorized && !handoffEnabled ? HANDOFF_UNAVAILABLE_TEXT
+        var text = requested && !handoffEnabled ? HANDOFF_UNAVAILABLE_TEXT
                 : reply.handoffRequired() ? shouldOffer ? handoffOfferPolicy.offerAfter(null) : UNAUTHORIZED_HANDOFF_TEXT
                 : shouldOffer ? handoffOfferPolicy.offerAfter(reply.text()) : reply.text();
         var accepted = repository.completeBotTurn(snapshot.conversationId(), snapshot.version(),

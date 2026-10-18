@@ -1,28 +1,67 @@
 package com.ford.service.conversations.application;
 
+import com.ford.service.conversations.api.BdcHandoffPacket;
 import com.ford.service.conversations.api.SpecialistHandoffPayload;
+import com.ford.service.catalog.api.VehicleModelNames;
 import com.ford.service.conversations.domain.ConversationMemoryContext;
 import com.ford.service.conversations.domain.ConversationMessage;
+import com.ford.service.leads.domain.LeadJourneyFact;
+import com.ford.service.leads.domain.LeadJourneyFactKey;
+import com.ford.service.leads.domain.LeadJourneySnapshot;
 
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /** Builds the handoff payload only from persisted customer turns and the completed information answer. */
 public final class SpecialistHandoffPayloadFactory {
-    private static final List<String> KNOWN_MODELS = List.of(
-            "Mustang Mach-E", "Bronco Sport", "Ranger Raptor", "Lobo Raptor", "F-150 Lightning",
-            "E-Transit", "Expedition", "Explorer", "Territory", "Maverick", "Mustang", "Bronco",
-            "Ranger", "Lobo", "Transit", "F-150");
     private static final Pattern NEED = Pattern.compile(
             "(?i)\\b(?:busco|buscando|necesito|me interesa|prefiero|para)\\s+[^.!?]{3,100}");
     private static final Pattern QUESTION = Pattern.compile("[^.!?]*\\?+");
     private static final Pattern EMAIL = Pattern.compile("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}");
     private static final Pattern PHONE = Pattern.compile("(?<!\\d)\\+?\\d[\\d ()-]{8,}\\d(?!\\d)");
+    private static final Pattern LONG_DIGIT_RUN = Pattern.compile("\\d{7,}");
+    private static final Set<String> NON_FINANCING = Set.of("contado", "efectivo");
+
+    /** Builds the typed BDC packet only from customer-confirmed journey facts; never invents fields. */
+    public BdcHandoffPacket createPacket(LeadJourneySnapshot journey) {
+        if (journey == null) {
+            return BdcHandoffPacket.empty();
+        }
+        var facts = journey.facts();
+        var paymentMethod = confirmed(facts, LeadJourneyFactKey.PAYMENT_METHOD);
+        var downPayment = paymentMethod.filter(SpecialistHandoffPayloadFactory::isFinancing)
+                .flatMap(ignored -> confirmed(facts, LeadJourneyFactKey.DOWN_PAYMENT));
+        return new BdcHandoffPacket(
+                confirmed(facts, LeadJourneyFactKey.VEHICLE_MODEL),
+                paymentMethod,
+                downPayment,
+                confirmed(facts, LeadJourneyFactKey.PURCHASE_TIMING),
+                confirmed(facts, LeadJourneyFactKey.CUSTOMER_NAME));
+    }
+
+    private static Optional<String> confirmed(Map<LeadJourneyFactKey, LeadJourneyFact> facts, LeadJourneyFactKey key) {
+        var fact = facts == null ? null : facts.get(key);
+        if (fact == null || fact.value() == null || fact.value().isBlank()) {
+            return Optional.empty();
+        }
+        var value = fact.value().strip();
+        return sensitive(value) ? Optional.empty() : Optional.of(value);
+    }
+
+    private static boolean isFinancing(String value) {
+        return !NON_FINANCING.contains(normalize(value));
+    }
+
+    private static boolean sensitive(String value) {
+        return LONG_DIGIT_RUN.matcher(value).find() || EMAIL.matcher(value).find() || PHONE.matcher(value).find();
+    }
 
     public SpecialistHandoffPayload create(String currentUserMessage, ConversationMemoryContext memory,
                                            String assistantInformationAnswer) {
@@ -64,7 +103,7 @@ public final class SpecialistHandoffPayloadFactory {
     }
 
     private static Optional<String> findVehicle(String text) {
-        var alternatives = KNOWN_MODELS.stream().sorted(Comparator.comparingInt(String::length).reversed())
+        var alternatives = VehicleModelNames.all().stream().sorted(Comparator.comparingInt(String::length).reversed())
                 .map(Pattern::quote).reduce((left, right) -> left + "|" + right).orElseThrow();
         var matcher = Pattern.compile("(?iu)(?<![\\p{L}\\p{N}])(" + alternatives + ")(?![\\p{L}\\p{N}])")
                 .matcher(text);

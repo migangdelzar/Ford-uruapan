@@ -36,6 +36,17 @@ class OpenApiContractTest {
     }
 
     @Test
+    void documentsShadowReviewAsAnAnnotationOnlyOperatorContract() throws Exception {
+        var yaml = Files.readString(CONTRACT);
+
+        assertThat(yaml).contains("/api/v1/conversations/{conversationId}/shadow-drafts:")
+                .contains("/api/v1/conversations/{conversationId}/shadow-drafts/{draftId}/review:")
+                .contains("ShadowDraftReviewRequest")
+                .contains("This operation cannot send a message.")
+                .contains("operator:write authority");
+    }
+
+    @Test
     void handoffContractMatchesControllerQueryParameters() throws Exception {
         var yaml = Files.readString(CONTRACT);
         var takeover = yaml.substring(yaml.indexOf("/api/v1/conversations/{conversationId}/takeover:"),

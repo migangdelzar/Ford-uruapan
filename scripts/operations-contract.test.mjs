@@ -72,7 +72,7 @@ test("PostgreSQL logs identify the service and SQLSTATE without recording statem
   }
 });
 
-test("Prometheus alert rules cover service, MCP tool, and model provider failures", async () => {
+test("Prometheus alert rules cover service, catalog tool, and model provider failures", async () => {
   const alerts = await read("deployment/observability/prometheus/alerts.yml");
   const prometheus = await read("deployment/observability/prometheus/prometheus.yml");
   const compose = await read("ford-ai-service/docker-compose.yml");
@@ -80,7 +80,7 @@ test("Prometheus alert rules cover service, MCP tool, and model provider failure
   assert.match(prometheus, /rule_files:[\s\S]*ford-alerts\.yml/);
   assert.match(compose, /ford-alerts\.yml/);
   assert.match(alerts, /alert: FordCollectorUnavailable/);
-  assert.match(alerts, /alert: FordMcpToolFailures/);
+  assert.match(alerts, /alert: FordCatalogToolFailures/);
   assert.match(alerts, /alert: FordProviderFailures/);
 });
 
@@ -468,26 +468,57 @@ test("Ansible propagates the human handoff feature flag", async () => {
   }
 });
 
-test("Ansible accepts the source Ford MCP configuration names", async () => {
+test("Ansible accepts the source catalog configuration names", async () => {
   const example = await read("deployment/config/oci.env.example");
-  const remote = await read("ford-ai-service/.mise/lib/remote.sh");
+  const appEnv = await read("deployment/ansible/roles/app/templates/app.env.j2");
   const vaultSecret = await read("ford-ai-service/.mise/tasks/deploy/vault-secret");
 
-  for (const variable of ["FORD_MCP_URL", "FORD_MCP_ENDPOINT", "FORD_MCP_TOKEN"]) {
+  for (const variable of ["FORD_CATALOG_TOOLS_ENABLED", "FORD_CATALOG_JDBC_URL", "FORD_CATALOG_USERNAME"]) {
     assert.match(example, new RegExp(`^${variable}=`, "m"), `${variable} must be documented`);
-    assert.match(remote, new RegExp(variable), `${variable} must reach the inventory`);
+    assert.match(appEnv, new RegExp(`^${variable}=`, "m"), `${variable} must reach the app environment`);
   }
-  assert.match(remote, /FORD_MCP_API_TOKEN/);
-  assert.match(vaultSecret, /FORD_MCP_API_TOKEN/);
-  assert.match(vaultSecret, /FORD_MCP_TOKEN/);
+  assert.match(example, /^FORD_CATALOG_READ_ONLY_TOOL_NAMES=/m);
+  assert.match(appEnv, /FORD_CATALOG_READ_ONLY_TOOL_NAMES/);
+  assert.match(appEnv, /FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD/);
+  assert.match(vaultSecret, /FORD_CATALOG_PASSWORD/);
 });
 
-test("Ford MCP keeps combined vehicle and financing search in app allowlists", async () => {
+test("Ford catalog keeps combined vehicle and financing search in app allowlists", async () => {
   const application = await read("ford-ai-service/src/main/resources/application.yml");
-  const template = await read("deployment/ansible/roles/app/templates/app.env.j2");
 
   assert.match(application, /read-only-tool-names:.*search_vehicle_and_offers/);
-  assert.match(template, /^FORD_MCP_READ_ONLY_TOOL_NAMES=.*search_vehicle_and_offers/m);
+  for (const tool of [
+    "search_vehicles",
+    "search_vehicle_and_offers",
+    "get_vehicle",
+    "compare_vehicles",
+    "compare_trims",
+    "compare_model_years",
+    "get_variant_comparisons",
+    "search_offers",
+    "list_promotions",
+    "get_page_links",
+    "get_vehicle_provenance",
+    "get_catalog_status",
+  ]) {
+    assert.match(application, new RegExp(tool), `${tool} must stay in the read-only catalog allowlist`);
+  }
+});
+
+test("Ford Service and deployment configuration no longer carry MCP runtime credentials", async () => {
+  const example = await read("deployment/config/oci.env.example");
+  const appEnv = await read("deployment/ansible/roles/app/templates/app.env.j2");
+  const runtimeTemplate = await read("deployment/runtime/app/.env.template");
+  const remote = await read("ford-ai-service/.mise/lib/remote.sh");
+
+  for (const [name, contents] of [
+    ["app.env.j2", appEnv],
+    ["deployment/runtime/app/.env.template", runtimeTemplate],
+    ["ford-ai-service/.mise/lib/remote.sh", remote],
+  ]) {
+    assert.doesNotMatch(contents, /FORD_MCP_(ENABLED|URL|ENDPOINT|REQUEST_TIMEOUT|ACCESS_CLIENT|READ_ONLY_TOOL_NAMES|REQUIRED_FOR_VOLATILE)/, `${name} must not keep remote MCP client settings`);
+  }
+  assert.doesNotMatch(example, /FORD_MCP_TOKEN|FORD_MCP_API_TOKEN|MCP_HTTP_BEARER_TOKEN/);
 });
 
 test("app deployment transfers local images and checks the webhook route", async () => {

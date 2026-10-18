@@ -1,26 +1,35 @@
 package com.ford.service.handoff.adapter.out;
 
+import com.ford.service.conversations.api.BdcHandoffPacket;
 import com.ford.service.handoff.api.OperatorPrincipal;
 import com.ford.service.handoff.application.port.out.HandoffRepository;
 import com.ford.service.handoff.domain.HandoffStatus;
 import com.ford.service.handoff.domain.HandoffPriority;
 import com.ford.service.handoff.domain.HandoffTicket;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 @Repository
 public class JdbcHandoffRepository implements HandoffRepository {
 
-    private final JdbcClient jdbc;
+    private static final TypeReference<Map<String, String>> PACKET_TYPE = new TypeReference<>() { };
 
-    public JdbcHandoffRepository(JdbcClient jdbc) {
+    private final JdbcClient jdbc;
+    private final ObjectMapper objectMapper;
+
+    public JdbcHandoffRepository(JdbcClient jdbc, ObjectMapper objectMapper) {
         this.jdbc = jdbc;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -28,16 +37,21 @@ public class JdbcHandoffRepository implements HandoffRepository {
         jdbc.sql("""
                 insert into handoff_ticket
                     (id, tenant_id, conversation_id, lead_id, status, priority, assigned_operator_id,
-                     reason, idempotency_key, version, created_at, claimed_at, closed_at)
+                     reason, idempotency_key, version, created_at, claimed_at, closed_at,
+                     packet, packet_partial, packet_completeness)
                 values (:id, :tenantId, :conversationId, :leadId, :status, :priority, :operatorId,
-                        :reason, :idempotencyKey, :version, :createdAt, :claimedAt, :closedAt)
+                        :reason, :idempotencyKey, :version, :createdAt, :claimedAt, :closedAt,
+                        cast(:packet as jsonb), :packetPartial, :packetCompleteness)
                 on conflict (id) do update set
                     status = excluded.status,
                     priority = excluded.priority,
                     assigned_operator_id = excluded.assigned_operator_id,
                     version = excluded.version,
                     claimed_at = excluded.claimed_at,
-                    closed_at = excluded.closed_at
+                    closed_at = excluded.closed_at,
+                    packet = excluded.packet,
+                    packet_partial = excluded.packet_partial,
+                    packet_completeness = excluded.packet_completeness
                 """)
                 .param("id", ticket.id())
                 .param("tenantId", ticket.tenantId())
@@ -52,6 +66,9 @@ public class JdbcHandoffRepository implements HandoffRepository {
                 .param("createdAt", timestamp(ticket.createdAt()))
                 .param("claimedAt", timestamp(ticket.claimedAt()))
                 .param("closedAt", timestamp(ticket.closedAt()))
+                .param("packet", packetJson(ticket.packet()))
+                .param("packetPartial", ticket.packet().partial())
+                .param("packetCompleteness", ticket.packet().completeness())
                 .update();
         return ticket;
     }
@@ -221,7 +238,27 @@ public class JdbcHandoffRepository implements HandoffRepository {
                 rs.getLong("version"),
                 rs.getTimestamp("created_at").toInstant(),
                 instant(rs, "claimed_at"),
-                instant(rs, "closed_at"));
+                instant(rs, "closed_at"),
+                packet(rs.getString("packet")));
+    }
+
+    private String packetJson(BdcHandoffPacket packet) {
+        try {
+            return objectMapper.writeValueAsString(packet.arguments());
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to serialize BDC handoff packet", exception);
+        }
+    }
+
+    private BdcHandoffPacket packet(String json) {
+        if (json == null || json.isBlank()) {
+            return BdcHandoffPacket.empty();
+        }
+        try {
+            return BdcHandoffPacket.fromArguments(objectMapper.readValue(json, PACKET_TYPE));
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to read BDC handoff packet", exception);
+        }
     }
 
     private static Instant instant(java.sql.ResultSet rs, String column) throws java.sql.SQLException {

@@ -70,8 +70,8 @@ its versioned `GET/PUT` contract and SSE refresh event are implemented.
 ## Ford information tool boundary
 
 The assistant is scoped to Ford vehicle shopping. Current vehicle, offer, and
-catalog-status facts are supplied by the backend's authenticated MCP client;
-the frontend never calls MCP directly and never receives the MCP bearer token.
+catalog-status facts are supplied by Spring AI's in-process, read-only catalog
+tools backed by PostgreSQL; the frontend never connects to the catalog database.
 The backend exposes only read-only tools such as `search_vehicles`,
 `get_vehicle`, `compare_vehicles`, `search_offers`, `list_promotions`,
 `get_vehicle_provenance`, and `get_catalog_status`.

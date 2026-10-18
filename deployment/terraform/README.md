@@ -122,8 +122,9 @@ file and removes the runner after the job. No credential value is placed in
 Terraform variables, state, or the plan.
 
 Dispatch `Terraform runtime Vault policy` with `plan` to adopt and review the
-existing resources. Confirm the plan only adds the named MCP Access client
-secret to emme-2. Dispatch `apply` to generate a fresh plan and apply it after
-the protected environment approval. The plan artifact expires after one day.
-The workflow never deploys application code; run the MCP release workflow only
-after this policy apply and the Vault preflight pass.
+existing resources. Confirm the plan grants only the named runtime secrets
+listed in `runtime-vault-identity.tf`. Dispatch `apply` to generate a fresh plan
+and apply it after the protected environment approval. The plan artifact
+expires after one day. This workflow never deploys application code. The data
+instance's former catalog-service secret grants are removed from the desired
+policy; apply that reviewed policy change during the protected runtime cleanup.

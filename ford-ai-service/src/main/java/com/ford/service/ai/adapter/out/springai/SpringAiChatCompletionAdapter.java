@@ -7,7 +7,7 @@ import com.ford.service.ai.application.AssistantResponseQualityPolicy;
 import com.ford.service.ai.application.AiProviderFailureDiagnostics;
 import com.ford.service.ai.application.InvalidAssistantResponseException;
 import com.ford.service.ai.application.ToolResultTracker;
-import com.ford.service.ai.application.McpFactResponseRenderer;
+import com.ford.service.ai.application.CatalogFactResponseRenderer;
 import com.ford.service.ai.application.DecisionPolicy;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
 import com.ford.service.ai.application.ToolFamily;
@@ -78,8 +78,10 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
     private final AssistantResponseQualityPolicy qualityPolicy;
     private final ObjectMapper objectMapper;
     private final AiObservationService observations;
-    private final McpFactResponseRenderer factResponseRenderer;
+    private final CatalogFactResponseRenderer factResponseRenderer;
     private final boolean repairEnabled;
+    private final KnowledgeRagAdvisorFactory knowledgeRagAdvisorFactory;
+    private final com.ford.service.ai.application.EvidenceGroundedResponsePolicy evidenceGroundedPolicy;
 
     public SpringAiChatCompletionAdapter(ChatClient client, String provider) {
         this(client, provider, new ToolAuthorizationPolicy(), new DecisionPolicy(), null,
@@ -144,7 +146,7 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                                          AssistantResponseQualityPolicy qualityPolicy,
                                          ObjectMapper objectMapper,
                                          AiObservationService observations,
-                                         McpFactResponseRenderer factResponseRenderer) {
+                                         CatalogFactResponseRenderer factResponseRenderer) {
         this(client, provider, toolPolicy, decisionPolicy, systemPromptService, qualityPolicy,
                 objectMapper, observations, factResponseRenderer, true);
     }
@@ -156,8 +158,37 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                                          AssistantResponseQualityPolicy qualityPolicy,
                                          ObjectMapper objectMapper,
                                          AiObservationService observations,
-                                         McpFactResponseRenderer factResponseRenderer,
+                                         CatalogFactResponseRenderer factResponseRenderer,
                                          boolean repairEnabled) {
+        this(client, provider, toolPolicy, decisionPolicy, systemPromptService, qualityPolicy,
+                objectMapper, observations, factResponseRenderer, repairEnabled, null);
+    }
+
+    public SpringAiChatCompletionAdapter(ChatClient client, String provider,
+                                         ToolAuthorizationPolicy toolPolicy,
+                                         DecisionPolicy decisionPolicy,
+                                         SystemPromptService systemPromptService,
+                                         AssistantResponseQualityPolicy qualityPolicy,
+                                         ObjectMapper objectMapper,
+                                         AiObservationService observations,
+                                         CatalogFactResponseRenderer factResponseRenderer,
+                                         boolean repairEnabled,
+                                         KnowledgeRagAdvisorFactory knowledgeRagAdvisorFactory) {
+        this(client, provider, toolPolicy, decisionPolicy, systemPromptService, qualityPolicy,
+                objectMapper, observations, factResponseRenderer, repairEnabled, knowledgeRagAdvisorFactory, null);
+    }
+
+    public SpringAiChatCompletionAdapter(ChatClient client, String provider,
+                                         ToolAuthorizationPolicy toolPolicy,
+                                         DecisionPolicy decisionPolicy,
+                                         SystemPromptService systemPromptService,
+                                         AssistantResponseQualityPolicy qualityPolicy,
+                                         ObjectMapper objectMapper,
+                                         AiObservationService observations,
+                                         CatalogFactResponseRenderer factResponseRenderer,
+                                         boolean repairEnabled,
+                                         KnowledgeRagAdvisorFactory knowledgeRagAdvisorFactory,
+                                         com.ford.service.ai.application.EvidenceGroundedResponsePolicy evidenceGroundedPolicy) {
         this.client = Objects.requireNonNull(client);
         this.provider = Objects.requireNonNull(provider);
         this.toolPolicy = Objects.requireNonNull(toolPolicy);
@@ -168,6 +199,8 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         this.observations = Objects.requireNonNull(observations);
         this.factResponseRenderer = factResponseRenderer;
         this.repairEnabled = repairEnabled;
+        this.knowledgeRagAdvisorFactory = knowledgeRagAdvisorFactory;
+        this.evidenceGroundedPolicy = evidenceGroundedPolicy;
     }
 
     @Override
@@ -178,11 +211,13 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
     @Override
     public AssistantResponse complete(AssistantRequest request, ToolContext context) {
         var toolResults = new ToolResultTracker();
+        var knowledgeEvidence = new KnowledgeRagEvidenceTracker();
         var tools = authorizedTools(request, toolResults);
         log.info("Model completion prepared: conversationId={} provider={} toolFamily={} authorizedToolCount={} volatileDataRequired={} repairAttempt=false",
                 request.conversationId(), provider, request.decision().toolFamily(), tools.size(),
                 decisionPolicy.requiresVolatileInformation(request.decision()));
-        if (decisionPolicy.requiresVolatileInformation(request.decision()) && tools.isEmpty()) {
+        if (decisionPolicy.requiresVolatileInformation(request.decision()) && tools.isEmpty()
+                && !shouldUseKnowledgeRag(request)) {
             log.warn("Model completion skipped: conversationId={} reason=volatile_data_required_but_no_authorized_tools",
                     request.conversationId());
             var evidenceStatus = ResponseEvidenceStatus.REQUIRED_TOOL_NOT_CALLED;
@@ -191,27 +226,29 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                     null, evidenceStatus);
         }
         try {
-            var generation = call(request, context, tools, null);
-            var deterministic = renderFactResponse(request, toolResults, generation);
+            var generation = call(request, context, tools, knowledgeEvidence, null);
+            var deterministic = renderFactResponse(request, toolResults, knowledgeEvidence, generation);
             if (deterministic != null) return deterministic;
-            var verdict = qualityPolicy.evaluate(request.message(), request.memoryContext(), generation.answer());
-            if (!verdict.accepted()) {
+            var rejection = rejectionReason(request, toolResults, knowledgeEvidence, generation.answer());
+            if (rejection != null) {
                 if (!repairEnabled) {
-                    throw new InvalidAssistantResponseException(verdict.reason());
+                    throw new InvalidAssistantResponseException(rejection);
                 }
                 log.warn("Model completion quality repair requested: conversationId={} reason={}",
-                        request.conversationId(), qualityPolicy.diagnosticReason(verdict));
-                generation = call(request, context, tools, qualityPolicy.repairInstruction(verdict.reason()));
-                verdict = qualityPolicy.evaluate(request.message(), request.memoryContext(), generation.answer());
-                if (!verdict.accepted()) {
+                        request.conversationId(), rejection);
+                generation = call(request, context, tools, knowledgeEvidence,
+                        repairInstruction(rejection));
+                rejection = rejectionReason(request, toolResults, knowledgeEvidence, generation.answer());
+                if (rejection != null) {
                     log.warn("Model completion quality repair rejected: conversationId={} reason={}",
-                            request.conversationId(), qualityPolicy.diagnosticReason(verdict));
-                    throw new InvalidAssistantResponseException(verdict.reason());
+                            request.conversationId(), rejection);
+                    throw new InvalidAssistantResponseException(rejection);
                 }
             }
-            var evidenceStatus = evidenceStatus(request, toolResults);
+            var evidenceStatus = evidenceStatus(request, toolResults, knowledgeEvidence);
             if (evidenceStatus != ResponseEvidenceStatus.NOT_REQUIRED
-                    && evidenceStatus != ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED) {
+                    && evidenceStatus != ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED
+                    && evidenceStatus != ResponseEvidenceStatus.KNOWLEDGE_DOCUMENTS_RETURNED) {
                 if (mayProvideGeneralKnowledge(request.message(), evidenceStatus, generation.answer(),
                         generation.modelConfidence())) {
                     var answer = GENERAL_KNOWLEDGE_CAVEAT + generation.answer().strip()
@@ -240,15 +277,16 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
             var answer = generation.answer().strip();
             if (factResponseRenderer != null) {
                 answer = factResponseRenderer.appendSourceLinks(answer, toolResults.returnedPayloads());
+                answer = factResponseRenderer.appendKnowledgeSourceLinks(answer, knowledgeEvidence.sourceUrls());
             }
             return new AssistantResponse(answer, false, provider, List.of(),
                     generation.journeyProposal(), generation.modelConfidence(), evidenceStatus);
         } catch (RuntimeException exception) {
-            var deterministic = renderFactResponse(request, toolResults, null);
+            var deterministic = renderFactResponse(request, toolResults, knowledgeEvidence, null);
             if (deterministic != null) return deterministic;
-            var sourcedWithholding = withSourceLinks(VOLATILE_SOURCE_UNAVAILABLE, toolResults);
+            var sourcedWithholding = withSourceLinks(VOLATILE_SOURCE_UNAVAILABLE, toolResults, knowledgeEvidence);
             if (sourcedWithholding != null) {
-                var evidenceStatus = evidenceStatus(request, toolResults);
+                var evidenceStatus = evidenceStatus(request, toolResults, knowledgeEvidence);
                 recordAssessment(evidenceStatus, null, "withheld");
                 log.info("Model response assessed: conversationId={} provider={} evidenceStatus={} sourceTools={} outcome=withheld_with_sources",
                         request.conversationId(), provider, evidenceStatus,
@@ -257,7 +295,7 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                         null, evidenceStatus);
             }
             if (toolResults.hasFailed() && decisionPolicy.requiresVolatileInformation(request.decision())) {
-                var evidenceStatus = evidenceStatus(request, toolResults);
+                var evidenceStatus = evidenceStatus(request, toolResults, knowledgeEvidence);
                 recordAssessment(evidenceStatus, null, "withheld");
                 return new AssistantResponse(VOLATILE_SOURCE_UNAVAILABLE, false, provider, List.of(), null,
                         null, evidenceStatus);
@@ -270,19 +308,60 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         }
     }
 
-    private String withSourceLinks(String answer, ToolResultTracker tracker) {
-        if (factResponseRenderer == null || tracker.returnedPayloads().isEmpty()) return null;
-        var answerWithSources = factResponseRenderer.appendSourceLinks(answer, tracker.returnedPayloads());
+    private String rejectionReason(AssistantRequest request, ToolResultTracker tracker,
+                                   KnowledgeRagEvidenceTracker knowledgeEvidence, String answer) {
+        var verdict = qualityPolicy.evaluate(request.message(), request.memoryContext(), answer);
+        if (!verdict.accepted()) {
+            return verdict.reason();
+        }
+        if (evidenceGroundedPolicy != null) {
+            var grounded = evidenceGroundedPolicy.evaluate(request.message(),
+                    evidenceLedger(tracker, knowledgeEvidence), answer);
+            if (!grounded.accepted()) {
+                return grounded.reason();
+            }
+        }
+        return null;
+    }
+
+    private String repairInstruction(String reason) {
+        if (evidenceGroundedPolicy != null && ("unsupported_fact_claim".equals(reason)
+                || "unsupported_url".equals(reason) || "never_promise".equals(reason))) {
+            return evidenceGroundedPolicy.repairInstruction(reason);
+        }
+        return qualityPolicy.repairInstruction(reason);
+    }
+
+    private static String evidenceLedger(ToolResultTracker tracker, KnowledgeRagEvidenceTracker knowledgeEvidence) {
+        var builder = new StringBuilder();
+        for (var payload : tracker.returnedPayloads().values()) {
+            builder.append(payload).append('\n');
+        }
+        if (knowledgeEvidence != null) {
+            builder.append(knowledgeEvidence.evidenceText());
+        }
+        return builder.toString();
+    }
+
+    private String withSourceLinks(String answer, ToolResultTracker tracker,
+                                   KnowledgeRagEvidenceTracker knowledgeEvidence) {
+        if (factResponseRenderer == null) return null;
+        var answerWithSources = tracker.returnedPayloads().isEmpty() ? answer
+                : factResponseRenderer.appendSourceLinks(answer, tracker.returnedPayloads());
+        answerWithSources = factResponseRenderer.appendKnowledgeSourceLinks(answerWithSources,
+                knowledgeEvidence.sourceUrls());
         return answerWithSources.equals(answer) ? null : answerWithSources;
     }
 
     private AssistantResponse renderFactResponse(AssistantRequest request, ToolResultTracker tracker,
+                                                  KnowledgeRagEvidenceTracker knowledgeEvidence,
                                                   AssistantGeneration generation) {
         if (factResponseRenderer == null) return null;
         var rendered = factResponseRenderer.render(request.message(), tracker.returnedPayloads());
         if (rendered.isEmpty()) return null;
-        var status = evidenceStatus(request, tracker);
-        var outcome = status == ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED ? "accepted" : "withheld";
+        var status = evidenceStatus(request, tracker, knowledgeEvidence);
+        var outcome = status == ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED
+                || status == ResponseEvidenceStatus.KNOWLEDGE_DOCUMENTS_RETURNED ? "accepted" : "withheld";
         recordAssessment(status, generation == null ? null : generation.modelConfidence(), outcome);
         return new AssistantResponse(rendered.get(), false, provider, List.of(),
                 generation == null ? null : generation.journeyProposal(),
@@ -297,21 +376,30 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         var executionContext = new AiExecutionContext(
                 request.tenantId(), request.containsSensitiveData(), request.conversationId(),
                 request.memoryContext(), decision);
-        return toolPolicy.readOnlyTools(executionContext, decisionPolicy.allowedToolNames(
-                decision, toolPolicy.availableReadOnlyToolNames()), resultTracker);
+        var availableToolNames = toolPolicy.availableReadOnlyToolNames();
+        if (knowledgeRagAdvisorFactory != null && decision.toolFamily() == ToolFamily.KNOWLEDGE_SEARCH) {
+            availableToolNames = availableToolNames.stream()
+                    .filter(name -> !"approved_knowledge_search".equalsIgnoreCase(name))
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        }
+        return toolPolicy.readOnlyTools(executionContext,
+                decisionPolicy.allowedToolNames(decision, availableToolNames), resultTracker);
     }
 
     private static String confidenceForLog(Double confidence) {
         return confidence == null ? "unknown" : String.format(java.util.Locale.ROOT, "%.3f", confidence);
     }
 
-    private ResponseEvidenceStatus evidenceStatus(AssistantRequest request, ToolResultTracker tracker) {
+    private ResponseEvidenceStatus evidenceStatus(AssistantRequest request, ToolResultTracker tracker,
+                                                  KnowledgeRagEvidenceTracker knowledgeEvidence) {
         if (!decisionPolicy.requiresVolatileInformation(request.decision())) {
             return ResponseEvidenceStatus.NOT_REQUIRED;
         }
+        if (knowledgeEvidence.hasRetrievedDocuments()) return ResponseEvidenceStatus.KNOWLEDGE_DOCUMENTS_RETURNED;
         if (tracker.hasReturnedResult()) return ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED;
         if (tracker.hasFailed()) return ResponseEvidenceStatus.READ_ONLY_TOOL_FAILED;
         if (tracker.hasAttempted()) return ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED_EMPTY;
+        if (knowledgeEvidence.retrievalAttempted()) return ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED_EMPTY;
         return ResponseEvidenceStatus.REQUIRED_TOOL_NOT_CALLED;
     }
 
@@ -327,6 +415,7 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
     }
 
     private AssistantGeneration call(AssistantRequest request, ToolContext context, List<ToolCallback> tools,
+                                     KnowledgeRagEvidenceTracker knowledgeEvidence,
                                      String repairInstruction) {
         log.info("Model call started: conversationId={} provider={} toolCount={} repairAttempt={}",
                 request.conversationId(), provider, tools.size(), repairInstruction != null);
@@ -343,6 +432,10 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         var prompt = client.prompt()
                 .system(system + "\n\n[METADATO INTERNO] Incluya modelConfidence como un número de 0 a 1 que refleje su propia certeza sobre la respuesta. Base la estimación en la evidencia consultada y los datos disponibles. Este valor es solo interno: nunca lo mencione ni lo convierta en porcentaje para el cliente. No lo use para sustituir fuentes ni invente información. [/METADATO INTERNO]\n\n" + REQUIRED_VOICE_POLICY)
                 .user(request.message());
+        if (shouldUseKnowledgeRag(request)) {
+            prompt = prompt.advisors(knowledgeRagAdvisorFactory.forTurn(
+                    request.tenantId(), "es-MX", knowledgeEvidence));
+        }
         if (!tools.isEmpty()) {
             prompt = prompt.tools(tools.toArray());
         }
@@ -366,6 +459,12 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         log.info("Model call completed: conversationId={} provider={} answerChars={} journeyProposal={}",
                 request.conversationId(), provider, generation.answer().length(), generation.journeyProposal() != null);
         return generation;
+    }
+
+    private boolean shouldUseKnowledgeRag(AssistantRequest request) {
+        return knowledgeRagAdvisorFactory != null
+                && request.decision().toolFamily() == ToolFamily.KNOWLEDGE_SEARCH
+                && !EXACT_VEHICLE_FACT_REQUEST.matcher(request.message()).find();
     }
 
     private AssistantGeneration toolEnabledGeneration(String content) {

@@ -68,7 +68,7 @@ class SystemPromptServiceTest {
                 .contains("no calcule ni sugiera que el precio ya incluye el bono")
                 .contains("No agregue otro saludo o presentación")
                 .contains("WhatsApp", "*texto en negritas*", "- elemento", "No use tablas")
-                .contains("No mencione herramientas, MCP, proveedores, JSON")
+                .contains("No mencione herramientas internas, proveedores, JSON")
                 .contains("No repita una respuesta")
                 .contains("nombre y apellido")
                 .contains("No agregue menús de servicios")

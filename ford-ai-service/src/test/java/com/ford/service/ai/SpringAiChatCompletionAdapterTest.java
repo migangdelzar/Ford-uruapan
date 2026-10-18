@@ -1,6 +1,7 @@
 package com.ford.service.ai;
 
 import com.ford.service.ai.adapter.out.springai.SpringAiChatCompletionAdapter;
+import com.ford.service.ai.adapter.out.springai.KnowledgeRagAdvisorFactory;
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantGeneration;
 import com.ford.service.ai.api.ResponseEvidenceStatus;
@@ -19,11 +20,13 @@ import com.ford.service.ai.application.ToolAuthorizationPolicy;
 import com.ford.service.ai.application.InvalidAssistantResponseException;
 import com.ford.service.ai.application.ToolContext;
 import com.ford.service.ai.application.SystemPromptService;
-import com.ford.service.ai.application.McpFactResponseRenderer;
+import com.ford.service.ai.application.CatalogFactResponseRenderer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.chat.client.advisor.api.Advisor;
+import com.ford.service.knowledge.application.KnowledgeRetrieval;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.mockito.ArgumentCaptor;
 
@@ -53,6 +56,98 @@ class SpringAiChatCompletionAdapterTest {
                 ToolFamily.NONE, SensitiveDataLevel.NONE, List.of(new com.ford.service.ai.application.ClassificationEvidence(
                         com.ford.service.ai.application.ClassifierType.INTENT, "GENERAL", 1.0,
                         "rules_intent", "rules", "deterministic", 0, true))));
+    }
+
+    @Test
+    void addsSpringAiRagAdvisorOnlyForTheKnowledgeSearchRoute() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
+        when(requestSpec.advisors(any(Advisor[].class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("{\"answer\":\"Le vehículo tiene respaldo en la documentación aprobada.\",\"modelConfidence\":0.9}");
+        var retrieval = mock(KnowledgeRetrieval.class);
+        var ragFactory = new KnowledgeRagAdvisorFactory(retrieval, List.of());
+        var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
+                new ToolAuthorizationPolicy(List.of(callback("approved_knowledge_search"), callback("get_vehicle"))),
+                new DecisionPolicy(), null, new com.ford.service.ai.application.AssistantResponseQualityPolicy(),
+                new ObjectMapper(), new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP), null, true, ragFactory);
+        var knowledge = new ConversationDecision(ConversationIntent.KNOWLEDGE, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.KNOWLEDGE_SEARCH,
+                SensitiveDataLevel.NONE, testEvidence());
+        var vehicle = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_DETAILS,
+                SensitiveDataLevel.NONE, testEvidence());
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+
+        adapter.complete(new AssistantRequest(tenantId, conversationId, "¿Qué cubre la garantía?",
+                "BOT_ACTIVE", null, false, knowledge), null);
+        verify(requestSpec).advisors(any(Advisor[].class));
+        assertToolNames(requestSpec, "get_vehicle");
+
+        org.mockito.Mockito.clearInvocations(requestSpec);
+        adapter.complete(new AssistantRequest(tenantId, conversationId, "¿Qué precio tiene la Explorer?",
+                "BOT_ACTIVE", null, false, vehicle), null);
+        verify(requestSpec, never()).advisors(any(Advisor[].class));
+    }
+
+    @Test
+    void requiresCatalogToolEvidenceForExactFactsOnTheKnowledgeRoute() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var retrieval = mock(KnowledgeRetrieval.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        var ragFactory = new KnowledgeRagAdvisorFactory(retrieval, List.of());
+        var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
+                new ToolAuthorizationPolicy(List.of(callback("approved_knowledge_search"))),
+                new DecisionPolicy(), null, new com.ford.service.ai.application.AssistantResponseQualityPolicy(),
+                new ObjectMapper(), new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP), null, true, ragFactory);
+        var knowledge = new ConversationDecision(ConversationIntent.KNOWLEDGE, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.KNOWLEDGE_SEARCH,
+                SensitiveDataLevel.NONE, testEvidence());
+
+        var result = adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                "¿Qué motor tiene la Bronco?", "BOT_ACTIVE", null, false, knowledge), null);
+
+        assertThat(result.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.REQUIRED_TOOL_NOT_CALLED);
+        verify(requestSpec, never()).call();
+    }
+
+    @Test
+    void allowsNarrativeKnowledgeQuestionsThroughSpringAiRagWithoutTheDuplicateKnowledgeTool() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.advisors(any(Advisor[].class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("{\"answer\":\"La garantía explica las coberturas aprobadas.\",\"modelConfidence\":0.9}");
+        var retrieval = mock(KnowledgeRetrieval.class);
+        var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
+                new ToolAuthorizationPolicy(List.of(callback("approved_knowledge_search"))),
+                new DecisionPolicy(), null, new com.ford.service.ai.application.AssistantResponseQualityPolicy(),
+                new ObjectMapper(), new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP), null, true,
+                new KnowledgeRagAdvisorFactory(retrieval, List.of()));
+        var knowledge = new ConversationDecision(ConversationIntent.KNOWLEDGE, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.KNOWLEDGE_SEARCH,
+                SensitiveDataLevel.NONE, testEvidence());
+
+        adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                "¿Cómo funciona la garantía Ford?", "BOT_ACTIVE", null, false, knowledge), null);
+
+        verify(requestSpec).advisors(any(Advisor[].class));
+        verify(requestSpec).call();
+        verify(requestSpec, never()).tools(any(Object[].class));
     }
 
     private static void assertNoToolsAreExposed(ConversationDecision decision) {
@@ -110,7 +205,7 @@ class SpringAiChatCompletionAdapterTest {
         var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
                 LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE,
                 ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, testEvidence());
-        var renderer = new McpFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper());
+        var renderer = new CatalogFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper());
         var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
                 new ToolAuthorizationPolicy(List.of(getVehicle)), new DecisionPolicy(), null,
                 new com.ford.service.ai.application.AssistantResponseQualityPolicy(), new ObjectMapper(),
@@ -160,7 +255,7 @@ class SpringAiChatCompletionAdapterTest {
         var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
                 LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE,
                 ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, testEvidence());
-        var renderer = new McpFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper());
+        var renderer = new CatalogFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper());
         var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
                 new ToolAuthorizationPolicy(List.of(getVehicle)), new DecisionPolicy(), null,
                 new com.ford.service.ai.application.AssistantResponseQualityPolicy(), new ObjectMapper(),
@@ -213,7 +308,7 @@ class SpringAiChatCompletionAdapterTest {
         var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
                 LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE,
                 ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, testEvidence());
-        var renderer = new McpFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper());
+        var renderer = new CatalogFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper());
         var adapter = new SpringAiChatCompletionAdapter(client, "openrouter",
                 new ToolAuthorizationPolicy(List.of(getVehicle)), new DecisionPolicy(), null,
                 new com.ford.service.ai.application.AssistantResponseQualityPolicy(), new ObjectMapper(),
@@ -262,7 +357,7 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.call()).thenReturn(responseSpec);
         when(responseSpec.content()).thenReturn("{\"answer\":\"La fuente muestra diferencias de equipamiento.\"}");
 
-        var renderer = new McpFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper());
+        var renderer = new CatalogFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper());
         var adapter = new SpringAiChatCompletionAdapter(client, "openrouter",
                 new ToolAuthorizationPolicy(List.of(comparison)), new DecisionPolicy(), null,
                 new com.ford.service.ai.application.AssistantResponseQualityPolicy(), new ObjectMapper(),
@@ -1010,6 +1105,38 @@ class SpringAiChatCompletionAdapterTest {
                         "¿Qué rendimiento tiene la Lobo Raptor?", "BOT_ACTIVE", false), null))
                 .isInstanceOf(InvalidAssistantResponseException.class);
         verify(requestSpec, times(2)).call();
+    }
+
+    @Test
+    void repairsANeverPromiseAnswerUsingTheEvidenceGroundedPolicy() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn(
+                "{\"answer\":\"Le garantizo entrega inmediata hoy mismo.\",\"modelConfidence\":0.9}",
+                "{\"answer\":\"Puedo revisar con un asesor las opciones de entrega disponibles.\",\"modelConfidence\":0.9}");
+        var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
+                new ToolAuthorizationPolicy(List.of()), new DecisionPolicy(), null,
+                new com.ford.service.ai.application.AssistantResponseQualityPolicy(), new ObjectMapper(),
+                new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP), null, true, null,
+                new com.ford.service.ai.application.EvidenceGroundedResponsePolicy());
+        var finance = new ConversationDecision(ConversationIntent.FINANCE, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.FINANCE_ESTIMATE,
+                SensitiveDataLevel.NONE, testEvidence());
+
+        var result = adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                "¿Cuándo me entregan el auto?", "BOT_ACTIVE", null, false, finance), null);
+
+        assertThat(result.content()).contains("asesor");
+        verify(requestSpec, times(2)).call();
+        var systems = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(requestSpec, times(2)).system(systems.capture());
+        assertThat(systems.getAllValues().get(1)).contains("No prometa entregas");
     }
 
     private static List<com.ford.service.ai.application.ClassificationEvidence> testEvidence() {

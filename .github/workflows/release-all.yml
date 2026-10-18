@@ -15,7 +15,7 @@ on:
         required: true
         default: false
       ford_scraping:
-        description: Release Ford MCP
+        description: Release Ford catalog scraper/scheduler
         type: boolean
         required: true
         default: false

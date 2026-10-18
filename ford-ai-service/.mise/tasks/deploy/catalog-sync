@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+#MISE description="Run the protected-equivalent one-shot catalog sync on emme-2"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+
+require_command ansible-playbook
+require_command ansible-galaxy
+
+missing=()
+for name in OCI_SSH_USER EMME_2_SSH_HOST EMME_REMOTE_ROOT; do
+  [[ -n "${!name:-}" ]] || missing+=("$name")
+done
+[[ -r "${EMME_2_SSH_KEY:-${OCI_SSH_PRIVATE_KEY:-}}" ]] || missing+=("readable:EMME_2_SSH_KEY")
+(( ${#missing[@]} == 0 )) || {
+  printf 'Missing catalog sync deployment configuration: %s\n' "${missing[*]}" >&2
+  exit 1
+}
+
+render_backup_inventory
+repo_root="$(deploy_repo_root)"
+collections_path="$(deploy_state_dir)/collections"
+mkdir -p "$collections_path"
+if [[ ! -d "$collections_path/ansible_collections/community/docker" ]]; then
+  ANSIBLE_COLLECTIONS_PATH="$collections_path" \
+    ansible-galaxy collection install \
+      --collections-path "$collections_path" \
+      --requirements-file "$repo_root/deployment/ansible/requirements.yml"
+fi
+ANSIBLE_CONFIG="$repo_root/deployment/ansible/ansible.cfg" \
+ANSIBLE_COLLECTIONS_PATH="$collections_path" \
+ANSIBLE_ROLES_PATH="$repo_root/deployment/ansible/roles" \
+  ansible-playbook \
+    -i "$(backup_inventory_file)" \
+    --private-key "${EMME_2_SSH_KEY:-${OCI_SSH_PRIVATE_KEY}}" \
+    "$repo_root/deployment/ansible/catalog-sync.yml" \
+    "$@"

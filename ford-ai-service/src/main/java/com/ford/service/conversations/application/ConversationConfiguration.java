@@ -2,6 +2,7 @@ package com.ford.service.conversations.application;
 
 import com.ford.service.ai.application.AssistantService;
 import com.ford.service.ai.application.InputSecurityPolicy;
+import com.ford.service.ai.application.IntentRouter;
 import com.ford.service.ai.application.port.out.ChatCompletionPort;
 import com.ford.service.conversations.adapter.out.ai.ProviderRoutedConversationMemoryCompactor;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -113,6 +114,20 @@ public class ConversationConfiguration {
     }
 
     @Bean
+    DealershipHoursPolicy dealershipHoursPolicy(ConversationProperties properties,
+                                                ObjectProvider<java.time.Clock> clocks) {
+        var clock = clocks.getIfAvailable(() -> java.time.Clock.systemUTC());
+        return DealershipHoursFactory.create(clock, properties.hours());
+    }
+
+    @Bean
+    DealershipResponsePlanner dealershipResponsePlanner(DealershipHoursPolicy dealershipHoursPolicy,
+                                                        ObjectProvider<IntentRouter> intentRouters) {
+        return new DealershipResponsePlanner(dealershipHoursPolicy,
+                intentRouters.getIfAvailable(IntentRouter::new));
+    }
+
+    @Bean
     PendingTestDriveReplyPolicy pendingTestDriveReplyPolicy() {
         return new PendingTestDriveReplyPolicy();
     }
@@ -136,10 +151,12 @@ public class ConversationConfiguration {
     @ConditionalOnProperty(prefix = "ford.conversations.workflow", name = "graph-enabled", havingValue = "true")
     ConversationWorkflow conversationWorkflow(ConversationGraphRunner graphRunner,
                                                ObjectProvider<com.ford.service.conversations.application.port.out.ConversationTurnLeasePort> turnLeases,
+                                               ObjectProvider<com.ford.service.channels.api.InboundDebounceGate> debounceGates,
                                                ObjectProvider<AiObservationService> observationServices) {
         var observations = observationServices.getIfAvailable(
                 () -> new DefaultAiObservationService(ObservationRegistry.NOOP));
-        return new ConversationWorkflow(graphRunner, observations, turnLeases.getIfAvailable());
+        return new ConversationWorkflow(graphRunner, observations, turnLeases.getIfAvailable(),
+                debounceGates.getIfAvailable());
     }
 
     @Bean
@@ -152,11 +169,13 @@ public class ConversationConfiguration {
                                                      ConversationDecisionRepository decisions,
                                                      ObjectProvider<com.ford.service.channels.api.AcceptedInboundMessageRepository> inboundTurns,
                                                      ObjectProvider<com.ford.service.conversations.application.port.out.ConversationTurnLeasePort> turnLeases,
+                                                     ObjectProvider<com.ford.service.channels.api.InboundDebounceGate> debounceGates,
                                                      ObjectProvider<AiObservationService> observationServices) {
         var observations = observationServices.getIfAvailable(
                 () -> new DefaultAiObservationService(ObservationRegistry.NOOP));
         var handoffPolicy = handoffPolicies.getIfAvailable(() -> new HumanHandoffPolicy(false));
         return new ConversationWorkflow(repository, assistant, publisher, handoffPolicy, memoryService,
-                decisions, observations, inboundTurns.getIfAvailable(), turnLeases.getIfAvailable());
+                decisions, observations, inboundTurns.getIfAvailable(), turnLeases.getIfAvailable(),
+                debounceGates.getIfAvailable());
     }
 }

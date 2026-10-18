@@ -4,10 +4,14 @@ import com.ford.service.conversations.application.SpecialistHandoffPayloadFactor
 import com.ford.service.conversations.domain.ConversationMemoryContext;
 import com.ford.service.conversations.domain.ConversationMemoryKey;
 import com.ford.service.conversations.domain.ConversationMessage;
+import com.ford.service.leads.domain.LeadJourneyFact;
+import com.ford.service.leads.domain.LeadJourneyFactKey;
+import com.ford.service.leads.domain.LeadJourneySnapshot;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -67,6 +71,52 @@ class SpecialistHandoffPayloadFactoryTest {
         var payload = factory.create("Quiero hablar con asesor. Mi correo es ana@example.com y mi teléfono 452 123 4567.",
                 memory(), "Registré la solicitud.");
         assertThat(payload.arguments().toString()).doesNotContain("ana@example.com", "452 123 4567");
+    }
+
+    @Test
+    void packetUsesOnlyConfirmedJourneyFactsAndCountsCompleteness() {
+        var journey = journey(Map.of(
+                LeadJourneyFactKey.VEHICLE_MODEL, fact("Ranger"),
+                LeadJourneyFactKey.PAYMENT_METHOD, fact("financiamiento"),
+                LeadJourneyFactKey.DOWN_PAYMENT, fact("20 mil pesos"),
+                LeadJourneyFactKey.PURCHASE_TIMING, fact("este mes"),
+                LeadJourneyFactKey.CUSTOMER_NAME, fact("María Elena")));
+
+        var packet = factory.createPacket(journey);
+
+        assertThat(packet.completeness()).isEqualTo(5);
+        assertThat(packet.partial()).isFalse();
+        assertThat(packet.arguments()).containsEntry("vehicleModel", "Ranger")
+                .containsEntry("paymentMethod", "financiamiento")
+                .containsEntry("downPayment", "20 mil pesos")
+                .containsEntry("purchaseTimeframe", "este mes")
+                .containsEntry("customerName", "María Elena");
+    }
+
+    @Test
+    void packetOmitsDownPaymentUnlessFinancingAndOmitsSensitiveValues() {
+        var cash = journey(Map.of(
+                LeadJourneyFactKey.PAYMENT_METHOD, fact("contado"),
+                LeadJourneyFactKey.DOWN_PAYMENT, fact("20 mil pesos")));
+        assertThat(factory.createPacket(cash).arguments()).doesNotContainKey("downPayment");
+
+        var sensitive = journey(Map.of(LeadJourneyFactKey.CUSTOMER_NAME, fact("1234567890")));
+        assertThat(factory.createPacket(sensitive).arguments()).doesNotContainKey("customerName");
+    }
+
+    @Test
+    void emptyJourneyYieldsPartialPacket() {
+        assertThat(factory.createPacket(journey(Map.of())).partial()).isTrue();
+        assertThat(factory.createPacket(null).partial()).isTrue();
+    }
+
+    private static LeadJourneyFact fact(String value) {
+        return new LeadJourneyFact(value, "provider-1", Instant.now());
+    }
+
+    private static LeadJourneySnapshot journey(Map<LeadJourneyFactKey, LeadJourneyFact> facts) {
+        return new LeadJourneySnapshot(UUID.randomUUID(), UUID.randomUUID(), null, null, null, null,
+                facts, null, 0, null, 0, Instant.now());
     }
 
     private static ConversationMemoryContext memory(ConversationMessage... messages) {

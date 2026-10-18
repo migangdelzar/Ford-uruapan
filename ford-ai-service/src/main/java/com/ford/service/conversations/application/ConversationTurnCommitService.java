@@ -36,6 +36,9 @@ public class ConversationTurnCommitService {
             "Puedo seguir ayudándole por aquí. ¿Qué información desea revisar?";
     private static final String HANDOFF_UNAVAILABLE_TEXT =
             "No se pudo completar el traspaso a un especialista. Puedo seguir ayudándole por aquí.";
+    private static final String HANDOFF_QUEUE_CONFIRMATION =
+            "Su solicitud quedó registrada en la fila del equipo de Ford Service. "
+                    + "Aún no tengo confirmación de cuándo podrá atenderle.";
 
     private final ConversationRepository repository;
     private final ConversationDecisionRepository decisionRepository;
@@ -45,6 +48,8 @@ public class ConversationTurnCommitService {
     private final ApplicationEventPublisher eventPublisher;
     private final CustomerHandoffAuthorizationPolicy customerAuthorization =
             new CustomerHandoffAuthorizationPolicy();
+    private final CustomerHandoffEscalationPolicy handoffEscalationPolicy =
+            new CustomerHandoffEscalationPolicy();
     private final SpecialistHandoffPayloadFactory payloadFactory = new SpecialistHandoffPayloadFactory();
     private final CustomerHandoffOfferPolicy handoffOfferPolicy = new CustomerHandoffOfferPolicy();
 
@@ -81,19 +86,21 @@ public class ConversationTurnCommitService {
         }
 
         var customerAuthorized = customerAuthorization.isAuthorized(inbound.text(), memory);
-        if (handoffPolicy.shouldCreateHandoff(reference.tenantId(), customerAuthorized)) {
+        var escalated = handoffEscalationPolicy.shouldEscalate(inbound.text(), memory);
+        if (handoffPolicy.shouldCreateHandoff(reference.tenantId(), customerAuthorized || escalated)) {
             var payload = payloadFactory.create(inbound.text(), memory, reply.text());
             var decision = reply.decision();
-            var urgent = decision.intent() == ConversationIntent.HUMAN_REQUEST
+            var urgent = escalated
+                    || decision.intent() == ConversationIntent.HUMAN_REQUEST
                     || decision.handoffRecommendation() == HandoffRecommendation.USER_REQUESTED
                     || decision.leadTemperature() == LeadTemperature.HOT;
             var reason = payload.reason();
             var accepted = repository.requestHumanHandoff(reference.tenantId(), reference.conversationId(),
                     conversation.version(), providerMessageId, new HandoffDecision(reason,
                             urgent ? "HIGH" : "NORMAL",
-                            handoffIdempotencyKey(reference, inbound.providerMessageId())),
-                    new ConversationTurn("Registré su solicitud en la fila interna de atención. " +
-                            "Aún no tengo confirmación de cuándo podrá atenderle un asesor."));
+                            handoffIdempotencyKey(reference, inbound.providerMessageId()),
+                            payloadFactory.createPacket(journey)),
+                    new ConversationTurn(HANDOFF_QUEUE_CONFIRMATION));
             if (!accepted) {
                 log.warn("Conversation handoff commit rejected: conversationId={} providerMessageId={} reason=optimistic_lock_or_duplicate",
                         reference.conversationId(), providerMessageId);
@@ -133,6 +140,31 @@ public class ConversationTurnCommitService {
         log.info("Conversation bot reply committed: conversationId={} providerMessageId={} route=BOT_REPLY durableOutbox=true leadTemperature={}",
                 reference.conversationId(), providerMessageId, temperature);
         return ConversationGraphRoute.BOT_REPLY;
+    }
+
+    @Transactional
+    public ConversationGraphRoute forceHumanHandoff(ConversationTurnReference reference,
+                                                     AcceptedInboundMessage inbound,
+                                                     ConversationSnapshot conversation,
+                                                     ConversationMemoryContext memory,
+                                                     LeadJourneySnapshot journey) {
+        var reason = "Pausa temporal de MÍA; revisión humana solicitada por política operativa.";
+        var payload = payloadFactory.create(inbound.text(), memory, null);
+        var accepted = repository.requestHumanHandoff(reference.tenantId(), reference.conversationId(),
+                conversation.version(), inbound.providerMessageId(),
+                new HandoffDecision(reason, "HIGH", handoffIdempotencyKey(reference, inbound.providerMessageId()),
+                        payloadFactory.createPacket(journey)),
+                new ConversationTurn("La atención automatizada está pausada. Su conversación quedó en la fila del equipo de Ford Service."));
+        if (!accepted) {
+            log.warn("Conversation kill-switch handoff rejected: conversationId={} receiptId={} reason=optimistic_lock_or_duplicate",
+                    reference.conversationId(), reference.receiptId());
+            return ConversationGraphRoute.IGNORED;
+        }
+        eventPublisher.publishEvent(new HandoffRequested(UUID.randomUUID(), reference.tenantId(),
+                reference.conversationId(), reason, Instant.now(), payload));
+        log.info("Conversation routed to human after kill switch: conversationId={} receiptId={}",
+                reference.conversationId(), reference.receiptId());
+        return ConversationGraphRoute.HUMAN_PENDING;
     }
 
     private static String handoffIdempotencyKey(ConversationTurnReference reference, String providerMessageId) {

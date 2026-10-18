@@ -18,9 +18,6 @@ locals {
       "ford-prod-meta-whatsapp-access-token",
       "ford-prod-meta-messenger-access-token",
       "ford-prod-meta-instagram-access-token",
-      "ford-prod-mcp-http-bearer-token",
-      "ford-prod-mcp-access-client-id",
-      "ford-prod-mcp-access-client-secret",
       "ford-prod-ollama-access-client-id",
       "ford-prod-ollama-access-client-secret",
       "ford-prod-openai-api-key",
@@ -35,8 +32,6 @@ locals {
     data = [
       "ford-prod-postgres-password",
       "ford-prod-redis-password",
-      "ford-prod-mcp-http-bearer-token",
-      "ford-prod-mcp-access-client-secret",
       "ford-prod-cloudflared-tunnel-token",
     ]
   }

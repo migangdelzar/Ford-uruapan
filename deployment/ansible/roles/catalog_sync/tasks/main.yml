@@ -1,0 +1,116 @@
+---
+- name: Read the currently promoted scraper image state
+  ansible.builtin.slurp:
+    src: "{{ remote_root }}/mcp/scheduler-release.json"
+  register: catalog_sync_release_state
+  no_log: true
+
+- name: Resolve and validate the promoted immutable image
+  ansible.builtin.set_fact:
+    catalog_sync_image: "{{ (catalog_sync_release_state.content | b64decode | from_json).active_image }}"
+  no_log: true
+
+- name: Inspect host-managed scraper runtime environment
+  ansible.builtin.stat:
+    path: "{{ remote_root }}/mcp/.env"
+  register: catalog_sync_runtime_environment
+
+- name: Require a promoted immutable scraper image and host-managed runtime config
+  ansible.builtin.assert:
+    that:
+      - catalog_sync_image is match('^ghcr[.]io/[A-Za-z0-9._/-]+@sha256:[a-f0-9]{64}$')
+      - catalog_sync_runtime_environment.stat.exists
+      - catalog_sync_runtime_environment.stat.isreg
+    fail_msg: "Catalog sync requires a promoted immutable image and provisioned emme-2 runtime configuration."
+
+- name: Read the current UTC date
+  ansible.builtin.command:
+    cmd: date -u +%Y%m%d
+  register: catalog_sync_utc_date
+  changed_when: false
+
+- name: Verify the newest same-day backup manifest and both artifact hashes
+  ansible.builtin.script:
+    cmd: "{{ role_path }}/files/verify_backup.py {{ remote_root }}/backup/archive {{ catalog_sync_utc_date.stdout }}"
+    executable: /usr/bin/python3
+  register: catalog_sync_backup_check
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Require a verified same-day PostgreSQL and Redis backup
+  ansible.builtin.assert:
+    that:
+      - catalog_sync_backup_check.rc | int == 0
+      - catalog_sync_backup_check.stdout | trim | length > 0
+    fail_msg: "Catalog sync skipped: no valid same-day backup manifest and matching PostgreSQL/Redis artifacts were verified."
+
+- name: Decode verified backup timestamp
+  ansible.builtin.set_fact:
+    catalog_sync_backup: "{{ catalog_sync_backup_check.stdout | from_json }}"
+  no_log: true
+
+- name: Render one-shot sync Compose configuration on emme-2
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ remote_root }}/mcp/catalog-sync-compose.yml"
+    mode: "0600"
+  no_log: true
+
+- name: Run the existing full sync once on the private data network
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-name
+      - ford-catalog-sync
+      - --env-file
+      - "{{ remote_root }}/mcp/.env"
+      - -f
+      - "{{ remote_root }}/mcp/catalog-sync-compose.yml"
+      - run
+      - --rm
+      - --no-deps
+      - sync
+      - node
+      - dist/src/cli.js
+      - sync
+  register: catalog_sync_command
+  changed_when: true
+  failed_when: false
+  no_log: true
+
+- name: Require a JSON result from the sync command
+  ansible.builtin.assert:
+    that:
+      - catalog_sync_command.stdout_lines | default([]) | length > 0
+    fail_msg: "Catalog sync command failed before returning its bounded result."
+
+- name: Decode bounded sync counters
+  ansible.builtin.set_fact:
+    catalog_sync_result: "{{ catalog_sync_command.stdout_lines | last | from_json }}"
+  no_log: true
+
+- name: Fail the workflow for command, crawl, or embedding failures
+  ansible.builtin.assert:
+    that:
+      - catalog_sync_command.rc | int == 0
+      - catalog_sync_result.pagesFailed | default(0) | int == 0
+      - catalog_sync_result.embeddingFailures | default(0) | int == 0
+    fail_msg: >-
+      Catalog sync failed: pagesFailed={{ catalog_sync_result.pagesFailed | default(0) | int }},
+      embeddingFailures={{ catalog_sync_result.embeddingFailures | default(0) | int }}.
+
+- name: Return bounded catalog sync result
+  ansible.builtin.debug:
+    msg: >-
+      CATALOG_SYNC_RESULT={{ {
+        'backupCreatedAt': catalog_sync_backup.backupCreatedAt,
+        'pagesFetched': catalog_sync_result.pagesFetched | default(0) | int,
+        'pagesChanged': catalog_sync_result.pagesChanged | default(0) | int,
+        'pagesFailed': catalog_sync_result.pagesFailed | default(0) | int,
+        'usedVehiclesChanged': catalog_sync_result.usedVehiclesChanged | default(0) | int,
+        'offersUpserted': catalog_sync_result.offersUpserted | default(0) | int,
+        'embeddingsReady': catalog_sync_result.embeddingsReady | default(0) | int,
+        'embeddingFailures': catalog_sync_result.embeddingFailures | default(0) | int
+      } | to_json }}

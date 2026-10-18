@@ -52,7 +52,7 @@ class OciActionContractTest(unittest.TestCase):
     def test_action_rejects_unknown_target(self):
         result = self.run_validation(OCI_TARGET="unknown")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("target must be ford-service or ford-mcp", result.stderr)
+        self.assertIn("target must be ford-service, ford-mcp, or ford-scraper-scheduler", result.stderr)
 
     def test_ford_service_requires_an_existing_backup_host(self):
         result = self.run_validation(OCI_BACKUP_HOST="")
@@ -161,9 +161,25 @@ class OciActionContractTest(unittest.TestCase):
     def test_release_workflow_pins_the_meta_aware_shared_action_commit(self):
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn(
-            "migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@972fe859e907753d60e163ecef2ee5cd1fb044f3",
+            "migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@65fa3f562ae846fc096b6832893e293b0bdf326c",
             workflow,
         )
+
+    def test_service_release_wires_local_catalog_reader_and_removes_remote_mcp_client(self):
+        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        app_template = (REPO_ROOT.parent / "deployment/ansible/roles/app/templates/app.env.j2").read_text(encoding="utf-8")
+        action_template = (REPO_ROOT.parent / ".github/actions/oci-blue-green/deploy.sh").read_text(encoding="utf-8")
+
+        for name in (
+            "FORD_CATALOG_TOOLS_ENABLED",
+            "FORD_CATALOG_JDBC_URL",
+            "FORD_CATALOG_USERNAME",
+            "FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD",
+        ):
+            self.assertIn(name, workflow + action_template)
+        self.assertNotIn("FORD_MCP_", workflow)
+        self.assertNotIn("service-mcp-", workflow)
+        self.assertNotIn("FORD_MCP_", app_template)
 
     def test_release_workflow_is_closed_until_vault_and_production_gates_pass(self):
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")

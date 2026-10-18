@@ -240,11 +240,11 @@ jobs:
       FORD_META_PHONE_NUMBER_ID: ${{ vars.FORD_META_PHONE_NUMBER_ID }}
       FORD_VAULT_SECRET_OCID_FORD_META_MESSENGER_ACCESS_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_MESSENGER_ACCESS_TOKEN }}
       FORD_VAULT_SECRET_OCID_FORD_META_INSTAGRAM_ACCESS_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_INSTAGRAM_ACCESS_TOKEN }}
-      FORD_VAULT_SECRET_OCID_FORD_MCP_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_MCP_TOKEN }}
-      FORD_VAULT_SECRET_OCID_FORD_MCP_ACCESS_CLIENT_SECRET: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_MCP_ACCESS_CLIENT_SECRET }}
-      FORD_MCP_ENABLED: ${{ vars.FORD_MCP_ENABLED }}
-      FORD_MCP_URL: ${{ vars.FORD_MCP_URL }}
-      FORD_MCP_ACCESS_CLIENT_ID: ${{ vars.FORD_MCP_ACCESS_CLIENT_ID }}
+      FORD_CATALOG_TOOLS_ENABLED: ${{ vars.FORD_CATALOG_TOOLS_ENABLED || 'false' }}
+      FORD_CATALOG_PARITY_READY: ${{ vars.FORD_CATALOG_PARITY_READY }}
+      FORD_CATALOG_JDBC_URL: ${{ vars.FORD_CATALOG_JDBC_URL }}
+      FORD_CATALOG_USERNAME: ${{ vars.FORD_CATALOG_USERNAME }}
+      FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD }}
       FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY }}
       FORD_VAULT_SECRET_OCID_OPENAI_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_OPENAI_API_KEY }}
       FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY }}
@@ -277,8 +277,6 @@ jobs:
             FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD \
             FORD_VAULT_SECRET_OCID_FORD_OPERATOR_PASSWORD \
             FORD_VAULT_SECRET_OCID_FORD_SECURITY_JWK_PRIVATE_KEY \
-            FORD_VAULT_SECRET_OCID_FORD_MCP_TOKEN \
-            FORD_VAULT_SECRET_OCID_FORD_MCP_ACCESS_CLIENT_SECRET \
             FORD_VAULT_SECRET_OCID_OPENAI_API_KEY; do
             [[ -n "${!mapping}" ]] || {
               echo "Production deployment blocked: configure ${mapping} as a Vault secret OCID variable." >&2
@@ -294,12 +292,22 @@ jobs:
             echo 'OpenRouter fallback Vault reference must be a valid secret OCID when configured.' >&2
             exit 1
           fi
-          [[ "$FORD_MCP_ENABLED" == 'true' \
-            && "$FORD_MCP_URL" == 'https://ford-mcp.emme.business' \
-            && "$FORD_MCP_ACCESS_CLIENT_ID" =~ ^[A-Za-z0-9._-]+$ ]] || {
-            echo 'Production deployment requires enabled Ford MCP, its production HTTPS URL, and a valid Cloudflare Access client ID.' >&2
+          [[ "$FORD_CATALOG_TOOLS_ENABLED" == 'true' || "$FORD_CATALOG_TOOLS_ENABLED" == 'false' ]] || {
+            echo 'FORD_CATALOG_TOOLS_ENABLED must be true or false.' >&2
             exit 1
           }
+          if [[ "$FORD_CATALOG_TOOLS_ENABLED" == 'true' ]]; then
+            [[ "$FORD_CATALOG_PARITY_READY" == 'true' ]] || {
+              echo 'Local catalog tools cannot be enabled before the full Node-to-Java parity gate is confirmed.' >&2
+              exit 1
+            }
+            [[ "$FORD_CATALOG_JDBC_URL" =~ ^jdbc:postgresql://[^/]+/[^?]+([?].*)?$ \
+              && "$FORD_CATALOG_USERNAME" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ \
+              && "$FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD" =~ ^ocid1[.]vaultsecret[.][A-Za-z0-9.]+$ ]] || {
+              echo 'Enabled local catalog tools require the dedicated PostgreSQL reader URL, username, and Vault secret OCID.' >&2
+              exit 1
+            }
+          fi
           [[ "$FORD_META_DELIVERY_ENABLED" == 'true' && "$FORD_OUTBOX_ENABLED" == 'true' ]] || {
             echo 'Production deployment requires Meta delivery and the durable outbox to be enabled.' >&2
             exit 1
@@ -344,7 +352,7 @@ jobs:
           sparse-checkout: deployment/observability/otel-collector/grafana-cloud-config.yaml
           sparse-checkout-cone-mode: false
       - name: Run the shared OCI blue-green deployment action
-        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@972fe859e907753d60e163ecef2ee5cd1fb044f3
+        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@65fa3f562ae846fc096b6832893e293b0bdf326c
         with:
           target: ford-service
           ui-upstream-url: ${{ vars.FORD_WEB_UI_UPSTREAM_URL }}
@@ -370,11 +378,10 @@ jobs:
           langfuse-public-key: ${{ vars.LANGFUSE_PUBLIC_KEY }}
           langfuse-secret-key-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY }}
           operator-username: ${{ vars.FORD_OPERATOR_USERNAME }}
-          service-mcp-enabled: ${{ vars.FORD_MCP_ENABLED }}
-          service-mcp-url: ${{ vars.FORD_MCP_URL }}
-          service-mcp-access-client-id: ${{ vars.FORD_MCP_ACCESS_CLIENT_ID }}
-          service-mcp-token-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_MCP_TOKEN }}
-          service-mcp-access-client-secret-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_MCP_ACCESS_CLIENT_SECRET }}
+          service-catalog-tools-enabled: ${{ vars.FORD_CATALOG_TOOLS_ENABLED || 'false' }}
+          service-catalog-jdbc-url: ${{ vars.FORD_CATALOG_JDBC_URL }}
+          service-catalog-username: ${{ vars.FORD_CATALOG_USERNAME }}
+          service-catalog-password-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD }}
           meta-delivery-enabled: ${{ vars.FORD_META_DELIVERY_ENABLED }}
           outbox-enabled: ${{ vars.FORD_OUTBOX_ENABLED }}
           meta-whatsapp-delivery-endpoint: ${{ vars.FORD_META_WHATSAPP_DELIVERY_ENDPOINT }}

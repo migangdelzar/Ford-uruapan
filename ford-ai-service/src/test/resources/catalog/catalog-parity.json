@@ -1,0 +1,53 @@
+{
+  "contractSource": {
+    "repository": "ford-catalog-scraper",
+    "revision": "HEAD^",
+    "test": "tests/catalog/catalog-contract.test.ts"
+  },
+  "scope": "The fixture preserves only the three archived Node contract cases and is not exhaustive Node/Java parity. javaDetailProjection is Service output, not an archived Node assertion. Java derives technicalSheetUrl from the exact model-level specification source URL using the same ficha-tecnica pathname rule as Node's page classifier.",
+  "archivedNodeContract": {
+    "search": {
+      "model": "Ranger",
+      "trim": null,
+      "year": 2027,
+      "price": "899000",
+      "currency": "MXN",
+      "modelPageUrl": "https://www.ford.mx/vehiculos/ranger/",
+      "priceSourceUrl": "https://www.ford.mx/vehiculos/ranger/precio/",
+      "observedAt": "2026-10-16T10:00:00Z"
+    },
+    "exactVehicle": {
+      "model": "Ranger",
+      "year": 2027,
+      "modelPageUrl": "https://www.ford.mx/vehiculos/ranger/",
+      "technicalSheetUrl": "https://www.ford.mx/vehiculos/ranger/ficha-tecnica/",
+      "observedAt": "2026-10-16T10:00:00Z"
+    },
+    "promotion": {
+      "model": "Ranger",
+      "year": 2027,
+      "title": "Promoción de prueba",
+      "validFrom": "2026-10-01",
+      "validUntil": "2026-10-31",
+      "validityStatus": "active",
+      "sourceUrl": "https://www.ford.mx/promociones/ranger/"
+    }
+  },
+  "javaDetailProjection": {
+    "price": "899000",
+    "priceSourceUrl": "https://www.ford.mx/vehiculos/ranger/precio/",
+    "technicalSheetUrl": "https://www.ford.mx/vehiculos/ranger/ficha-tecnica/"
+  },
+  "javaOnlyMissingEvidence": {
+    "model": "Maverick",
+    "year": 2027,
+    "expectation": "A present catalog row with no price, source URLs, facts, or observed time stays unknown; no values are synthesized. The archived Node fixture has no corresponding assertion."
+  },
+  "unverifiedCapabilities": [
+    "search_vehicle_and_offers and search_offers output parity",
+    "comparison output shape and comparison values",
+    "missing observation/source behavior in the archived Node contract",
+    "page links, provenance, catalog status, variant comparisons",
+    "semantic ranking parity"
+  ]
+}

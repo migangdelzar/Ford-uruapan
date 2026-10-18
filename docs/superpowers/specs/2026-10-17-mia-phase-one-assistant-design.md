@@ -1,6 +1,6 @@
 # MÍA Phase 1 Assistant Design
 
-**Status:** Proposed for user review
+**Status:** Approved for implementation
 **Date:** 2026-10-17
 **Source:** `/Users/miguelangeldelgadillozarate/Downloads/MÍA — Ford Uruapan Assistant Flows, Architecture and Voice (1).md`
 
@@ -32,10 +32,9 @@ This design incorporates the user's decisions during brainstorming:
 ### Included
 
 - WhatsApp entry, new-vehicle sales, after-hours responses, and BDC handoff.
-- Existing conversation memory, lead journey, model/provider routing, MCP
-  authorization, and durable outbound delivery, extended only where required.
-- A Java read-only catalog path with contract/parity checks against the current
-  Node MCP/catalog implementation.
+- Existing conversation memory, lead journey, model/provider routing, read-only
+  tool authorization, and durable outbound delivery, extended only where required.
+- A Java read-only catalog path through in-process Spring AI callbacks.
 - A useful BDC packet in the existing internal handoff queue, with partial and
   after-hours flags as applicable.
 - A small code-owned template set for safety-critical messages, with the LLM
@@ -68,18 +67,22 @@ currently covers model/use, new-or-used, budget, timing, finance interest,
 trade-in interest, and location. It does not yet represent the full five-field
 packet as specified here.
 
-The service has a Spring AI MCP client and an internal JDBC vehicle catalog.
-That JDBC module queries Ford Service's own vehicle tables; it is not the
-Ford-scraping catalog contract and must not be reused as if it were. The
-conversation runtime should receive catalog data through a dedicated
-`CatalogPort` implementation and a separately configured read-only datasource.
+The service previously had a Spring AI MCP client and an internal JDBC vehicle
+catalog. That JDBC module queries Ford Service's own vehicle tables; it is not
+the Ford-scraping catalog contract and must not be reused as if it were. The
+conversation runtime receives catalog data through local Spring AI tool
+callbacks backed by a dedicated `CatalogPort` and separately configured
+read-only datasource. The remote MCP client has been removed. Local catalog
+tools stay disabled until the datasource and parity checks pass; the user
+accepted a temporary period without customer-facing catalog tools.
 
 Ford-scraping remains the single writer for the TypeScript/Node catalog and its
-21 migrations. It already owns Ford page ingestion, relational catalog facts,
-offers/promotions, optional BGE-M3 embeddings, hybrid retrieval, provenance
-URLs, and read-only MCP tools. Do not let Ford Service write to those tables or
-run their migrations. The source review found durable inbound queueing but no
-per-conversation WhatsApp debounce or dealership-hours/holiday engine.
+migrations. It owns Ford page ingestion, relational catalog facts,
+offers/promotions, optional BGE-M3 embeddings, hybrid retrieval, and provenance
+URLs. Its Node MCP runtime has been removed now by user choice, with a temporary
+tool gap accepted before Java parity is complete. Ford Service must not write
+catalog tables or run Ford-scraping migrations. The source review found durable inbound queueing
+but no per-conversation WhatsApp debounce or dealership-hours/holiday engine.
 
 The user has uncommitted contextual-follow-up changes in another Ford Service
 worktree. This design must not overwrite or include those changes implicitly.
@@ -98,15 +101,17 @@ flowchart TD
     D --> P[Owner, opt-out, hours, and safety prechecks]
     P --> C[Jev intent classification]
     C --> J[Existing conversation workflow and durable lead journey]
-    J --> F[DeepSeek reply and validated journey proposal]
+    J --> F[DeepSeek reply using local Spring AI read-only catalog tools]
     F --> G[Grounding, price/promise, voice, and one-question checks]
     G --> O[Durable outbound outbox]
     O --> M
     J --> H[Transactional BDC handoff ticket and packet]
     H --> U[Existing Ford Service operator queue]
-    J --> CP[Java CatalogPort]
+    F --> CP[Java CatalogPort and Spring AI tool adapters]
     CP --> DB[(Ford catalog PostgreSQL: read-only views)]
     ING[Node crawler, parser, monthly scheduler] --> DB
+    ING --> DB
+    DB --> CP
 ```
 
 Jev remains the intent classifier. DeepSeek is the sole generative provider for
@@ -119,13 +124,13 @@ language and composes the reply from the approved goal and evidence.
 
 ### Catalog read path
 
-1. Freeze representative Node MCP request/response fixtures, including prices,
-   effective dates, promotions, comparisons, empty results, stale results, and
-   exact source URLs.
+1. Freeze representative request/response fixtures for every Node MCP tool,
+   including prices, effective dates, promotions, comparisons, empty/stale
+   results, provenance, page links, and exact source URLs.
 2. Implement a dedicated Java `CatalogPort` over stable SQL views using a
    second datasource and least-privilege read-only credentials. Use the
-   project's supported `JdbcClient` for SQL access. Keep the existing Node MCP
-   response contract as the parity reference.
+   project's supported `JdbcClient` for SQL access. Keep the existing Node
+   catalog response contract as the parity reference during migration.
 3. Reuse the catalog's stored BGE-M3 vectors only when model tag, settings, and
    1024 dimensions match. Embed only incoming queries. Preserve the documented
    Spanish full-text/vector retrieval and 0.3/0.7 fusion; if embeddings are
@@ -134,9 +139,91 @@ language and composes the reply from the approved goal and evidence.
 4. Add schema/view contract tests and Node-versus-Java parity tests for facts,
    prices, freshness, ranking, and byte-for-byte URLs. Do not cut over the chat
    path until the tests pass.
-5. Keep Node as the sole schema/migration and data-write owner. Keep its MCP
-   tools available to existing consumers. Spring AI tool adapters may call the
-   Java `CatalogPort`; they do not expose unfiltered database results.
+5. Keep Ford-scraping as the sole schema/migration and data-write owner. Ford
+   Service's Spring AI tools call the Java `CatalogPort` directly. The remote
+   MCP client and Node MCP runtime/release path are removed now, before parity,
+   per the user's explicit acceptance of a temporary tool gap. Do not remove
+   the crawler, catalog schema, migrations, catalog read views, or scheduler.
+   Keep local tools disabled until datasource and parity gates pass.
+
+### Spring AI orchestration and retrieval quality
+
+The current implementation already has a Jev/rules decision stage, tenant- and
+conversation-scoped durable typed transcript storage, a read-only tool
+allowlist, a deterministic fact renderer, and response repair/withholding. Do
+not add a second transcript store or a second independently running intent
+classifier. Refactor behind ports only where needed to keep the model and
+retrieval providers replaceable.
+
+For a customer turn, first use the existing decision service (or a focused
+structured extractor extension) to identify intent, slots, sentiment, and
+whether the request asks for volatile catalog facts. Facts such as current
+prices, promotions, inventory, and specifications go to the authorized
+structured catalog tools. Approved brochures, policy documents, and narrative
+knowledge use RAG. Never let a document chunk override a current catalog tool
+result for volatile facts.
+
+Use one writer ChatClient with scoped tool callbacks. Conversation context is
+loaded from the existing tenant/conversation memory port using typed user and
+assistant records; only an accepted assistant answer is committed as assistant
+memory. Keep write-capable lead/handoff operations outside the writer tool
+allowlist. Derive tenant, conversation, price policy, and tool permissions in
+application code; never accept these from model-generated arguments. Recoverable
+tool failures use a stable structured result and fail closed for volatile facts.
+
+Ground the generated answer against an evidence ledger containing the current
+turn's tool payloads and retrieved document citations. Validate catalog model,
+trim, year, price/other numeric claims, and URLs against that evidence; also
+apply the existing voice, promise, length, and repetition rules. Retry once
+with the rejected claims and evidence constraints. If it still fails, return
+the existing safe fallback and create/flag human follow-up only through the
+existing authorized handoff path. Implement this in the existing completion
+boundary unless pinned-version Spring AI tests prove an advisor provides the
+required accepted-message-only memory semantics.
+
+For document RAG, use a measured funnel: standalone follow-up rewrite that
+preserves explicit selectors; metadata/model/year filtering; parallel Spanish
+full-text, trigram, and BGE-M3 vector retrieval; candidate fusion; optional
+cross-encoder reranking; deduplication, parent-section expansion, and a strict
+context budget; then sourced answer or abstention. Start by comparing current
+fusion with Reciprocal Rank Fusion (RRF), with each retriever returning up to
+30 candidates and RRF constant 60 as experiment settings, not production
+truths. The catalog has about 1,026 ready 1024-dimensional vectors tagged
+`bge-m3`; Service must use a proven compatible query embedding path. The
+current Node benchmark showed current blend and RRF tied on only three direct
+ranking comparisons, so expand reviewed judgments before choosing.
+
+Use Spring AI's `RetrievalAugmentationAdvisor` and its existing
+`DocumentRetriever`, `DocumentPostProcessor`, query-transformer, and
+`QueryAugmenter` extension points. Reuse the existing `KnowledgeRetrieval`
+implementation and its PostgreSQL full-text/vector RRF; add only the narrow
+adapter needed to expose it to Spring AI. The existing `JevDocumentReranker`
+from the already installed Spring AI TypeSafe integration is the first optional
+reranker to evaluate. It is disabled unless configured and must not run on
+volatile catalog facts. Do not add a separate reranker server or hand-build a
+cross-encoder client. If the installed reranker does not meet quality or latency
+goals, keep current RRF ranking and document that result rather than creating a
+new inference stack. Rerank only a bounded candidate set and benchmark
+p50/p95 latency, provider cost, timeout behavior, and answer evidence quality.
+Calibrate abstention thresholds on the labeled evaluation set rather than
+choosing an arbitrary score.
+
+The LangGraph4j conversation graph remains the top-level turn orchestrator;
+Spring AI handles the writer, authorized read-only callbacks, and document-RAG
+advice inside that turn. Activate the RAG advisor only for the existing
+knowledge-search route. The Spring AI advisor ordering described in the
+proposal is not assumed: verify request/response ordering, retry scope, and
+memory commit behavior against the exact Spring AI version in the service BOM.
+Existing durable conversation memory and response-quality policy remain
+authoritative during that check.
+
+Retrieval acceptance: create a reviewed Spanish set of approximately 100
+questions with relevant source documents and expected facts; report recall@5,
+MRR, nDCG, evidence coverage, answer grounding, and latency for lexical-only,
+vector-only, current fusion, RRF, and RRF plus reranking. Promote a stage only
+when it improves the agreed quality measures without violating latency/resource
+budgets. Keep volatile catalog facts on the structured tool path regardless of
+the RAG result.
 
 Freshness and price policy are applied before facts reach the model. A published
 price may be stated only when the catalog returns that exact figure, validity,
@@ -251,9 +338,10 @@ inputs exist or that production rollout has happened.
 The supplied Phase 1 document spans several separately verifiable changes. Use
 one implementation plan per slice, in dependency order:
 
-1. **Catalog evidence lane:** freeze the Node contract, build the Java read-only
-   `CatalogPort`, and prove schema and result parity. Do not cut over replies
-   until parity passes.
+1. **Catalog evidence lane:** keep the Node catalog contract as reference,
+   build the Java read-only `CatalogPort`, and prove schema/result parity before
+   enabling local tools. The Node MCP transport is removed immediately; a
+   temporary customer tool gap is accepted.
 2. **Conversation and BDC packet:** align the existing model/policy flow,
    persist the five-field packet with the ticket, and verify idempotent customer
    handoff messages.
@@ -277,3 +365,14 @@ acceptable only when the external evidence and rollout gates above are
 confirmed. Production release remains a separate action through the existing
 protected deployment path; this design alone does not authorize or claim a
 deployment.
+
+## Implementation naming and reuse
+
+- Use domain names for implementation types (`CatalogTools`, `ShadowDraft`,
+  `ShadowReviewGate`) rather than the product name or a retired transport name.
+- Reuse the existing Spring AI advisor, Jev reranker, response quality policy,
+  evidence-grounding policy, conversation workflow, outbox, and tenant-scoped
+  operator authorization. Extend shared behavior instead of adding parallel
+  safety or orchestration classes.
+- Preserve already-applied database migration identifiers. New schema objects
+  use domain names such as `conversation_shadow_draft`.

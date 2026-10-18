@@ -297,6 +297,66 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/conversations/{conversationId}/shadow-drafts:
+    get:
+      tags: [Conversations]
+      summary: List unsent shadow drafts for operator review
+      description: Drafts are never delivered to customers. Requires tenant access and operator:read authority.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Unsent drafts, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ShadowDraft'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/conversations/{conversationId}/shadow-drafts/{draftId}/review:
+    post:
+      tags: [Conversations]
+      summary: Annotate an unsent draft
+      description: Accept or reject a draft for evaluation. Requires tenant access and operator:write authority. This operation cannot send a message.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - name: draftId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/TenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShadowDraftReviewRequest'
+      responses:
+        '204':
+          description: Review annotation recorded
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/conversations/{conversationId}/messages:
     parameters:
       - $ref: '#/components/parameters/ConversationId'
@@ -1896,6 +1956,38 @@ components:
         updatedAt:
           type: string
           format: date-time
+    ShadowDraft:
+      type: object
+      required: [id, conversationId, createdAt, expiresAt, reviewStatus, text]
+      properties:
+        id:
+          type: string
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        reviewStatus:
+          type: string
+          enum: [PENDING, ACCEPTED, REJECTED]
+        text:
+          type: string
+          maxLength: 2000
+    ShadowDraftReviewRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [ACCEPTED, REJECTED]
+        note:
+          type: string
+          maxLength: 500
     ConversationMessage:
       type: object
       required: [id, conversationId, direction, senderType, content, receivedAt]

@@ -187,6 +187,25 @@ mise run deploy:bootstrap
 mise run deploy:all
 ```
 
+For the monthly Ford catalog refresh, both operator paths invoke the same
+backup-verified Ansible playbook on emme-2. The local task is useful for an
+operator-run refresh from a configured workstation; it does not build, publish,
+migrate, or change the promoted scraper image:
+
+```bash
+mise run deploy:catalog-sync
+```
+
+The production schedule runs monthly from the protected
+`.github/workflows/monthly-catalog-sync.yml` workflow. Use its manual dispatch
+for a production run, with the `deployment-preflight` environment approval and
+the same emme-2 backup gate. Keep `FORD_CATALOG_SYNC_ENABLED` false until that
+first protected manual run has succeeded and the old scraper scheduler has
+been retired through the protected scheduler release flow. Do not run local
+and scheduled syncs concurrently; Actions concurrency and the database
+advisory lock coordinate workflow/database runs, while the local task remains
+operator-controlled.
+
 `mise run deploy:secrets` is the single secret-entry task. It generates
 missing database and operator credentials, then securely prompts for missing
 Meta, Grafana Cloud, and Langfuse credentials without echoing them. The task

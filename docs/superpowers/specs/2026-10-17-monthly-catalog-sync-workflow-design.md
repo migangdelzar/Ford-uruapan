@@ -20,7 +20,8 @@ Run Ford-scraping's catalog synchronization automatically once a month from a pr
 - A nonzero `pagesFailed` or `embeddingFailures` count makes the workflow fail, even if other parts of the sync completed. The run summary reports the sync counters without customer or credential data.
 - GitHub Actions reports failures through the repository's normal Actions notifications and records the run summary. No additional notification integration is added.
 - Workflow concurrency and the existing database sync lock prevent overlapping catalog runs.
-- The schedule replaces the long-running Node cron scheduler as the trigger. The scraper image and repository remain; only the MCP runtime is retired in the wider cutover.
+- A repository variable gates scheduled invocations during cutover. Manual dispatch can validate the new workflow while the old scheduler remains active; enable scheduled invocations only after the old trigger is retired through its protected release path.
+- The schedule replaces the long-running Node cron scheduler as the trigger. A protected reversible `disable` release operation removes the old container and records its immutable digest; rollback restores it. MCP releases do not start or restore the scheduler. The scraper image and repository remain; only the MCP runtime is retired in the wider cutover.
 
 ## Runtime Flow
 
@@ -39,7 +40,7 @@ The scheduled job does not run migrations, build or publish an image, deploy For
 - Ford Service remains a read-only consumer of the versioned catalog views; scheduling does not complete Java/Node tool-output parity.
 - No crawler logic or synchronization behavior is reimplemented in Rust, Python, or Java.
 - Existing published image and release state must identify one immutable digest before scheduled runs are enabled.
-- The current long-running `node dist/src/cli.js scheduler` service must not remain an active trigger alongside GitHub Actions. Cutover must disable it after the scheduled workflow is verified, with rollback able to restore the previous trigger and image.
+- The current long-running `node dist/src/cli.js scheduler` service must not remain an active trigger alongside GitHub Actions. Cutover must disable it after the manual workflow succeeds, with rollback able to restore the previous trigger and image. MCP deployment must not silently recreate the trigger.
 - Enabling this scheduled sync requires its own protected workflow, backup, image, and rollback checks. It does not wait on Java tool parity; the Node MCP runtime remains in production until the separate Java parity and cutover gates pass.
 
 ## Failure and Recovery

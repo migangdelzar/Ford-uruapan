@@ -94,9 +94,9 @@ class ObservedToolCallbackTest {
                 .isEqualTo("private-promotion-result");
 
         assertThat(output.getOut())
-                .contains("MCP tool call started")
+                .contains("catalog tool call started")
                 .contains("tool=list_promotions")
-                .contains("MCP tool call completed")
+                .contains("catalog tool call completed")
                 .contains("outcome=success")
                 .doesNotContain("private-tool-arguments")
                 .doesNotContain("private-promotion-result");

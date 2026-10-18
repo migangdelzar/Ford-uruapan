@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+#MISE description="Run the real-catalog parity integration tests against a disposable restored snapshot"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/../scripts/setup/runtime.sh"
+ford_runtime_export
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || { printf 'Missing command: %s\n' "$1" >&2; exit 1; }
+}
+require_command docker
+
+archive=""
+if [[ $# -gt 0 && "$1" != -* ]]; then
+  archive="$1"
+  shift
+fi
+
+catalog_repo="${FORD_CATALOG_REPO:-$(cd "$MISE_PROJECT_ROOT/../.." && pwd)/Ford-scraping}"
+migrations_dir="${FORD_CATALOG_MIGRATIONS_DIR:-$catalog_repo/db/migrations}"
+if [[ -z "$archive" ]]; then
+  archive="${FORD_CATALOG_SNAPSHOT:-}"
+fi
+if [[ -z "$archive" ]]; then
+  archive="$(ls -1 "$catalog_repo"/backups/*.dump "$catalog_repo"/backups/*.dump.gz 2>/dev/null | sort | tail -1 || true)"
+fi
+[[ -r "$archive" ]] || {
+  printf 'Usage: mise run test:parity -- [snapshot.dump]\n' >&2
+  printf 'No readable catalog snapshot found (looked in %s/backups).\n' "$catalog_repo" >&2
+  exit 2
+}
+[[ -d "$migrations_dir" ]] || {
+  printf 'Catalog migrations not found: %s (set FORD_CATALOG_MIGRATIONS_DIR).\n' "$migrations_dir" >&2
+  exit 2
+}
+
+read_view_migrations=()
+while IFS= read -r migration; do
+  read_view_migrations+=("$migration")
+done < <(ls -1 "$migrations_dir"/${FORD_CATALOG_READ_VIEW_GLOB:-*_mia_*.sql} 2>/dev/null | sort || true)
+(( ${#read_view_migrations[@]} > 0 )) || {
+  printf 'No ford_read view migrations (%s) in %s.\n' "${FORD_CATALOG_READ_VIEW_GLOB:-*_mia_*.sql}" "$migrations_dir" >&2
+  printf 'Apply the catalog read-view change set before running parity.\n' >&2
+  exit 2
+}
+for migration in "${read_view_migrations[@]}"; do
+  if grep -Eiq 'create[[:space:]]+table|create[[:space:]]+index|alter[[:space:]]+table|drop[[:space:]]|insert[[:space:]]+into|update[[:space:]]|delete[[:space:]]+from|grant[[:space:]]|truncate[[:space:]]' "$migration"; then
+    printf 'Refusing to apply %s: read-view migrations must not write or alter data.\n' "$migration" >&2
+    exit 2
+  fi
+done
+
+container="ford-parity"
+port="${FORD_PARITY_PORT:-55432}"
+password="parity"
+
+cleanup() {
+  if [[ "${FORD_PARITY_KEEP:-0}" != "1" ]]; then
+    docker rm -f "$container" >/dev/null 2>&1 || true
+  fi
+}
+docker rm -f "$container" >/dev/null 2>&1 || true
+trap cleanup EXIT
+
+printf 'Booting disposable catalog snapshot (%s) on 127.0.0.1:%s\n' "$(basename "$archive")" "$port"
+docker run -d --name "$container" \
+  -e "POSTGRES_PASSWORD=$password" -e POSTGRES_DB=ford \
+  -p "127.0.0.1:$port:5432" pgvector/pgvector:pg16 >/dev/null
+for _ in $(seq 1 60); do
+  docker exec "$container" pg_isready -U postgres -d ford >/dev/null 2>&1 && break
+  sleep 1
+done
+docker exec "$container" pg_isready -U postgres -d ford >/dev/null
+
+if [[ "$archive" == *.gz ]]; then
+  gunzip -c "$archive" | docker exec -i "$container" pg_restore -U postgres -d ford --no-owner --no-privileges
+else
+  docker exec -i "$container" pg_restore -U postgres -d ford --no-owner --no-privileges < "$archive"
+fi
+
+for migration in "${read_view_migrations[@]}"; do
+  printf 'Applying %s\n' "$(basename "$migration")"
+  docker exec -i "$container" psql -v ON_ERROR_STOP=1 -q -U postgres -d ford < "$migration"
+done
+
+reader_password="parity_read_only"
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -q -U postgres -d ford <<'SQL'
+CREATE ROLE ford_catalog_reader LOGIN PASSWORD 'parity_read_only';
+GRANT USAGE ON SCHEMA ford_read TO ford_catalog_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA ford_read TO ford_catalog_reader;
+DO $$
+BEGIN
+  IF NOT has_table_privilege('ford_catalog_reader', 'ford_read.vehicle_variants_v2', 'SELECT') THEN
+    RAISE EXCEPTION 'read-only role cannot SELECT the catalog contract';
+  END IF;
+  IF has_table_privilege('ford_catalog_reader', 'ford_read.vehicle_variants_v2', 'INSERT') THEN
+    RAISE EXCEPTION 'read-only role unexpectedly has INSERT privilege';
+  END IF;
+END
+$$;
+SQL
+
+printf 'Running catalog parity integration tests\n'
+set +e
+FORD_CATALOG_PARITY_JDBC_URL="jdbc:postgresql://localhost:$port/ford" \
+FORD_CATALOG_PARITY_USERNAME=ford_catalog_reader \
+FORD_CATALOG_PARITY_PASSWORD="$reader_password" \
+  ./gradlew integrationTest --tests '*CatalogSnapshotParityIntegrationTest*' \
+    --no-daemon --no-configuration-cache --rerun-tasks --no-build-cache "$@"
+status=$?
+set -e
+exit "$status"

@@ -159,4 +159,13 @@ class AssistantResponseQualityPolicyTest {
         assertThat(verdict.accepted()).isTrue();
         assertThat(verdict.reason()).isEqualTo("accepted");
     }
+
+    @Test
+    void rejectsResponsesThatExceedTheCustomerReplyLimit() {
+        var verdict = policy.evaluate("¿Qué versiones hay?", null, "a".repeat(1601));
+
+        assertThat(verdict.accepted()).isFalse();
+        assertThat(verdict.reason()).isEqualTo("response_too_long");
+        assertThat(policy.repairInstruction(verdict.reason())).contains("breve");
+    }
 }
