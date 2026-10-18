@@ -92,7 +92,7 @@ jobs:
           scheduler_name="${scheduler_containers%% *}"
           scheduler_workdir="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' "$scheduler_name")"
           printf 'Existing scheduler container: %s; Compose directory: %s\n' "$scheduler_name" "$scheduler_workdir"
-          test -s /opt/ford-uruapan/mcp/.env || {
+          sudo -n test -s /opt/ford-uruapan/mcp/.env || {
             echo 'The existing scheduler runtime environment is missing.' >&2
             exit 1
           }
