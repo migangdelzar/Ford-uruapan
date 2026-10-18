@@ -620,6 +620,35 @@ paths:
         '503':
           $ref: '#/components/responses/UpstreamUnavailable'
 
+  /api/v1/handoffs/after-hours-digest:
+    get:
+      tags: [Handoffs]
+      summary: Read the next-opening-day after-hours BDC digest
+      description: Tenant-scoped, read-only digest for off-hours handoffs; items omit customer PII.
+      operationId: getAfterHoursHandoffDigest
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          description: Tenant must be among the authenticated operator's tenant memberships.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Digest availability and after-hours handoff packet summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AfterHoursDigest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /api/v1/handoffs:
     get:
       tags: [Handoffs]
@@ -2258,6 +2287,37 @@ components:
           type: string
           format: date-time
           nullable: true
+    AfterHoursDigest:
+      type: object
+      required: [tenantId, businessDate, timeZone, available, availableAt, windowStart, windowEnd,
+                 totalCount, completePacketCount, partialPacketCount, items]
+      properties:
+        tenantId: { type: string, format: uuid }
+        businessDate: { type: string, format: date }
+        timeZone: { type: string, const: America/Mexico_City }
+        available: { type: boolean }
+        availableAt: { type: string, format: date-time }
+        windowStart: { type: string, format: date-time }
+        windowEnd: { type: string, format: date-time }
+        totalCount: { type: integer, minimum: 0 }
+        completePacketCount: { type: integer, minimum: 0 }
+        partialPacketCount: { type: integer, minimum: 0 }
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AfterHoursDigestItem'
+    AfterHoursDigestItem:
+      type: object
+      required: [handoffId, conversationId, createdAt, status, reason, packetCompleteness, packetPartial]
+      properties:
+        handoffId: { type: string, format: uuid }
+        conversationId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        status:
+          $ref: '#/components/schemas/HandoffStatus'
+        reason: { type: string }
+        packetCompleteness: { type: integer, minimum: 0, maximum: 5 }
+        packetPartial: { type: boolean }
     HandoffPage:
       type: object
       required: [items, page]

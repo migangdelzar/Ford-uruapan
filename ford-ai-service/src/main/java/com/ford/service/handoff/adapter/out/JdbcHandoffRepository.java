@@ -107,6 +107,17 @@ public class JdbcHandoffRepository implements HandoffRepository {
     }
 
     @Override
+    public List<HandoffTicket> listCreatedBetween(UUID tenantId, Instant startInclusive, Instant endExclusive) {
+        return jdbc.sql("select * from handoff_ticket where tenant_id = :tenantId " +
+                        "and created_at >= :startInclusive and created_at < :endExclusive order by created_at asc")
+                .param("tenantId", tenantId)
+                .param("startInclusive", timestamp(startInclusive))
+                .param("endExclusive", timestamp(endExclusive))
+                .query(this::map)
+                .list();
+    }
+
+    @Override
     public UUID findConversationTenant(UUID conversationId) {
         return jdbc.sql("select tenant_id from conversation where id = :conversationId")
                 .param("conversationId", conversationId)

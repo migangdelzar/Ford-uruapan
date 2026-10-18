@@ -6,6 +6,7 @@ import com.ford.service.channels.security.MetaSignatureVerifier;
 import com.ford.service.config.SecurityConfiguration;
 import com.ford.service.handoff.adapter.in.web.OperatorConversationHandoffController;
 import com.ford.service.handoff.application.HandoffService;
+import com.ford.service.handoff.application.AfterHoursDigestService;
 import com.ford.service.handoff.api.OperatorPrincipal;
 import com.ford.service.handoff.domain.HandoffStatus;
 import com.ford.service.handoff.domain.HandoffTicket;
@@ -48,6 +49,9 @@ class ToolAndWebhookSecurityTest {
 
     @MockitoBean
     HandoffService handoffService;
+
+    @MockitoBean
+    AfterHoursDigestService afterHoursDigestService;
 
     @MockitoBean
     JwtDecoder jwtDecoder;

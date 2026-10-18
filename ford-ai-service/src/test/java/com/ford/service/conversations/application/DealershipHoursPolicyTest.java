@@ -56,6 +56,59 @@ class DealershipHoursPolicyTest {
                 .isFalse();
     }
 
+    @Test
+    void weekdayDigestIsHiddenUntilEightFortyFiveAndStartsAtPreviousSaturdayClose() {
+        var beforeAvailability = policy(Instant.parse("2026-10-19T14:44:00Z"), Map.of())
+                .getAfterHoursDigestWindow();
+
+        assertThat(beforeAvailability.businessDate()).isEqualTo(LocalDate.parse("2026-10-19"));
+        assertThat(beforeAvailability.timeZone()).isEqualTo("America/Mexico_City");
+        assertThat(beforeAvailability.available()).isFalse();
+        assertThat(beforeAvailability.availableAt()).isEqualTo(Instant.parse("2026-10-19T14:45:00Z"));
+        assertThat(beforeAvailability.windowStart()).isEqualTo(Instant.parse("2026-10-17T20:00:00Z"));
+        assertThat(beforeAvailability.windowEnd()).isEqualTo(Instant.parse("2026-10-19T14:45:00Z"));
+
+        var atAvailability = policy(Instant.parse("2026-10-19T14:45:00Z"), Map.of())
+                .getAfterHoursDigestWindow();
+        assertThat(atAvailability.available()).isTrue();
+        assertThat(atAvailability.windowEnd()).isEqualTo(Instant.parse("2026-10-19T14:45:00Z"));
+    }
+
+    @Test
+    void digestWindowIncludesPreopenArrivalsButStopsAtOpening() {
+        var beforeOpen = policy(Instant.parse("2026-10-19T14:50:00Z"), Map.of())
+                .getAfterHoursDigestWindow();
+        var afterOpen = policy(Instant.parse("2026-10-19T16:00:00Z"), Map.of())
+                .getAfterHoursDigestWindow();
+
+        assertThat(beforeOpen.windowEnd()).isEqualTo(Instant.parse("2026-10-19T14:50:00Z"));
+        assertThat(afterOpen.windowEnd()).isEqualTo(Instant.parse("2026-10-19T15:00:00Z"));
+    }
+
+    @Test
+    void closedOverrideMovesDigestToNextOpeningAndUsesPriorOpenClose() {
+        var policy = policy(Instant.parse("2026-10-19T14:00:00Z"), Map.of(
+                LocalDate.parse("2026-10-19"), DealershipHours.closed(),
+                LocalDate.parse("2026-10-20"), new DealershipHours(LocalTime.NOON, LocalTime.of(16, 0))));
+
+        var window = policy.getAfterHoursDigestWindow();
+
+        assertThat(window.businessDate()).isEqualTo(LocalDate.parse("2026-10-20"));
+        assertThat(window.available()).isFalse();
+        assertThat(window.availableAt()).isEqualTo(Instant.parse("2026-10-20T14:45:00Z"));
+        assertThat(window.windowStart()).isEqualTo(Instant.parse("2026-10-17T20:00:00Z"));
+        assertThat(window.windowEnd()).isEqualTo(Instant.parse("2026-10-20T14:45:00Z"));
+    }
+
+    @Test
+    void afterDealershipCloseSelectsTheNextOpeningDayDigest() {
+        var window = policy(Instant.parse("2026-10-20T02:00:00Z"), Map.of()).getAfterHoursDigestWindow();
+
+        assertThat(window.businessDate()).isEqualTo(LocalDate.parse("2026-10-20"));
+        assertThat(window.availableAt()).isEqualTo(Instant.parse("2026-10-20T14:45:00Z"));
+        assertThat(window.windowStart()).isEqualTo(Instant.parse("2026-10-20T01:00:00Z"));
+    }
+
     private static DealershipHoursPolicy policy(Instant now, Map<LocalDate, DealershipHours> overrides) {
         return new DealershipHoursPolicy(Clock.fixed(now, ZoneId.of("UTC")), ZONE,
                 Map.of(DayOfWeek.MONDAY, new DealershipHours(LocalTime.of(9, 0), LocalTime.of(19, 0)),

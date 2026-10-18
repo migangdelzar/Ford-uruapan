@@ -1,6 +1,8 @@
 package com.ford.service.handoff;
 
 import com.ford.service.handoff.application.HandoffService;
+import com.ford.service.handoff.application.AfterHoursDigestService;
+import com.ford.service.handoff.api.AfterHoursDigest;
 import com.ford.service.handoff.adapter.in.web.OperatorConversationHandoffController;
 import com.ford.service.handoff.api.OperatorPrincipal;
 import com.ford.service.config.SecurityConfiguration;
@@ -25,6 +27,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -37,6 +40,9 @@ class HandoffApiIntegrationTest {
 
     @MockitoBean
     HandoffService service;
+
+    @MockitoBean
+    AfterHoursDigestService digestService;
 
     @Test
     void createsOperatorInboxTicket() throws Exception {
@@ -82,5 +88,34 @@ class HandoffApiIntegrationTest {
                 .andExpect(status().isOk());
 
         verify(service).claim(ticketId, 0L, principal);
+    }
+
+    @Test
+    void servesTenantScopedAfterHoursDigestToAuthenticatedOperator() throws Exception {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var handoffId = UUID.randomUUID();
+        var principal = new OperatorPrincipal(UUID.randomUUID(), Set.of(tenantId), Set.of("SCOPE_operator:read"));
+        var digest = new AfterHoursDigest(tenantId, java.time.LocalDate.parse("2026-10-19"),
+                "America/Mexico_City", true, Instant.parse("2026-10-19T14:45:00Z"),
+                Instant.parse("2026-10-17T20:00:00Z"), Instant.parse("2026-10-19T14:50:00Z"),
+                1, 0, 1, java.util.List.of(new AfterHoursDigest.Item(handoffId, conversationId,
+                        Instant.parse("2026-10-19T14:46:00Z"), HandoffStatus.HUMAN_PENDING,
+                        "CUSTOMER_REQUEST", 2, true)));
+        when(digestService.get(tenantId, principal)).thenReturn(digest);
+
+        mockMvc.perform(get("/api/v1/handoffs/after-hours-digest")
+                        .param("tenantId", tenantId.toString())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(
+                                new UsernamePasswordAuthenticationToken(principal, "n", java.util.List.of(
+                                        new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_operator:read"))))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.businessDate").value("2026-10-19"))
+                .andExpect(jsonPath("$.available").value(true))
+                .andExpect(jsonPath("$.partialPacketCount").value(1))
+                .andExpect(jsonPath("$.items[0].handoffId").value(handoffId.toString()))
+                .andExpect(jsonPath("$.items[0].packetPartial").value(true))
+                .andExpect(jsonPath("$.items[0].customerName").doesNotExist());
+        verify(digestService).get(tenantId, principal);
     }
 }

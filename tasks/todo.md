@@ -15,6 +15,33 @@
 
 **Boundary:** Local MCP deploy/runtime code removal is complete in this worktree, but live MCP resources have not been touched. GitHub token/API and local SSH access were previously unavailable; production retirement remains blocked until protected Actions/host access is available. Historical `tasks/todo.md` entries below intentionally retain past MCP architecture and test facts.
 
+## Explicit MÍA worktree integration audit (2026-10-18)
+
+User-designated sources reviewed: `/private/tmp/ford-mia-phase1-design`, `/private/tmp/ford-mia-phase1-mcp`, and Ford Service subdirectories in `.worktrees/mia-conversation-handoff`, `.worktrees/mia-whatsapp-operations`, and `.worktrees/mia-shadow-evaluation`.
+
+- [x] Confirmed `fac51af` (catalog/Phase 1 base) and `e091946` (MÍA plan base) are ancestors of this release-readiness branch.
+- [x] Confirmed this branch contains the integrated handoff packet schema/API, durable WhatsApp debounce and dealership-hours policy, and generic shadow-draft storage/review API. Schema changes `025` (handoff), `026` (debounce), `027` (shadow draft) are present.
+- [x] Read-only audit only: the three implementation sub-worktrees still have uncommitted source/test changes and untracked plan documents. They were not reset, staged, committed, or merged. The release candidate already carries the integrated implementations; reconcile any differences before cleanup.
+- [x] Review the dirty source diffs against the candidate: handoff and WhatsApp dirty tracked files match integrated candidate contents; shadow draft code is integrated under the approved generic names (`ShadowDraft`, migration `027-shadow-draft`). Source-only untracked files are local plan/docs and are preserved. Fresh full Service unit/build/integration compilation and the digest HTTP integration test pass; retain all source worktrees until merge/release is verified.
+
+## BDC in-app after-hours digest (2026-10-18)
+
+Design approved by user: authenticated, read-only Service query; Ford-web in-app card only; no external notifications, persisted digest snapshot, or new CRM provider.
+
+- [x] Add design and cross-repository implementation plan: `docs/superpowers/specs/2026-10-18-bdc-after-hours-digest-design.md` and `docs/superpowers/plans/2026-10-18-bdc-after-hours-digest.md`.
+- [x] Fresh integrated Service baseline: `./gradlew test bootJar compileIntegrationTestJava --offline --no-build-cache --no-daemon --max-workers=1 --rerun-tasks` → BUILD SUCCESSFUL; 8 tasks executed.
+- [x] Implement fixed-clock digest window using configured schedule/date overrides and America/Mexico_City; policy tests cover 08:45 availability, open/closed dates, and window caps.
+- [x] Add tenant-bounded JDBC query and authenticated endpoint; the response contains handoff/conversation IDs, status/reason, timestamps, and packet completeness only; endpoint integration test verifies authenticated tenant-scoped response.
+- [x] Implement the authenticated Ford-web digest card and handle loading, empty, error/retry, partial packet, and tenant selection states; conversation links select the existing thread; if the inbox stays open before 08:45, it refreshes at the server-provided availability timestamp.
+- [x] Run focused and combined local Service/Web verification. Service: `./gradlew test bootJar compileIntegrationTestJava --offline --no-build-cache --no-daemon --max-workers=1` → BUILD SUCCESSFUL (807 tests, 0 failures/errors/skips), plus authenticated digest HTTP integration test → BUILD SUCCESSFUL. Ford-web: 35 test files / 143 tests pass, `bun run lint`, `bun run build`, `bun run pages:check`, and API contract check (50 paths) pass. Production calendar approval, operator dry-run, protected release, and live SLA verification remain open.
+
+## MÍA Phase 1 source-of-truth reconciliation (2026-10-18)
+
+- [x] Compared the supplied implementation plan `/Users/miguelangeldelgadillozarate/Downloads/mia-ford-uruapan-plan.html` with the approved Service design `docs/superpowers/specs/2026-10-17-mia-phase-one-assistant-design.md` and delivery plans.
+- [ ] Resolve the 08:45 BDC digest scope before coding: the supplied HTML lists the digest in Phase 1, while the approved Service design explicitly excludes it and the later task record says a local CRM recipient/delivery path has not been specified. The user later approved an in-app-only digest design on 2026-10-18. Implementation is tracked in the BDC digest section below. No external alert or delivery channel is authorized.
+- [ ] Reconcile the HTML's “CRM contact and deal creation” with the approved design's explicit exclusion of external CRM contact/deal creation. Current boundary is Ford-web's local CRM/operator workflow and Ford Service's internal queue.
+- [ ] Other plan gates still open and not demonstrated by local test results alone: real anonymized conversation corpus and dealership inputs (M0/M2), holiday/calendar approval, provider-backed sub-minute end-to-end latency, real BDC operator review and no-reask evidence, production datasource/Vault grant validation, monthly scheduler production proof, protected coordinated release, and live emme-1/emme-2 behavior.
+
 ## Consolidated end-to-end completion requirements (2026-10-18)
 
 This is the authoritative remaining checklist for the MÍA/Spring AI production cutover, including OCI Vault. Do not mark a gate complete based only on local config or a successful workflow dispatch; retain command/workflow evidence.
