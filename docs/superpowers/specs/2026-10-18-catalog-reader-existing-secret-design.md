@@ -13,14 +13,14 @@ The shared password does not make the reader login writable: PostgreSQL privileg
 ## Ownership and rollout sequence
 
 1. Ford-scraping remains the sole schema/migration/catalog writer. Its protected scheduler release first verifies a database backup and applies forward-only catalog read-view migrations.
-2. The same protected data-host rollout provisions or repairs `ford_catalog_reader` using the existing `POSTGRES_PASSWORD` already in the mode-0600 runtime file. Ansible tasks suppress password/SQL output. It removes inherited memberships and prior broad grants, applies only the documented allowlist, and verifies `SELECT` succeeds while writes and base-schema access are denied.
+2. The same protected data-host rollout receives the existing `FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD` reference and reads its `ford-prod-postgres-password` value with emme-2's already-authorized Instance Principal. Ansible tasks suppress password/SQL output. It provisions or repairs `ford_catalog_reader`, creates a mode-0600 scheduler environment file, removes inherited memberships and prior broad grants, applies only the documented allowlist, and verifies `SELECT` succeeds while writes and base-schema access are denied.
 3. If migration, role creation, or permission verification fails, the existing scheduler stays active. The replacement scheduler does not start and Service is not cut over.
 4. Ford Service binds its catalog datasource to the existing `FORD_DATABASE_PASSWORD` value, `FORD_CATALOG_USERNAME=ford_catalog_reader`, and the configured private JDBC URL. `FORD_CATALOG_TOOLS_ENABLED` remains false by default and is enabled only after the protected reader check passes.
 5. The protected Service release performs a read-only catalog smoke (vehicle evidence and source URL) before the old MCP consumer is considered for retirement. On failure, roll back the Service image or disable the flag; keep the old MCP endpoint/resources until the Service smoke passes.
 
 ## Configuration contract
 
-- Keep the existing `FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD`; do not add `FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD`.
+- Keep the existing `FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD` and `FORD_VAULT_SECRET_OCID_POSTGRES_PASSWORD`; do not add `FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD` or any replacement secret. Reuse the existing data-host PostgreSQL OCID when provisioning the reader; Service's catalog datasource uses its already loaded `FORD_DATABASE_PASSWORD` value.
 - `FORD_CATALOG_JDBC_URL` targets the existing Ford database on emme-2 and the current catalog schema/views.
 - `FORD_CATALOG_USERNAME` is exactly `ford_catalog_reader`.
 - The catalog datasource password falls back to the already-loaded `FORD_DATABASE_PASSWORD` property. It must fail closed if that property is blank.
@@ -31,7 +31,7 @@ The shared password does not make the reader login writable: PostgreSQL privileg
 
 - Unit/config tests verify the catalog datasource reuses the existing database password property, requires the dedicated reader username, and remains disabled by default.
 - PostgreSQL integration tests create the reader role with the same password value as the owner test role, verify the expected read views are selectable, verify `INSERT`/`UPDATE`/DDL are denied, and verify no grants exist on base `ford` tables.
-- The protected scheduler release tests role provisioning after migrations and records its read-only verification in the release result without logging secret values.
+- The protected scheduler release fetches the existing database password using the data-host Instance Principal, provisions/verifies the role after migrations, writes only a protected mode-0600 scheduler environment, and records read-only verification without logging secret values.
 - The protected Service release verifies catalog tool evidence, then keeps the flag enabled only if the smoke succeeds. If it fails, use the existing immutable Service rollback or set the catalog flag false; do not remove the old MCP footprint.
 
 ## Out of scope
