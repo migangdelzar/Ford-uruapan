@@ -140,7 +140,7 @@ Verification: all 14 class tests passed with zero skips/failures/errors, includi
 
 - [x] **Step 1: Add neutral-response and password-policy assertions**
 
-Compare status/body for a valid active identity, a disabled identity, and an unknown email on `POST /api/auth/one-time-token`; require `202` with `{"accepted":true}` in each case. Record the `one_time_tokens` row count before the requests and assert only the active identity adds a persisted token and captured delivery. For passwords, keep `operator@example.test` as the only configured account, seed it as `MANAGER`, and assert a successful session. Attempt the same configured password with active `OPERATOR` and `ADMIN` identities and assert the same generic `/login?error` redirect; if the failure response issues an anonymous session cookie, prove it cannot access `/api/auth/me`.
+Compare status/body for a valid active identity, a disabled identity, and an unknown email on `POST /api/auth/one-time-token`; require `202` with `{"accepted":true}` in each case. Record the `one_time_tokens` row count before the requests and assert only the active identity adds a persisted token whose `username` matches the normalized active email and a captured delivery. For passwords, keep `operator@example.test` as the only configured account, seed it as `MANAGER`, and assert a successful session. Attempt the same configured password with active `OPERATOR` and `ADMIN` identities and assert the same generic `/login?error` redirect; if the failure response issues an anonymous session cookie, prove it cannot access `/api/auth/me`.
 
 - [x] **Step 2: Add scope/admin/tenant assertions**
 
@@ -155,7 +155,7 @@ Use `GET /api/v1/team/advisors?tenantId=<assigned>` after login. Assert `OPERATO
 
 Run from `ford-ai-service` in the displayed order.
 
-Verification: `./gradlew test` passed before focused integration execution. The integration class passed 14 tests with zero skips/failures/errors; captured active/disabled/unknown response equality, configured-account-only password login with an unauthenticated failure session, Admin override, denial for a role lacking `operator:read`, and 403 for unassigned tenants all passed.
+Verification: `./gradlew test` passed before focused integration execution. The integration class passed 14 tests with zero skips/failures/errors; active/disabled/unknown response equality, persisted token username match for the active identity, configured-account-only password login with an unauthenticated failure session, Admin override, denial for a role lacking `operator:read`, and 403 for unassigned tenants all passed.
 
 - [x] **Step 4: Determine whether a production fix is required**
 
@@ -187,7 +187,7 @@ Run Gradle commands from `/private/tmp/ford-uruapan-release/ford-ai-service`. Ru
 ./gradlew test --rerun-tasks --no-build-cache --max-workers=1
 ```
 
-Verification: the exact forced command returned `BUILD SUCCESSFUL`; latest run executed 5 tasks in 40 seconds.
+Verification: the exact forced command returned `BUILD SUCCESSFUL`; latest forced run executed 5 tasks in 42 seconds.
 
 - [x] **Step 2: Run the complete Service integration suite**
 
@@ -195,7 +195,7 @@ Verification: the exact forced command returned `BUILD SUCCESSFUL`; latest run e
 ./gradlew integrationTest --rerun-tasks --no-build-cache --max-workers=1
 ```
 
-Verification: `./gradlew integrationTest --rerun-tasks --no-build-cache --max-workers=1` returned `BUILD SUCCESSFUL`; latest full rerun executed 4 tasks in 1 minute 18 seconds. XML reports show 31 test suites, 81 tests total, 3 intentionally skipped snapshot tests because `FORD_CATALOG_PARITY_JDBC_URL` was absent, and 0 failures/errors. The login class itself had 14 tests, 0 skips.
+Verification: `./gradlew integrationTest --rerun-tasks --no-build-cache --max-workers=1` returned `BUILD SUCCESSFUL`; latest full rerun executed 4 tasks in 1 minute 17 seconds. XML reports show 31 test suites, 81 tests total, 3 intentionally skipped snapshot tests because `FORD_CATALOG_PARITY_JDBC_URL` was absent, and 0 failures/errors. The login class itself had 14 tests, 0 skips.
 
 - [x] **Step 3: Inspect changes and decide whether a production release applies**
 

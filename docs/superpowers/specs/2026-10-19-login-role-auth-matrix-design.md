@@ -16,7 +16,7 @@ Verify role-to-session mapping through the shared login paths, scoped API and te
 1. In the PostgreSQL integration suite, seed one active identity for each role, each with an isolated tenant and the scopes needed for the scenario.
 2. Exercise the email one-time-token path through token request, test-only email capture, token redemption, session creation, and `/api/auth/me`. Assert exact role and tenant for all three identities without contacting Resend.
 3. Exercise the password flow only for the configured login account. Verify a different active role identity cannot use that password path; keep error messages generic.
-4. Verify disabled and unknown identities receive the same neutral token-request response and cannot create an authenticated session.
+4. Verify disabled and unknown identities receive the same neutral token-request response and cannot create an authenticated session; confirm only the active identity's normalized username is persisted with the generated token.
 5. Check permission boundaries on `GET /api/v1/team/advisors` using each identity's seeded scopes and tenant membership: OPERATOR/MANAGER receive the explicit `operator:read` scope; a MANAGER without that scope is denied; ADMIN exercises the route's `hasRole('ADMIN')` override without that scope. All three must be denied access to an unassigned tenant.
 6. Retain the existing WebAuthn client unit coverage. Do not claim a full browser/WebAuthn ceremony test unless a stable synthetic authenticator fixture exists; add one only if existing Spring test support can drive it without real credentials or external services.
 

@@ -341,6 +341,9 @@ class OperatorAuthenticationConfigurationIntegrationTest {
         assertThat(emailSender.hasDeliveryFor(active.email())).isTrue();
         assertThat(emailSender.hasDeliveryFor(disabled.email())).isFalse();
         assertThat(emailSender.hasDeliveryFor(unknownEmail)).isFalse();
+        assertThat(jdbc.sql("select count(*) from one_time_tokens where username = :email")
+                .param("email", active.email())
+                .query(Long.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("select count(*) from one_time_tokens").query(Long.class).single())
                 .isEqualTo(tokensBefore + 1);
     }
