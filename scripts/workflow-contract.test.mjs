@@ -79,6 +79,11 @@ test("deployment connectivity preflight is manually runnable from main and stays
   assert.match(source, /collector_port_owner_ids=/);
   assert.match(source, /com\.docker\.compose\.project\.config_files/);
   assert.match(source, /com\.docker\.compose\.project\.working_dir/);
+  assert.match(source, /label=com\.docker\.compose\.project=ford-mcp/);
+  assert.match(source, /Legacy MCP project containers/);
+  assert.match(source, /scheduler project=.*service=.*compose=/);
+  assert.doesNotMatch(source, /docker (?:compose .*down|stop|rm)/);
+  assert.doesNotMatch(source, /docker inspect .*\.Config\.Env|docker exec .*printenv/);
   assert.doesNotMatch(source, /\/opt\/ford-uruapan\/mcp\/(?:\.env|scheduler\.env)/);
 });
 
@@ -515,13 +520,14 @@ test("observability workflow points to files in the checked-in deployment tree",
   assert.doesNotMatch(source, /ford-ai-service\/deployment\/observability/);
 });
 
-test("new deployment workflows do not expose the retired MCP runtime", async () => {
+test("deployment action omits MCP runtime while preflight only inventories it", async () => {
   const action = await read(".github/actions/oci-blue-green/action.yml");
   const deploy = await read(".github/actions/oci-blue-green/deploy.sh");
   const workflow = await read(".github/workflows/deployment-preflight.yml");
   assert.doesNotMatch(action, /ford-mcp|mcp-private-ip/i);
   assert.doesNotMatch(deploy, /ford-mcp|mcp-blue-green|mcp_operation|mcp_image/i);
-  assert.doesNotMatch(workflow, /ford-mcp|ollama/i);
+  assert.match(workflow, /label=com\.docker\.compose\.project=ford-mcp/);
+  assert.doesNotMatch(workflow, /docker (?:compose .*down|stop|rm)/);
 });
 
 test("monthly sync uses the protected backup-gated Ansible playbook", async () => {

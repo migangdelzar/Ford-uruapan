@@ -102,6 +102,17 @@ jobs:
           scheduler_name="${scheduler_containers%% *}"
           scheduler_workdir="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' "$scheduler_name")"
           printf 'Existing scheduler container: %s; Compose directory: %s\n' "$scheduler_name" "$scheduler_workdir"
+          docker inspect --format 'scheduler project={{index .Config.Labels "com.docker.compose.project"}} service={{index .Config.Labels "com.docker.compose.service"}} compose={{index .Config.Labels "com.docker.compose.project.config_files"}} image={{.Config.Image}} networks={{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}' "$scheduler_name"
+          legacy_mcp_containers="$(docker ps -a --filter 'label=com.docker.compose.project=ford-mcp' --format '{{.Names}} {{.State}} {{.Image}} {{.Ports}}')"
+          legacy_mcp_container_ids="$(docker ps -aq --filter 'label=com.docker.compose.project=ford-mcp')"
+          printf 'Legacy MCP project containers: %s\n' "${legacy_mcp_containers:-none}"
+          if [[ -n "$legacy_mcp_container_ids" ]]; then
+            for mcp_container_id in $legacy_mcp_container_ids; do
+              docker inspect --format 'legacy MCP container={{.Name}} project={{index .Config.Labels "com.docker.compose.project"}} service={{index .Config.Labels "com.docker.compose.service"}} compose={{index .Config.Labels "com.docker.compose.project.config_files"}} image={{.Config.Image}} networks={{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}} mounts={{range .Mounts}}{{.Source}}:{{.Destination}} {{end}}' "$mcp_container_id"
+            done
+          fi
+          legacy_mcp_volumes="$(docker volume ls --filter 'label=com.docker.compose.project=ford-mcp' --format '{{.Name}}')"
+          printf 'Legacy MCP project volumes: %s\n' "${legacy_mcp_volumes:-none}"
           printf 'emme-2 PostgreSQL is ready; scheduler: %s\n' "$scheduler_containers"
           REMOTE
 
@@ -113,5 +124,6 @@ jobs:
             echo "- Source: $GITHUB_SHA"
             echo '- emme-1 SSH and Ford Service health: checked'
             echo '- emme-2 SSH, PostgreSQL, and exactly-one scheduler check: completed'
+            echo '- Legacy MCP container/project/network/mount inventory: completed without mutation'
             echo '- Deployment, migration, image pull, and route switch: not run'
           } >> "$GITHUB_STEP_SUMMARY"
