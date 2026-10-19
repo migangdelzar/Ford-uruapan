@@ -19,6 +19,7 @@ import com.ford.service.leads.domain.LeadJourneySnapshot;
 import com.ford.service.ai.application.InboundContentResolutionService;
 import com.ford.service.ai.application.ResolvedInboundContent;
 import com.ford.service.ai.application.InboundContentStatus;
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
 import org.mockito.InOrder;
 import org.junit.jupiter.api.Test;
 
@@ -137,12 +138,54 @@ class DefaultConversationTurnProcessorTest {
         when(conversationRepository.find(tenantId, conversationId)).thenReturn(Optional.of(snapshot));
         when(memory.load(any())).thenReturn(memoryContext);
         when(journeyService.load(tenantId, conversationId)).thenReturn(journey);
-        when(assistant.respond(any())).thenThrow(new IllegalStateException("model unavailable"));
+        when(assistant.respond(any())).thenThrow(new AssistantTurnUnavailableException(
+                AssistantTurnUnavailableException.Disposition.RETRY));
         var processor = new DefaultConversationTurnProcessor(inboundRepository, conversationRepository,
                 memory, journeyService, assistant, commit, resolver);
 
-        assertThatThrownBy(() -> processor.process(reference)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> processor.process(reference)).isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.RETRY));
 
+        verify(commit, never()).commit(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void reviewDispositionLeavesInboundTurnUncommittedWithoutSendingCustomerText() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var receiptId = UUID.randomUUID();
+        var reference = new ConversationTurnReference(tenantId, conversationId, receiptId);
+        var inbound = new AcceptedInboundMessage("wamid.review", "customer-1", "¿Qué promoción hay?", Instant.now());
+        var snapshot = new ConversationSnapshot(tenantId, conversationId, Channel.WHATSAPP, "phone-1",
+                "customer-1", ConversationState.BOT_ACTIVE, 2, null, null);
+        var inboundRepository = mock(AcceptedInboundMessageRepository.class);
+        var conversationRepository = mock(ConversationRepository.class);
+        var memory = mock(ConversationMemoryService.class);
+        var journeyService = mock(LeadJourneyService.class);
+        var assistant = mock(ConversationAssistant.class);
+        var commit = mock(ConversationTurnCommitService.class);
+        var resolver = mock(InboundContentResolutionService.class);
+        var memoryContext = ConversationMemoryContext.empty(
+                new com.ford.service.conversations.domain.ConversationMemoryKey(tenantId, Channel.WHATSAPP,
+                        "phone-1", "customer-1", conversationId));
+        var journey = new LeadJourneySnapshot(tenantId, conversationId, null, null, null, null,
+                null, null, 0, null, 0, Instant.now());
+        when(inboundRepository.find(tenantId, conversationId, receiptId)).thenReturn(Optional.of(inbound));
+        when(resolver.resolve(inbound, tenantId, conversationId)).thenReturn(
+                new ResolvedInboundContent(inbound.text(), InboundContentStatus.READY));
+        when(conversationRepository.turnAlreadyCompleted(tenantId, conversationId, inbound.providerMessageId()))
+                .thenReturn(false);
+        when(conversationRepository.find(tenantId, conversationId)).thenReturn(Optional.of(snapshot));
+        when(memory.load(any())).thenReturn(memoryContext);
+        when(journeyService.load(tenantId, conversationId)).thenReturn(journey);
+        when(assistant.respond(any())).thenThrow(new AssistantTurnUnavailableException(
+                AssistantTurnUnavailableException.Disposition.REVIEW));
+
+        var processor = new DefaultConversationTurnProcessor(inboundRepository, conversationRepository,
+                memory, journeyService, assistant, commit, resolver);
+
+        assertThat(processor.process(reference).route()).isEqualTo(ConversationGraphRoute.IGNORED);
         verify(commit, never()).commit(any(), any(), any(), any(), any(), any());
     }
 

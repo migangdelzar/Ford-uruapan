@@ -1,6 +1,7 @@
 package com.ford.service.ai;
 
 import com.ford.service.ai.api.AssistantResponse;
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
 import com.ford.service.ai.application.AiExecutionContext;
 import com.ford.service.ai.application.AiProviderFailureDiagnostics;
 import com.ford.service.ai.application.AssistantOrchestrator;
@@ -35,9 +36,11 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.net.SocketTimeoutException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
@@ -375,6 +378,8 @@ class SpringAiAssistantServiceTest {
     @Test
     void keepsBuyingIntentInChatForAnOfferBeforeAnyLaterAuthorization() {
         var orchestrator = mock(AssistantOrchestrator.class);
+        when(orchestrator.respond(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AssistantResponse("Claro, reviso la Ranger.", false, "openai", List.of()));
         var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS, LeadTemperature.UNKNOWN,
                 LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_DETAILS,
                 SensitiveDataLevel.NONE, List.of());
@@ -415,39 +420,32 @@ class SpringAiAssistantServiceTest {
     }
 
     @Test
-    void convertsProviderFailureIntoBotFallbackWithoutImplicitHandoff() {
+    void propagatesTransientProviderFailureForSilentRetryWithoutImplicitHandoff() {
         var orchestrator = mock(AssistantOrchestrator.class);
         when(orchestrator.respond(org.mockito.ArgumentMatchers.any()))
-                .thenThrow(new IllegalStateException("provider timeout"));
+                .thenThrow(new IllegalStateException("provider unavailable", new SocketTimeoutException("timeout")));
         var service = new SpringAiAssistantService(orchestrator, new DefaultModelProviderPolicy(List.of()));
 
-        var turn = service.respond(new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID()),
-                "¿Qué precio tiene la Ranger?");
-
-        assertThat(turn.text()).contains("Hola, soy ", com.ford.service.shared.HumanHandoffPolicy.BOT_FALLBACK);
-        assertThat(turn.intent()).isEqualTo(Intent.CATALOG);
-        assertThat(turn.requestsHuman()).isFalse();
-        assertThat(turn.provider()).isEqualTo("fallback");
-        assertThat(turn.modelVersion()).isEqualTo("none");
+        assertThatThrownBy(() -> service.respond(
+                new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID()),
+                "¿Qué precio tiene la Ranger?"))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.RETRY));
     }
 
     @Test
-    void convertsProviderFailureIntoBotFallbackWhenHandoffIsDisabled() {
+    void neverSendsGenericFallbackWhenHandoffIsDisabledAndProviderFails() {
         var orchestrator = mock(AssistantOrchestrator.class);
         when(orchestrator.respond(org.mockito.ArgumentMatchers.any()))
-                .thenThrow(new IllegalStateException("provider timeout"));
+                .thenThrow(new IllegalStateException("provider unavailable", new SocketTimeoutException("timeout")));
         var service = new SpringAiAssistantService(orchestrator,
                 new HumanHandoffPolicy(false), new DefaultModelProviderPolicy(List.of()));
 
-        var turn = service.respond(new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID()),
-                "¿Qué precio tiene la Ranger?");
-
-        assertThat(turn.text()).contains("Hola, soy ",
-                "No pude generar una respuesta en este momento. Intente de nuevo en unos segundos.");
-        assertThat(turn.intent()).isEqualTo(Intent.CATALOG);
-        assertThat(turn.requestsHuman()).isFalse();
-        assertThat(turn.provider()).isEqualTo("fallback");
-        assertThat(turn.modelVersion()).isEqualTo("none");
+        assertThatThrownBy(() -> service.respond(
+                new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID()),
+                "¿Qué precio tiene la Ranger?"))
+                .isInstanceOf(AssistantTurnUnavailableException.class);
     }
 
     @Test
@@ -469,7 +467,9 @@ class SpringAiAssistantServiceTest {
             var service = new SpringAiAssistantService(orchestrator,
                     new HumanHandoffPolicy(false), new DefaultModelProviderPolicy(List.of()));
 
-            service.respond(new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID()), "Hola");
+            assertThatThrownBy(() -> service.respond(
+                    new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID()), "Hola"))
+                    .isInstanceOf(AssistantTurnUnavailableException.class);
 
             assertThat(appender.list)
                     .extracting(ILoggingEvent::getFormattedMessage)

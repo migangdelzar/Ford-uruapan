@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ford.service.catalog.adapter.out.CatalogDataSourceConfiguration;
 import com.ford.service.catalog.adapter.out.CatalogDataSourceProperties;
 import com.ford.service.catalog.api.CatalogPort;
+import com.ford.service.catalog.api.CatalogRetrievalPort;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -25,6 +26,7 @@ class CatalogDataSourceConfigurationTest {
                 .run(context -> {
                     assertThat(context).doesNotHaveBean("catalogDataSource");
                     assertThat(context).doesNotHaveBean(CatalogPort.class);
+                    assertThat(context).doesNotHaveBean(CatalogRetrievalPort.class);
                 });
     }
 
@@ -50,6 +52,7 @@ class CatalogDataSourceConfigurationTest {
                     assertThat(context).hasNotFailed();
                     assertThat(context).hasBean("catalogDataSource");
                     assertThat(context).hasSingleBean(CatalogPort.class);
+                    assertThat(context).hasSingleBean(CatalogRetrievalPort.class);
                     assertThat(context.getBean("catalogDataSource", DataSource.class)).isNotNull();
                 });
     }

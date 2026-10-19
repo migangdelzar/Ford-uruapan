@@ -1,5 +1,7 @@
 package com.ford.service.ai.application;
 
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
+
 import java.util.Set;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -9,7 +11,7 @@ public final class ToolResultTracker {
 
     private final Set<String> attempted = ConcurrentHashMap.newKeySet();
     private final Set<String> returnedResults = ConcurrentHashMap.newKeySet();
-    private final Set<String> failed = ConcurrentHashMap.newKeySet();
+    private final Map<String, AssistantTurnUnavailableException.Disposition> failed = new ConcurrentHashMap<>();
     private final Map<String, String> returnedPayloads = new ConcurrentHashMap<>();
     private static final Set<String> FACT_TOOLS = Set.of(
             "get_vehicle", "search_vehicles", "list_promotions", "search_offers",
@@ -31,8 +33,11 @@ public final class ToolResultTracker {
         }
     }
 
-    public void failed(String toolName) {
-        if (toolName != null && !toolName.isBlank()) failed.add(toolName);
+    public void failed(String toolName, AssistantTurnUnavailableException.Disposition disposition) {
+        if (toolName != null && !toolName.isBlank()) {
+            failed.put(toolName, disposition == null
+                    ? AssistantTurnUnavailableException.Disposition.REVIEW : disposition);
+        }
     }
 
     public boolean hasReturnedResult() {
@@ -50,4 +55,13 @@ public final class ToolResultTracker {
     public boolean hasAttempted() { return !attempted.isEmpty(); }
 
     public boolean hasFailed() { return !failed.isEmpty(); }
+
+    public Set<String> failedToolNames() { return Set.copyOf(failed.keySet()); }
+
+    public AssistantTurnUnavailableException.Disposition failureDisposition() {
+        return failed.values().stream().anyMatch(disposition ->
+                        disposition == AssistantTurnUnavailableException.Disposition.REVIEW)
+                ? AssistantTurnUnavailableException.Disposition.REVIEW
+                : AssistantTurnUnavailableException.Disposition.RETRY;
+    }
 }

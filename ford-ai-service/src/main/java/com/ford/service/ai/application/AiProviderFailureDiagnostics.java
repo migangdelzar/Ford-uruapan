@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.openai.errors.OpenAIServiceException;
 import tools.jackson.core.JacksonException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Duration;
 import java.util.Locale;
@@ -22,11 +23,14 @@ public final class AiProviderFailureDiagnostics {
 
     public static String describe(Throwable failure, boolean includeProviderDetails) {
         var serviceFailure = find(failure, OpenAIServiceException.class).orElse(null);
-        Integer status = serviceFailure == null ? inferStatus(failure) : safeStatus(serviceFailure, failure);
+        var httpFailure = find(failure, RestClientResponseException.class).orElse(null);
+        Integer status = serviceFailure != null ? safeStatus(serviceFailure, failure)
+                : httpFailure != null ? Integer.valueOf(httpFailure.getStatusCode().value()) : inferStatus(failure);
         var category = find(failure, ProviderFollowupRejectedException.class).isPresent()
                 ? ProviderFailure.PROVIDER_UNAVAILABLE
                 : status != null && status == 404 ? "not_found" : failureCategory(status, failure);
-        var retryAfter = serviceFailure == null ? null : safeHeader(serviceFailure, "retry-after");
+        var retryAfter = serviceFailure != null ? safeHeader(serviceFailure, "retry-after")
+                : httpFailure == null ? null : safeHeader(httpFailure, "retry-after");
         var requestId = serviceFailure == null ? null : safeHeader(serviceFailure, "x-request-id");
         var code = serviceFailure == null ? null : safeCode(serviceFailure);
         var type = serviceFailure == null ? null : safeType(serviceFailure);
@@ -59,14 +63,17 @@ public final class AiProviderFailureDiagnostics {
 
     public static ProviderFailure classify(Throwable failure) {
         var serviceFailure = find(failure, OpenAIServiceException.class).orElse(null);
-        Integer status = serviceFailure == null ? inferStatus(failure) : safeStatus(serviceFailure, failure);
+        var httpFailure = find(failure, RestClientResponseException.class).orElse(null);
+        Integer status = serviceFailure != null ? safeStatus(serviceFailure, failure)
+                : httpFailure != null ? Integer.valueOf(httpFailure.getStatusCode().value()) : inferStatus(failure);
         if (find(failure, ProviderFollowupRejectedException.class).isPresent()) {
-            var retryAfter = serviceFailure == null ? null
-                    : parseRetryAfter(safeHeader(serviceFailure, "retry-after"));
+            var retryAfter = serviceFailure != null ? parseRetryAfter(safeHeader(serviceFailure, "retry-after"))
+                    : httpFailure == null ? null : parseRetryAfter(safeHeader(httpFailure, "retry-after"));
             return new ProviderFailure(ProviderFailure.PROVIDER_UNAVAILABLE, status, retryAfter);
         }
         var category = failureCategory(status, failure);
-        var retryAfter = serviceFailure == null ? null : parseRetryAfter(safeHeader(serviceFailure, "retry-after"));
+        var retryAfter = serviceFailure != null ? parseRetryAfter(safeHeader(serviceFailure, "retry-after"))
+                : httpFailure == null ? null : parseRetryAfter(safeHeader(httpFailure, "retry-after"));
         return new ProviderFailure(category, status, retryAfter);
     }
 
@@ -112,6 +119,14 @@ public final class AiProviderFailureDiagnostics {
             return failure.headers().values(name).stream().findFirst().orElse(null);
         }
         catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static String safeHeader(RestClientResponseException failure, String name) {
+        try {
+            return failure.getResponseHeaders().getFirst(name);
+        } catch (RuntimeException ignored) {
             return null;
         }
     }

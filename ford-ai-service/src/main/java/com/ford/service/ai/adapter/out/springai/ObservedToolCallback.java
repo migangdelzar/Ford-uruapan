@@ -1,5 +1,8 @@
 package com.ford.service.ai.adapter.out.springai;
 
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
+import com.ford.service.ai.application.ProviderRetryDelay;
+import com.ford.service.ai.application.ThreadBasedProviderRetryDelay;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -9,6 +12,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
 
+import java.time.Duration;
 import java.util.Objects;
 
 /** Adds content-safe lifecycle logs around a Spring AI tool callback. */
@@ -17,10 +21,16 @@ public final class ObservedToolCallback implements ToolCallback {
     private static final Logger log = LoggerFactory.getLogger(ObservedToolCallback.class);
     private final ToolCallback delegate;
     private final MeterRegistry meterRegistry;
+    private final ProviderRetryDelay retryDelay;
 
     public ObservedToolCallback(ToolCallback delegate, MeterRegistry meterRegistry) {
+        this(delegate, meterRegistry, new ThreadBasedProviderRetryDelay());
+    }
+
+    public ObservedToolCallback(ToolCallback delegate, MeterRegistry meterRegistry, ProviderRetryDelay retryDelay) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
         this.meterRegistry = meterRegistry;
+        this.retryDelay = Objects.requireNonNull(retryDelay, "retryDelay");
     }
 
     @Override
@@ -51,19 +61,37 @@ public final class ObservedToolCallback implements ToolCallback {
         var toolFamily = ToolFailureDiagnostics.toolFamily(toolName);
         log.info("catalog tool call started: tool={} tenantId={} conversationId={}",
                 toolName, tenantId, conversationId);
-        try {
-            var result = invocation.invoke();
-            record(toolFamily, "success", null, started);
-            log.info("catalog tool call completed: tool={} tenantId={} conversationId={} outcome=success durationMs={}",
-                    toolName, tenantId, conversationId, elapsedMs(started));
-            return result;
-        } catch (RuntimeException exception) {
-            var diagnostics = ToolFailureDiagnostics.describe(toolName, exception);
-            record(diagnostics.tool(), "failure", diagnostics.category(), started);
-            log.warn("catalog tool call completed: tool={} tenantId={} conversationId={} outcome=failure failureCategory={} rootCauseType={} status={} durationMs={}",
-                    toolName, tenantId, conversationId, diagnostics.category(), diagnostics.rootCauseType(),
-                    diagnostics.status() == null ? "-" : diagnostics.status(), elapsedMs(started));
-            throw exception;
+        var attempt = 1;
+        while (true) {
+            var attemptStarted = System.nanoTime();
+            try {
+                var result = invocation.invoke();
+                record(toolFamily, "success", null, attemptStarted);
+                log.info("catalog tool call completed: tool={} tenantId={} conversationId={} outcome=success attempts={} durationMs={}",
+                        toolName, tenantId, conversationId, attempt, elapsedMs(started));
+                return result;
+            } catch (RuntimeException exception) {
+                var diagnostics = ToolFailureDiagnostics.describe(toolName, exception);
+                if (attempt == 1 && ToolFailureDiagnostics.canRetryImmediately(diagnostics, exception)) {
+                    record(diagnostics.tool(), "retry", diagnostics.category(), attemptStarted);
+                    log.warn("catalog tool attempt failed: tool={} tenantId={} conversationId={} attempt=1 outcome=retry failureCategory={} rootCauseType={} status={}",
+                            toolName, tenantId, conversationId, diagnostics.category(), diagnostics.rootCauseType(),
+                            diagnostics.status() == null ? "-" : diagnostics.status());
+                    try {
+                        Duration delay = ToolFailureDiagnostics.immediateRetryDelay(exception);
+                        retryDelay.delay(delay);
+                    } catch (RuntimeException retryWaitFailure) {
+                        throw new AssistantTurnUnavailableException(AssistantTurnUnavailableException.Disposition.RETRY);
+                    }
+                    attempt++;
+                    continue;
+                }
+                record(diagnostics.tool(), "failure", diagnostics.category(), attemptStarted);
+                log.warn("catalog tool call completed: tool={} tenantId={} conversationId={} outcome=failure failureCategory={} rootCauseType={} status={} attempts={} durationMs={}",
+                        toolName, tenantId, conversationId, diagnostics.category(), diagnostics.rootCauseType(),
+                        diagnostics.status() == null ? "-" : diagnostics.status(), attempt, elapsedMs(started));
+                throw new AssistantTurnUnavailableException(ToolFailureDiagnostics.disposition(diagnostics));
+            }
         }
     }
 

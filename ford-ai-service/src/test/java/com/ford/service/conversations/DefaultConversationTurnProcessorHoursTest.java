@@ -45,7 +45,7 @@ class DefaultConversationTurnProcessorHoursTest {
     private static final Instant MONDAY_AFTER_HOURS = Instant.parse("2026-10-20T02:00:00Z");
 
     @Test
-    void afterHoursCatalogQuestionIsStillAnsweredWithAnHonestNotice() {
+    void afterHoursCatalogQuestionGetsNoUnrequestedHoursNotice() {
         var fixture = fixture(MONDAY_AFTER_HOURS);
         var reply = new AssistantReply("Sí, la Ranger 2026 tiene precio publicado.", false);
         when(fixture.assistant.respond(any())).thenReturn(reply);
@@ -56,7 +56,7 @@ class DefaultConversationTurnProcessorHoursTest {
         verify(fixture.commit).commit(any(), any(), any(), any(), any(), captured.capture());
         assertThat(captured.getValue().text())
                 .contains("Sí, la Ranger 2026 tiene precio publicado.")
-                .contains(DealershipResponsePlanner.AFTER_HOURS_NOTICE)
+                .doesNotContain(DealershipResponsePlanner.AFTER_HOURS_NOTICE, "horario festivo")
                 .doesNotContainIgnoringCase("minuto");
     }
 

@@ -107,9 +107,11 @@ class CatalogParityFixtureTest {
     @Test
     void searchMatchesArchivedNodeModelYearPriceFreshnessAndExactUrls() {
         var expected = fixture.path("archivedNodeContract").path("search");
-        var result = tools.searchVehicles("Ranger", null, null,
-                null, null, null, null, null, 5).getFirst();
+        var page = tools.searchVehicles("Ranger", null, null,
+                null, null, null, null, null, 5);
+        var result = page.results().getFirst();
 
+        assertThat(page.semanticSearch()).isEqualTo("unavailable");
         assertThat(result.model()).isEqualTo(expected.path("model").asText());
         assertThat(result.year()).isEqualTo(expected.path("year").asInt());
         assertThat(result.price()).isEqualByComparingTo(expected.path("price").asText());

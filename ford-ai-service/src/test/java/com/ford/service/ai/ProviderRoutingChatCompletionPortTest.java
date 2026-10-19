@@ -13,6 +13,7 @@ import com.ford.service.ai.application.port.out.ProviderChatCompletionPort;
 import com.ford.service.ai.application.port.out.ProviderRoutingChatCompletionPort;
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantResponse;
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
 import com.ford.service.ai.api.AssistantGeneration;
 import com.ford.service.observability.AiObservationService;
 import com.openai.core.http.Headers;
@@ -115,7 +116,7 @@ class ProviderRoutingChatCompletionPortTest {
     }
 
     @Test
-    void returnsSafeInformationGapOnlyAfterAllProvidersFailForVolatileInformation() {
+    void requestsSilentRetryAfterAllProvidersFailForVolatileInformation() {
         var primary = new RecordingPort("cloudflare",
                 tools.jackson.databind.exc.MismatchedInputException.from(
                         null, AssistantGeneration.class, "invalid structured response"));
@@ -125,12 +126,26 @@ class ProviderRoutingChatCompletionPortTest {
         var port = new ProviderRoutingChatCompletionPort(
                 List.of(primary, fallback), policy, 6, Duration.ZERO, ignored -> { });
 
-        var response = port.complete(volatileRequest(), new ToolContext(UUID.randomUUID(), UUID.randomUUID()));
+        assertThatThrownBy(() -> port.complete(volatileRequest(),
+                new ToolContext(UUID.randomUUID(), UUID.randomUUID())))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.RETRY));
 
         assertThat(primary.calls).isEqualTo(1);
         assertThat(fallback.calls).isEqualTo(1);
-        assertThat(response.content()).contains("no lo tengo confirmado");
-        assertThat(response.provider()).isEqualTo("fallback");
+    }
+
+    @Test
+    void leavesVolatileRequestsForReviewWhenNoProviderIsEligible() {
+        var port = new ProviderRoutingChatCompletionPort(
+                List.of(new StubPort("unused", "unused")), new DefaultModelProviderPolicy(List.of()));
+
+        assertThatThrownBy(() -> port.complete(volatileRequest(),
+                new ToolContext(UUID.randomUUID(), UUID.randomUUID())))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
     }
 
     @Test

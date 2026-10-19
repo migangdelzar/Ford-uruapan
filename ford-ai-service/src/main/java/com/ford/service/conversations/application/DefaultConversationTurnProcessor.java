@@ -9,6 +9,7 @@ import com.ford.service.conversations.application.graph.ConversationTurnReferenc
 import com.ford.service.channels.api.AcceptedInboundMessageRepository;
 import com.ford.service.ai.application.InboundContentResolutionService;
 import com.ford.service.ai.application.InboundContentStatus;
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
 import com.ford.service.conversations.application.port.out.ShadowDraftRecorder;
@@ -150,10 +151,20 @@ public class DefaultConversationTurnProcessor implements ConversationTurnProcess
         }
         log.info("Conversation turn invoking assistant: conversationId={} memoryVersion={} recentMessages={} journeyPresent={}",
                 reference.conversationId(), memory.memoryVersion(), memory.recentMessages().size(), journey != null);
-        var reply = resolved.status() == InboundContentStatus.CLARIFICATION_REQUIRED
-                ? new AssistantReply(resolved.text(), false)
-                : assistant.respond(new ConversationTurnRequest(reference.tenantId(),
-                        reference.conversationId(), resolved.text(), conversation.state(), memory, journey));
+        AssistantReply reply;
+        try {
+            reply = resolved.status() == InboundContentStatus.CLARIFICATION_REQUIRED
+                    ? new AssistantReply(resolved.text(), false)
+                    : assistant.respond(new ConversationTurnRequest(reference.tenantId(),
+                            reference.conversationId(), resolved.text(), conversation.state(), memory, journey));
+        } catch (AssistantTurnUnavailableException unavailable) {
+            if (unavailable.disposition() == AssistantTurnUnavailableException.Disposition.RETRY) {
+                throw unavailable;
+            }
+            log.warn("Conversation turn held for review without a customer reply: conversationId={} receiptId={} disposition={}",
+                    reference.conversationId(), reference.receiptId(), unavailable.disposition());
+            return new ConversationTurnOutcome(ConversationGraphRoute.IGNORED);
+        }
         if (responsePlanner != null) {
             reply = responsePlanner.apply(reply, resolved.text());
         }

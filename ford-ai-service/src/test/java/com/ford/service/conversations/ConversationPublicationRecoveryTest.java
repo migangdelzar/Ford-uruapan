@@ -60,13 +60,28 @@ class ConversationPublicationRecoveryTest {
         assertThat(ConversationPublicationRecovery.eligible(unrelatedEvent, cutoff)).isFalse();
     }
 
+    @Test
+    void stopsRetryingAfterTheFiveAttemptLimit() {
+        var cutoff = Instant.now().minusSeconds(60);
+        var exhausted = publication(EventPublication.Status.FAILED, cutoff.minusSeconds(90),
+                new InboundMessageAccepted(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                        Channel.WHATSAPP, "provider-message-exhausted", cutoff), 5);
+
+        assertThat(ConversationPublicationRecovery.eligible(exhausted, cutoff)).isFalse();
+    }
+
     private static EventPublication publication(EventPublication.Status status, Instant date, Object event) {
+        return publication(status, date, event, 1);
+    }
+
+    private static EventPublication publication(EventPublication.Status status, Instant date, Object event,
+                                                int completionAttempts) {
         var publication = mock(EventPublication.class);
         when(publication.getStatus()).thenReturn(status);
         when(publication.getPublicationDate()).thenReturn(date);
         when(publication.getEvent()).thenReturn(event);
         when(publication.getCompletionDate()).thenReturn(Optional.empty());
-        when(publication.getCompletionAttempts()).thenReturn(1);
+        when(publication.getCompletionAttempts()).thenReturn(completionAttempts);
         return publication;
     }
 }

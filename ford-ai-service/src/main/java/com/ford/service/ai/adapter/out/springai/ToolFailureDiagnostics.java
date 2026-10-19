@@ -1,10 +1,16 @@
 package com.ford.service.ai.adapter.out.springai;
 
 import org.springframework.web.client.RestClientResponseException;
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
 
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
+import java.time.Instant;
+import java.time.Duration;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Locale;
@@ -13,6 +19,9 @@ import java.util.Set;
 /** Produces bounded, content-free diagnostics for read-only tool failures. */
 public final class ToolFailureDiagnostics {
 
+    private static final Duration DEFAULT_IMMEDIATE_RETRY_DELAY = Duration.ofMillis(100);
+    private static final Duration MAX_IMMEDIATE_RETRY_DELAY = Duration.ofSeconds(1);
+
     private ToolFailureDiagnostics() {
     }
 
@@ -20,7 +29,8 @@ public final class ToolFailureDiagnostics {
         var root = rootCause(failure);
         Integer status = findStatus(failure);
         String category;
-        if (root instanceof SocketTimeoutException || root.getClass().getSimpleName().toLowerCase(Locale.ROOT).contains("timeout")) {
+        if (root instanceof SocketTimeoutException
+                || root.getClass().getSimpleName().toLowerCase(Locale.ROOT).contains("timeout")) {
             category = "timeout";
         } else if (status != null) {
             category = status == 401 || status == 403 ? "authentication"
@@ -33,6 +43,57 @@ public final class ToolFailureDiagnostics {
             category = "tool_error";
         }
         return new Diagnostic(toolFamily(toolName), category, root.getClass().getSimpleName(), status);
+    }
+
+    static boolean retryable(Diagnostic diagnostic) {
+        return Set.of("timeout", "network", "rate_limited", "source_unavailable")
+                .contains(diagnostic.category());
+    }
+
+    static boolean canRetryImmediately(Diagnostic diagnostic, Throwable failure) {
+        if (!retryable(diagnostic)) return false;
+        var retryAfter = retryAfter(failure);
+        return retryAfter == null || retryAfter.compareTo(MAX_IMMEDIATE_RETRY_DELAY) <= 0;
+    }
+
+    static Duration immediateRetryDelay(Throwable failure) {
+        var retryAfter = retryAfter(failure);
+        return retryAfter == null ? DEFAULT_IMMEDIATE_RETRY_DELAY : retryAfter;
+    }
+
+    static AssistantTurnUnavailableException.Disposition disposition(Diagnostic diagnostic) {
+        return retryable(diagnostic) ? AssistantTurnUnavailableException.Disposition.RETRY
+                : AssistantTurnUnavailableException.Disposition.REVIEW;
+    }
+
+    private static Duration retryAfter(Throwable failure) {
+        var seen = Collections.newSetFromMap(new IdentityHashMap<Throwable, Boolean>());
+        var current = failure;
+        while (current != null && seen.add(current)) {
+            if (current instanceof RestClientResponseException response) {
+                var value = response.getResponseHeaders().getFirst("Retry-After");
+                if (value != null) {
+                    var normalized = value.strip();
+                    if (normalized.matches("\\d+")) {
+                        try {
+                            return Duration.ofSeconds(Long.parseLong(normalized));
+                        } catch (NumberFormatException ignored) {
+                            return MAX_IMMEDIATE_RETRY_DELAY.plusMillis(1);
+                        }
+                    }
+                    try {
+                        var retryAt = ZonedDateTime.parse(normalized, DateTimeFormatter.RFC_1123_DATE_TIME)
+                                .toInstant();
+                        var delay = Duration.between(Instant.now(), retryAt);
+                        return delay.isNegative() ? Duration.ZERO : delay;
+                    } catch (DateTimeParseException ignored) {
+                        // An invalid header does not authorize a longer blocking wait.
+                    }
+                }
+            }
+            current = current.getCause();
+        }
+        return null;
     }
 
     private static Throwable rootCause(Throwable failure) {
@@ -59,7 +120,8 @@ public final class ToolFailureDiagnostics {
     static String toolFamily(String toolName) {
         var name = toolName == null ? "" : toolName.toLowerCase(Locale.ROOT);
         if (Set.of("search_vehicles", "search_vehicle_and_offers", "get_vehicle", "compare_vehicles",
-                "get_vehicle_provenance", "get_catalog_status").contains(name)) {
+                "get_vehicle_provenance", "get_catalog_status", "get_page_links", "compare_trims",
+                "compare_model_years", "get_variant_comparisons").contains(name)) {
             return "catalog";
         }
         if (Set.of("search_offers", "list_promotions").contains(name)) {

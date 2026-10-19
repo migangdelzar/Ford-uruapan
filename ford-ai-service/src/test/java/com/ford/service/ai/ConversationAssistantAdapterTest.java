@@ -1,6 +1,7 @@
 package com.ford.service.ai;
 
 import com.ford.service.ai.api.AssistantTurn;
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
 import com.ford.service.ai.application.AssistantService;
 import com.ford.service.ai.application.Intent;
 import com.ford.service.leads.domain.LeadJourneyFact;
@@ -25,6 +26,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -82,14 +84,14 @@ class ConversationAssistantAdapterTest {
     }
 
     @Test
-    void requestsHumanHandoffWhenTheAiServiceIsUnavailable() {
+    void holdsTurnWithoutCustomerFallbackWhenTheAiServiceIsUnavailable() {
         var adapter = new ConversationAssistantAdapter(() -> null, new PendingTestDriveReplyPolicy());
 
-        AssistantReply reply = adapter.respond(new ConversationTurnRequest(
-                UUID.randomUUID(), UUID.randomUUID(), "Hola", ConversationState.BOT_ACTIVE));
-
-        assertThat(reply.text()).isNotBlank();
-        assertThat(reply.handoffRequired()).isFalse();
+        assertThatThrownBy(() -> adapter.respond(new ConversationTurnRequest(
+                UUID.randomUUID(), UUID.randomUUID(), "Hola", ConversationState.BOT_ACTIVE)))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
     }
 
     @Test

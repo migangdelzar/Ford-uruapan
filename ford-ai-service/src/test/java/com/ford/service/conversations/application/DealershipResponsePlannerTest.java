@@ -24,7 +24,21 @@ class DealershipResponsePlannerTest {
 
         assertThat(plan.afterHours()).isTrue();
         assertThat(plan.catalogAnswerableAfterHours()).isTrue();
-        assertThat(plan.afterHoursNotice()).isNotBlank();
+        assertThat(plan.afterHoursNotice()).isNull();
+    }
+
+    @Test
+    void addsHoursNoticeOnlyWhenCustomerAsksAboutHoursOrFollowUp() {
+        var planner = planner(MONDAY_AFTER_HOURS, Map.of());
+        var catalogReply = new com.ford.service.conversations.api.AssistantReply(
+                "La Ranger 2026 cuesta $900,000 MXN.", false);
+        var hoursReply = new com.ford.service.conversations.api.AssistantReply(
+                "El horario es de lunes a viernes, de 9:00 a 19:00.", false);
+
+        assertThat(planner.apply(catalogReply, "¿Cuál es el precio de la Ranger?").text())
+                .isEqualTo(catalogReply.text());
+        assertThat(planner.apply(hoursReply, "¿A qué hora cierran hoy?").text())
+                .contains("La agencia está cerrada ahora.");
     }
 
     @Test
@@ -36,7 +50,7 @@ class DealershipResponsePlannerTest {
 
     @Test
     void afterHoursNoticeNeverInventsAResponseEta() {
-        var plan = planner(MONDAY_AFTER_HOURS, Map.of()).plan("¿Están abiertos?", false);
+        var plan = planner(MONDAY_AFTER_HOURS, Map.of()).plan("¿Están abiertos hoy?", false);
 
         assertThat(plan.afterHoursNotice())
                 .doesNotContainIgnoringCase("minuto")
@@ -45,7 +59,7 @@ class DealershipResponsePlannerTest {
                 .doesNotContainIgnoringCase("hora y media");
         assertThat(plan.afterHoursNotice()).contains(DealershipResponsePlanner.AFTER_HOURS_NOTICE);
         assertThat(plan.afterHoursNotice()).doesNotContainIgnoringCase("dejaré su solicitud registrada");
-        assertThat(plan.afterHoursNotice()).contains("calendario de días festivos no está configurado");
+        assertThat(plan.afterHoursNotice()).contains("horario festivo de hoy no está configurado");
     }
 
     @Test

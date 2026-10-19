@@ -2,6 +2,8 @@ package com.ford.service.ai;
 
 import com.ford.service.ai.adapter.in.tool.CatalogTools;
 import com.ford.service.catalog.api.CatalogPort;
+import com.ford.service.catalog.api.CatalogRetrievalPort;
+import com.ford.service.catalog.api.CatalogSearchPage;
 import com.ford.service.catalog.api.PromotionEvidence;
 import com.ford.service.catalog.api.PromotionQuery;
 import com.ford.service.catalog.api.PromotionPage;
@@ -55,10 +57,28 @@ class CatalogToolsTest {
 
         assertThat(catalog.lastSearch).isEqualTo(new VehicleSearchQuery(
                 "Ranger", "Ranger", 2027, null, null, null, null, null, 5));
-        assertThat(result).containsExactly(evidence);
-        assertThat(result.getFirst().price()).isNull();
-        assertThat(result.getFirst().modelPageUrl()).isEqualTo("https://www.ford.mx/vehiculos/ranger/");
-        assertThat(result.getFirst().observedAt()).isEqualTo(Instant.parse("2026-10-16T10:00:00Z"));
+        assertThat(result.semanticSearch()).isEqualTo("unavailable");
+        assertThat(result.results()).containsExactly(evidence);
+        assertThat(result.results().getFirst().price()).isNull();
+        assertThat(result.results().getFirst().modelPageUrl()).isEqualTo("https://www.ford.mx/vehiculos/ranger/");
+        assertThat(result.results().getFirst().observedAt()).isEqualTo(Instant.parse("2026-10-16T10:00:00Z"));
+    }
+
+    @Test
+    void includesSemanticReadinessInVehicleSearchResults() {
+        var catalog = new FakeCatalog();
+        var evidence = new VehicleEvidence("Escape", 2026, null, null, "MXN", null, null, null, List.of());
+        var retrieval = org.mockito.Mockito.mock(CatalogRetrievalPort.class);
+        var query = new VehicleSearchQuery("SUV compacta", null, null,
+                null, null, null, null, null, 5);
+        org.mockito.Mockito.when(retrieval.searchVehicles(query))
+                .thenReturn(new CatalogSearchPage<>("ready", 1, List.of(evidence)));
+
+        var result = new CatalogTools(catalog, retrieval).searchVehicles(
+                "SUV compacta", null, null, null, null, null, null, null, 5);
+
+        assertThat(result.semanticSearch()).isEqualTo("ready");
+        assertThat(result.results()).containsExactly(evidence);
     }
 
     @Test
@@ -230,6 +250,23 @@ class CatalogToolsTest {
     }
 
     @Test
+    void offerSearchPassesFreeTextAndExposesSemanticReadiness() {
+        var catalog = new FakeCatalog();
+        var retrieval = org.mockito.Mockito.mock(CatalogRetrievalPort.class);
+        var query = new OfferQuery("promociones Bronco", "Bronco", 2026, "promotion", null,
+                null, null, null, null, null, true, LocalDate.parse("2026-10-19"), 3);
+        org.mockito.Mockito.when(retrieval.searchOffers(query))
+                .thenReturn(new CatalogSearchPage<>("ready", 0, List.of()));
+
+        var result = new CatalogTools(catalog, retrieval).searchOffers("promociones Bronco", "Bronco", 2026,
+                "promotion", null, null, null, null, null, null, LocalDate.parse("2026-10-19"), 3);
+
+        assertThat(result.semanticSearch()).isEqualTo("ready");
+        assertThat(result.query()).isEqualTo("promociones Bronco");
+        assertThat(result.results()).isEmpty();
+    }
+
+    @Test
     void combinedSearchSelectsOneExactVehicleAndAlignsFinancingAndSummary() {
         var catalog = new FakeCatalog();
         var vehicle = new VehicleEvidence("Ranger", 2027, null, new BigDecimal("899000"), "MXN",
@@ -249,12 +286,14 @@ class CatalogToolsTest {
 
         assertThat(result.query()).isEqualTo("Ranger 2027");
         assertThat(catalog.lastSearch).isEqualTo(new VehicleSearchQuery(
-                "Ranger 2027", "Ranger", 2027, null, null, null, null, null, 1));
+                null, "Ranger", 2027, null, null, null, null, null, 1));
         assertThat(result.vehicles().results()).containsExactly(vehicle);
         assertThat(result.vehicles().summary()).isEqualTo("Ranger 2027: MXN $899,000");
+        assertThat(result.vehicles().semanticSearch()).isEqualTo("not_requested");
         assertThat(result.offers().query()).isEqualTo("Ranger 2027 financing");
         assertThat(catalog.lastOfferQuery).isEqualTo(new OfferQuery("Ranger", 2027, "financing", null,
                 null, null, null, null, 60, true, LocalDate.now(java.time.ZoneOffset.UTC), 1));
+        assertThat(result.offers().semanticSearch()).isEqualTo("not_requested");
         assertThat(result.answerSummary()).contains("Ranger 2027: MXN $899,000.", "Plan Ranger.");
     }
 

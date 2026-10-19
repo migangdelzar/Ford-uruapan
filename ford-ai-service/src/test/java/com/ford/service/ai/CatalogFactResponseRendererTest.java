@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.io.DefaultResourceLoader;
 
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -39,7 +40,7 @@ class CatalogFactResponseRendererTest {
         assertThat(output.orElseThrow())
                 .contains("Explorer 2027", "MXN $1,193,600", "Ver precio",
                         "https://www.forduruapan.mx/EXPLORER/27/")
-                .contains("*Explorer 2027*", "*Precio publicado:*")
+                .contains("*Explorer 2027*", "precio publicado")
                 .doesNotContain("{{", "**", "](");
     }
 
@@ -62,7 +63,7 @@ class CatalogFactResponseRendererTest {
                         "La vigencia no está confirmada", "2026-10-01", "2026-11-02",
                         "Sujeto a aprobación", "Ver promoción")
                 .contains("https://www.forduruapan.mx/Promociones/")
-                .contains("🎉 *Promoción para Bronco Sport 2026*", "*Beneficio:*")
+                .contains("*Bronco Sport 2026* — Bono de temporada", "*Beneficio:*")
                 .doesNotContain("{{", "**", "](");
     }
 
@@ -81,9 +82,43 @@ class CatalogFactResponseRendererTest {
                         """));
 
         assertThat(output).isPresent();
-        assertThat(output.orElseThrow()).contains("Precio publicado", "Promoción", "MXN $1,193,600",
-                "Bono Explorer", "50,000")
+        assertThat(output.orElseThrow()).contains("precio publicado", "Bono Explorer", "MXN $1,193,600",
+                "50,000")
                 .doesNotContain("1,143,600", "{{");
+    }
+
+    @Test
+    void rendersVerifiedPromotionAndOmitsPriceWhenOnlyPriceLookupFailed() {
+        var output = renderer.render("Precio y promoción de Explorer 2027", Map.of(
+                "list_promotions", """
+                        {"totalCount":1,"results":[{"model":"Explorer","year":2027,
+                         "title":"Bono Explorer","benefits":["Bono de $50,000 MXN"],
+                         "validityStatus":"active","validUntil":"2026-11-30",
+                         "sourceUrl":"https://www.forduruapan.mx/Promociones/"}]}
+                        """), Set.of("get_vehicle"));
+
+        assertThat(output).isPresent();
+        assertThat(output.orElseThrow())
+                .contains("Bono Explorer", "Bono de $50,000 MXN", "2026-11-30")
+                .doesNotContain("Precio publicado", "No pude confirmar", "fuente no está disponible");
+    }
+
+    @Test
+    void returnsNoTemplateWhenAllRequestedCatalogLookupsFailed() {
+        assertThat(renderer.render("Precio y promoción de Explorer 2027", Map.of(),
+                Set.of("get_vehicle", "list_promotions"))).isEmpty();
+    }
+
+    @Test
+    void givesBriefGroundedNoResultWhenPromotionLookupSucceededWithZeroMatches() {
+        var output = renderer.render("¿Hay promociones vigentes?", Map.of(
+                "list_promotions", """
+                        {"totalCount":0,"results":[]}
+                        """), Set.of());
+
+        assertThat(output).isPresent();
+        assertThat(output.orElseThrow()).contains("No encontré promociones")
+                .doesNotContain("No pude confirmar", "Ventas puede validar");
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.ford.service.ai.application;
 
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
 import org.springframework.ai.tool.ToolCallback;
 
 import java.util.List;
@@ -61,8 +62,6 @@ public class ToolAuthorizationPolicy {
     private static final class SingleAttemptToolCallback implements ToolCallback {
         private static final String ALREADY_ATTEMPTED =
                 "Esta consulta ya se intentó en este turno. Use el resultado recibido o explique qué dato no se pudo confirmar.";
-        private static final String SOURCE_UNAVAILABLE =
-                "READ_ONLY_SOURCE_UNAVAILABLE: no se obtuvieron datos verificables. Responda solo con orientación general estable; no invente datos del vehículo.";
         private final ToolCallback delegate;
         private final ToolResultTracker resultTracker;
         private final AtomicBoolean invoked = new AtomicBoolean();
@@ -89,11 +88,17 @@ public class ToolAuthorizationPolicy {
             resultTracker.attempted(name);
             try {
                 var result = delegate.call(input);
+                if (result == null || result.isBlank()) {
+                    throw new AssistantTurnUnavailableException(AssistantTurnUnavailableException.Disposition.RETRY);
+                }
                 resultTracker.resultReturned(name, result);
-                return result == null || result.isBlank() ? SOURCE_UNAVAILABLE : result;
+                return result;
+            } catch (AssistantTurnUnavailableException exception) {
+                resultTracker.failed(name, exception.disposition());
+                throw exception;
             } catch (RuntimeException exception) {
-                resultTracker.failed(name);
-                return SOURCE_UNAVAILABLE;
+                resultTracker.failed(name, AssistantTurnUnavailableException.Disposition.REVIEW);
+                throw new AssistantTurnUnavailableException(AssistantTurnUnavailableException.Disposition.REVIEW);
             }
         }
 
@@ -104,11 +109,17 @@ public class ToolAuthorizationPolicy {
             resultTracker.attempted(name);
             try {
                 var result = delegate.call(input, context);
+                if (result == null || result.isBlank()) {
+                    throw new AssistantTurnUnavailableException(AssistantTurnUnavailableException.Disposition.RETRY);
+                }
                 resultTracker.resultReturned(name, result);
-                return result == null || result.isBlank() ? SOURCE_UNAVAILABLE : result;
+                return result;
+            } catch (AssistantTurnUnavailableException exception) {
+                resultTracker.failed(name, exception.disposition());
+                throw exception;
             } catch (RuntimeException exception) {
-                resultTracker.failed(name);
-                return SOURCE_UNAVAILABLE;
+                resultTracker.failed(name, AssistantTurnUnavailableException.Disposition.REVIEW);
+                throw new AssistantTurnUnavailableException(AssistantTurnUnavailableException.Disposition.REVIEW);
             }
         }
     }

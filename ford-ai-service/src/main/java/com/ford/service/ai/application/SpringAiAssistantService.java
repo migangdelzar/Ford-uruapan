@@ -2,6 +2,7 @@ package com.ford.service.ai.application;
 
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantResponse;
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
 import com.ford.service.ai.api.AssistantTurn;
 import com.ford.service.shared.HumanHandoffPolicy;
 import org.slf4j.Logger;
@@ -191,9 +192,13 @@ public final class SpringAiAssistantService implements AssistantService {
                     providerSummary(), exception.getClass().getSimpleName(),
                     elapsedMs(started),
                     AiProviderFailureDiagnostics.describe(exception, logProviderErrors));
-            return new AssistantTurn(introduceOnce(handoffPolicy.fallbackText(), conversationId,
-                    securedInput.memoryContext()), decision.toLegacyIntent(),
-                    false, List.of(), "fallback", "none", decision);
+            if (exception instanceof AssistantTurnUnavailableException unavailable) {
+                throw unavailable;
+            }
+            var disposition = AiProviderFailureDiagnostics.classify(exception).retryable()
+                    ? AssistantTurnUnavailableException.Disposition.RETRY
+                    : AssistantTurnUnavailableException.Disposition.REVIEW;
+            throw new AssistantTurnUnavailableException(disposition);
         }
     }
 

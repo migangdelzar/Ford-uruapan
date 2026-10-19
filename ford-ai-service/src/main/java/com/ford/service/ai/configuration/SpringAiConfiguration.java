@@ -32,6 +32,8 @@ import com.ford.service.observability.DefaultAiObservationService;
 import io.micrometer.observation.ObservationRegistry;
 import io.micrometer.core.instrument.MeterRegistry;
 import com.ford.service.catalog.api.CatalogPort;
+import com.ford.service.catalog.api.CatalogQueryEmbedder;
+import com.ford.service.catalog.api.CatalogRetrievalPort;
 import com.ford.service.finance.application.FinanceOperations;
 import com.ford.service.finance.application.port.out.FinanceTermsRepository;
 import com.ford.service.knowledge.application.KnowledgeRetrieval;
@@ -44,6 +46,7 @@ import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.retry.RetryUtils;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.ResponseErrorHandler;
@@ -68,7 +71,7 @@ import java.util.List;
 /** Composition root marker for Spring AI adapters and read-only tool wiring. */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties({ClassificationProperties.class, TypeSafeProperties.class, CatalogToolProperties.class,
-        OllamaAccessProperties.class})
+        OllamaAccessProperties.class, CatalogEmbeddingProperties.class})
 public class SpringAiConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(SpringAiConfiguration.class);
@@ -118,6 +121,14 @@ public class SpringAiConfiguration {
                 .responseErrorHandler(responseErrorHandlerProvider.getIfAvailable(
                         () -> RetryUtils.DEFAULT_RESPONSE_ERROR_HANDLER))
                 .build();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ford.catalog.tools", name = "enabled", havingValue = "true")
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnBean(OllamaApi.class)
+    CatalogQueryEmbedder catalogQueryEmbedder(OllamaApi ollamaApi, CatalogEmbeddingProperties properties) {
+        return new com.ford.service.ai.adapter.out.springai.OllamaCatalogQueryEmbedder(
+                ollamaApi, properties.model());
     }
 
     @Bean
@@ -182,10 +193,12 @@ public class SpringAiConfiguration {
     @Bean
     ToolAuthorizationPolicy toolAuthorizationPolicy(ObjectProvider<FinanceOperations> finance,
                                                     ObjectProvider<FinanceTermsRepository> terms,
-                                                    ObjectProvider<KnowledgeRetrieval> knowledge,
-                                                    ObjectProvider<CatalogPort> catalogPortProvider,
-                                                    CatalogToolProperties catalogToolProperties,
-                                                    ObjectProvider<MeterRegistry> meterRegistries) {
+                                                     ObjectProvider<KnowledgeRetrieval> knowledge,
+                                                     ObjectProvider<CatalogPort> catalogPortProvider,
+                                                     ObjectProvider<CatalogRetrievalPort> catalogRetrievalPortProvider,
+                                                     CatalogToolProperties catalogToolProperties,
+                                                     ObjectProvider<MeterRegistry> meterRegistries,
+                                                     ProviderRetryDelay retryDelay) {
         var toolObjects = new ArrayList<Object>();
         var financeOperations = finance.getIfAvailable();
         var financeTerms = terms.getIfAvailable();
@@ -202,7 +215,11 @@ public class SpringAiConfiguration {
             if (catalogPort == null) {
                 throw new IllegalStateException("Local catalog tools are enabled but the read-only catalog is unavailable");
             }
-            var localTools = new CatalogTools(catalogPort);
+            var retrievalPort = catalogRetrievalPortProvider.getIfAvailable();
+            if (retrievalPort == null) {
+                throw new IllegalStateException("Local catalog tools are enabled but retrieval is unavailable");
+            }
+            var localTools = new CatalogTools(catalogPort, retrievalPort);
             toolObjects.add(localTools);
             localCatalogToolNames.addAll(java.util.Set.of("search_vehicles", "search_vehicle_and_offers",
                     "search_offers", "get_vehicle", "list_promotions", "get_page_links",
@@ -223,7 +240,8 @@ public class SpringAiConfiguration {
         }
         var meterRegistry = meterRegistries.getIfAvailable();
         var observedCallbacks = callbacks.stream()
-                .map(callback -> new com.ford.service.ai.adapter.out.springai.ObservedToolCallback(callback, meterRegistry))
+                .map(callback -> new com.ford.service.ai.adapter.out.springai.ObservedToolCallback(
+                        callback, meterRegistry, retryDelay))
                 .map(ToolCallback.class::cast)
                 .toList();
         log.info("AI read-only tools registered: count={} names={}", observedCallbacks.size(),
