@@ -354,7 +354,7 @@ test("security workflow contains secret, filesystem, and SARIF gates", async () 
   assert.match(source, /actions\/upload-artifact@v7/);
 });
 
-test("Gitleaks exceptions are limited to reviewed historical fixture findings", async () => {
+test("Gitleaks exceptions are limited to reviewed false-positive findings", async () => {
   const exceptions = (await read(".gitleaksignore"))
     .split(/\r?\n/)
     .map(line => line.trim())
@@ -365,6 +365,7 @@ test("Gitleaks exceptions are limited to reviewed historical fixture findings", 
     "5f26bfaa856bb7d6d796e8f65d224eddde22f638:scripts/observability-contract.test.mjs:generic-api-key:42",
     "6fcf2fd7f6dc221ada19a1c3bdb41882203d9ec9:ford-ai-service/src/integrationTest/java/com/ford/service/identity/JdbcOperatorIdentityRepositoryIntegrationTest.java:generic-api-key:44",
     "6fcf2fd7f6dc221ada19a1c3bdb41882203d9ec9:ford-ai-service/src/integrationTest/java/com/ford/service/identity/JdbcOperatorIdentityRepositoryIntegrationTest.java:generic-api-key:71",
+    "7b6c30dffc5f4c6c4c48bb910b7646e93598bb71:docs/superpowers/specs/2026-10-19-catalog-callbacks-full-retrieval-design.md:generic-api-key:12",
     "94b42716a98b008bdf4ba82261d98d18bde4d7bb:ford-ai-service/scripts/tests/test_load_vault_mappings.py:generic-api-key:35",
     "94c9b0e6dd4946c32f19f7fe0a194950dbe6d78b:ford-ai-service/src/test/java/com/ford/service/ai/InputSecurityPolicyTest.java:generic-api-key:56"
   ].sort());
