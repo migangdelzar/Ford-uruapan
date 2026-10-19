@@ -7,6 +7,7 @@ import com.ford.service.identity.application.OneTimeTokenRequestLimiter;
 import jakarta.servlet.http.Cookie;
 import liquibase.integration.spring.SpringLiquibase;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -108,6 +109,10 @@ class OperatorAuthenticationConfigurationIntegrationTest {
         boolean hasDeliveryFor(String recipient) {
             return deliveries.stream().anyMatch(delivery -> delivery.recipient().equals(recipient));
         }
+
+        void clear() {
+            deliveries.clear();
+        }
     }
 
     @BeforeAll
@@ -117,6 +122,11 @@ class OperatorAuthenticationConfigurationIntegrationTest {
         liquibase.setDataSource(dataSource);
         liquibase.setChangeLog("classpath:/db/changelog/db.changelog-master.yaml");
         liquibase.afterPropertiesSet();
+    }
+
+    @BeforeEach
+    void clearCapturedEmail() {
+        emailSender.clear();
     }
 
     @DynamicPropertySource
@@ -383,6 +393,13 @@ class OperatorAuthenticationConfigurationIntegrationTest {
                             .cookie(session))
                     .andExpect(status().isForbidden());
         }
+
+        var managerWithoutReadScope = createIdentity("MANAGER", true, java.util.Set.of("profile", "email"));
+        var session = requestAndRedeemOneTimeToken(managerWithoutReadScope.email());
+        mvc.perform(get("/api/v1/team/advisors")
+                        .param("tenantId", managerWithoutReadScope.tenantIds().iterator().next().toString())
+                        .cookie(session))
+                .andExpect(status().isForbidden());
     }
 
     @Test

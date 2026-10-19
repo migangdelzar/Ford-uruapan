@@ -118,7 +118,7 @@ Verification: unit suite passed before integration tests. The first integration 
 
 - [x] **Step 3: Add only the test recorder, identity seeder, and OTT helper**
 
-Add the primary test sender and `createIdentity(String, boolean, Set<String>)` helper to the test class. Add `requestAndRedeemOneTimeToken(String email)` that obtains `/api/auth/csrf`, posts the email to `/api/auth/one-time-token`, reads the captured link for that recipient, extracts only its `token` query parameter, posts it to `/login/ott` with the CSRF cookie/header, and returns the response `SESSION` cookie. Keep all token generation, persistence, redemption, and session work on the real configured Spring components. Do not print the token or full link.
+Add the primary test sender and `createIdentity(String, boolean, Set<String>)` helper to the test class. Clear the recorder before each test so captured state cannot leak across methods. Add `requestAndRedeemOneTimeToken(String email)` that obtains `/api/auth/csrf`, posts the email to `/api/auth/one-time-token`, reads the captured link for that recipient, extracts only its `token` query parameter, posts it to `/login/ott` with the CSRF cookie/header, and returns the response `SESSION` cookie. Keep all token generation, persistence, redemption, and session work on the real configured Spring components. Do not print the token or full link.
 
 - [x] **Step 4: Rerun the focused authentication integration class**
 
@@ -140,11 +140,11 @@ Verification: all 14 class tests passed with zero skips/failures/errors, includi
 
 - [x] **Step 1: Add neutral-response and password-policy assertions**
 
-Compare status/body for a valid active identity, a disabled identity, and an unknown email on `POST /api/auth/one-time-token`; require `202` with `{"accepted":true}` in each case. Record the `one_time_tokens` row count before the requests and assert only the active identity adds a persisted token and captured delivery. For passwords, keep `operator@example.test` as the only configured account, seed it as `MANAGER`, and assert a successful session. Attempt the same configured password with active `OPERATOR` and `ADMIN` identities and assert the same generic `/login?error` redirect used for invalid credentials and no authenticated session.
+Compare status/body for a valid active identity, a disabled identity, and an unknown email on `POST /api/auth/one-time-token`; require `202` with `{"accepted":true}` in each case. Record the `one_time_tokens` row count before the requests and assert only the active identity adds a persisted token and captured delivery. For passwords, keep `operator@example.test` as the only configured account, seed it as `MANAGER`, and assert a successful session. Attempt the same configured password with active `OPERATOR` and `ADMIN` identities and assert the same generic `/login?error` redirect; if the failure response issues an anonymous session cookie, prove it cannot access `/api/auth/me`.
 
 - [x] **Step 2: Add scope/admin/tenant assertions**
 
-Use `GET /api/v1/team/advisors?tenantId=<assigned>` after login. Assert `OPERATOR` and `MANAGER` succeed with the seeded `operator:read` scope; assert `ADMIN` succeeds without `operator:read` through the route's explicit `hasRole('ADMIN')` override. For every identity, assert a different unassigned tenant returns `403`. Do not infer additional permissions from the role names.
+Use `GET /api/v1/team/advisors?tenantId=<assigned>` after login. Assert `OPERATOR` and `MANAGER` succeed with the seeded `operator:read` scope; assert a `MANAGER` identity without that scope is denied; assert `ADMIN` succeeds without `operator:read` through the route's explicit `hasRole('ADMIN')` override. For every identity, assert a different unassigned tenant returns `403`. Do not infer additional permissions from the role names.
 
 - [x] **Step 3: Pass the unit-test gate, then run the focused integration class**
 
@@ -155,7 +155,7 @@ Use `GET /api/v1/team/advisors?tenantId=<assigned>` after login. Assert `OPERATO
 
 Run from `ford-ai-service` in the displayed order.
 
-Verification: `./gradlew test` passed before focused integration execution. The integration class passed 14 tests with zero skips/failures/errors; captured active/disabled/unknown response equality, configured-account-only password login, the Admin override, and 403 for an unassigned tenant all passed.
+Verification: `./gradlew test` passed before focused integration execution. The integration class passed 14 tests with zero skips/failures/errors; captured active/disabled/unknown response equality, configured-account-only password login with an unauthenticated failure session, Admin override, denial for a role lacking `operator:read`, and 403 for unassigned tenants all passed.
 
 - [x] **Step 4: Determine whether a production fix is required**
 
@@ -187,7 +187,7 @@ Run Gradle commands from `/private/tmp/ford-uruapan-release/ford-ai-service`. Ru
 ./gradlew test --rerun-tasks --no-build-cache --max-workers=1
 ```
 
-Verification: the exact forced command returned `BUILD SUCCESSFUL`; 5 tasks executed in 42 seconds.
+Verification: the exact forced command returned `BUILD SUCCESSFUL`; latest run executed 5 tasks in 40 seconds.
 
 - [x] **Step 2: Run the complete Service integration suite**
 
@@ -195,7 +195,7 @@ Verification: the exact forced command returned `BUILD SUCCESSFUL`; 5 tasks exec
 ./gradlew integrationTest --rerun-tasks --no-build-cache --max-workers=1
 ```
 
-Verification: `./gradlew integrationTest --rerun-tasks --no-build-cache --max-workers=1` returned `BUILD SUCCESSFUL`; 4 tasks executed in 1 minute 15 seconds. XML reports show 31 test suites, 81 tests total, 3 intentionally skipped snapshot tests because `FORD_CATALOG_PARITY_JDBC_URL` was absent, and 0 failures/errors. The login class itself had 14 tests, 0 skips.
+Verification: `./gradlew integrationTest --rerun-tasks --no-build-cache --max-workers=1` returned `BUILD SUCCESSFUL`; latest full rerun executed 4 tasks in 1 minute 18 seconds. XML reports show 31 test suites, 81 tests total, 3 intentionally skipped snapshot tests because `FORD_CATALOG_PARITY_JDBC_URL` was absent, and 0 failures/errors. The login class itself had 14 tests, 0 skips.
 
 - [x] **Step 3: Inspect changes and decide whether a production release applies**
 
