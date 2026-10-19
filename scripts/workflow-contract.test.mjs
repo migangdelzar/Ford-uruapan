@@ -74,6 +74,8 @@ test("deployment connectivity preflight is manually runnable from main and stays
   assert.match(source, /docker ps -a --filter 'label=com\.docker\.compose\.service=otel-collector'/);
   assert.doesNotMatch(source, /docker inspect --format[^\n]*app-otel-collector-1/);
   assert.match(source, /docker ps -a --format .*sched/i);
+  assert.match(source, /docker ps -a --format .*\.Ports/);
+  assert.match(source, /13133.*owners|owners.*13133/i);
   assert.match(source, /com\.docker\.compose\.project\.working_dir/);
   assert.doesNotMatch(source, /\/opt\/ford-uruapan\/mcp\/(?:\.env|scheduler\.env)/);
 });
