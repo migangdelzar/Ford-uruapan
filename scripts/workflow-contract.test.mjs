@@ -76,6 +76,8 @@ test("deployment connectivity preflight is manually runnable from main and stays
   assert.match(source, /docker ps -a --format .*sched/i);
   assert.match(source, /docker ps -a --format .*\.Ports/);
   assert.match(source, /13133.*owners|owners.*13133/i);
+  assert.match(source, /collector_port_owner_ids=/);
+  assert.match(source, /com\.docker\.compose\.project\.config_files/);
   assert.match(source, /com\.docker\.compose\.project\.working_dir/);
   assert.doesNotMatch(source, /\/opt\/ford-uruapan\/mcp\/(?:\.env|scheduler\.env)/);
 });
