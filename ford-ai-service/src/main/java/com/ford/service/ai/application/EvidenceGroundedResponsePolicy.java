@@ -45,6 +45,8 @@ public class EvidenceGroundedResponsePolicy {
                     "No incluya cifras, precios, años, porcentajes ni especificaciones que no aparezcan en la información confirmada de esta conversación. Elimine o corrija esos datos.";
             case "unsupported_url" ->
                     "Use únicamente los enlaces confirmados para esta conversación. Elimine cualquier enlace no verificado.";
+            case "unsupported_model_name" ->
+                    "No menciones ningún modelo Ford salvo que aparezca en el mensaje del cliente o en la evidencia confirmada de esta conversación. Elimina el nombre no confirmado; si el modelo es necesario para responder, pregunta cuál quiso decir. No inventes ni sustituyas otro modelo.";
             case "never_promise" ->
                     "No prometa entregas, aprobaciones de crédito, garantías ni tiempos de respuesta. Reformule la respuesta sin prometer nada.";
             default ->

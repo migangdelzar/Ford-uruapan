@@ -235,6 +235,7 @@ ford:
     cloud-enabled: ${FORD_AI_CLOUD_ENABLED:false}
     local-enabled: ${FORD_AI_LOCAL_ENABLED:true}
     log-provider-errors: ${FORD_AI_LOG_PROVIDER_ERRORS:false}
+    response-verification-enabled: ${FORD_AI_RESPONSE_VERIFICATION_ENABLED:true}
     provider-max-attempts: ${FORD_AI_PROVIDER_MAX_ATTEMPTS:5}
     provider-max-retry-after: ${FORD_AI_PROVIDER_MAX_RETRY_AFTER:PT3S}
     providers:

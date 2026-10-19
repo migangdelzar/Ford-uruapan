@@ -1108,6 +1108,30 @@ class SpringAiChatCompletionAdapterTest {
     }
 
     @Test
+    void returnsProviderResponseWhenResponseVerificationIsDisabled() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("La Mustang tiene una cabina amplia.");
+        var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
+                new ToolAuthorizationPolicy(), new DecisionPolicy(), null,
+                new com.ford.service.ai.application.AssistantResponseQualityPolicy(), new ObjectMapper(),
+                new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP), null, true, null,
+                new com.ford.service.ai.application.EvidenceGroundedResponsePolicy(), false);
+
+        var response = adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                "¿Qué opinas?", "BOT_ACTIVE", false), null);
+
+        assertThat(response.content()).isEqualTo("La Mustang tiene una cabina amplia.");
+        verify(requestSpec, times(1)).call();
+    }
+
+    @Test
     void repairsAProviderResponseThatLeaksToolPayloads() {
         var client = mock(ChatClient.class);
         var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);

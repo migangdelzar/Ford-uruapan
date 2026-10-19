@@ -80,6 +80,7 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
     private final boolean repairEnabled;
     private final KnowledgeRagAdvisorFactory knowledgeRagAdvisorFactory;
     private final com.ford.service.ai.application.EvidenceGroundedResponsePolicy evidenceGroundedPolicy;
+    private final boolean responseVerificationEnabled;
 
     public SpringAiChatCompletionAdapter(ChatClient client, String provider) {
         this(client, provider, new ToolAuthorizationPolicy(), new DecisionPolicy(), null,
@@ -183,10 +184,27 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                                          AssistantResponseQualityPolicy qualityPolicy,
                                          ObjectMapper objectMapper,
                                          AiObservationService observations,
+                                          CatalogFactResponseRenderer factResponseRenderer,
+                                          boolean repairEnabled,
+                                          KnowledgeRagAdvisorFactory knowledgeRagAdvisorFactory,
+                                          com.ford.service.ai.application.EvidenceGroundedResponsePolicy evidenceGroundedPolicy) {
+        this(client, provider, toolPolicy, decisionPolicy, systemPromptService, qualityPolicy,
+                objectMapper, observations, factResponseRenderer, repairEnabled, knowledgeRagAdvisorFactory,
+                evidenceGroundedPolicy, true);
+    }
+
+    public SpringAiChatCompletionAdapter(ChatClient client, String provider,
+                                         ToolAuthorizationPolicy toolPolicy,
+                                         DecisionPolicy decisionPolicy,
+                                         SystemPromptService systemPromptService,
+                                         AssistantResponseQualityPolicy qualityPolicy,
+                                         ObjectMapper objectMapper,
+                                         AiObservationService observations,
                                          CatalogFactResponseRenderer factResponseRenderer,
                                          boolean repairEnabled,
                                          KnowledgeRagAdvisorFactory knowledgeRagAdvisorFactory,
-                                         com.ford.service.ai.application.EvidenceGroundedResponsePolicy evidenceGroundedPolicy) {
+                                         com.ford.service.ai.application.EvidenceGroundedResponsePolicy evidenceGroundedPolicy,
+                                         boolean responseVerificationEnabled) {
         this.client = Objects.requireNonNull(client);
         this.provider = Objects.requireNonNull(provider);
         this.toolPolicy = Objects.requireNonNull(toolPolicy);
@@ -199,6 +217,7 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         this.repairEnabled = repairEnabled;
         this.knowledgeRagAdvisorFactory = knowledgeRagAdvisorFactory;
         this.evidenceGroundedPolicy = evidenceGroundedPolicy;
+        this.responseVerificationEnabled = responseVerificationEnabled;
     }
 
     @Override
@@ -298,6 +317,7 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
 
     private String rejectionReason(AssistantRequest request, ToolResultTracker tracker,
                                    KnowledgeRagEvidenceTracker knowledgeEvidence, String answer) {
+        if (!responseVerificationEnabled) return null;
         var verdict = qualityPolicy.evaluate(request.message(), request.memoryContext(), answer);
         if (!verdict.accepted()) {
             return verdict.reason();

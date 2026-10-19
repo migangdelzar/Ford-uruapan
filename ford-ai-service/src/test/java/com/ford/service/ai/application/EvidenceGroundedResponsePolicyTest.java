@@ -116,6 +116,17 @@ class EvidenceGroundedResponsePolicyTest {
     }
 
     @Test
+    void repairsUnsupportedModelClaimsWithoutReplacingThemWithAnotherModel() {
+        var instruction = policy.repairInstruction("unsupported_model_name");
+
+        assertThat(instruction)
+                .contains("No menciones ningún modelo Ford")
+                .contains("Elimina el nombre no confirmado")
+                .contains("pregunta cuál quiso decir")
+                .doesNotContain("Ranger", "Mustang", "Bronco");
+    }
+
+    @Test
     void acceptsVehicleModelNamesConfirmedByCustomerOrEvidence() {
         var evidence = "{\"model\":\"Ranger\",\"sourceUrl\":\"https://ford.mx/ranger\"}";
 
