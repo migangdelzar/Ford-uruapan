@@ -59,8 +59,14 @@ jobs:
           python3 -c 'import json, urllib.request; assert json.load(urllib.request.urlopen("http://127.0.0.1:8080/actuator/health", timeout=8))["status"] == "UP"'
           collector_details="$(docker ps -a --filter 'label=com.docker.compose.service=otel-collector' --format '{{.Names}} {{.State}} {{.Ports}}')"
           port_owners="$(docker ps -a --format '{{.Names}} {{.State}} {{.Ports}}' | awk 'index($0, "13133") > 0 { print }')"
+          collector_port_owner_ids="$(docker ps -a --format '{{.ID}} {{.Ports}}' | awk 'index($0, "13133") > 0 { print $1 }')"
           printf 'Collector containers: %s\n' "${collector_details:-none}"
           printf 'Host port 13133 owners: %s\n' "${port_owners:-none}"
+          if [[ -n "$collector_port_owner_ids" ]]; then
+            for owner_id in $collector_port_owner_ids; do
+              docker inspect --format 'port owner={{.Name}} project={{index .Config.Labels "com.docker.compose.project"}} workdir={{index .Config.Labels "com.docker.compose.project.working_dir"}} compose={{index .Config.Labels "com.docker.compose.project.config_files"}} bindings={{json .HostConfig.PortBindings}}' "$owner_id"
+            done
+          fi
           collector_states="$(docker ps -a --filter 'label=com.docker.compose.service=otel-collector' --format '{{.State}}')"
           [[ "$collector_states" == 'running' ]] || {
             echo 'Expected exactly one running Compose otel-collector service.' >&2
