@@ -31,8 +31,6 @@ if [[ "${OCI_SERVICE_CATALOG_TOOLS_ENABLED:-false}" == "true" ]]; then
     || fail "enabled catalog tools require a PostgreSQL catalog JDBC URL"
   [[ "${OCI_SERVICE_CATALOG_USERNAME:-}" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]] \
     || fail "enabled catalog tools require a dedicated reader username"
-  [[ "${FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD:-}" =~ ^ocid1[.]vaultsecret[.][A-Za-z0-9.]+$ ]] \
-    || fail "enabled catalog tools require a Vault secret OCID for the reader password"
 fi
 
 if [[ "$OCI_OPERATION" == "deploy" ]]; then

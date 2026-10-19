@@ -9,11 +9,11 @@ Configure these only when preparing an approved catalog-tool rollout:
 - `FORD_CATALOG_TOOLS_ENABLED=false` by default. Local development may opt in with a separately configured read-only datasource. Keep production false until the Service-owned tool configuration and datasource permissions are reviewed.
 - `FORD_CATALOG_JDBC_URL=jdbc:postgresql://<catalog-host>:5432/<catalog-db>?connectTimeout=5&socketTimeout=30&tcpKeepAlive=true`
 - `FORD_CATALOG_USERNAME=<read-only-role>`
-- `FORD_CATALOG_PASSWORD=<secret-manager-injected-password>`
+- The catalog datasource reuses the existing `FORD_DATABASE_PASSWORD` value already loaded from OCI Vault; no catalog-specific password setting or secret is used.
 - `FORD_CATALOG_DRIVER=org.postgresql.Driver` (default)
 - `FORD_CATALOG_READ_ONLY_TOOL_NAMES` optionally narrows the built-in read-only tool allowlist.
 
-When enabled, startup fails if URL, username, or password is missing. There is no fallback to the Service datasource. Keep credentials in the deployment secret manager; never put values in repository files or CI logs. JDBC URL timeouts bound connection and query waits.
+When enabled, startup fails if URL, username, or the existing database password is missing. The catalog adapter uses a separate JDBC datasource and the `ford_catalog_reader` login; its password is the same existing database password. It does not use the primary `ford` login or create a catalog-specific password setting. No new Vault secret is required. JDBC URL timeouts bound connection and query waits.
 
 ## PostgreSQL grants
 

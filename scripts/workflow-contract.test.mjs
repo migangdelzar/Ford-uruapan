@@ -75,7 +75,7 @@ test("deployment connectivity preflight is manually runnable from main and stays
   assert.doesNotMatch(source, /docker inspect --format[^\n]*app-otel-collector-1/);
   assert.match(source, /docker ps -a --format .*sched/i);
   assert.match(source, /com\.docker\.compose\.project\.working_dir/);
-  assert.match(source, /test -s \/opt\/ford-uruapan\/mcp\/\.env/);
+  assert.doesNotMatch(source, /\/opt\/ford-uruapan\/mcp\/(?:\.env|scheduler\.env)/);
 });
 
 test("development deployment boots the local Compose stack behind a health gate", async () => {
@@ -112,7 +112,7 @@ test("Ford Service pins the backup-verified OCI rollout action", async () => {
 
   assert.match(
     source,
-    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@8acc8bd8f05281317304d482ae5c20abe19cfce4/,
+    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@387d85ecd3a6b1bb759a74cb7f75079a77839ebd/,
   );
   assert.match(source, /host: \$\{\{ vars\.OCI_DEPLOY_HOST \}\}/);
   assert.match(source, /user: \$\{\{ vars\.OCI_DEPLOY_USER \}\}/);
@@ -121,6 +121,25 @@ test("Ford Service pins the backup-verified OCI rollout action", async () => {
   assert.match(source, /backup-ssh-private-key: \$\{\{ secrets\.OCI_DATA_SSH_PRIVATE_KEY \}\}/);
   assert.match(source, /remote-root: \/opt\/ford-uruapan/);
   assert.doesNotMatch(source, /secrets\.OCI_(?:DATA_)?DEPLOY_(?:HOST|USER)/);
+});
+
+test("catalog-enabled Service release verifies the reader role before deployment", async () => {
+  const source = await read(".github/workflows/release.yml");
+  const readerCheck = source.indexOf("name: Verify catalog reader permissions before deployment");
+  const deployAction = source.indexOf("Run the shared OCI blue-green deployment action");
+
+  assert.ok(readerCheck >= 0, "catalog-enabled release must verify the database reader");
+  assert.ok(readerCheck < deployAction, "reader verification must run before deploying the Service");
+  const checkBlock = source.slice(readerCheck, deployAction);
+  assert.match(checkBlock, /FORD_CATALOG_TOOLS_ENABLED == 'true'/);
+  assert.match(checkBlock, /ford_catalog_reader/);
+  assert.match(checkBlock, /ford_read\.vehicle_search_v1/);
+  assert.match(checkBlock, /'INSERT'/);
+  assert.match(checkBlock, /'ford'/);
+  assert.match(checkBlock, /OCI_DATA_SSH_PRIVATE_KEY/);
+  assert.match(checkBlock, /CROSS JOIN LATERAL unnest\(reader_role\.rolconfig\)/);
+  assert.doesNotMatch(checkBlock, /'default_transaction_read_only=on' = ANY\(/);
+  assert.doesNotMatch(checkBlock, /POSTGRES_PASSWORD=.*\$\{/);
 });
 
 test("Ford Service passes its Pages upstream override explicitly to the OCI action", async () => {
@@ -258,11 +277,10 @@ test("Ford Service configures local catalog tools without a remote MCP connectio
   assert.doesNotMatch(source, /FORD_CATALOG_PARITY_READY|Node-to-Java parity/);
   assert.match(source, /FORD_CATALOG_JDBC_URL/);
   assert.match(source, /FORD_CATALOG_USERNAME/);
-  assert.match(source, /FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD/);
+  assert.doesNotMatch(source, /FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD/);
   assert.match(source, /service-catalog-tools-enabled: \$\{\{ vars\.FORD_CATALOG_TOOLS_ENABLED \|\| 'false' \}\}/);
   assert.match(source, /service-catalog-jdbc-url: \$\{\{ vars\.FORD_CATALOG_JDBC_URL \}\}/);
-  assert.match(source, /FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD: \$\{\{ vars\.FORD_CATALOG_TOOLS_ENABLED == 'true' && vars\.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD \|\| '' \}\}/);
-  assert.match(source, /service-catalog-password-secret-ocid: \$\{\{ vars\.FORD_CATALOG_TOOLS_ENABLED == 'true' && vars\.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD \|\| '' \}\}/);
+  assert.doesNotMatch(source, /service-catalog-password-secret-ocid/);
   assert.doesNotMatch(source, /FORD_MCP_ENABLED|FORD_MCP_URL|FORD_MCP_ACCESS_CLIENT_ID/);
   assert.doesNotMatch(action, /service-catalog-tools-enabled:[\s\S]*?parity gates pass/);
   assert.match(action, /service-catalog-tools-enabled:[\s\S]*?read-only datasource and access checks/);

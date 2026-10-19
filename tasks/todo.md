@@ -105,7 +105,11 @@ Local configuration verification (2026-10-18): `cd ford-ai-service && ./gradlew 
 - [ ] Verify the required Vault OCID variables and secret names against `release.yml`, `app.env.j2`, and `runtime-vault-identity.tf`: database, Redis, operator password, JWT signing key, DeepSeek/OpenAI-compatible provider key, Meta app/verify/WhatsApp credentials, and observability credentials. Validate optional provider/Meta integrations only when enabled.
 - [ ] Verify emme-1 and emme-2 instance principals can read only their named runtime secrets; confirm app/data dynamic groups match the intended instance OCIDs and no application secret value enters GitHub variables, Terraform state, logs, or committed files.
 - [ ] Keep Java catalog database credentials separate: when the Service-owned tool configuration is ready, use the dedicated read-only database user, the `ford_read` views, its Vault secret OCID, and production JDBC URL. Verify SELECT succeeds and writes are denied.
-- [ ] Before enabling catalog tools, verify the actual OCI Vault secret name behind `FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD` and add that exact name to the emme-1 app grant contract. The current policy contract does not include this catalog-reader secret; the release now passes its OCID only when tools are enabled.
+- [ ] Before enabling catalog tools, verify the existing `FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD` value is available to the Service JVM and use it for the dedicated `ford_catalog_reader` login. No new catalog secret or Vault grant is required.
+  - **Actions Applied**
+    - `tasks/todo.md` — replaced the former separate catalog Vault secret gate with reuse of the existing database password secret.
+  - **Verification**
+    - `ford-ai-service/src/main/java/com/ford/service/config/secrets/OciVaultEnvironmentPostProcessor.java` maps the existing database OCID to `FORD_DATABASE_PASSWORD`; the catalog datasource fallback uses that value.
 - [ ] Run the protected Terraform runtime-Vault workflow from `main` with `plan`; inspect its artifact and confirm the emme-2 data identity retains `ford-prod-postgres-password` for the replacement scheduler. Stop on any group replacement, resource creation/destruction, or broader grant.
   - **Actions Applied**
     - `tasks/todo.md` — narrowed the plan gate to preserve the scheduler's shared PostgreSQL secret grant.
