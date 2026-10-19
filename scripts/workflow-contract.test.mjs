@@ -74,6 +74,8 @@ test("deployment connectivity preflight is manually runnable from main and stays
   assert.match(source, /docker ps -a --filter 'label=com\.docker\.compose\.service=otel-collector'/);
   assert.doesNotMatch(source, /docker inspect --format[^\n]*app-otel-collector-1/);
   assert.match(source, /docker ps -a --format .*sched/i);
+  assert.match(source, /docker ps -a --format .*\.Ports/);
+  assert.match(source, /13133.*owners|owners.*13133/i);
   assert.match(source, /com\.docker\.compose\.project\.working_dir/);
   assert.doesNotMatch(source, /\/opt\/ford-uruapan\/mcp\/(?:\.env|scheduler\.env)/);
 });
@@ -112,7 +114,7 @@ test("Ford Service pins the backup-verified OCI rollout action", async () => {
 
   assert.match(
     source,
-    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@fe9ab6ae7b590b5999338e9078ea1154759b6b85/,
+    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@a878ad1ba1dd4a25ef814ea4b69ac817ae32165a/,
   );
   assert.match(source, /host: \$\{\{ vars\.OCI_DEPLOY_HOST \}\}/);
   assert.match(source, /user: \$\{\{ vars\.OCI_DEPLOY_USER \}\}/);
