@@ -398,7 +398,7 @@ jobs:
             exit 1
           }
       - name: Run the shared OCI blue-green deployment action
-        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@fcaa1cf76d0607f94833c429d761e706ff7861c7
+        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@fe9ab6ae7b590b5999338e9078ea1154759b6b85
         with:
           target: ford-service
           ui-upstream-url: ${{ vars.FORD_WEB_UI_UPSTREAM_URL }}
