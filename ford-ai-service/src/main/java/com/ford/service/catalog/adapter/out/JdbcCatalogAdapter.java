@@ -9,6 +9,8 @@ import com.ford.service.catalog.api.OfferQuery;
 import com.ford.service.catalog.api.CatalogPageLinkEvidence;
 import com.ford.service.catalog.api.DocumentProvenance;
 import com.ford.service.catalog.api.CatalogStatus;
+import com.ford.service.catalog.api.CatalogCandidateLists;
+import com.ford.service.catalog.api.CatalogQueryVector;
 import com.ford.service.catalog.api.VariantComparisonEvidence;
 import com.ford.service.catalog.api.CatalogPageLinkPage;
 import com.ford.service.catalog.api.VehicleEvidence;
@@ -41,10 +43,12 @@ public final class JdbcCatalogAdapter implements CatalogPort {
 
     private final JdbcClient jdbc;
     private final ObjectMapper objectMapper;
+    private final JdbcCatalogRetrievalAdapter retrieval;
 
     public JdbcCatalogAdapter(JdbcClient jdbc, ObjectMapper objectMapper) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
+        this.retrieval = new JdbcCatalogRetrievalAdapter(jdbc, objectMapper);
     }
 
     @Override
@@ -84,6 +88,16 @@ public final class JdbcCatalogAdapter implements CatalogPort {
                         rs.getString("model_page_url"), rs.getString("price_source_url"),
                         instant(rs, "observed_at"), List.of()))
                 .list();
+    }
+
+    @Override
+    public CatalogCandidateLists<VehicleEvidence> searchCandidates(VehicleSearchQuery query,
+                                                                    CatalogQueryVector queryVector) {
+        if (query == null) throw new IllegalArgumentException("vehicle search query is required");
+        if (blankToNull(query.query()) == null) {
+            return CatalogPort.super.searchCandidates(query, queryVector);
+        }
+        return retrieval.searchCandidates(query, queryVector);
     }
 
     @Override
@@ -307,6 +321,16 @@ public final class JdbcCatalogAdapter implements CatalogPort {
                         rs.getBigDecimal("tax_rate_percent"), rs.getBigDecimal("opening_commission_rate_percent"),
                         rs.getBigDecimal("maximum_down_payment_percent"), rs.getBigDecimal("life_insurance_price")))
                 .list();
+    }
+
+    @Override
+    public CatalogCandidateLists<OfferEvidence> offerCandidates(OfferQuery query,
+                                                                CatalogQueryVector queryVector) {
+        if (query == null) throw new IllegalArgumentException("offer query is required");
+        if (blankToNull(query.query()) == null) {
+            return CatalogPort.super.offerCandidates(query, queryVector);
+        }
+        return retrieval.offerCandidates(query, queryVector);
     }
 
     @Override

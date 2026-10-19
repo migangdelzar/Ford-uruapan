@@ -9,6 +9,9 @@ import com.ford.service.ai.api.AssistantGeneration;
 import com.openai.core.http.Headers;
 import com.openai.errors.OpenAIServiceException;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.HttpServerErrorException;
 
 import java.net.SocketTimeoutException;
 import java.time.Duration;
@@ -43,6 +46,17 @@ class ProviderFailureTest {
                 .isEqualTo(ProviderFailure.AUTHENTICATION);
         assertThat(AiProviderFailureDiagnostics.classify(openAiFailure(503, null)).category())
                 .isEqualTo(ProviderFailure.PROVIDER_UNAVAILABLE);
+    }
+
+    @Test
+    void classifiesSpringHttpFailuresForSilentRetryDisposition() {
+        var unavailable = HttpServerErrorException.create(HttpStatus.SERVICE_UNAVAILABLE,
+                "source unavailable", HttpHeaders.EMPTY, new byte[0], java.nio.charset.StandardCharsets.UTF_8);
+        var classified = AiProviderFailureDiagnostics.classify(unavailable);
+
+        assertThat(classified.category()).isEqualTo(ProviderFailure.PROVIDER_UNAVAILABLE);
+        assertThat(classified.status()).isEqualTo(503);
+        assertThat(classified.retryable()).isTrue();
     }
 
     @Test

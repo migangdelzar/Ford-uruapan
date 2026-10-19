@@ -4,6 +4,7 @@ import com.ford.service.ai.application.AiExecutionContext;
 import com.ford.service.ai.application.ToolFamily;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
 import com.ford.service.ai.application.ToolResultTracker;
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
 import org.springframework.ai.tool.ToolCallback;
 import org.junit.jupiter.api.Test;
 
@@ -13,6 +14,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ToolAuthorizationPolicyTest {
 
@@ -97,16 +99,22 @@ class ToolAuthorizationPolicyTest {
         var emptyTool = new ToolAuthorizationPolicy(List.of(callbackReturning("search_vehicles", " ")))
                 .readOnlyTools(new AiExecutionContext(UUID.randomUUID(), false), Set.of("search_vehicles"),
                         emptyTracker).getFirst();
-        emptyTool.call("{}");
+        assertThatThrownBy(() -> emptyTool.call("{}"))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.RETRY));
         assertThat(emptyTracker.hasAttempted()).isTrue();
         assertThat(emptyTracker.hasReturnedResult()).isFalse();
-        assertThat(emptyTracker.hasFailed()).isFalse();
+        assertThat(emptyTracker.hasFailed()).isTrue();
 
         var failedTracker = new ToolResultTracker();
         var failedTool = new ToolAuthorizationPolicy(List.of(callbackThrowing("search_vehicles")))
                 .readOnlyTools(new AiExecutionContext(UUID.randomUUID(), false), Set.of("search_vehicles"),
                         failedTracker).getFirst();
-        assertThat(failedTool.call("{}")).contains("READ_ONLY_SOURCE_UNAVAILABLE");
+        assertThatThrownBy(() -> failedTool.call("{}"))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
         assertThat(failedTracker.hasAttempted()).isTrue();
         assertThat(failedTracker.hasFailed()).isTrue();
         assertThat(failedTracker.hasReturnedResult()).isFalse();

@@ -9,12 +9,14 @@ public class DecisionPolicy {
     private static final Map<ToolFamily, Set<String>> TOOL_NAMES = Map.of(
             ToolFamily.VEHICLE_SEARCH, Set.of("search_vehicles", "search_vehicle_and_offers", "get_vehicle",
                     "compare_vehicles", "vehicle_snapshot_search"),
-            ToolFamily.VEHICLE_DETAILS, Set.of("search_vehicles", "get_vehicle", "compare_vehicles", "get_vehicle_provenance", "vehicle_snapshot_search"),
+            ToolFamily.VEHICLE_DETAILS, Set.of("search_vehicles", "get_vehicle", "compare_vehicles",
+                    "get_vehicle_provenance", "get_page_links", "compare_trims", "compare_model_years",
+                    "get_variant_comparisons", "vehicle_snapshot_search"),
             ToolFamily.OFFERS, Set.of("search_offers", "search_vehicle_and_offers", "list_promotions",
                     "get_catalog_status"),
             ToolFamily.FINANCE_ESTIMATE, Set.of("finance_estimate"),
             ToolFamily.KNOWLEDGE_SEARCH, Set.of("approved_knowledge_search", "search_vehicles", "get_vehicle",
-                    "get_vehicle_provenance", "vehicle_snapshot_search"),
+                    "get_vehicle_provenance", "get_page_links", "vehicle_snapshot_search"),
             ToolFamily.APPOINTMENT, Set.of());
 
     public boolean mayCreateHandoff(ConversationDecision decision, boolean handoffEnabled) {

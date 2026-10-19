@@ -47,6 +47,11 @@ public class CatalogFactResponseRenderer {
     }
 
     public Optional<String> render(String userMessage, Map<String, String> toolPayloads) {
+        return render(userMessage, toolPayloads, Set.of());
+    }
+
+    public Optional<String> render(String userMessage, Map<String, String> toolPayloads,
+                                   Set<String> failedToolNames) {
         var normalized = normalize(userMessage);
         boolean priceRequested = PRICE_QUERY.matcher(normalized).find();
         boolean promotionRequested = PROMOTION_QUERY.matcher(normalized).find();
@@ -54,17 +59,28 @@ public class CatalogFactResponseRenderer {
         if (!priceRequested && !promotionRequested) return Optional.empty();
 
         var payloads = toolPayloads == null ? Map.<String, String>of() : toolPayloads;
+        var failures = failedToolNames == null ? Set.<String>of() : failedToolNames;
         var price = priceRequested ? vehiclePrice(payloads) : Optional.<String>empty();
         var promotion = promotionRequested ? promotion(payloads) : Optional.<String>empty();
+        var priceFailed = priceRequested && price.isEmpty() && failures.stream().anyMatch(
+                Set.of("get_vehicle", "search_vehicles", "search_vehicle_and_offers")::contains);
+        var promotionFailed = promotionRequested && promotion.isEmpty() && failures.contains("list_promotions");
 
         if (priceRequested && promotionRequested) {
-            var priceSection = price.orElse(unconfirmedPrice("el modelo consultado", ""));
-            var promotionSection = promotion.orElse(unconfirmedPromotion("el modelo consultado", ""));
+            var sections = new ArrayList<String>();
+            if (!priceFailed) sections.add(price.orElse(unconfirmedPrice("el modelo consultado", "")));
+            if (!promotionFailed) sections.add(promotion.orElse(unconfirmedPromotion("el modelo consultado", "")));
+            if (sections.isEmpty()) return Optional.empty();
+            if (sections.size() == 1) return Optional.of(sections.getFirst());
             return Optional.of(fill(templates.get("combined"), Map.of(
-                    "price_section", priceSection,
-                    "promotion_section", promotionSection)));
+                    "price_section", sections.get(0),
+                    "promotion_section", sections.get(1))));
         }
-        if (priceRequested) return Optional.of(price.orElse(unconfirmedPrice("el modelo consultado", "")));
+        if (priceRequested) {
+            if (priceFailed) return Optional.empty();
+            return Optional.of(price.orElse(unconfirmedPrice("el modelo consultado", "")));
+        }
+        if (promotionFailed) return Optional.empty();
         return Optional.of(promotion.orElse(unconfirmedPromotion("el modelo consultado", "")));
     }
 
@@ -82,7 +98,9 @@ public class CatalogFactResponseRenderer {
                     + (year.isBlank() ? "" : " " + year));
             var priceUrl = safeFordUrl(text(vehicle, "priceSourceUrl", "price_source_url"));
             var modelUrl = safeFordUrl(text(vehicle, "modelPageUrl", "model_page_url", "sourceUrl", "source_url"));
-            var links = links("Ver precio", priceUrl, "Ver modelo", modelUrl);
+            var priceLinkUrl = priceUrl.isBlank() ? modelUrl : priceUrl;
+            var priceLinkLabel = priceUrl.isBlank() ? "Ver modelo" : "Ver precio";
+            var links = links(priceLinkLabel, priceLinkUrl, "", "");
             return Optional.of(fill(templates.get("price"), Map.of(
                     "vehicle", vehicleLabel,
                     "price", safeText(price),
@@ -96,7 +114,14 @@ public class CatalogFactResponseRenderer {
         if (result.isEmpty()) return Optional.empty();
         var root = result.get();
         var offers = root.isArray() ? root : root.path("results");
-        if (!offers.isArray() || offers.isEmpty()) return Optional.empty();
+        if (!offers.isArray()) return Optional.empty();
+        if (offers.isEmpty()) {
+            var totalCount = root.path("totalCount");
+            if (root.isArray() || totalCount.canConvertToLong() && totalCount.asLong() == 0) {
+                return Optional.of("No encontré promociones para el modelo consultado en el catálogo actual.");
+            }
+            return Optional.empty();
+        }
 
         var blocks = new ArrayList<String>();
         for (var offer : offers) {
@@ -110,13 +135,15 @@ public class CatalogFactResponseRenderer {
             var conditions = safeText(text(offer, "conditions", "termsAndConditions", "terms_and_conditions"));
             var sourceUrl = safeFordUrl(text(offer, "sourceUrl", "source_url"));
             var modelUrl = safeFordUrl(text(offer, "modelPageUrl", "modelUrl", "model_page_url", "model_url"));
+            var promotionLinkUrl = sourceUrl.isBlank() ? modelUrl : sourceUrl;
+            var promotionLinkLabel = sourceUrl.isBlank() ? "Ver modelo" : "Ver promoción";
             blocks.add(fill(templates.get("promotion"), Map.of(
                     "vehicle", vehicle,
                     "title", safeText(title.isBlank() ? "Promoción publicada" : title),
                     "benefits", benefits,
                     "validity", validity,
                     "conditions", conditions.isBlank() ? "" : "Condiciones: " + limit(conditions, 500),
-                    "promotion_links", links("Ver promoción", sourceUrl, "Ver modelo", modelUrl))));
+                    "promotion_links", links(promotionLinkLabel, promotionLinkUrl, "", ""))));
             if (blocks.size() == 3) break;
         }
         return Optional.of(String.join("\n\n", blocks));

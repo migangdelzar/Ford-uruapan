@@ -5,6 +5,7 @@ import com.ford.service.ai.adapter.out.springai.KnowledgeRagAdvisorFactory;
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantGeneration;
 import com.ford.service.ai.api.ResponseEvidenceStatus;
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
 import com.ford.service.leads.domain.LeadJourneyProposal;
 import com.ford.service.leads.domain.LeadJourneyTopic;
 import com.ford.service.ai.application.AiExecutionContext;
@@ -36,6 +37,8 @@ import java.util.UUID;
 import java.util.Arrays;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.mock;
@@ -59,7 +62,7 @@ class SpringAiChatCompletionAdapterTest {
     }
 
     @Test
-    void addsSpringAiRagAdvisorOnlyForTheKnowledgeSearchRoute() {
+    void addsSpringAiRagAdvisorOnlyForKnowledgeAndWithholdsWithoutEvidence() {
         var client = mock(ChatClient.class);
         var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
         var responseSpec = mock(ChatClient.CallResponseSpec.class);
@@ -86,14 +89,16 @@ class SpringAiChatCompletionAdapterTest {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
 
-        adapter.complete(new AssistantRequest(tenantId, conversationId, "¿Qué cubre la garantía?",
-                "BOT_ACTIVE", null, false, knowledge), null);
+        assertThatThrownBy(() -> adapter.complete(new AssistantRequest(tenantId, conversationId,
+                "¿Qué cubre la garantía?", "BOT_ACTIVE", null, false, knowledge), null))
+                .isInstanceOf(AssistantTurnUnavailableException.class);
         verify(requestSpec).advisors(any(Advisor[].class));
         assertToolNames(requestSpec, "get_vehicle");
 
         org.mockito.Mockito.clearInvocations(requestSpec);
-        adapter.complete(new AssistantRequest(tenantId, conversationId, "¿Qué precio tiene la Explorer?",
-                "BOT_ACTIVE", null, false, vehicle), null);
+        assertThatThrownBy(() -> adapter.complete(new AssistantRequest(tenantId, conversationId,
+                "¿Qué precio tiene la Explorer?", "BOT_ACTIVE", null, false, vehicle), null))
+                .isInstanceOf(AssistantTurnUnavailableException.class);
         verify(requestSpec, never()).advisors(any(Advisor[].class));
     }
 
@@ -113,10 +118,11 @@ class SpringAiChatCompletionAdapterTest {
                 LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.KNOWLEDGE_SEARCH,
                 SensitiveDataLevel.NONE, testEvidence());
 
-        var result = adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
-                "¿Qué motor tiene la Bronco?", "BOT_ACTIVE", null, false, knowledge), null);
-
-        assertThat(result.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.REQUIRED_TOOL_NOT_CALLED);
+        assertThatThrownBy(() -> adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                "¿Qué motor tiene la Bronco?", "BOT_ACTIVE", null, false, knowledge), null))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
         verify(requestSpec, never()).call();
     }
 
@@ -142,8 +148,11 @@ class SpringAiChatCompletionAdapterTest {
                 LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.KNOWLEDGE_SEARCH,
                 SensitiveDataLevel.NONE, testEvidence());
 
-        adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
-                "¿Cómo funciona la garantía Ford?", "BOT_ACTIVE", null, false, knowledge), null);
+        assertThatThrownBy(() -> adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                "¿Cómo funciona la garantía Ford?", "BOT_ACTIVE", null, false, knowledge), null))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
 
         verify(requestSpec).advisors(any(Advisor[].class));
         verify(requestSpec).call();
@@ -222,7 +231,79 @@ class SpringAiChatCompletionAdapterTest {
     }
 
     @Test
-    void returnsOnlyApprovedMcpSourceLinksWhenTheModelFailsForAnUnrenderableExactFact() {
+    void doesNotReturnFailureTextWhenCatalogLookupFailsWithoutVerifiedFacts() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var failingTool = new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return org.springframework.ai.tool.definition.DefaultToolDefinition.builder()
+                        .name("get_vehicle").description("vehicle").inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String input) {
+                throw new AssistantTurnUnavailableException(AssistantTurnUnavailableException.Disposition.RETRY);
+            }
+        };
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenAnswer(invocation -> {
+            invokeFirstToolCallback(invocation.getArgument(0));
+            return requestSpec;
+        });
+
+        var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
+                LeadTemperature.WARM, LeadStage.QUALIFYING, HandoffRecommendation.NONE,
+                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, testEvidence());
+        var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
+                new ToolAuthorizationPolicy(List.of(failingTool)), new DecisionPolicy(), null,
+                new com.ford.service.ai.application.AssistantResponseQualityPolicy(), new ObjectMapper(),
+                new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP),
+                new CatalogFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper()));
+
+        assertThatThrownBy(() -> adapter.complete(new AssistantRequest(tenantId, conversationId,
+                "¿Qué precio tiene Explorer 2027?", "BOT_ACTIVE", null, false, decision),
+                new ToolContext(tenantId, conversationId)))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.RETRY));
+    }
+
+    @Test
+    void doesNotClaimNoPublishedPriceWhenTheModelNeverCallsTheAvailableTool() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("{\"answer\":\"La Ranger cuesta $850,000.\",\"modelConfidence\":0.99}");
+        var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS,
+                LeadTemperature.UNKNOWN, LeadStage.NEW, HandoffRecommendation.NONE,
+                ToolFamily.VEHICLE_DETAILS, SensitiveDataLevel.NONE, testEvidence());
+        var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
+                new ToolAuthorizationPolicy(List.of(callback("get_vehicle"))), new DecisionPolicy(), null,
+                new com.ford.service.ai.application.AssistantResponseQualityPolicy(), new ObjectMapper(),
+                new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP),
+                new CatalogFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper()));
+
+        assertThatThrownBy(() -> adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                "¿Qué precio tiene la Ranger?", "BOT_ACTIVE", null, false, decision), null))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
+    }
+
+    @Test
+    void doesNotSendOnlySourceLinksWhenTheModelFailsForAnUnrenderableExactFact() {
         var client = mock(ChatClient.class);
         var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
         var responseSpec = mock(ChatClient.CallResponseSpec.class);
@@ -262,14 +343,11 @@ class SpringAiChatCompletionAdapterTest {
                 new com.ford.service.observability.DefaultAiObservationService(
                         io.micrometer.observation.ObservationRegistry.NOOP), renderer);
 
-        var result = adapter.complete(new AssistantRequest(tenantId, conversationId,
+        assertThatThrownBy(() -> adapter.complete(new AssistantRequest(tenantId, conversationId,
                         "¿Qué rendimiento tiene Maverick Hybrid?", "BOT_ACTIVE", null, false, decision),
-                new ToolContext(tenantId, conversationId));
-
-        assertThat(result.content()).contains("prefiero no darle información incompleta",
-                "Ficha técnica: https://www.forduruapan.mx/MAVERICK/26/Ficha-Tecnica/")
-                .doesNotContain("km/l", "rendimiento es");
-        assertThat(result.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED);
+                new ToolContext(tenantId, conversationId)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("provider unavailable");
     }
 
     @Test
@@ -459,7 +537,10 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
-        when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenAnswer(invocation -> {
+            invokeFirstToolCallback(invocation.getArgument(0));
+            return requestSpec;
+        });
         when(requestSpec.call()).thenReturn(responseSpec);
         when(responseSpec.content()).thenReturn("Respuesta contextual.");
 
@@ -538,7 +619,10 @@ class SpringAiChatCompletionAdapterTest {
         when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
         when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
-        when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenAnswer(invocation -> {
+            invokeFirstToolCallback(invocation.getArgument(0));
+            return requestSpec;
+        });
         when(requestSpec.call()).thenReturn(responseSpec);
         when(responseSpec.content()).thenReturn("Revisaré las promociones vigentes.");
 
@@ -575,11 +659,12 @@ class SpringAiChatCompletionAdapterTest {
         var adapter = new SpringAiChatCompletionAdapter(client, "ollama",
                 new ToolAuthorizationPolicy(), new DecisionPolicy());
 
-                var result = adapter.complete(new AssistantRequest(tenantId, conversationId,
+        assertThatThrownBy(() -> adapter.complete(new AssistantRequest(tenantId, conversationId,
                         "¿Qué precio tiene la Ranger?", "BOT_ACTIVE", null, false, decision),
-                new ToolContext(tenantId, conversationId));
-
-        assertThat(result.content()).contains("no lo tengo confirmado");
+                new ToolContext(tenantId, conversationId)))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
         verify(requestSpec, never()).call();
     }
 
@@ -684,19 +769,17 @@ class SpringAiChatCompletionAdapterTest {
                 LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_SEARCH,
                 SensitiveDataLevel.NONE, testEvidence());
 
-        var result = new SpringAiChatCompletionAdapter(client, "groq",
+        assertThatThrownBy(() -> new SpringAiChatCompletionAdapter(client, "groq",
                 new ToolAuthorizationPolicy(List.of(callback("search_vehicles"))))
                 .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
-                        "¿Hay Ranger disponible?", "BOT_ACTIVE", null, false, decision), null);
-
-        assertThat(result.content()).contains("no lo tengo confirmado");
-        assertThat(result.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.REQUIRED_TOOL_NOT_CALLED);
-        assertThat(result.modelConfidence()).isEqualTo(0.99);
-        assertThat(result.content()).doesNotContain("99%");
+                        "¿Hay Ranger disponible?", "BOT_ACTIVE", null, false, decision), null))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
     }
 
     @Test
-    void returnsOnlyALimitedMessageWhenTheReadOnlyToolFails() {
+    void sendsNoMessageWhenTheReadOnlyToolFailsWithoutVerifiedFacts() {
         var client = mock(ChatClient.class);
         var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
         var responseSpec = mock(ChatClient.CallResponseSpec.class);
@@ -728,18 +811,17 @@ class SpringAiChatCompletionAdapterTest {
                 LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_SEARCH,
                 SensitiveDataLevel.NONE, testEvidence());
 
-        var result = new SpringAiChatCompletionAdapter(client, "deepseek",
+        assertThatThrownBy(() -> new SpringAiChatCompletionAdapter(client, "deepseek",
                 new ToolAuthorizationPolicy(List.of(failedTool)))
                 .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
-                        "¿Hay Ranger disponible?", "BOT_ACTIVE", null, false, decision), null);
-
-        assertThat(result.content()).contains("no lo tengo confirmado")
-                .doesNotContain("disponible", "precio", "$", "2027");
-        assertThat(result.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.READ_ONLY_TOOL_FAILED);
+                        "¿Hay Ranger disponible?", "BOT_ACTIVE", null, false, decision), null))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
     }
 
     @Test
-    void answersGeneralQuestionWithExplicitCaveatWhenReadOnlyToolFails() {
+    void doesNotAnswerFromGeneralKnowledgeWhenReadOnlyToolFails() {
         var client = mock(ChatClient.class);
         var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
         var responseSpec = mock(ChatClient.CallResponseSpec.class);
@@ -779,20 +861,13 @@ class SpringAiChatCompletionAdapterTest {
                 new ToolAuthorizationPolicy(List.of(failedTool)));
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
-        var result = adapter.complete(new AssistantRequest(tenantId, conversationId,
-                "¿Cómo funciona en general la tecnología híbrida y qué ventajas ofrece?", "BOT_ACTIVE", null, false, decision), null);
-
-        assertThat(result.content()).contains("combina un motor", "orientación general", "no están confirmados");
-        assertThat(result.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.READ_ONLY_TOOL_FAILED);
-
-        when(responseSpec.content()).thenReturn("""
-                {"answer":"El modelo 2027 alcanza 18 km/l en ciclo combinado.","modelConfidence":0.99}
-                """);
-        var unsupported = adapter.complete(new AssistantRequest(tenantId, conversationId,
-                "¿Cómo funciona en general la tecnología híbrida y qué ventajas ofrece?", "BOT_ACTIVE", null, false, decision), null);
-
-        assertThat(unsupported.content()).contains("no lo tengo confirmado")
-                .doesNotContain("2027", "18 km/l");
+        assertThatThrownBy(() -> adapter.complete(new AssistantRequest(tenantId, conversationId,
+                "¿Cómo funciona en general la tecnología híbrida y qué ventajas ofrece?", "BOT_ACTIVE", null,
+                false, decision), null))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
+        verify(responseSpec, never()).content();
     }
 
     @Test
@@ -832,18 +907,17 @@ class SpringAiChatCompletionAdapterTest {
                 LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_DETAILS,
                 SensitiveDataLevel.NONE, testEvidence());
 
-        var result = new SpringAiChatCompletionAdapter(client, "deepseek",
+        assertThatThrownBy(() -> new SpringAiChatCompletionAdapter(client, "deepseek",
                 new ToolAuthorizationPolicy(List.of(failedTool)))
                 .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
-                        "¿Qué significa que un vehículo sea híbrido?", "BOT_ACTIVE", null, false, decision), null);
-
-        assertThat(result.content()).contains("no lo tengo confirmado")
-                .doesNotContain("combina un motor");
-        assertThat(result.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.READ_ONLY_TOOL_FAILED);
+                        "¿Qué significa que un vehículo sea híbrido?", "BOT_ACTIVE", null, false, decision), null))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
     }
 
     @Test
-    void withholdsUnsupportedExactFactsWhenTheReadOnlyToolReturnsNoResults() {
+    void leavesTurnPendingWhenTheReadOnlyToolReturnsNoStructuredResult() {
         var client = mock(ChatClient.class);
         var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
         var responseSpec = mock(ChatClient.CallResponseSpec.class);
@@ -876,14 +950,13 @@ class SpringAiChatCompletionAdapterTest {
                 LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_SEARCH,
                 SensitiveDataLevel.NONE, testEvidence());
 
-        var result = new SpringAiChatCompletionAdapter(client, "deepseek",
+        assertThatThrownBy(() -> new SpringAiChatCompletionAdapter(client, "deepseek",
                 new ToolAuthorizationPolicy(List.of(emptyTool)))
                 .complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
-                        "¿Hay Ranger disponible?", "BOT_ACTIVE", null, false, decision), null);
-
-        assertThat(result.content()).contains("no lo tengo confirmado")
-                .doesNotContain("$850,000", "2027", "disponible");
-        assertThat(result.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED_EMPTY);
+                        "¿Hay Ranger disponible?", "BOT_ACTIVE", null, false, decision), null))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.RETRY));
     }
 
     @Test

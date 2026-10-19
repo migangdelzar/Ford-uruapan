@@ -1,17 +1,24 @@
 package com.ford.service.ai;
 
 import com.ford.service.ai.adapter.out.springai.ObservedToolCallback;
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
+import org.springframework.http.HttpHeaders;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import java.net.SocketTimeoutException;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import java.util.Map;
 
@@ -54,7 +61,7 @@ class ObservedToolCallbackTest {
     }
 
     @Test
-    void propagatesToolFailuresForProviderHandling() {
+    void reportsPermanentToolFailureAsReviewWithoutExposingFailureText() {
         var delegate = new ToolCallback() {
             @Override
             public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
@@ -69,8 +76,113 @@ class ObservedToolCallbackTest {
         };
 
         assertThatThrownBy(() -> new ObservedToolCallback(delegate, new SimpleMeterRegistry()).call("{}"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessage("source unavailable");
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
+    }
+
+    @Test
+    void retriesOneTransientToolFailureSilently() {
+        var calls = new AtomicInteger();
+        var delegate = new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return DefaultToolDefinition.builder().name("search_vehicles")
+                        .description("catalog").inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String input) {
+                if (calls.incrementAndGet() == 1) {
+                    throw new IllegalStateException("private source error",
+                            new SocketTimeoutException("private source details"));
+                }
+                return "verified catalog result";
+            }
+        };
+
+        assertThat(new ObservedToolCallback(delegate, new SimpleMeterRegistry()).call("private input"))
+                .isEqualTo("verified catalog result");
+        assertThat(calls).hasValue(2);
+    }
+
+    @Test
+    void doesNotRetryAuthenticationFailures() {
+        var calls = new AtomicInteger();
+        var delegate = new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return DefaultToolDefinition.builder().name("list_promotions")
+                        .description("offers").inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String input) {
+                calls.incrementAndGet();
+                throw new HttpClientErrorException(HttpStatus.FORBIDDEN);
+            }
+        };
+
+        assertThatThrownBy(() -> new ObservedToolCallback(delegate, new SimpleMeterRegistry()).call("{}"))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
+        assertThat(calls).hasValue(1);
+    }
+
+    @Test
+    void doesNotRetryInvalidRequests() {
+        var calls = new AtomicInteger();
+        var delegate = new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return DefaultToolDefinition.builder().name("list_promotions")
+                        .description("offers").inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String input) {
+                calls.incrementAndGet();
+                throw new HttpClientErrorException(HttpStatus.BAD_REQUEST);
+            }
+        };
+
+        assertThatThrownBy(() -> new ObservedToolCallback(delegate, new SimpleMeterRegistry()).call("{}"))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
+        assertThat(calls).hasValue(1);
+    }
+
+    @Test
+    void defersRateLimitWhenRetryAfterExceedsImmediateWaitBudget() {
+        var calls = new AtomicInteger();
+        var delays = new java.util.ArrayList<Duration>();
+        var headers = new HttpHeaders();
+        headers.add("Retry-After", "30");
+        var failure = HttpClientErrorException.create(HttpStatus.TOO_MANY_REQUESTS,
+                "rate limited", headers, new byte[0], StandardCharsets.UTF_8);
+        var delegate = new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return DefaultToolDefinition.builder().name("list_promotions")
+                        .description("offers").inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String input) {
+                calls.incrementAndGet();
+                throw failure;
+            }
+        };
+
+        assertThatThrownBy(() -> new ObservedToolCallback(delegate, new SimpleMeterRegistry(), delays::add)
+                .call("{}"))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.RETRY));
+        assertThat(calls).hasValue(1);
+        assertThat(delays).isEmpty();
     }
 
     @Test
@@ -123,7 +235,9 @@ class ObservedToolCallbackTest {
         };
 
         assertThatThrownBy(() -> new ObservedToolCallback(delegate, registry).call("private arguments"))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.RETRY));
 
         assertThat(output.getOut())
                 .contains("failureCategory=timeout")

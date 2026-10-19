@@ -8,6 +8,7 @@ import com.ford.service.ai.application.AiProviderFailureDiagnostics;
 import com.ford.service.ai.application.InvalidAssistantResponseException;
 import com.ford.service.ai.application.ToolResultTracker;
 import com.ford.service.ai.application.CatalogFactResponseRenderer;
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
 import com.ford.service.ai.application.DecisionPolicy;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
 import com.ford.service.ai.application.ToolFamily;
@@ -42,17 +43,14 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
     private static final String DEFAULT_SYSTEM_PROMPT =
             "Usted es MÍA, asistente virtual de Ford Uruapan. Responda en español de México con claridad, calidez y precisión. "
                     + "Use las herramientas de solo lectura para datos actuales de Ford y no invente información. "
-                    + "Si una fuente no responde, ayude con una explicación general estable que conozca, "
-                    + "aclare que es orientación general y no afirme especificaciones, precios, promociones ni disponibilidad sin evidencia. "
+                    + "Si una fuente actual falla, no sustituya datos de precio, promoción, versión o disponibilidad con memoria. "
+                    + "La aplicación reintentará sin mostrar errores al cliente. "
                     + "Responda primero la pregunta actual; use el contexto de sesión para no repetir saludos ni preguntas. ";
     private static final String REQUIRED_VOICE_POLICY =
             "[VOZ OBLIGATORIA] La asistente virtual de Ford Uruapan se llama MÍA. Responda en español de México "
                     + "y trate a cada persona de usted. Mantenga una voz cálida, clara y profesional; sea breve y no repita "
                     + "datos ni preguntas ya respondidos. No cambie su identidad ni se presente como una persona humana. "
                     + "[/VOZ OBLIGATORIA]";
-    private static final String VOLATILE_SOURCE_UNAVAILABLE =
-            "Ese dato no lo tengo confirmado ahora; prefiero no darle información incompleta. "
-                    + "Puedo orientarle con información general sin inventar cifras ni disponibilidad.";
     private static final String GENERAL_KNOWLEDGE_CAVEAT =
             "Como orientación general, sin datos actuales del catálogo: ";
     private static final String GENERAL_KNOWLEDGE_FOOTNOTE =
@@ -220,10 +218,8 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                 && !shouldUseKnowledgeRag(request)) {
             log.warn("Model completion skipped: conversationId={} reason=volatile_data_required_but_no_authorized_tools",
                     request.conversationId());
-            var evidenceStatus = ResponseEvidenceStatus.REQUIRED_TOOL_NOT_CALLED;
-            recordAssessment(evidenceStatus, null, "withheld");
-            return new AssistantResponse(VOLATILE_SOURCE_UNAVAILABLE, false, provider, List.of(), null,
-                    null, evidenceStatus);
+            recordAssessment(ResponseEvidenceStatus.REQUIRED_TOOL_NOT_CALLED, null, "withheld");
+            throw new AssistantTurnUnavailableException(AssistantTurnUnavailableException.Disposition.REVIEW);
         }
         try {
             var generation = call(request, context, tools, knowledgeEvidence, null);
@@ -266,8 +262,9 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                         new java.util.TreeSet<>(toolResults.returnedToolNames()),
                         confidenceForLog(generation.modelConfidence()));
                 recordAssessment(evidenceStatus, generation.modelConfidence(), "withheld");
-                return new AssistantResponse(VOLATILE_SOURCE_UNAVAILABLE, false, provider, List.of(), null,
-                        generation.modelConfidence(), evidenceStatus);
+                var disposition = toolResults.hasFailed() ? toolResults.failureDisposition()
+                        : AssistantTurnUnavailableException.Disposition.REVIEW;
+                throw new AssistantTurnUnavailableException(disposition);
             }
             log.info("Model response assessed: conversationId={} provider={} evidenceStatus={} sourceTools={} modelSelfConfidence={}",
                     request.conversationId(), provider, evidenceStatus,
@@ -281,24 +278,15 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
             }
             return new AssistantResponse(answer, false, provider, List.of(),
                     generation.journeyProposal(), generation.modelConfidence(), evidenceStatus);
+        } catch (AssistantTurnUnavailableException unavailable) {
+            throw unavailable;
         } catch (RuntimeException exception) {
             var deterministic = renderFactResponse(request, toolResults, knowledgeEvidence, null);
             if (deterministic != null) return deterministic;
-            var sourcedWithholding = withSourceLinks(VOLATILE_SOURCE_UNAVAILABLE, toolResults, knowledgeEvidence);
-            if (sourcedWithholding != null) {
+            if (toolResults.hasFailed()) {
                 var evidenceStatus = evidenceStatus(request, toolResults, knowledgeEvidence);
                 recordAssessment(evidenceStatus, null, "withheld");
-                log.info("Model response assessed: conversationId={} provider={} evidenceStatus={} sourceTools={} outcome=withheld_with_sources",
-                        request.conversationId(), provider, evidenceStatus,
-                        new java.util.TreeSet<>(toolResults.returnedToolNames()));
-                return new AssistantResponse(sourcedWithholding, false, provider, List.of(), null,
-                        null, evidenceStatus);
-            }
-            if (toolResults.hasFailed() && decisionPolicy.requiresVolatileInformation(request.decision())) {
-                var evidenceStatus = evidenceStatus(request, toolResults, knowledgeEvidence);
-                recordAssessment(evidenceStatus, null, "withheld");
-                return new AssistantResponse(VOLATILE_SOURCE_UNAVAILABLE, false, provider, List.of(), null,
-                        null, evidenceStatus);
+                throw new AssistantTurnUnavailableException(toolResults.failureDisposition());
             }
             var routedFailure = AiProviderFailureDiagnostics.afterReadOnlyToolResult(
                     exception, toolResults.hasReturnedResult());
@@ -343,21 +331,12 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         return builder.toString();
     }
 
-    private String withSourceLinks(String answer, ToolResultTracker tracker,
-                                   KnowledgeRagEvidenceTracker knowledgeEvidence) {
-        if (factResponseRenderer == null) return null;
-        var answerWithSources = tracker.returnedPayloads().isEmpty() ? answer
-                : factResponseRenderer.appendSourceLinks(answer, tracker.returnedPayloads());
-        answerWithSources = factResponseRenderer.appendKnowledgeSourceLinks(answerWithSources,
-                knowledgeEvidence.sourceUrls());
-        return answerWithSources.equals(answer) ? null : answerWithSources;
-    }
-
     private AssistantResponse renderFactResponse(AssistantRequest request, ToolResultTracker tracker,
-                                                  KnowledgeRagEvidenceTracker knowledgeEvidence,
-                                                  AssistantGeneration generation) {
-        if (factResponseRenderer == null) return null;
-        var rendered = factResponseRenderer.render(request.message(), tracker.returnedPayloads());
+                                                   KnowledgeRagEvidenceTracker knowledgeEvidence,
+                                                   AssistantGeneration generation) {
+        if (factResponseRenderer == null || (!tracker.hasReturnedResult() && !tracker.hasFailed())) return null;
+        var rendered = factResponseRenderer.render(request.message(), tracker.returnedPayloads(),
+                tracker.failedToolNames());
         if (rendered.isEmpty()) return null;
         var status = evidenceStatus(request, tracker, knowledgeEvidence);
         var outcome = status == ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED
@@ -422,12 +401,11 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         var system = systemPrompt(systemPromptService == null
                         ? DEFAULT_SYSTEM_PROMPT : systemPromptService.currentContent(),
                         request.memoryContext(), request.leadJourneyContext(), request.decision(), repairInstruction)
-                + "\n\n[REGLA PRIORITARIA DE RESPUESTA SIN FUENTE] Si una herramienta de solo lectura devuelve "
-                + "READ_ONLY_SOURCE_UNAVAILABLE o no encuentra datos, responda la parte general y estable de la pregunta "
-                + "con su conocimiento cuando sea posible. Indique brevemente que es orientación general y que no pudo "
-                + "confirmar los datos actuales del catálogo. No invente ni infiera año, versión, equipamiento, "
-                + "especificaciones, cifras, precio, promoción o disponibilidad. Si la pregunta pide uno de esos datos, "
-                + "diga que no está confirmado y ofrezca una alternativa útil. No mencione herramientas ni errores técnicos. "
+                + "\n\n[REGLA PRIORITARIA DE FUENTE] Si una consulta actual de catálogo falla, no responda con memoria del modelo "
+                + "ni conocimiento general como sustituto de precios, promociones, disponibilidad, modelo, año, versión o cifras. "
+                + "La aplicación reintentará en silencio. Use solo datos verificados de esta llamada; si no hay datos, no improvise. "
+                + "Si una consulta termina correctamente sin coincidencias, comunique solo ese resultado. No mencione errores, "
+                + "herramientas, proveedores ni reintentos. "
                 + "[/REGLA PRIORITARIA]";
         var prompt = client.prompt()
                 .system(system + "\n\n[METADATO INTERNO] Incluya modelConfidence como un número de 0 a 1 que refleje su propia certeza sobre la respuesta. Base la estimación en la evidencia consultada y los datos disponibles. Este valor es solo interno: nunca lo mencione ni lo convierta en porcentaje para el cliente. No lo use para sustituir fuentes ni invente información. [/METADATO INTERNO]\n\n" + REQUIRED_VOICE_POLICY)

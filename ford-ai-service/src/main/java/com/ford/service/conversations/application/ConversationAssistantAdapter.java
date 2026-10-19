@@ -2,6 +2,7 @@ package com.ford.service.conversations.application;
 
 import com.ford.service.ai.application.AiExecutionContext;
 import com.ford.service.ai.application.AssistantService;
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
 import com.ford.service.conversations.api.AssistantReply;
 import com.ford.service.conversations.api.ConversationTurnRequest;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
@@ -14,8 +15,6 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 public class ConversationAssistantAdapter implements ConversationAssistant {
-
-    private static final String FALLBACK_TEXT = com.ford.service.shared.HumanHandoffPolicy.BOT_FALLBACK;
 
     private final Supplier<AssistantService> assistantProvider;
     private final PendingTestDriveReplyPolicy pendingTestDriveReplyPolicy;
@@ -39,7 +38,7 @@ public class ConversationAssistantAdapter implements ConversationAssistant {
         if (pendingReply.isPresent()) return pendingReply.get();
         var assistant = assistantProvider.get();
         if (assistant == null) {
-            return new AssistantReply(FALLBACK_TEXT, false);
+            throw new AssistantTurnUnavailableException(AssistantTurnUnavailableException.Disposition.REVIEW);
         }
         var turn = assistant.respond(new AiExecutionContext(
                 request.tenantId(), false, request.conversationId(), memoryPrompt(request.memory()), null,

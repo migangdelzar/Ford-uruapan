@@ -3,6 +3,7 @@ package com.ford.service.ai;
 import com.ford.service.ai.adapter.out.rules.RulesConversationDecisionAdapter;
 import com.ford.service.ai.application.ClassificationContext;
 import com.ford.service.ai.application.ConversationIntent;
+import com.ford.service.ai.application.DecisionPolicy;
 import com.ford.service.ai.application.IntentRouter;
 import com.ford.service.ai.application.HandoffRecommendation;
 import com.ford.service.ai.application.ToolFamily;
@@ -70,6 +71,16 @@ class RulesConversationDecisionAdapterTest {
 
         assertThat(decision.intent()).isEqualTo(ConversationIntent.VEHICLE_DETAILS);
         assertThat(decision.handoffRecommendation()).isEqualTo(HandoffRecommendation.NONE);
+    }
+
+    @Test
+    void routesModelYearComparisonsToTheCatalogCallbackFamily() {
+        var decision = adapter.decide(context("¿Qué cambió entre BRONCO modelo 2025 y 2026?"));
+        var allowed = new DecisionPolicy().allowedToolNames(decision,
+                java.util.Set.of("compare_model_years", "search_offers"));
+
+        assertThat(decision.toolFamily()).isEqualTo(ToolFamily.VEHICLE_DETAILS);
+        assertThat(allowed).containsExactly("compare_model_years");
     }
 
     private void assertDecision(String message, ConversationIntent intent, ToolFamily family) {

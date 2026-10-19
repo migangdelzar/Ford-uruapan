@@ -3,6 +3,8 @@ package com.ford.service.ai;
 import com.ford.service.ai.application.AssistantResponseQualityPolicy;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AssistantResponseQualityPolicyTest {
@@ -42,6 +44,20 @@ class AssistantResponseQualityPolicyTest {
 
         assertThat(verdict.accepted()).isFalse();
         assertThat(verdict.reason()).isEqualTo("internal_payload");
+    }
+
+    @Test
+    void rejectsEveryCatalogCallbackNameInCustomerFacingText() {
+        var callbackNames = List.of("search_vehicles", "search_vehicle_and_offers", "get_vehicle",
+                "compare_vehicles", "search_offers", "list_promotions", "get_vehicle_provenance",
+                "get_catalog_status", "get_page_links", "compare_trims", "compare_model_years",
+                "get_variant_comparisons");
+
+        for (var callbackName : callbackNames) {
+            var verdict = policy.evaluate("Pregunta", null, "Detalle interno: " + callbackName);
+            assertThat(verdict.accepted()).as(callbackName).isFalse();
+            assertThat(verdict.reason()).as(callbackName).isEqualTo("internal_payload");
+        }
     }
 
     @Test

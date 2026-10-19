@@ -114,6 +114,8 @@ ford:
     tools:
       enabled: ${FORD_CATALOG_TOOLS_ENABLED:false}
       read-only-tool-names: ${FORD_CATALOG_READ_ONLY_TOOL_NAMES:search_vehicles,search_vehicle_and_offers,get_vehicle,compare_vehicles,search_offers,list_promotions,get_vehicle_provenance,get_catalog_status,get_page_links,compare_trims,compare_model_years,get_variant_comparisons}
+    embedding:
+      model: ${FORD_CATALOG_EMBEDDING_MODEL:bge-m3}
     datasource:
       url: ${FORD_CATALOG_JDBC_URL:}
       username: ${FORD_CATALOG_USERNAME:}

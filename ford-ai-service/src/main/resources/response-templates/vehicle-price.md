@@ -1,5 +1,2 @@
-🚘 *{{vehicle}}*
-
-*Precio publicado:* {{price}}
-
+*{{vehicle}}*: {{price}} precio publicado.
 {{price_link}}

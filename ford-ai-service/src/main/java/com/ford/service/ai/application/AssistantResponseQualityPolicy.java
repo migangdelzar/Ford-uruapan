@@ -18,9 +18,11 @@ public final class AssistantResponseQualityPolicy {
     private static final Pattern WORDS = Pattern.compile("[^\\p{L}\\p{N}]+", Pattern.UNICODE_CHARACTER_CLASS);
     private static final Pattern SECOND_DETAIL = Pattern.compile(
             "\\b(?:y|o)\\s+(?:que|cual|cuanto|cuantos|cuantas|donde|cuando|como|quien|a que)\\b");
-    private static final List<String> INTERNAL_MARKERS = List.of(
-            "search_vehicles", "get_vehicle", "compare_vehicles", "search_offers", "list_promotions",
+        private static final List<String> INTERNAL_MARKERS = List.of(
+            "search_vehicles", "search_vehicle_and_offers", "get_vehicle", "compare_vehicles",
+            "search_offers", "list_promotions",
             "get_vehicle_provenance", "get_catalog_status", "vehicle_snapshot_search", "approved_knowledge_search",
+            "get_page_links", "compare_trims", "compare_model_years", "get_variant_comparisons",
             "tool_call", "function_call", "openrouter", "ollama", "typesafe", "spring ai");
     private static final List<String> STRUCTURED_MARKERS = List.of(
             "\"query\"", "\"modelyear\"", "\"arguments\"", "\"tool\"", "\"function\"", "```json");

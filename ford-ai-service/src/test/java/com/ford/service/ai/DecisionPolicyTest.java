@@ -66,6 +66,19 @@ class DecisionPolicyTest {
     }
 
     @Test
+    void exposesEveryCatalogComparisonAndSourceToolForVehicleDetails() {
+        var decision = decision(ToolFamily.VEHICLE_DETAILS);
+
+        assertThat(policy.allowedToolNames(decision, Set.of(
+                "search_vehicles", "get_vehicle", "compare_vehicles", "get_vehicle_provenance",
+                "get_page_links", "compare_trims", "compare_model_years", "get_variant_comparisons",
+                "vehicle_snapshot_search", "search_offers")))
+                .containsExactlyInAnyOrder("search_vehicles", "get_vehicle", "compare_vehicles",
+                        "get_vehicle_provenance", "get_page_links", "compare_trims",
+                        "compare_model_years", "get_variant_comparisons", "vehicle_snapshot_search");
+    }
+
+    @Test
     void exposesCombinedVehicleAndOfferSearchForVehicleSearchRequests() {
         var decision = decision(ToolFamily.VEHICLE_SEARCH);
 
@@ -106,9 +119,9 @@ class DecisionPolicyTest {
 
         assertThat(policy.allowedToolNames(decision, Set.of(
                 "approved_knowledge_search", "search_vehicles", "get_vehicle",
-                "get_vehicle_provenance", "vehicle_snapshot_search", "send_message")))
+                "get_vehicle_provenance", "get_page_links", "vehicle_snapshot_search", "send_message")))
                 .containsExactlyInAnyOrder("approved_knowledge_search", "search_vehicles", "get_vehicle",
-                "get_vehicle_provenance", "vehicle_snapshot_search");
+                "get_vehicle_provenance", "get_page_links", "vehicle_snapshot_search");
     }
 
     @Test

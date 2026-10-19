@@ -12,6 +12,8 @@ import com.ford.service.catalog.api.CatalogPageLinkEvidence;
 import com.ford.service.catalog.api.CatalogPageLinkPage;
 import com.ford.service.catalog.api.DocumentProvenance;
 import com.ford.service.catalog.api.CatalogStatus;
+import com.ford.service.catalog.api.CatalogRetrievalPort;
+import com.ford.service.catalog.api.CatalogSearchPage;
 import com.ford.service.catalog.api.VariantComparisonEvidence;
 import com.ford.service.catalog.api.VehicleEvidence;
 import com.ford.service.catalog.api.VehicleFact;
@@ -37,13 +39,19 @@ import java.util.Optional;
 public final class CatalogTools {
 
     private final CatalogPort catalog;
+    private final CatalogRetrievalPort retrieval;
 
     public CatalogTools(CatalogPort catalog) {
+        this(catalog, null);
+    }
+
+    public CatalogTools(CatalogPort catalog, CatalogRetrievalPort retrieval) {
         this.catalog = Objects.requireNonNull(catalog);
+        this.retrieval = retrieval;
     }
 
     @Tool(name = "search_vehicles", description = "Busca modelos Ford y devuelve solo datos del catálogo con enlaces y fecha de observación. Use filtros expresados por el cliente; no invente precio ni versión.")
-    public List<VehicleEvidence> searchVehicles(
+    public CatalogSearchPage<VehicleEvidence> searchVehicles(
             @ToolParam(description = "Texto de búsqueda breve", required = false) String query,
             @ToolParam(description = "Nombre exacto del modelo si el cliente lo indicó", required = false) String model,
             @ToolParam(description = "Año exacto indicado por el cliente", required = false) Integer modelYear,
@@ -56,9 +64,9 @@ public final class CatalogTools {
         if (isBlank(query) && isBlank(model)) {
             throw new IllegalArgumentException("query or model is required");
         }
-        return catalog.search(new VehicleSearchQuery(query, model, modelYear,
-                minPrice, maxPrice, category, bodyType, fuelType,
-                limit == null ? 5 : limit));
+        var searchQuery = new VehicleSearchQuery(query, model, modelYear,
+                minPrice, maxPrice, category, bodyType, fuelType, limit == null ? 5 : limit);
+        return searchVehicles(searchQuery);
     }
 
     @Tool(name = "get_vehicle", description = "Consulta datos y especificaciones del modelo/año/versión exactos. Si no hay coincidencia exacta, no sustituya otra versión. Incluya enlaces y fecha de observación.")
@@ -113,15 +121,18 @@ public final class CatalogTools {
                 : java.util.stream.Stream.of(model, modelYear == null ? null : modelYear.toString(), offerType)
                 .filter(value -> !isBlank(value)).collect(java.util.stream.Collectors.joining(" "));
         if (effectiveQuery.isBlank()) effectiveQuery = "Ford offers";
-        var offers = catalog.offers(new OfferQuery(model, modelYear, offerType, provider, maxCashPrice,
-                maxMonthlyPayment, maxDownPayment, minimumMonthsWithoutInterest, termMonths,
-                true, asOf, limit == null ? 2 : limit));
+        var offerQuery = new OfferQuery(isBlank(query) ? null : query.trim(), model, modelYear, offerType,
+                provider, maxCashPrice, maxMonthlyPayment, maxDownPayment, minimumMonthsWithoutInterest,
+                termMonths, true, asOf, limit == null ? 2 : limit);
+        var page = searchOffers(offerQuery);
+        var offers = page.results();
         var results = offers.stream().map(CatalogTools::compactOffer).toList();
         var disclosures = results.stream().filter(result -> result.validityDisclosure() != null)
                 .map(result -> (isBlank(result.title()) ? "Esta oferta" : result.title())
                         + ": " + result.validityDisclosure())
                 .distinct().toList();
-        return new OfferSearch(effectiveQuery, "unavailable", results.size(), results.size(), disclosures, results);
+        return new OfferSearch(effectiveQuery, page.semanticSearch(), results.size(), results.size(), disclosures,
+                results);
     }
 
     private static OfferResult compactOffer(OfferEvidence offer) {
@@ -148,6 +159,20 @@ public final class CatalogTools {
                 offer.maximumDownPaymentPercent(), offer.lifeInsurancePrice());
     }
 
+    private CatalogSearchPage<VehicleEvidence> searchVehicles(VehicleSearchQuery query) {
+        if (retrieval != null) return retrieval.searchVehicles(query);
+        var results = catalog.search(query);
+        var semanticSearch = isBlank(query.query()) ? "not_requested" : "unavailable";
+        return new CatalogSearchPage<>(semanticSearch, results.size(), results);
+    }
+
+    private CatalogSearchPage<OfferEvidence> searchOffers(OfferQuery query) {
+        if (retrieval != null) return retrieval.searchOffers(query);
+        var results = catalog.offers(query);
+        var semanticSearch = isBlank(query.query()) ? "not_requested" : "unavailable";
+        return new CatalogSearchPage<>(semanticSearch, results.size(), results);
+    }
+
     private static String priceDisplay(BigDecimal amount, String currencyCode) {
         if (amount == null) return null;
         var formatter = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-MX"));
@@ -168,11 +193,13 @@ public final class CatalogTools {
         var selectedYear = year == null ? modelYear : year;
         var subject = java.util.stream.Stream.of(model, selectedYear == null ? null : selectedYear.toString())
                 .filter(value -> !isBlank(value)).collect(java.util.stream.Collectors.joining(" "));
-        var effectiveQuery = !isBlank(query) ? query.trim()
+        var requestQuery = isBlank(query) ? null : query.trim();
+        var effectiveQuery = requestQuery != null ? requestQuery
                 : subject.isBlank() ? "Ford vehicles" : subject;
-        var candidates = catalog.search(new VehicleSearchQuery(effectiveQuery, model, selectedYear,
-                null, budget, null, null, null, 1));
-        var vehicles = candidates.stream()
+        var vehicleQuery = new VehicleSearchQuery(requestQuery, model, selectedYear,
+                null, budget, null, null, null, 1);
+        var vehiclePage = searchVehicles(vehicleQuery);
+        var vehicles = vehiclePage.results().stream()
                 .filter(vehicle -> selectedYear == null || Objects.equals(vehicle.year(), selectedYear))
                 .filter(vehicle -> isBlank(model) || normalize(vehicle.model()).equals(normalize(model)))
                 .limit(1).toList();
@@ -180,13 +207,15 @@ public final class CatalogTools {
         var matchedModel = isBlank(model) ? firstVehicle == null ? null : firstVehicle.model() : model;
         var matchedYear = selectedYear == null ? firstVehicle == null ? null : firstVehicle.year() : selectedYear;
         var offerQuery = java.util.stream.Stream.of(
-                        isBlank(matchedModel) ? effectiveQuery : matchedModel,
-                        matchedYear == null ? null : matchedYear.toString(), "financing")
-                .filter(value -> !isBlank(value)).collect(java.util.stream.Collectors.joining(" "));
+                         requestQuery, isBlank(matchedModel) ? null : matchedModel,
+                         matchedYear == null ? null : matchedYear.toString(), "financing")
+                 .filter(value -> !isBlank(value)).collect(java.util.stream.Collectors.joining(" "));
         var asOf = LocalDate.now(java.time.ZoneOffset.UTC);
-        var rawOffers = isBlank(matchedModel) ? List.<OfferEvidence>of()
-                : catalog.offers(new OfferQuery(matchedModel, matchedYear, "financing", null,
+        var offerPage = isBlank(matchedModel)
+                ? new CatalogSearchPage<OfferEvidence>("not_requested", 0, List.of())
+                : searchOffers(new OfferQuery(requestQuery, matchedModel, matchedYear, "financing", null,
                         budget, null, null, null, termMonths, true, asOf, 1));
+        var rawOffers = offerPage.results();
         var offerResults = rawOffers.stream().map(CatalogTools::compactOffer).toList();
         var requiredDisclosures = offerResults.stream()
                 .filter(offer -> offer.validityDisclosure() != null)
@@ -209,8 +238,9 @@ public final class CatalogTools {
                 ? "No se encontraron ofertas de financiamiento."
                 : offerSummary);
         return new CombinedSearch(effectiveQuery, answerSummary,
-                new VehicleSelection(vehicles, vehicleSummary, vehicles.size()),
-                new FinancingSelection(offerQuery, offerResults.size(), requiredDisclosures, offerResults));
+                new VehicleSelection(vehicles, vehicleSummary, vehicles.size(), vehiclePage.semanticSearch()),
+                new FinancingSelection(offerQuery, offerResults.size(), requiredDisclosures, offerResults,
+                        offerPage.semanticSearch()));
     }
 
     private static BigDecimal firstOfferCashPrice(List<OfferResult> offers) {
@@ -480,12 +510,13 @@ public final class CatalogTools {
     public record CombinedSearch(String query, String answerSummary, VehicleSelection vehicles,
                                  FinancingSelection offers) { }
 
-    public record VehicleSelection(List<VehicleEvidence> results, String summary, int resultCount) {
+    public record VehicleSelection(List<VehicleEvidence> results, String summary, int resultCount,
+                                   String semanticSearch) {
         public VehicleSelection { results = List.copyOf(results); }
     }
 
     public record FinancingSelection(String query, int resultCount, List<String> requiredDisclosures,
-                                     List<OfferResult> results) {
+                                     List<OfferResult> results, String semanticSearch) {
         public FinancingSelection {
             requiredDisclosures = List.copyOf(requiredDisclosures);
             results = List.copyOf(results);

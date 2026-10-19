@@ -15,6 +15,15 @@ Configure these only when preparing an approved catalog-tool rollout:
 
 When enabled, startup fails if URL, username, or the existing database password is missing. The catalog adapter uses a separate JDBC datasource and the `ford_catalog_reader` login; its password is the same existing database password. It does not use the primary `ford` login or create a catalog-specific password setting. No new Vault secret is required. JDBC URL timeouts bound connection and query waits.
 
+## Customer replies and recovery
+
+- Price and promotion replies use only current-turn catalog evidence. Keep them brief; include requested price/currency, promotion benefit, validity, material conditions, and at most one official source link.
+- Retry transient catalog callback errors once inside the callback. Longer retry-after requests use the durable inbound recovery path instead of waiting on the customer reply.
+- If a transient failed lookup leaves no verified answer, do not send a failure message and do not commit the bot turn. The inbound event remains pending for at most five recovery attempts; unresolved turns remain available for operations review.
+- Authentication, authorization, and invalid-request failures skip automatic retry and remain uncommitted for review. Never use conversation memory as current price or promotion evidence.
+- A successful catalog query with zero matching results may send one short, grounded no-result reply. This differs from a tool failure.
+- Append after-hours or holiday-calendar detail only when the customer asks about hours/special hours or explicitly requests team follow-up. Do not append it to greetings or catalog answers.
+
 ## PostgreSQL grants
 
 Create a dedicated login role and grant only schema usage and SELECT on the versioned views. Replace role names using the deployment's database-owner conventions; do not grant this role to the Service migration account.

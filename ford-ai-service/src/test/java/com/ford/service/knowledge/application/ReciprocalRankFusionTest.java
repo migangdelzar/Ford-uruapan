@@ -5,6 +5,7 @@ import org.springframework.ai.document.Document;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -33,6 +34,30 @@ class ReciprocalRankFusionTest {
 
         assertThat(result).extracting(Document::getId).containsExactly("first");
     }
+
+    @Test
+    void fusesThreeCandidateListsByStableIdWithDeterministicOrdering() {
+        var shared = new Candidate("shared", "shared evidence");
+        var fullTextOnly = new Candidate("full-text", "full text");
+        var trigramOnly = new Candidate("trigram", "trigram");
+        var vectorOnly = new Candidate("vector", "vector");
+        var lists = List.of(
+                List.of(vectorOnly, shared),
+                List.of(fullTextOnly, shared),
+                List.of(trigramOnly, shared));
+        Function<Candidate, String> id = Candidate::stableId;
+
+        var first = fusion.mergeById(lists, id, 4);
+        var second = fusion.mergeById(lists, id, 4);
+
+        assertThat(first).extracting(Candidate::stableId)
+                .containsExactly("shared", "trigram", "vector", "full-text");
+        assertThat(second).extracting(Candidate::stableId).containsExactlyElementsOf(
+                first.stream().map(Candidate::stableId).toList());
+        assertThat(first).extracting(Candidate::stableId).doesNotHaveDuplicates();
+    }
+
+    private record Candidate(String stableId, String evidence) { }
 
     private static Document doc(String id) {
         return new Document(id, "content", Map.of());

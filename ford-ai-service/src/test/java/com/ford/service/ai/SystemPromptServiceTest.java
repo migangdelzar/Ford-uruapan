@@ -69,13 +69,18 @@ class SystemPromptServiceTest {
                 .contains("No agregue otro saludo o presentación")
                 .contains("WhatsApp", "*texto en negritas*", "- elemento", "No use tablas")
                 .contains("No mencione herramientas internas, proveedores, JSON")
+                .contains("La aplicación hará un reintento silencioso")
+                .contains("no se envía un mensaje de error")
+                .contains("No añada esos detalles a saludos")
                 .contains("No repita una respuesta")
                 .contains("nombre y apellido")
                 .contains("No agregue menús de servicios")
                 .contains("Horario informado por la agencia: lunes a viernes")
                 .contains("sábado de 9:00 a.m. a 2:00 p.m.")
                 .contains("siga la autorización que exija la aplicación")
-                .contains("Nunca prometa llamada, seguimiento, cita o contacto a primera hora");
+                .contains("Nunca prometa llamada, seguimiento, cita o contacto a primera hora")
+                .doesNotContain("No pude generar una respuesta", "Aun así, puedo ayudarle con información del catálogo",
+                        "Si la fuente no está disponible, dígalo de forma breve");
     }
 
     private static final class InMemoryPromptRepository implements SystemPromptRepository {
