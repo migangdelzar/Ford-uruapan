@@ -1236,6 +1236,42 @@ class SpringAiChatCompletionAdapterTest {
         assertThat(systems.getAllValues().get(1)).contains("No prometa entregas");
     }
 
+    @Test
+    void acceptsApprovedAgencyFactsFromTheConfiguredSystemPrompt() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        var promptService = mock(SystemPromptService.class);
+        when(promptService.currentContent()).thenReturn("""
+                Información fija de la agencia:
+                - Dirección: Paseo Lázaro Cárdenas y Av. Juárez, La Magdalena, Uruapan, Michoacán, C.P. 60080.
+                - Teléfono/WhatsApp: 452 519 8300.
+                - Horario: lunes a viernes de 9:00 a.m. a 7:00 p.m.
+                """);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn(
+                "{\"answer\":\"Estamos en La Magdalena, C.P. 60080. Teléfono 452 519 8300, de 9:00 a.m. a 7:00 p.m.\","
+                        + "\"modelConfidence\":0.9}");
+        var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
+                new ToolAuthorizationPolicy(List.of()), new DecisionPolicy(), promptService,
+                new com.ford.service.ai.application.AssistantResponseQualityPolicy(), new ObjectMapper(),
+                new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP), null, true, null,
+                new com.ford.service.ai.application.EvidenceGroundedResponsePolicy(), true);
+        var general = new ConversationDecision(ConversationIntent.GENERAL, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.NONE,
+                SensitiveDataLevel.NONE, testEvidence());
+
+        var result = adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                "Hola, ¿cómo están?", "BOT_ACTIVE", null, false, general), null);
+
+        assertThat(result.content()).contains("452 519 8300");
+        verify(requestSpec, times(1)).call();
+    }
+
     private static List<com.ford.service.ai.application.ClassificationEvidence> testEvidence() {
         return List.of(new com.ford.service.ai.application.ClassificationEvidence(
                 com.ford.service.ai.application.ClassifierType.INTENT, "TEST", 1.0,
