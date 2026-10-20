@@ -121,7 +121,7 @@ test("Ford Service pins the backup-verified OCI rollout action", async () => {
 
   assert.match(
     source,
-    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@cf1c238d9d9ca0e3292d4019e344e73b18fb9436/,
+    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@8a37a72cc6905c1c0610229b9116f91cf3537a6c/,
   );
   assert.match(source, /host: \$\{\{ vars\.OCI_DEPLOY_HOST \}\}/);
   assert.match(source, /user: \$\{\{ vars\.OCI_DEPLOY_USER \}\}/);
