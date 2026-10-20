@@ -53,6 +53,9 @@ public class DefaultConversationCommandService implements ConversationCommandSer
 
         var target = conversations.find(tenantId, conversationId)
                 .orElseThrow(() -> new java.util.NoSuchElementException("conversation not found"));
+        if (!target.bindingEnabled()) {
+            throw new IllegalStateException("conversation provider binding is disabled");
+        }
         if (target.version() != expectedVersion) {
             throw new IllegalStateException("conversation version is stale");
         }

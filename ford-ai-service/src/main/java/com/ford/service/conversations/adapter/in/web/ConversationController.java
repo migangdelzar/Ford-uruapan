@@ -19,6 +19,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -36,12 +37,30 @@ public class ConversationController {
     private final ConversationQuery query;
     private final ConversationCommandService commands;
     private final ObjectProvider<ConversationMemoryRestartService> memoryRestarts;
+    private final ObjectProvider<com.ford.service.conversations.application.CustomerMemoryForgetService> memoryForget;
 
     public ConversationController(ConversationQuery query, ConversationCommandService commands,
-                                  ObjectProvider<ConversationMemoryRestartService> memoryRestarts) {
+                                  ObjectProvider<ConversationMemoryRestartService> memoryRestarts,
+                                  ObjectProvider<com.ford.service.conversations.application.CustomerMemoryForgetService> memoryForget) {
         this.query = query;
         this.commands = commands;
         this.memoryRestarts = memoryRestarts;
+        this.memoryForget = memoryForget;
+    }
+
+    @DeleteMapping("/{conversationId}/customer-memory")
+    @PreAuthorize("hasAuthority('SCOPE_operator:write') || hasRole('ADMIN')")
+    public ResponseEntity<com.ford.service.conversations.api.CustomerMemoryForgetReceipt> forgetCustomerMemory(
+            @PathVariable UUID conversationId,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @RequestParam(required = false) UUID tenantId,
+            Authentication authentication) {
+        var operator = AuthenticatedOperator.from(authentication);
+        var selectedTenant = resolveTenant(operator, tenantId);
+        var service = memoryForget.getIfAvailable();
+        if (service == null) throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE);
+        return ResponseEntity.ok(service.forget(operator, selectedTenant, conversationId, idempotencyKey));
     }
 
     @GetMapping
@@ -110,14 +129,17 @@ public class ConversationController {
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @RequestHeader("If-Match") String ifMatch,
             @RequestParam(required = false) UUID tenantId,
+            @Valid @RequestBody(required = false) com.ford.service.conversations.api.ConversationMemoryRestartRequest request,
             Authentication authentication) {
         var operator = AuthenticatedOperator.from(authentication);
         var selectedTenant = resolveTenant(operator, tenantId);
         var service = memoryRestarts.getIfAvailable();
         if (service == null) throw new org.springframework.web.server.ResponseStatusException(
                 org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE);
+        var reason = request == null ? com.ford.service.conversations.api.ConversationMemoryRestartRequest.RestartReason.LEGACY_CLIENT_UNSPECIFIED
+                : request.reason();
         var receipt = service.restart(operator, selectedTenant, conversationId,
-                parseVersion(ifMatch), idempotencyKey);
+                parseVersion(ifMatch), idempotencyKey, reason);
         return ResponseEntity.ok().header(HttpHeaders.ETAG, etag(receipt.conversationVersion())).body(receipt);
     }
 

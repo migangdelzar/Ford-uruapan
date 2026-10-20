@@ -435,6 +435,27 @@ class SpringAiAssistantServiceTest {
     }
 
     @Test
+    void repeatsTriggerExactlyOneProviderNeutralRepairThenReview() {
+        var orchestrator = mock(AssistantOrchestrator.class);
+        var repeated = "La Ranger está disponible para revisión en la agencia Ford.";
+        when(orchestrator.respond(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AssistantResponse(repeated, false, "deepseek", List.of()));
+        var service = new SpringAiAssistantService(orchestrator, new HumanHandoffPolicy(false),
+                new DefaultModelProviderPolicy(List.of()));
+        var context = new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID(), null, null, null,
+                List.of("La Ranger está disponible para revisión en la agencia Ford."));
+
+        assertThatThrownBy(() -> service.respond(context, "¿Cuánto consume la Ranger?"))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(error -> assertThat(((AssistantTurnUnavailableException) error).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
+        var requests = org.mockito.ArgumentCaptor.forClass(com.ford.service.ai.api.AssistantRequest.class);
+        verify(orchestrator, org.mockito.Mockito.times(2)).respond(requests.capture());
+        assertThat(requests.getAllValues().get(1).repairInstruction()).isNotBlank();
+        assertThat(requests.getAllValues().get(1).recentAssistantReplies()).containsExactly(repeated);
+    }
+
+    @Test
     void neverSendsGenericFallbackWhenHandoffIsDisabledAndProviderFails() {
         var orchestrator = mock(AssistantOrchestrator.class);
         when(orchestrator.respond(org.mockito.ArgumentMatchers.any()))

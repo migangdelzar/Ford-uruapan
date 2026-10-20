@@ -31,10 +31,45 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Primary;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import com.ford.service.conversations.api.CustomerIdentityFingerprint;
+import com.ford.service.conversations.application.CustomerMemoryFactExtractor;
+import com.ford.service.conversations.application.CustomerMemoryUpdatePolicy;
+import com.ford.service.conversations.application.CustomerMemoryService;
+import com.ford.service.conversations.application.CustomerMemoryProperties;
+import com.ford.service.conversations.application.CustomerMemoryFactExtractor;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({ConversationProperties.class, MemoryProperties.class})
+@EnableConfigurationProperties({ConversationProperties.class, MemoryProperties.class, CustomerMemoryProperties.class})
 public class ConversationConfiguration {
+
+    @Bean
+    CustomerIdentityFingerprint customerIdentityFingerprint() {
+        return new CustomerIdentityFingerprint();
+    }
+
+    @Bean
+    CustomerMemoryFactExtractor customerMemoryFactExtractor() {
+        return new CustomerMemoryFactExtractor();
+    }
+
+    @Bean
+    CustomerMemoryUpdatePolicy customerMemoryUpdatePolicy() {
+        return new CustomerMemoryUpdatePolicy();
+    }
+
+    @Bean
+    @ConditionalOnBean({
+            com.ford.service.conversations.application.port.out.CustomerMemoryIdentityRepository.class,
+            com.ford.service.conversations.application.port.out.CustomerMemoryFactRepository.class
+    })
+    CustomerMemoryService customerMemoryService(CustomerMemoryProperties properties,
+            CustomerIdentityFingerprint fingerprint, CustomerMemoryFactExtractor extractor,
+            CustomerMemoryUpdatePolicy policy,
+            com.ford.service.conversations.application.port.out.CustomerMemoryIdentityRepository identities,
+            com.ford.service.conversations.application.port.out.CustomerMemoryFactRepository facts) {
+        return new CustomerMemoryService(properties, fingerprint, extractor, policy, identities, facts);
+    }
 
     @Bean
     ConversationMemorySemanticPort conversationMemorySemanticPort(
@@ -72,11 +107,12 @@ public class ConversationConfiguration {
                                                         MemoryProperties properties,
                                                         ConversationMemorySemanticPort semanticMemory,
                                                         ConversationMemoryRecallPort recall,
-                                                        ApplicationEventPublisher publisher,
-                                                        ConversationMemoryCompactionPort compactor,
-                                                        ObjectProvider<ConversationRuntimeSettingsService> runtimeSettings) {
+                                                         ApplicationEventPublisher publisher,
+                                                         ConversationMemoryCompactionPort compactor,
+                                                         ObjectProvider<ConversationRuntimeSettingsService> runtimeSettings,
+                                                         ObjectProvider<CustomerMemoryService> customerMemory) {
         return new ConversationMemoryService(memory, properties, semanticMemory, recall, publisher, compactor,
-                runtimeSettings.getIfAvailable());
+                runtimeSettings.getIfAvailable(), customerMemory.getIfAvailable());
     }
 
     @Bean
@@ -134,8 +170,10 @@ public class ConversationConfiguration {
 
     @Bean
     ConversationAssistant conversationAssistant(AssistantService assistantService,
-                                                PendingTestDriveReplyPolicy pendingTestDriveReplyPolicy) {
-        return new ConversationAssistantAdapter(assistantService, pendingTestDriveReplyPolicy);
+                                                PendingTestDriveReplyPolicy pendingTestDriveReplyPolicy,
+                                                ObjectProvider<SharedCustomerFactProvider> sharedFacts) {
+        return new ConversationAssistantAdapter(assistantService, pendingTestDriveReplyPolicy,
+                sharedFacts.getIfAvailable());
     }
 
     @Bean

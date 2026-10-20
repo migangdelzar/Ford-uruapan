@@ -17,7 +17,11 @@ public interface OperatorConversationCommandRepository {
     CommandReceipt appendMessage(CommandMessage message);
 
     record CommandTarget(UUID tenantId, UUID conversationId, Channel channel,
-                         String recipientId, ConversationState state, long version) {
+                         String recipientId, ConversationState state, long version, boolean bindingEnabled) {
+        public CommandTarget(UUID tenantId, UUID conversationId, Channel channel,
+                             String recipientId, ConversationState state, long version) {
+            this(tenantId, conversationId, channel, recipientId, state, version, true);
+        }
     }
 
     record CommandMessage(UUID tenantId, UUID conversationId, UUID operatorId,

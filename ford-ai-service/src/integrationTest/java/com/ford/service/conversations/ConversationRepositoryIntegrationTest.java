@@ -6,6 +6,9 @@ import com.ford.service.conversations.adapter.out.JdbcOperatorConversationReposi
 import com.ford.service.conversations.adapter.out.JdbcOperatorConversationCommandRepository;
 import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.conversations.domain.ConversationTurn;
+import com.ford.service.conversations.application.DefaultConversationCommandService;
+import com.ford.service.conversations.api.SendMessageRequest;
+import com.ford.service.operator.application.AuthenticatedOperator;
 import com.ford.service.conversations.domain.HandoffDecision;
 import com.ford.service.followups.adapter.out.JdbcLeadFollowUpRepository;
 import com.ford.service.handoff.application.HandoffService;
@@ -32,6 +35,7 @@ import java.sql.Timestamp;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
@@ -61,6 +65,9 @@ class ConversationRepositoryIntegrationTest {
     JdbcOperatorConversationCommandRepository operatorCommands;
 
     @Autowired
+    DefaultConversationCommandService commandService;
+
+    @Autowired
     JdbcOperatorConversationRepository operatorConversations;
 
     @Autowired
@@ -78,6 +85,7 @@ class ConversationRepositoryIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        jdbc.sql("delete from channel_binding where provider_account_id like 'command-test-%'").update();
         jdbc.sql("delete from outbox_event").update();
         jdbc.sql("delete from lead_follow_up").update();
         jdbc.sql("delete from audit_event").update();
@@ -85,6 +93,54 @@ class ConversationRepositoryIntegrationTest {
         jdbc.sql("delete from conversation_message").update();
         jdbc.sql("delete from channel_message").update();
         jdbc.sql("delete from conversation").update();
+    }
+
+    @Test
+    void enabledBindingAcceptsOperatorSendAndDisabledBindingCreatesNoMessageOrOutbox() {
+        var tenant = UUID.randomUUID();
+        var activeConversation = UUID.randomUUID();
+        var disabledConversation = UUID.randomUUID();
+        insertCommandTarget(tenant, activeConversation, "command-test-active", true);
+        insertCommandTarget(tenant, disabledConversation, "command-test-disabled", false);
+        var operatorId = UUID.randomUUID();
+        var operator = new AuthenticatedOperator(operatorId.toString(), java.util.Set.of("SCOPE_operator:write"),
+                java.util.Set.of("OPERATOR"), java.util.Set.of(tenant));
+        assertThat(operatorConversations.find(tenant, activeConversation).orElseThrow().readOnly()).isFalse();
+        assertThat(operatorConversations.find(tenant, disabledConversation).orElseThrow().readOnly()).isTrue();
+
+        var activeReceipt = commandService.sendMessage(operator, tenant, activeConversation, 0,
+                "command-binding-active", new SendMessageRequest("Mensaje permitido", null, false));
+        assertThat(activeReceipt.accepted()).isTrue();
+        assertThat(jdbc.sql("select count(*) from outbox_event where aggregate_id=:id and event_type='OUTBOUND_DELIVERY_REQUESTED'")
+                .param("id", activeConversation).query(Integer.class).single()).isEqualTo(1);
+
+        assertThatThrownBy(() -> commandService.sendMessage(operator, tenant, disabledConversation, 0,
+                "command-binding-disabled", new SendMessageRequest("Mensaje bloqueado", null, false)))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("binding is disabled");
+        assertThat(jdbc.sql("select count(*) from conversation_message where conversation_id=:id and direction='OUTBOUND'")
+                .param("id", disabledConversation).query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("select count(*) from outbox_event where aggregate_id=:id and event_type='OUTBOUND_DELIVERY_REQUESTED'")
+                .param("id", disabledConversation).query(Integer.class).single()).isZero();
+    }
+
+    private void insertCommandTarget(UUID tenantId, UUID conversationId, String accountId, boolean enabled) {
+        var now = Instant.now();
+        jdbc.sql("""
+                insert into channel_binding(id, webhook_key_hash, tenant_id, channel, provider_account_id,
+                    secret_reference, enabled, created_at, updated_at)
+                values (:id, :hash, :tenant, 'WHATSAPP', :account, 'test-secret', :enabled, :now, :now)
+                """)
+                .param("id", UUID.randomUUID()).param("hash", UUID.randomUUID().toString())
+                .param("tenant", tenantId).param("account", accountId).param("enabled", enabled)
+                .param("now", Timestamp.from(now)).update();
+        jdbc.sql("""
+                insert into conversation(id, tenant_id, channel, provider_conversation_id, state, version,
+                    created_at, updated_at, provider_account_id, participant_id)
+                values (:id, :tenant, 'WHATSAPP', :providerId, 'BOT_ACTIVE', 0, :now, :now, :account, 'participant')
+                """)
+                .param("id", conversationId).param("tenant", tenantId)
+                .param("providerId", "provider-" + conversationId).param("account", accountId)
+                .param("now", Timestamp.from(now)).update();
     }
 
     @Test

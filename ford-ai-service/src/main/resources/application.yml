@@ -161,6 +161,12 @@ ford:
     shadow-review:
       enabled: ${FORD_SHADOW_REVIEW_ENABLED:false}
       kill-switch: ${FORD_SHADOW_REVIEW_KILL_SWITCH:false}
+  customer-memory:
+    enabled: ${FORD_CUSTOMER_MEMORY_ENABLED:false}
+    hmac-key: ${FORD_CUSTOMER_MEMORY_HMAC_KEY:}
+    hmac-key-version: ${FORD_CUSTOMER_MEMORY_HMAC_KEY_VERSION:}
+    previous-hmac-key: ${FORD_CUSTOMER_MEMORY_PREVIOUS_HMAC_KEY:}
+    previous-hmac-key-version: ${FORD_CUSTOMER_MEMORY_PREVIOUS_HMAC_KEY_VERSION:}
   memory:
     enabled: ${FORD_MEMORY_ENABLED:true}
     recent-message-limit: ${FORD_MEMORY_RECENT_MESSAGE_LIMIT:20}

@@ -241,7 +241,7 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
             throw new AssistantTurnUnavailableException(AssistantTurnUnavailableException.Disposition.REVIEW);
         }
         try {
-            var generation = call(request, context, tools, knowledgeEvidence, null);
+            var generation = call(request, context, tools, knowledgeEvidence, request.repairInstruction());
             var deterministic = renderFactResponse(request, toolResults, knowledgeEvidence, generation);
             if (deterministic != null) return deterministic;
             var rejection = rejectionReason(request, toolResults, knowledgeEvidence, generation.answer());
@@ -374,7 +374,8 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         }
         var executionContext = new AiExecutionContext(
                 request.tenantId(), request.containsSensitiveData(), request.conversationId(),
-                request.memoryContext(), decision);
+                request.memoryContext(), decision, request.leadJourneyContext(), request.recentAssistantReplies(),
+                request.repairInstruction());
         var availableToolNames = toolPolicy.availableReadOnlyToolNames();
         if (knowledgeRagAdvisorFactory != null && decision.toolFamily() == ToolFamily.KNOWLEDGE_SEARCH) {
             availableToolNames = availableToolNames.stream()
@@ -427,9 +428,12 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                 + "Si una consulta termina correctamente sin coincidencias, comunique solo ese resultado. No mencione errores, "
                 + "herramientas, proveedores ni reintentos. "
                 + "[/REGLA PRIORITARIA]";
-        var prompt = client.prompt()
-                .system(system + "\n\n[METADATO INTERNO] Incluya modelConfidence como un número de 0 a 1 que refleje su propia certeza sobre la respuesta. Base la estimación en la evidencia consultada y los datos disponibles. Este valor es solo interno: nunca lo mencione ni lo convierta en porcentaje para el cliente. No lo use para sustituir fuentes ni invente información. [/METADATO INTERNO]\n\n" + REQUIRED_VOICE_POLICY)
-                .user(request.message());
+        var fullSystemInstruction = system + "\n\n[METADATO INTERNO] Incluya modelConfidence como un número de 0 a 1 que refleje su propia certeza sobre la respuesta. Base la estimación en la evidencia consultada y los datos disponibles. Este valor es solo interno: nunca lo mencione ni lo convierta en porcentaje para el cliente. No lo use para sustituir fuentes ni invente información. [/METADATO INTERNO]\n\n" + REQUIRED_VOICE_POLICY;
+        if (request.repairInstruction() != null && !request.repairInstruction().isBlank()) {
+            fullSystemInstruction += "\n\n[REPARACIÓN DE CONTINUIDAD] " + request.repairInstruction()
+                    + " [/REPARACIÓN DE CONTINUIDAD]";
+        }
+        var prompt = client.prompt().system(fullSystemInstruction).user(request.message());
         if (shouldUseKnowledgeRag(request)) {
             prompt = prompt.advisors(knowledgeRagAdvisorFactory.forTurn(
                     request.tenantId(), "es-MX", knowledgeEvidence));

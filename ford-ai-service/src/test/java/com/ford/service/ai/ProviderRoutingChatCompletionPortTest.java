@@ -137,6 +137,23 @@ class ProviderRoutingChatCompletionPortTest {
     }
 
     @Test
+    void sendsIdenticalMemoryJourneyAndRecentReplyContextToFallbackProvider() {
+        var cloud = provider("openai", true);
+        var local = provider("ollama", false);
+        var primary = new CapturingPort(cloud.id(), new RateLimitException());
+        var fallback = new CapturingPort(local.id(), null);
+        var port = new ProviderRoutingChatCompletionPort(List.of(primary, fallback),
+                new DefaultModelProviderPolicy(List.of(cloud, local)), 6, Duration.ZERO, ignored -> { });
+        var request = new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(), "Quiero más detalles", "BOT_ACTIVE",
+                "historial reciente", false, null, "journey state", List.of("respuesta anterior"));
+
+        port.complete(request, new ToolContext(request.tenantId(), request.conversationId()));
+
+        assertThat(primary.request).isEqualTo(request);
+        assertThat(fallback.request).isEqualTo(request);
+    }
+
+    @Test
     void leavesVolatileRequestsForReviewWhenNoProviderIsEligible() {
         var port = new ProviderRoutingChatCompletionPort(
                 List.of(new StubPort("unused", "unused")), new DefaultModelProviderPolicy(List.of()));
@@ -366,6 +383,25 @@ class ProviderRoutingChatCompletionPortTest {
         public AssistantResponse complete(AssistantRequest request, ToolContext context) {
             calls++;
             throw failure;
+        }
+    }
+
+    private static final class CapturingPort implements ProviderChatCompletionPort {
+        private final String id;
+        private final RuntimeException failure;
+        private AssistantRequest request;
+
+        private CapturingPort(String id, RuntimeException failure) {
+            this.id = id;
+            this.failure = failure;
+        }
+
+        @Override public String providerId() { return id; }
+
+        @Override public AssistantResponse complete(AssistantRequest request, ToolContext context) {
+            this.request = request;
+            if (failure != null) throw failure;
+            return new AssistantResponse("recovered", false, id, List.of());
         }
     }
 

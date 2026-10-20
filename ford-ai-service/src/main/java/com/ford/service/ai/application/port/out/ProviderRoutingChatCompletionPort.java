@@ -92,7 +92,8 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
         Objects.requireNonNull(request, "request must not be null");
         var candidates = policy.candidates(
                 new AiExecutionContext(request.tenantId(), request.containsSensitiveData(), request.conversationId(),
-                        request.memoryContext(), request.decision()),
+                        request.memoryContext(), request.decision(), request.leadJourneyContext(),
+                        request.recentAssistantReplies(), request.repairInstruction()),
                 new ModelRequirements(true, true));
         if (candidates.isEmpty()) {
             log.warn("No AI provider eligible for request: conversationId={} toolCallingRequired=true structuredOutputRequired=true sensitiveData={}",

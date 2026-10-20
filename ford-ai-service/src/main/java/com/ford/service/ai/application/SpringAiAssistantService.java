@@ -33,6 +33,8 @@ public final class SpringAiAssistantService implements AssistantService {
     private final LeadQualificationPolicy leadQualificationPolicy;
     private final InputSecurityPolicy inputSecurityPolicy;
     private final AssistantPersona assistantPersona;
+    private final com.ford.service.shared.AdvisorResponseRepeatPolicy repeatPolicy =
+            new com.ford.service.shared.AdvisorResponseRepeatPolicy();
 
     public SpringAiAssistantService(AssistantOrchestrator orchestrator,
                                     ModelProviderPolicy providerPolicy) {
@@ -173,10 +175,24 @@ public final class SpringAiAssistantService implements AssistantService {
                     List.of(), "scope-guard", "none", decision);
         }
         try {
-            AssistantResponse response = orchestrator.respond(new AssistantRequest(
+            var request = new AssistantRequest(
                     context.tenantId(), conversationId, securedInput.message(), "BOT_ACTIVE",
                     securedInput.memoryContext(),
-                    securedInput.containsSensitiveData(), decision, securedInput.leadJourneyContext()));
+                    securedInput.containsSensitiveData(), decision, securedInput.leadJourneyContext(),
+                    context.recentAssistantReplies(), context.repairInstruction());
+            AssistantResponse response = orchestrator.respond(request);
+            var repeat = repeatPolicy.evaluate(securedInput.message(), context.recentAssistantReplies(), response.content());
+            if (repeat.repeated()) {
+                log.info("AI response repeat detected: conversationId={} reason={}", conversationId, repeat.reasonCode());
+                response = orchestrator.respond(request.withRepairInstruction(
+                        "Responda la pregunta actual con contenido nuevo y avance un paso. No repita ninguna respuesta anterior. " +
+                                "Respuestas previas: " + String.join(" | ", context.recentAssistantReplies())));
+                repeat = repeatPolicy.evaluate(securedInput.message(), context.recentAssistantReplies(), response.content());
+                if (repeat.repeated()) {
+                    log.warn("AI response repeat repair rejected: conversationId={} reason={}", conversationId, repeat.reasonCode());
+                    throw new AssistantTurnUnavailableException(AssistantTurnUnavailableException.Disposition.REVIEW);
+                }
+            }
             var requestsHuman = response.handoffRequired()
                     || decisionPolicy.mayCreateHandoff(decision, handoffPolicy.enabled(context.tenantId()));
             log.info("AI turn completed: conversationId={} provider={} model={} requestsHuman={} sourceCount={} journeyProposal={} durationMs={}",
