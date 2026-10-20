@@ -324,12 +324,26 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
         }
         if (evidenceGroundedPolicy != null) {
             var grounded = evidenceGroundedPolicy.evaluate(request.message(),
-                    evidenceLedger(tracker, knowledgeEvidence), answer);
+                    evidenceForVerification(tracker, knowledgeEvidence), answer);
             if (!grounded.accepted()) {
                 return grounded.reason();
             }
         }
         return null;
+    }
+
+    private String evidenceForVerification(ToolResultTracker tracker,
+                                           KnowledgeRagEvidenceTracker knowledgeEvidence) {
+        var evidence = new StringBuilder(evidenceLedger(tracker, knowledgeEvidence));
+        if (systemPromptService != null) {
+            var prompt = systemPromptService.currentContent();
+            if (prompt != null && !prompt.isBlank()) {
+                // The configured prompt is approved content and owns fixed agency facts such as
+                // the address, phone number, opening hours, and service interval.
+                evidence.append('\n').append(prompt);
+            }
+        }
+        return evidence.toString();
     }
 
     private String repairInstruction(String reason) {
