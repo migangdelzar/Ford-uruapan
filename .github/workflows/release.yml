@@ -228,6 +228,7 @@ jobs:
       FORD_SECRETS_PROVIDER: ${{ vars.FORD_SECRETS_PROVIDER }}
       FORD_CUSTOMER_MEMORY_ENABLED: ${{ vars.FORD_CUSTOMER_MEMORY_ENABLED || 'false' }}
       FORD_CUSTOMER_MEMORY_READY: ${{ vars.FORD_CUSTOMER_MEMORY_READY || 'false' }}
+      FORD_CUSTOMER_MEMORY_HMAC_KEY_VERSION: ${{ vars.FORD_CUSTOMER_MEMORY_HMAC_KEY_VERSION || '1' }}
       FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY }}
       FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD }}
       FORD_VAULT_SECRET_OCID_SPRING_DATA_REDIS_PASSWORD: ${{ vars.FORD_VAULT_SECRET_OCID_SPRING_DATA_REDIS_PASSWORD }}
@@ -285,6 +286,10 @@ jobs:
             }
             [[ "$FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY" =~ ^ocid1[.]vaultsecret[.][A-Za-z0-9.]+$ ]] || {
               echo 'Production customer memory requires its HMAC key Vault secret OCID.' >&2
+              exit 1
+            }
+            [[ "$FORD_CUSTOMER_MEMORY_HMAC_KEY_VERSION" =~ ^[1-9][0-9]*$ ]] || {
+              echo 'Production customer memory requires a positive HMAC key version.' >&2
               exit 1
             }
           fi
@@ -419,7 +424,7 @@ jobs:
             exit 1
           }
       - name: Run the shared OCI blue-green deployment action
-        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@8a37a72cc6905c1c0610229b9116f91cf3537a6c
+        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@d391f130a0d820819ee4f38c66d5a2d12d823cad
         with:
           target: ford-service
           ui-upstream-url: ${{ vars.FORD_WEB_UI_UPSTREAM_URL }}
@@ -450,6 +455,7 @@ jobs:
           service-catalog-username: ${{ vars.FORD_CATALOG_USERNAME }}
           customer-memory-enabled: ${{ vars.FORD_CUSTOMER_MEMORY_ENABLED || 'false' }}
           customer-memory-vault-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY }}
+          customer-memory-key-version: ${{ vars.FORD_CUSTOMER_MEMORY_HMAC_KEY_VERSION || '1' }}
           meta-delivery-enabled: ${{ vars.FORD_META_DELIVERY_ENABLED }}
           outbox-enabled: ${{ vars.FORD_OUTBOX_ENABLED }}
           meta-whatsapp-delivery-endpoint: ${{ vars.FORD_META_WHATSAPP_DELIVERY_ENDPOINT }}
