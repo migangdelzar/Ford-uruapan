@@ -171,6 +171,14 @@ class OciActionContractTest(unittest.TestCase):
             "FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY }}",
             workflow,
         )
+        self.assertIn(
+            "customer-memory-enabled: ${{ vars.FORD_CUSTOMER_MEMORY_ENABLED || 'false' }}",
+            workflow,
+        )
+        self.assertIn(
+            "customer-memory-vault-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY }}",
+            workflow,
+        )
         validation = workflow.split("Validate protected runtime Vault configuration", 1)[1]
         self.assertIn('"$FORD_CUSTOMER_MEMORY_ENABLED" == \'false\'', validation)
         self.assertIn('"$FORD_CUSTOMER_MEMORY_READY" == \'true\'', validation)
@@ -187,7 +195,7 @@ class OciActionContractTest(unittest.TestCase):
     def test_release_workflow_pins_the_meta_aware_shared_action_commit(self):
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn(
-            "migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@cf1c238d9d9ca0e3292d4019e344e73b18fb9436",
+            "migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@8a37a72cc6905c1c0610229b9116f91cf3537a6c",
             workflow,
         )
 
