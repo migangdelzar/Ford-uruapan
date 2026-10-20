@@ -49,7 +49,8 @@ public final class DefaultAssistantOrchestrator implements AssistantOrchestrator
             return new AssistantResponse("Un asesor ya está atendiendo su conversación.", true, "none", List.of());
         }
         var context = new AiExecutionContext(request.tenantId(), request.containsSensitiveData(),
-                request.conversationId(), request.memoryContext(), request.decision());
+                request.conversationId(), request.memoryContext(), request.decision(),
+                request.leadJourneyContext(), request.recentAssistantReplies(), request.repairInstruction());
         toolAuthorizationPolicy.readOnlyTools(context);
         intentRouter.route(request.message());
         return completion.complete(request, new ToolContext(request.tenantId(), request.conversationId()));

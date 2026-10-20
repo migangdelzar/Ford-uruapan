@@ -71,6 +71,20 @@ class ConversationCommandServiceTest {
         assertThat(repository.appended).isZero();
     }
 
+    @Test
+    void refusesOperatorSendWhenProviderBindingIsDisabled() {
+        var repository = new InMemoryCommandRepository();
+        repository.target = new OperatorConversationCommandRepository.CommandTarget(
+                TENANT, CONVERSATION, Channel.WHATSAPP, "521", ConversationState.BOT_ACTIVE, 0, false);
+        var service = new DefaultConversationCommandService(repository, new InMemoryIdempotencyRepository(),
+                new ObjectMapper().findAndRegisterModules());
+
+        assertThatThrownBy(() -> service.sendMessage(operator(), TENANT, CONVERSATION, 0, "disabled-binding",
+                new SendMessageRequest("Hola", null, false)))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("disabled");
+        assertThat(repository.appended).isZero();
+    }
+
     private static AuthenticatedOperator operator() {
         return new AuthenticatedOperator("operator-1", java.util.Set.of("SCOPE_operator:write"),
                 java.util.Set.of("OPERATOR"), java.util.Set.of(TENANT));

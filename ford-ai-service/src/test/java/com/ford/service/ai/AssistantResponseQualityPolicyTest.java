@@ -61,26 +61,24 @@ class AssistantResponseQualityPolicyTest {
     }
 
     @Test
-    void rejectsARepeatedAssistantAnswerFromMemory() {
+    void leavesRepeatDetectionToTheAlwaysOnProviderNeutralGuard() {
         var memory = "Historial reciente:\n- asistente: La Ranger está disponible para revisión.\n"
                 + "- usuario: ¿Y la Lobo?";
 
         var verdict = policy.evaluate("¿Y la Lobo?", memory,
                 "La Ranger está disponible para revisión.");
 
-        assertThat(verdict.accepted()).isFalse();
-        assertThat(verdict.reason()).isEqualTo("repeated_response");
+        assertThat(verdict.accepted()).isTrue();
     }
 
     @Test
-    void rejectsAMateriallyRepeatedAnswerWithOnlyMinorWordingChanges() {
+    void doesNotRunOptionalSimilarityDetectionForRepeatedAnswers() {
         var memory = "Historial reciente:\n- asistente: La Ranger está disponible en la agencia Ford Uruapan.";
 
         var verdict = policy.evaluate("¿Sigue disponible?", memory,
                 "La Ranger está disponible en la agencia Ford Uruapan actualmente.");
 
-        assertThat(verdict.accepted()).isFalse();
-        assertThat(verdict.reason()).isEqualTo("repeated_response");
+        assertThat(verdict.accepted()).isTrue();
     }
 
     @Test

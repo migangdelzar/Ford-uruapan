@@ -48,9 +48,6 @@ public final class AssistantResponseQualityPolicy {
         if (asksForMultipleDetails(response)) {
             return rejected("multiple_questions");
         }
-        if (repeatsAssistantMessage(memory, normalizedResponse)) {
-            return rejected("repeated_response");
-        }
         return new Verdict(true, "accepted");
     }
 
@@ -112,36 +109,6 @@ public final class AssistantResponseQualityPolicy {
         if (questionEnd < 0) questionEnd = response.length();
         var question = normalize(response.substring(questionStart, questionEnd));
         return SECOND_DETAIL.matcher(question).find();
-    }
-
-    private static boolean repeatsAssistantMessage(String memory, String response) {
-        if (memory == null || memory.isBlank()) {
-            return false;
-        }
-        for (var line : memory.split("\\R")) {
-            var normalizedLine = line.toLowerCase(Locale.ROOT);
-            var marker = "- asistente:";
-            var index = normalizedLine.indexOf(marker);
-            if (index < 0) {
-                continue;
-            }
-            var previous = normalize(line.substring(index + marker.length()));
-            if (previous.equals(response) || similar(previous, response)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean similar(String left, String right) {
-        var leftWords = words(left);
-        var rightWords = words(right);
-        if (leftWords.size() < 5 || rightWords.size() < 5) {
-            return false;
-        }
-        var intersection = new LinkedHashSet<>(leftWords);
-        intersection.retainAll(rightWords);
-        return intersection.size() / (double) Math.max(leftWords.size(), rightWords.size()) >= 0.85;
     }
 
     private static Set<String> words(String value) {

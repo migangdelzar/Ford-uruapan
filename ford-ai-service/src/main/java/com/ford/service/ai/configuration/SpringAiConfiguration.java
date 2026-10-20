@@ -293,7 +293,8 @@ public class SpringAiConfiguration {
                             typeSafeConfigured ? typeSafeClient : null, scopePolicy),
                     properties.cloudChatProvider(), toolPolicy, decisionPolicy, systemPromptService,
                     new com.ford.service.ai.application.AssistantResponseQualityPolicy(), objectMapper,
-                    observations, factResponseRenderer, true, knowledgeRagAdvisorFactory, evidenceGroundedPolicy));
+                    observations, factResponseRenderer, true, knowledgeRagAdvisorFactory, evidenceGroundedPolicy,
+                    properties.responseVerificationEnabled()));
         }
         var springAiObservationRegistry = observationRegistries.getIfAvailable(() -> ObservationRegistry.NOOP);
         for (var providerId : chatProviders.eligibleFallbackIds().stream()
@@ -306,7 +307,8 @@ public class SpringAiConfiguration {
                             typeSafeConfigured ? typeSafeClient : null, scopePolicy),
                     providerId, toolPolicy, decisionPolicy, systemPromptService,
                     new com.ford.service.ai.application.AssistantResponseQualityPolicy(), objectMapper,
-                    observations, factResponseRenderer, false, knowledgeRagAdvisorFactory, evidenceGroundedPolicy));
+                    observations, factResponseRenderer, false, knowledgeRagAdvisorFactory, evidenceGroundedPolicy,
+                    properties.responseVerificationEnabled()));
         }
         var ollama = localModel.getIfAvailable();
         if (properties.localEnabled() && ollama != null) {
@@ -315,7 +317,8 @@ public class SpringAiConfiguration {
                             typeSafeConfigured ? typeSafeClient : null, scopePolicy),
                     properties.localChatProvider(), toolPolicy, decisionPolicy, systemPromptService,
                     new com.ford.service.ai.application.AssistantResponseQualityPolicy(), objectMapper,
-                    observations, factResponseRenderer, true, knowledgeRagAdvisorFactory, evidenceGroundedPolicy));
+                    observations, factResponseRenderer, true, knowledgeRagAdvisorFactory, evidenceGroundedPolicy,
+                    properties.responseVerificationEnabled()));
         }
         return providers.isEmpty()
                 ? new UnavailableChatCompletionPort()

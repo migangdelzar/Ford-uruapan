@@ -15,6 +15,7 @@ import com.ford.service.knowledge.application.KnowledgeRetrievalService;
 import com.ford.service.knowledge.application.ReciprocalRankFusion;
 import org.junit.jupiter.api.Test;
 import org.springframework.modulith.NamedInterface;
+import com.ford.service.conversations.api.CustomerIdentityFingerprint;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -59,5 +60,10 @@ class ModuleApiBoundaryTest {
         assertThat(CatalogQueryVector.class.isAnnotationPresent(NamedInterface.class)).isTrue();
         assertThat(CatalogRetrievalPort.class.isAnnotationPresent(NamedInterface.class)).isTrue();
         assertThat(CatalogSearchPage.class.isAnnotationPresent(NamedInterface.class)).isTrue();
+    }
+
+    @Test
+    void customerIdentityFingerprintContractIsAnExplicitCrossModuleInterface() {
+        assertThat(CustomerIdentityFingerprint.class.isAnnotationPresent(NamedInterface.class)).isTrue();
     }
 }

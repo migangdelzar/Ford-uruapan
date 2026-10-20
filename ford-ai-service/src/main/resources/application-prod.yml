@@ -15,6 +15,12 @@ ford:
   catalog:
     tools:
       enabled: ${FORD_CATALOG_TOOLS_ENABLED:false}
+  customer-memory:
+    enabled: ${FORD_CUSTOMER_MEMORY_ENABLED:false}
+    hmac-key: ${FORD_CUSTOMER_MEMORY_HMAC_KEY:}
+    hmac-key-version: ${FORD_CUSTOMER_MEMORY_HMAC_KEY_VERSION:}
+    previous-hmac-key: ${FORD_CUSTOMER_MEMORY_PREVIOUS_HMAC_KEY:}
+    previous-hmac-key-version: ${FORD_CUSTOMER_MEMORY_PREVIOUS_HMAC_KEY_VERSION:}
   security:
     jwt:
       enabled: ${FORD_SECURITY_JWT_ENABLED:true}

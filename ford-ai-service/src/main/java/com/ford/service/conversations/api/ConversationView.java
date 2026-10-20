@@ -16,5 +16,12 @@ public record ConversationView(
         UUID assignedOperatorId,
         UUID leadId,
         ConversationMessageView latestMessage,
-        Instant updatedAt) {
+        Instant updatedAt,
+        boolean readOnly) {
+    public ConversationView(UUID id, UUID tenantId, Channel channel, ConversationState state, long version,
+                           ParticipantView participant, UUID assignedOperatorId, UUID leadId,
+                           ConversationMessageView latestMessage, Instant updatedAt) {
+        this(id, tenantId, channel, state, version, participant, assignedOperatorId, leadId,
+                latestMessage, updatedAt, false);
+    }
 }

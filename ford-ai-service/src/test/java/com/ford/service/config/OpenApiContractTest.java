@@ -76,4 +76,18 @@ class OpenApiContractTest {
         assertThat(yaml).contains("name: SESSION");
         assertThat(yaml).doesNotContain("external OIDC provider");
     }
+
+    @Test
+    void documentsMemoryRestartReasonForgetRouteAndReadOnlyConversationField() throws Exception {
+        var yaml = Files.readString(CONTRACT);
+
+        assertThat(yaml).contains("/api/v1/conversations/{conversationId}/customer-memory:")
+                .contains("CustomerMemoryForgetReceipt")
+                .contains("LEGACY_CLIENT_UNSPECIFIED")
+                .contains("CUSTOMER_REQUEST")
+                .contains("readOnly:");
+        var restart = yaml.substring(yaml.indexOf("/api/v1/conversations/{conversationId}/restart:"),
+                yaml.indexOf("/api/v1/conversations/runtime-settings:"));
+        assertThat(restart).contains("ConversationMemoryRestartRequest").contains("IdempotencyKey").contains("IfMatch");
+    }
 }

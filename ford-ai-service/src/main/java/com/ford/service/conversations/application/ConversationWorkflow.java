@@ -38,6 +38,8 @@ import java.time.Duration;
 import java.util.UUID;
 
 public class ConversationWorkflow {
+    private final com.ford.service.shared.AdvisorResponseRepeatPolicy repeatPolicy =
+            new com.ford.service.shared.AdvisorResponseRepeatPolicy();
 
     private static final Logger log = LoggerFactory.getLogger(ConversationWorkflow.class);
     private static final Duration TURN_LEASE_DURATION = Duration.ofMinutes(15);
@@ -337,6 +339,19 @@ public class ConversationWorkflow {
         var text = requested && !handoffEnabled ? HANDOFF_UNAVAILABLE_TEXT
                 : reply.handoffRequired() ? shouldOffer ? handoffOfferPolicy.offerAfter(null) : UNAUTHORIZED_HANDOFF_TEXT
                 : shouldOffer ? handoffOfferPolicy.offerAfter(reply.text()) : reply.text();
+        var priorReplies = memory.recentMessages().stream()
+                .filter(message -> message.direction() == ConversationMessage.Direction.OUTBOUND)
+                .map(ConversationMessage::content).toList();
+        var priorQuestions = memory.recentMessages().stream()
+                .filter(message -> message.direction() == ConversationMessage.Direction.INBOUND)
+                .map(ConversationMessage::content).toList();
+        var repeat = repeatPolicy.evaluate(currentMessage, priorQuestions, priorReplies, text);
+        if (repeat.repeated()) {
+            log.warn("Legacy conversation reply held by final repeat guard: conversationId={} reason={}",
+                    snapshot.conversationId(), repeat.reasonCode());
+            throw new com.ford.service.ai.api.AssistantTurnUnavailableException(
+                    com.ford.service.ai.api.AssistantTurnUnavailableException.Disposition.REVIEW);
+        }
         var accepted = repository.completeBotTurn(snapshot.conversationId(), snapshot.version(),
                 new ConversationTurn(text));
         if (accepted) {

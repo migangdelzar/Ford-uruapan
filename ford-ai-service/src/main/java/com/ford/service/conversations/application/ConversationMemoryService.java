@@ -25,6 +25,7 @@ public final class ConversationMemoryService {
     private final ConversationMemoryProjector projector;
     private final ApplicationEventPublisher eventPublisher;
     private final ConversationRuntimeSettingsService runtimeSettings;
+    private final CustomerMemoryService customerMemoryService;
 
     public ConversationMemoryService(ConversationMemoryPort memory, MemoryProperties properties) {
         this(memory, properties, new NoOpConversationMemorySemanticPort(),
@@ -70,6 +71,17 @@ public final class ConversationMemoryService {
                                      ApplicationEventPublisher eventPublisher,
                                      ConversationMemoryCompactionPort compactor,
                                      ConversationRuntimeSettingsService runtimeSettings) {
+        this(memory, properties, semanticMemory, recall, eventPublisher, compactor, runtimeSettings, null);
+    }
+
+    public ConversationMemoryService(ConversationMemoryPort memory,
+                                     MemoryProperties properties,
+                                     ConversationMemorySemanticPort semanticMemory,
+                                     ConversationMemoryRecallPort recall,
+                                     ApplicationEventPublisher eventPublisher,
+                                     ConversationMemoryCompactionPort compactor,
+                                     ConversationRuntimeSettingsService runtimeSettings,
+                                     CustomerMemoryService customerMemoryService) {
         this.memory = Objects.requireNonNull(memory);
         this.properties = Objects.requireNonNull(properties);
         this.semanticMemory = Objects.requireNonNull(semanticMemory);
@@ -78,6 +90,7 @@ public final class ConversationMemoryService {
         this.eventPublisher = Objects.requireNonNull(eventPublisher);
         this.projector = new ConversationMemoryProjector(properties, Objects.requireNonNull(compactor));
         this.runtimeSettings = runtimeSettings;
+        this.customerMemoryService = customerMemoryService;
     }
 
     public ConversationMemoryContext load(MemoryQuery query) {
@@ -144,6 +157,15 @@ public final class ConversationMemoryService {
             var message = new ConversationMessage(messageId, key.conversationId(),
                     ConversationMessage.Direction.INBOUND, providerMessageId, content, occurredAt);
             memory.recordInbound(key, message);
+            if (customerMemoryService != null) {
+                try {
+                    customerMemoryService.captureExplicitFacts(key.tenantId(), key.conversationId(), key,
+                            messageId, occurredAt, content);
+                } catch (RuntimeException exception) {
+                    log.warn("Shared customer fact capture unavailable: exceptionType={}",
+                            exception.getClass().getSimpleName());
+                }
+            }
             publishIndexRequest(key, message);
         } catch (RuntimeException exception) {
             log.warn("Inbound conversation memory write failed: conversationId={} exceptionType={}",

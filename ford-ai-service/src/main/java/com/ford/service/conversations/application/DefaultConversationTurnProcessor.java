@@ -2,6 +2,7 @@ package com.ford.service.conversations.application;
 
 import com.ford.service.conversations.api.ConversationTurnRequest;
 import com.ford.service.conversations.api.AssistantReply;
+import com.ford.service.shared.AdvisorResponseRepeatPolicy;
 import com.ford.service.conversations.application.graph.ConversationGraphRoute;
 import com.ford.service.conversations.application.graph.ConversationTurnOutcome;
 import com.ford.service.conversations.application.graph.ConversationTurnProcessor;
@@ -41,6 +42,7 @@ public class DefaultConversationTurnProcessor implements ConversationTurnProcess
     private final DealershipResponsePlanner responsePlanner;
     private final ShadowDraftRecorder shadowRecorder;
     private final ShadowReviewGate shadowGate;
+    private final AdvisorResponseRepeatPolicy repeatPolicy = new AdvisorResponseRepeatPolicy();
 
     public DefaultConversationTurnProcessor(AcceptedInboundMessageRepository inboundRepository,
                                             ConversationRepository conversationRepository,
@@ -167,6 +169,21 @@ public class DefaultConversationTurnProcessor implements ConversationTurnProcess
         }
         if (responsePlanner != null) {
             reply = responsePlanner.apply(reply, resolved.text());
+        }
+        var recentCustomerMessages = memory.recentMessages().stream()
+                .filter(message -> message.direction() == com.ford.service.conversations.domain.ConversationMessage.Direction.INBOUND)
+                .map(com.ford.service.conversations.domain.ConversationMessage::content)
+                .toList();
+        var recentAssistantReplies = memory.recentMessages().stream()
+                .filter(message -> message.direction() == com.ford.service.conversations.domain.ConversationMessage.Direction.OUTBOUND)
+                .map(com.ford.service.conversations.domain.ConversationMessage::content)
+                .toList();
+        var repeatVerdict = repeatPolicy.evaluate(resolved.text(), recentCustomerMessages,
+                recentAssistantReplies, reply.text());
+        if (repeatVerdict.repeated()) {
+            log.warn("Conversation reply held by final repeat guard: conversationId={} receiptId={} reason={}",
+                    reference.conversationId(), reference.receiptId(), repeatVerdict.reasonCode());
+            throw new AssistantTurnUnavailableException(AssistantTurnUnavailableException.Disposition.REVIEW);
         }
         if (shadowGate.shadowEnabled()) {
             shadowRecorder.record(reference.tenantId(), reference.conversationId(), reference.receiptId(),

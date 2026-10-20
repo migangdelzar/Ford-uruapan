@@ -103,6 +103,35 @@ class ConversationMemoryServiceTest {
     }
 
     @Test
+    void capturesSharedFactsOnlyAfterInboundTranscriptPersistence() {
+        var properties = new MemoryProperties();
+        var port = new FakeMemoryPort();
+        var memory = new java.util.ArrayList<String>();
+        var customerMemory = mock(com.ford.service.conversations.application.CustomerMemoryService.class);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            assertThat(memory).containsExactly("inbound-persisted");
+            return null;
+        }).when(customerMemory).captureExplicitFacts(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+        var memoryPort = new FakeMemoryPort();
+        memoryPort.afterInbound = () -> memory.add("inbound-persisted");
+        var service = new ConversationMemoryService(memoryPort, properties, new FakeSemanticPort(),
+                new FakeRecallPort(), event -> { }, com.ford.service.conversations.application.ConversationMemoryCompactionPort.unavailable(),
+                null, customerMemory);
+        var key = new ConversationMemoryKey(UUID.randomUUID(), Channel.WHATSAPP,
+                "phone-1", "customer-1", UUID.randomUUID());
+        var messageId = UUID.randomUUID();
+        var receivedAt = Instant.now();
+
+        service.recordInbound(key, messageId, "provider-message", "Me interesa la Bronco", receivedAt);
+
+        org.mockito.Mockito.verify(customerMemory).captureExplicitFacts(key.tenantId(), key.conversationId(), key,
+                messageId, receivedAt, "Me interesa la Bronco");
+    }
+
+    @Test
     void returnsEmptyContextWhenMemoryStoreFails() {
         var key = new ConversationMemoryKey(
                 UUID.randomUUID(), Channel.WHATSAPP, "phone-1", "customer-1", UUID.randomUUID());
@@ -159,6 +188,7 @@ class ConversationMemoryServiceTest {
         private RuntimeException loadFailure;
         private MemoryQuery lastQuery;
         private int recordedInbound;
+        private Runnable afterInbound = () -> { };
 
         @Override
         public ConversationMemoryContext load(MemoryQuery query) {
@@ -172,6 +202,7 @@ class ConversationMemoryServiceTest {
         @Override
         public void recordInbound(ConversationMemoryKey key, ConversationMessage message) {
             recordedInbound++;
+            afterInbound.run();
         }
 
         @Override

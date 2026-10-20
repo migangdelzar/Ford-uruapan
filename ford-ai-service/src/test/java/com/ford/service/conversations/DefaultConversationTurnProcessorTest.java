@@ -190,6 +190,47 @@ class DefaultConversationTurnProcessorTest {
     }
 
     @Test
+    void repeatedFinalReplyIsHeldForReviewBeforeCommit() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var receiptId = UUID.randomUUID();
+        var reference = new ConversationTurnReference(tenantId, conversationId, receiptId);
+        var inbound = new AcceptedInboundMessage("wamid.repeat", "customer-1", "¿Qué consumo tiene la Ranger?", Instant.now());
+        var snapshot = new ConversationSnapshot(tenantId, conversationId, Channel.WHATSAPP, "phone-1",
+                "customer-1", ConversationState.BOT_ACTIVE, 2, null, null);
+        var key = new com.ford.service.conversations.domain.ConversationMemoryKey(tenantId, Channel.WHATSAPP,
+                "phone-1", "customer-1", conversationId);
+        var memoryContext = new ConversationMemoryContext(key, "", java.util.List.of(
+                new com.ford.service.conversations.domain.ConversationMessage(UUID.randomUUID(), conversationId,
+                        com.ford.service.conversations.domain.ConversationMessage.Direction.OUTBOUND,
+                        "outbound:prior", "La Ranger está disponible para revisión en la agencia Ford.",
+                        Instant.now())), java.util.List.of(), 1);
+        var inboundRepository = mock(AcceptedInboundMessageRepository.class);
+        var conversationRepository = mock(ConversationRepository.class);
+        var memory = mock(ConversationMemoryService.class);
+        var journey = mock(LeadJourneyService.class);
+        var assistant = mock(ConversationAssistant.class);
+        var commit = mock(ConversationTurnCommitService.class);
+        var resolver = mock(InboundContentResolutionService.class);
+        when(inboundRepository.find(tenantId, conversationId, receiptId)).thenReturn(Optional.of(inbound));
+        when(conversationRepository.turnAlreadyCompleted(tenantId, conversationId, inbound.providerMessageId())).thenReturn(false);
+        when(conversationRepository.find(tenantId, conversationId)).thenReturn(Optional.of(snapshot));
+        when(resolver.resolve(inbound, tenantId, conversationId)).thenReturn(new ResolvedInboundContent(inbound.text(), InboundContentStatus.READY));
+        when(memory.load(any())).thenReturn(memoryContext);
+        when(journey.load(tenantId, conversationId)).thenReturn(null);
+        when(assistant.respond(any())).thenReturn(new AssistantReply("La Ranger está disponible para revisión en la agencia Ford.", false));
+
+        var processor = new DefaultConversationTurnProcessor(inboundRepository, conversationRepository,
+                memory, journey, assistant, commit, resolver);
+
+        assertThatThrownBy(() -> processor.process(reference))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(error -> assertThat(((AssistantTurnUnavailableException) error).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
+        verify(commit, never()).commit(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
     void unsupportedMediaCommitsSafeClarificationWithoutCallingAssistant() {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();

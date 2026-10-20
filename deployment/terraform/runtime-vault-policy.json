@@ -18,6 +18,7 @@
       "ford-prod-ollama-access-client-id",
       "ford-prod-ollama-access-client-secret",
       "ford-prod-openai-api-key",
+      "ford-prod-ford-customer-memory-hmac-key",
       "ford-prod-openrouter-api-key",
       "ford-prod-groq-api-key",
       "ford-prod-gemini-api-key",

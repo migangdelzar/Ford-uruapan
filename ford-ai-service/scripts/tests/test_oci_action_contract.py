@@ -1,4 +1,5 @@
 import os
+import json
 import subprocess
 import unittest
 from pathlib import Path
@@ -157,6 +158,31 @@ class OciActionContractTest(unittest.TestCase):
         self.assertIn(r"graph\.facebook\.com", workflow)
         self.assertIn('"$FORD_OUTBOX_ENABLED" == \'true\'', workflow)
         self.assertIn('"$FORD_META_DELIVERY_ENABLED" == \'true\'', workflow)
+
+    def test_customer_memory_vault_reference_is_scoped_and_disabled_until_ready(self):
+        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        app_template = (REPO_ROOT.parent / "deployment/ansible/roles/app/templates/app.env.j2").read_text(encoding="utf-8")
+        policy = json.loads((REPO_ROOT.parent / "deployment/terraform/runtime-vault-policy.json").read_text(encoding="utf-8"))
+        mapping_example = (REPO_ROOT.parent / "deployment/config/vault-secret-ocids.env.example").read_text(encoding="utf-8")
+
+        self.assertIn("FORD_CUSTOMER_MEMORY_ENABLED: ${{ vars.FORD_CUSTOMER_MEMORY_ENABLED || 'false' }}", workflow)
+        self.assertIn("FORD_CUSTOMER_MEMORY_READY: ${{ vars.FORD_CUSTOMER_MEMORY_READY || 'false' }}", workflow)
+        self.assertIn(
+            "FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY }}",
+            workflow,
+        )
+        validation = workflow.split("Validate protected runtime Vault configuration", 1)[1]
+        self.assertIn('"$FORD_CUSTOMER_MEMORY_ENABLED" == \'false\'', validation)
+        self.assertIn('"$FORD_CUSTOMER_MEMORY_READY" == \'true\'', validation)
+        self.assertIn("FORD_CUSTOMER_MEMORY_HMAC_KEY", validation)
+
+        self.assertIn("FORD_CUSTOMER_MEMORY_ENABLED=", app_template)
+        self.assertIn("FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY=", app_template)
+        self.assertIn("FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY=", mapping_example)
+
+        memory_secret = "ford-prod-ford-customer-memory-hmac-key"
+        self.assertIn(memory_secret, policy["secret_names"]["app"])
+        self.assertNotIn(memory_secret, policy["secret_names"]["data"])
 
     def test_release_workflow_pins_the_meta_aware_shared_action_commit(self):
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")

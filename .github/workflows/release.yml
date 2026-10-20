@@ -226,6 +226,9 @@ jobs:
       packages: read
     env:
       FORD_SECRETS_PROVIDER: ${{ vars.FORD_SECRETS_PROVIDER }}
+      FORD_CUSTOMER_MEMORY_ENABLED: ${{ vars.FORD_CUSTOMER_MEMORY_ENABLED || 'false' }}
+      FORD_CUSTOMER_MEMORY_READY: ${{ vars.FORD_CUSTOMER_MEMORY_READY || 'false' }}
+      FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY }}
       FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD }}
       FORD_VAULT_SECRET_OCID_SPRING_DATA_REDIS_PASSWORD: ${{ vars.FORD_VAULT_SECRET_OCID_SPRING_DATA_REDIS_PASSWORD }}
       FORD_VAULT_SECRET_OCID_FORD_OPERATOR_PASSWORD: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_OPERATOR_PASSWORD }}
@@ -267,6 +270,24 @@ jobs:
             echo 'Production deployment blocked: configure FORD_SECRETS_PROVIDER=oci-vault in the production environment.' >&2
             exit 1
           }
+          [[ "$FORD_CUSTOMER_MEMORY_ENABLED" == 'true' || "$FORD_CUSTOMER_MEMORY_ENABLED" == 'false' ]] || {
+            echo 'FORD_CUSTOMER_MEMORY_ENABLED must be true or false.' >&2
+            exit 1
+          }
+          [[ "$FORD_CUSTOMER_MEMORY_READY" == 'true' || "$FORD_CUSTOMER_MEMORY_READY" == 'false' ]] || {
+            echo 'FORD_CUSTOMER_MEMORY_READY must be true or false.' >&2
+            exit 1
+          }
+          if [[ "$FORD_CUSTOMER_MEMORY_ENABLED" == 'true' ]]; then
+            [[ "$FORD_CUSTOMER_MEMORY_READY" == 'true' ]] || {
+              echo 'Production customer memory blocked: complete its protected Vault, migration, backup, and identity-audit gates first.' >&2
+              exit 1
+            }
+            [[ "$FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY" =~ ^ocid1[.]vaultsecret[.][A-Za-z0-9.]+$ ]] || {
+              echo 'Production customer memory requires its HMAC key Vault secret OCID.' >&2
+              exit 1
+            }
+          fi
           [[ "$FORD_OPERATOR_USERNAME" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || {
             echo 'Production deployment blocked: configure FORD_OPERATOR_USERNAME as the production operator login email.' >&2
             exit 1

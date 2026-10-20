@@ -429,10 +429,16 @@ paths:
     post:
       tags: [Conversations]
       summary: Restart bot context while retaining transcript
-      description: Starts a new bot-memory epoch; transcript messages remain available to authorized operators.
+      description: Starts a new bot-memory epoch; transcript messages remain available to authorized operators. Omitted bodies from legacy clients map to LEGACY_CLIENT_UNSPECIFIED.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationMemoryRestartRequest'
       responses:
         '200':
           description: New memory epoch created
@@ -452,6 +458,32 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ProblemDetail'
+
+  /api/v1/conversations/{conversationId}/customer-memory:
+    parameters:
+      - $ref: '#/components/parameters/ConversationId'
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+    delete:
+      tags: [Conversations]
+      summary: Forget shared customer shopping facts
+      description: Deletes shared shopping facts for the identity linked to this conversation and preserves all transcript messages. Requires operator:write authority.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Count-only forget receipt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerMemoryForgetReceipt'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /api/v1/conversations/runtime-settings:
     get:
@@ -1920,6 +1952,26 @@ components:
         contextStartedAt:
           type: string
           format: date-time
+    ConversationMemoryRestartRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          enum: [CUSTOMER_REQUEST, STALE_CONTEXT, OPERATOR_RECOVERY, OTHER, LEGACY_CLIENT_UNSPECIFIED]
+    CustomerMemoryForgetReceipt:
+      type: object
+      required: [conversationId, removedFactCount, forgottenAt]
+      properties:
+        conversationId:
+          type: string
+          format: uuid
+        removedFactCount:
+          type: integer
+          minimum: 0
+        forgottenAt:
+          type: string
+          format: date-time
     ConversationRuntimeSettings:
       type: object
       required: [humanHandoffEnabled, memoryEnabled, promptRecentMessageLimit]
@@ -1955,7 +2007,7 @@ components:
           nullable: true
     Conversation:
       type: object
-      required: [id, tenantId, channel, state, version, participant, updatedAt]
+      required: [id, tenantId, channel, state, version, participant, updatedAt, readOnly]
       properties:
         id:
           type: string
@@ -1985,6 +2037,8 @@ components:
         updatedAt:
           type: string
           format: date-time
+        readOnly:
+          type: boolean
     ShadowDraft:
       type: object
       required: [id, conversationId, createdAt, expiresAt, reviewStatus, text]
