@@ -55,6 +55,8 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
             "Como orientación general, sin datos actuales del catálogo: ";
     private static final String GENERAL_KNOWLEDGE_FOOTNOTE =
             " Los datos específicos del modelo no están confirmados.";
+    private static final String SAFE_CLARIFICATION =
+            "Con gusto le ayudo. Para darle información precisa, ¿me comparte un poco más de detalle sobre lo que necesita?";
     private static final double MIN_GENERAL_KNOWLEDGE_CONFIDENCE = 0.70;
     private static final Pattern EXACT_VEHICLE_FACT_REQUEST = Pattern.compile(
             "(?iu)(?:\\bprecio\\b|\\bcu[aá]nto cuesta\\b|\\bdisponib(?:le|ilidad)\\b|\\binventario\\b|"
@@ -257,6 +259,10 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                 if (rejection != null) {
                     log.warn("Model completion quality repair rejected: conversationId={} reason={}",
                             request.conversationId(), rejection);
+                    if (isEvidenceRejection(rejection)) {
+                        recordAssessment(ResponseEvidenceStatus.NOT_REQUIRED, null, "fallback");
+                        return new AssistantResponse(SAFE_CLARIFICATION, false, provider, List.of());
+                    }
                     throw new InvalidAssistantResponseException(rejection);
                 }
             }
@@ -344,6 +350,13 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
             }
         }
         return evidence.toString();
+    }
+
+    private static boolean isEvidenceRejection(String reason) {
+        return "unsupported_fact_claim".equals(reason)
+                || "unsupported_url".equals(reason)
+                || "unsupported_model_name".equals(reason)
+                || "never_promise".equals(reason);
     }
 
     private String repairInstruction(String reason) {
