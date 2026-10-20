@@ -1272,6 +1272,35 @@ class SpringAiChatCompletionAdapterTest {
         verify(requestSpec, times(1)).call();
     }
 
+    @Test
+    void returnsSafeClarificationWhenEvidenceRepairStillFails() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn(
+                "{\"answer\":\"El precio es 999999 pesos.\",\"modelConfidence\":0.9}",
+                "{\"answer\":\"El precio es 999999 pesos.\",\"modelConfidence\":0.9}");
+        var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
+                new ToolAuthorizationPolicy(List.of()), new DecisionPolicy(), null,
+                new com.ford.service.ai.application.AssistantResponseQualityPolicy(), new ObjectMapper(),
+                new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP), null, true, null,
+                new com.ford.service.ai.application.EvidenceGroundedResponsePolicy());
+        var general = new ConversationDecision(ConversationIntent.GENERAL, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.NONE,
+                SensitiveDataLevel.NONE, testEvidence());
+
+        var result = adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                "Hola", "BOT_ACTIVE", null, false, general), null);
+
+        assertThat(result.content()).contains("detalle").doesNotContain("999999");
+        verify(requestSpec, times(2)).call();
+    }
+
     private static List<com.ford.service.ai.application.ClassificationEvidence> testEvidence() {
         return List.of(new com.ford.service.ai.application.ClassificationEvidence(
                 com.ford.service.ai.application.ClassifierType.INTENT, "TEST", 1.0,
