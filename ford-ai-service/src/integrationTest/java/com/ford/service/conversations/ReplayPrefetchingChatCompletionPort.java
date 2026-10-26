@@ -56,8 +56,9 @@ final class ReplayPrefetchingChatCompletionPort implements ChatCompletionPort {
     public AssistantResponse complete(AssistantRequest request, ToolContext context) {
         var prefetched = prefetcher.prefetch(request.message());
         if (prefetched.isEmpty()) {
-            if (promotionPrefetcher != null && LocalReplayOfferFollowUp.requiresPromotionEvidence(
-                    request.message(), request.decision() == null ? null : request.decision().toolFamily())) {
+            var promotionFollowUp = LocalReplayOfferFollowUp.requiresPromotionEvidence(
+                    request.message(), request.decision() == null ? null : request.decision().toolFamily());
+            if (promotionPrefetcher != null && promotionFollowUp) {
                 var promotion = promotionPrefetcher.prefetch(request.message(), request.memoryContext());
                 if (promotion.isPresent()) {
                     var value = promotion.orElseThrow();

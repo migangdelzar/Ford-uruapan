@@ -59,4 +59,22 @@ class LocalBuyerVehicleResolverTest {
                 .contains(new LocalBuyerVehicleResolver.VehicleRef("RANGER", 2027, "XLT GASOLINA 4X2"));
         assertThat(resolver.resolve("Ranger 2027 XLT", "", entries)).isEmpty();
     }
+
+    @Test
+    void prefersExactTrimIdentityOverGenericModelYearPrefix() {
+        var genericAndTrim = List.of(new VehicleNameIndexEntry("RANGER", 2027, null),
+                new VehicleNameIndexEntry("RANGER", 2027, "XLT GASOLINA 4X2"));
+
+        assertThat(resolver.resolve("RANGER 2027 XLT GASOLINA 4X2", "", genericAndTrim))
+                .contains(new LocalBuyerVehicleResolver.VehicleRef("RANGER", 2027, "XLT GASOLINA 4X2"));
+    }
+
+    @Test
+    void equalSpecificityDifferentTrimsRemainAmbiguous() {
+        var sameSpecificity = List.of(new VehicleNameIndexEntry("RANGER", 2027, "XLT GASOLINA 4X2"),
+                new VehicleNameIndexEntry("RANGER", 2027, "LARIAT GASOLINA 4X4"));
+
+        assertThat(resolver.resolve("RANGER 2027 XLT GASOLINA 4X2 o RANGER 2027 LARIAT GASOLINA 4X4",
+                "", sameSpecificity)).isEmpty();
+    }
 }

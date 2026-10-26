@@ -25,9 +25,14 @@ final class LocalBuyerVehicleResolver {
         var lines = new ArrayList<String>();
         var buyer = BUYER_LINE.matcher(block.group(1));
         while (buyer.find()) lines.add(buyer.group(1));
+        var exactBuyerMatches = 0;
         for (int i = lines.size() - 1; i >= 0; i--) {
             var matches = matches(lines.get(i), entries);
-            if (!matches.isEmpty()) return matches.size() == 1 ? Optional.of(matches.getFirst()) : Optional.empty();
+            if (!matches.isEmpty()) {
+                exactBuyerMatches++;
+                if (matches.size() == 1) return Optional.of(matches.getFirst());
+                return Optional.empty();
+            }
         }
         return Optional.empty();
     }
@@ -35,7 +40,7 @@ final class LocalBuyerVehicleResolver {
     private List<VehicleRef> matches(String text, List<VehicleNameIndexEntry> entries) {
         if (text == null || text.isBlank()) return List.of();
         var normalized = normalize(text);
-        var found = new ArrayList<VehicleRef>();
+        var found = new ArrayList<IdentityMatch>();
         for (var entry : entries) {
             var name = normalize(entry.model() + " " + entry.year() + (entry.trim() == null ? "" : " " + entry.trim()));
             int from = 0;
@@ -44,12 +49,25 @@ final class LocalBuyerVehicleResolver {
                 if (boundaryBefore(normalized, from) && boundaryAfter(normalized, to)) {
                     var ref = new VehicleRef(entry.model().toUpperCase(Locale.ROOT), entry.year(),
                             entry.trim() == null ? null : normalize(entry.trim()));
-                    if (!found.contains(ref)) found.add(ref);
+                    found.add(new IdentityMatch(ref, name.length()));
                 }
                 from = to;
             }
         }
-        return found;
+        var identities = found.stream().map(IdentityMatch::identity).distinct().toList();
+        if (identities.size() <= 1) return identities;
+        var trimmed = identities.stream().filter(identity -> identity.trim() != null).toList();
+        var genericOnly = identities.stream().allMatch(identity -> identity.trim() == null
+                || identities.stream().filter(candidate -> candidate.trim() == null)
+                .allMatch(candidate -> candidate.model().equals(identity.model())
+                        && candidate.year() == identity.year()));
+        if (genericOnly && trimmed.size() == 1) {
+            var selected = trimmed.getFirst();
+            var longestMatch = found.stream().filter(match -> match.identity().equals(selected))
+                    .mapToInt(IdentityMatch::specificity).max().orElse(-1);
+            if (longestMatch > 0) return List.of(selected);
+        }
+        return identities;
     }
 
     private boolean boundaryBefore(String text, int index) {
@@ -65,4 +83,5 @@ final class LocalBuyerVehicleResolver {
     }
 
     record VehicleRef(String model, int year, String trim) {}
+    private record IdentityMatch(VehicleRef identity, int specificity) {}
 }
