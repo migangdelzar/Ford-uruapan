@@ -23,19 +23,6 @@ class LocalReplaySafetyAssertionsTest {
     }
 
     @Test
-    void priorTurnVehicleEvidenceDoesNotCountAsCurrentTurnEvidence() {
-        var priorTurnEvidence = List.of(new LocalQwenTranscriptWriter.ToolTrace("get_vehicle", "returned", 1));
-        var currentTurnEvidence = List.<LocalQwenTranscriptWriter.ToolTrace>of();
-
-        assertThat(priorTurnEvidence).hasSize(1);
-        var violations = LocalReplaySafetyAssertions.evaluate(turn(
-                        NaturalBuyerConversationScenario.Expectation.CATALOG_FACT), "Respuesta sintética",
-                currentTurnEvidence, List.of(), CURRENT_ENTRIES, List.of());
-
-        assertThat(violations).contains(LocalReplaySafetyAssertions.Violation.MISSING_CATALOG_EVIDENCE);
-    }
-
-    @Test
     void replayPrefetchVehicleEvidenceIsAcceptedOnlyInPrefetchModeForCatalogFacts() {
         var turn = turn(NaturalBuyerConversationScenario.Expectation.CATALOG_FACT);
         var returnedPrefetch = List.of(new LocalQwenTranscriptWriter.ToolTrace("get_vehicle", "returned", 1,

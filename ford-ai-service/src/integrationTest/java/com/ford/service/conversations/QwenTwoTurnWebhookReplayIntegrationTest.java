@@ -408,6 +408,7 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                 java.util.Objects.requireNonNull(SNAPSHOT_LABEL, "snapshot label is required"),
                 expectedTurns, replayMode);
         var telemetry = new LocalQwenTurnTelemetry(Path.of("build/reports"), telemetryRunId);
+        var eventsByProviderMessageId = new java.util.HashMap<String, List<LocalQwenTranscriptWriter.ToolTrace>>();
         UUID conversationId = null;
         var committed = 0;
         for (var turn : replayTurns) {
@@ -425,11 +426,14 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                 var answer = latestOutbound(committedConversation);
                 assertThat(answer).as("committed reply at turn %s", turnIndex).isNotBlank();
                 var toolEvents = toolTraceFor(providerMessageId);
+                eventsByProviderMessageId.put(providerMessageId, toolEvents);
                 transcript.append(turn, answer, toolEvents);
                 var nameIndex = applicationContext.getBeanProvider(CatalogNameIndexService.class).getIfAvailable();
                 var currentNames = nameIndex == null ? List.<com.ford.service.catalog.api.VehicleNameIndexEntry>of()
                         : nameIndex.currentEntries();
-                var safetyViolations = LocalReplaySafetyAssertions.evaluate(turn, answer, toolEvents,
+                var currentTurnEvents = LocalReplayTurnEvidence.forTurn(providerMessageId,
+                        eventsByProviderMessageId);
+                var safetyViolations = LocalReplaySafetyAssertions.evaluate(turn, answer, currentTurnEvents,
                         replyOptionsFor(committedConversation), currentNames,
                         approvedInventoryTexts(committedConversation), replayMode ==
                                 LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN);
