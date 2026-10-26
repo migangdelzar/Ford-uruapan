@@ -425,6 +425,7 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                 var answer = latestOutbound(committedConversation);
                 assertThat(answer).as("committed reply at turn %s", turnIndex).isNotBlank();
                 var toolEvents = toolTraceFor(providerMessageId);
+                transcript.append(turn, answer, toolEvents);
                 var nameIndex = applicationContext.getBeanProvider(CatalogNameIndexService.class).getIfAvailable();
                 var currentNames = nameIndex == null ? List.<com.ford.service.catalog.api.VehicleNameIndexEntry>of()
                         : nameIndex.currentEntries();
@@ -435,7 +436,6 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                 assertThat(safetyViolations)
                         .as("per-turn safety checks: turn=%s expectation=%s", turnIndex, turn.expectation())
                         .isEmpty();
-                transcript.append(turn, answer, toolEvents);
                 appendTelemetry(telemetry, telemetryRunId, "natural-buyer-100", turnIndex, turnStarted,
                         measurementMark, committedConversation, providerMessageId,
                         LocalQwenTurnTelemetry.Outcome.COMMITTED);
