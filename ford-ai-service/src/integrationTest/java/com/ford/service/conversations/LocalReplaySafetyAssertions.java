@@ -51,7 +51,10 @@ final class LocalReplaySafetyAssertions {
                         && trace.origin() == LocalQwenTranscriptWriter.ToolTraceOrigin.REPLAY_PREFETCH
                         && ("compare_trims".equals(trace.toolName())
                         || (turn.expectation() == NaturalBuyerConversationScenario.Expectation.CATALOG_FACT
-                        && "get_vehicle".equals(trace.toolName())))))
+                        && "get_vehicle".equals(trace.toolName()))
+                        || (turn.expectation() == NaturalBuyerConversationScenario.Expectation.CATALOG_FACT
+                        && LocalReplayOfferFollowUp.requiresPromotionEvidence(turn.message(), null)
+                        && "list_promotions".equals(trace.toolName())))))
                 .toList();
         var safeOptions = replyOptions == null ? List.<ReplyOption>of() : replyOptions;
         var safeEntries = currentEntries == null ? List.<VehicleNameIndexEntry>of() : currentEntries;

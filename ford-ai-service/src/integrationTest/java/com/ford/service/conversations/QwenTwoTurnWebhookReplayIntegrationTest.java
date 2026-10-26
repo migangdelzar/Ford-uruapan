@@ -347,7 +347,7 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
         var toolEvents = answer.decisionTrace().stream()
                 .filter(event -> "tool".equals(event.stage()) && event.toolName() != null)
                 .map(event -> new LocalQwenTranscriptWriter.ToolTrace(event.toolName(), event.outcome(),
-                        event.evidenceCount(), "replay_prefetch_comparison".equals(event.reasonCode())
+                        event.evidenceCount(), event.reasonCode() != null && event.reasonCode().startsWith("replay_prefetch_")
                         ? LocalQwenTranscriptWriter.ToolTraceOrigin.REPLAY_PREFETCH
                         : LocalQwenTranscriptWriter.ToolTraceOrigin.MODEL))
                 .toList();
@@ -681,7 +681,7 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                 .query((rs, row) -> new LocalQwenTranscriptWriter.ToolTrace(
                         rs.getString("tool_name"), rs.getString("outcome"),
                         (Integer) rs.getObject("evidence_count"),
-                        "replay_prefetch_comparison".equals(rs.getString("reason_code"))
+                        rs.getString("reason_code") != null && rs.getString("reason_code").startsWith("replay_prefetch_")
                                 ? LocalQwenTranscriptWriter.ToolTraceOrigin.REPLAY_PREFETCH
                                 : LocalQwenTranscriptWriter.ToolTraceOrigin.MODEL))
                 .list();

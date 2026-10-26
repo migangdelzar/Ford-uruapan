@@ -48,9 +48,24 @@ class LocalQwenComparisonPrefetchConfiguration {
 
     @Bean
     @ConditionalOnProperty(name = "ford.test.local-qwen-comparison-prefetch.enabled", havingValue = "true")
+    LocalReplayPromotionPrefetcher localReplayPromotionPrefetcher(
+            ObjectProvider<CatalogNameIndexService> nameIndexes, CatalogPort catalog,
+            ObjectProvider<CatalogTools> catalogTools, ObjectProvider<CatalogRetrievalPort> retrieval) {
+        var nameIndex = nameIndexes.getIfAvailable(() -> new CatalogNameIndexService(
+                catalog, new CatalogNameIndexProperties(), java.time.Clock.systemUTC()));
+        var tools = catalogTools.getIfAvailable(() -> new CatalogTools(catalog, retrieval.getIfAvailable()));
+        return new LocalReplayPromotionPrefetcher(new LocalBuyerVehicleResolver(), () -> {
+            var currentEntries = nameIndex.currentEntries();
+            return currentEntries.isEmpty() ? catalog.nameIndexEntries() : currentEntries;
+        }, tools);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "ford.test.local-qwen-comparison-prefetch.enabled", havingValue = "true")
     static BeanPostProcessor localQwenReplayComparisonPrefetchPostProcessor(
             ObjectProvider<LocalReplayComparisonPrefetcher> prefetchers,
             ObjectProvider<LocalReplayVehicleFactPrefetcher> vehicleFactPrefetchers,
+            ObjectProvider<LocalReplayPromotionPrefetcher> promotionPrefetchers,
             ObjectProvider<ObjectMapper> objectMappers) {
         return new BeanPostProcessor() {
             @Override
@@ -60,6 +75,7 @@ class LocalQwenComparisonPrefetchConfiguration {
                 }
                 return new ReplayPrefetchingChatCompletionPort(delegate, prefetchers.getObject(),
                         vehicleFactPrefetchers.getObject(),
+                        promotionPrefetchers.getObject(),
                         objectMappers.getIfAvailable(ObjectMapper::new));
             }
         };

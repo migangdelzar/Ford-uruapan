@@ -17,33 +17,60 @@ final class ReplayPrefetchingChatCompletionPort implements ChatCompletionPort {
     private static final String EVIDENCE_END = "[/REPLAY PREFETCHED COMPARISON EVIDENCE]";
     private static final String VEHICLE_EVIDENCE_MARKER = "[REPLAY PREFETCHED VEHICLE EVIDENCE]";
     private static final String VEHICLE_EVIDENCE_END = "[/REPLAY PREFETCHED VEHICLE EVIDENCE]";
+    private static final String PROMOTION_EVIDENCE_MARKER = "[REPLAY PREFETCHED PROMOTION EVIDENCE]";
+    private static final String PROMOTION_EVIDENCE_END = "[/REPLAY PREFETCHED PROMOTION EVIDENCE]";
     private static final int MAX_EVIDENCE_JSON_CHARS = 16_000;
 
     private final ChatCompletionPort delegate;
     private final LocalReplayComparisonPrefetcher prefetcher;
     private final ObjectMapper objectMapper;
     private final LocalReplayVehicleFactPrefetcher vehicleFactPrefetcher;
+    private final LocalReplayPromotionPrefetcher promotionPrefetcher;
 
     ReplayPrefetchingChatCompletionPort(ChatCompletionPort delegate,
                                          LocalReplayComparisonPrefetcher prefetcher,
                                          ObjectMapper objectMapper) {
-        this(delegate, prefetcher, null, objectMapper);
+        this(delegate, prefetcher, null, null, objectMapper);
+    }
+
+    ReplayPrefetchingChatCompletionPort(ChatCompletionPort delegate,
+                                        LocalReplayComparisonPrefetcher prefetcher,
+                                         LocalReplayVehicleFactPrefetcher vehicleFactPrefetcher,
+                                         ObjectMapper objectMapper) {
+        this(delegate, prefetcher, vehicleFactPrefetcher, null, objectMapper);
     }
 
     ReplayPrefetchingChatCompletionPort(ChatCompletionPort delegate,
                                         LocalReplayComparisonPrefetcher prefetcher,
                                         LocalReplayVehicleFactPrefetcher vehicleFactPrefetcher,
+                                        LocalReplayPromotionPrefetcher promotionPrefetcher,
                                         ObjectMapper objectMapper) {
         this.delegate = Objects.requireNonNull(delegate, "delegate is required");
         this.prefetcher = Objects.requireNonNull(prefetcher, "prefetcher is required");
         this.objectMapper = Objects.requireNonNull(objectMapper, "object mapper is required");
         this.vehicleFactPrefetcher = vehicleFactPrefetcher;
+        this.promotionPrefetcher = promotionPrefetcher;
     }
 
     @Override
     public AssistantResponse complete(AssistantRequest request, ToolContext context) {
         var prefetched = prefetcher.prefetch(request.message());
         if (prefetched.isEmpty()) {
+            if (promotionPrefetcher != null && LocalReplayOfferFollowUp.requiresPromotionEvidence(
+                    request.message(), request.decision() == null ? null : request.decision().toolFamily())) {
+                var promotion = promotionPrefetcher.prefetch(request.message(), request.memoryContext());
+                if (promotion.isPresent()) {
+                    var value = promotion.orElseThrow();
+                    var serialized = serialize(value);
+                    if (serialized.length() <= MAX_EVIDENCE_JSON_CHARS) {
+                        var enhanced = withMemoryContext(request, appendEvidence(request.memoryContext(), serialized,
+                                PROMOTION_EVIDENCE_MARKER, PROMOTION_EVIDENCE_END));
+                        tracePrefetch(request, context, "replay_prefetch_promotion_evidence", "list_promotions",
+                                value.evidenceCount());
+                        return delegate.complete(enhanced, context);
+                    }
+                }
+            }
             if (vehicleFactPrefetcher == null || request.decision() == null
                     || request.decision().toolFamily() != ToolFamily.VEHICLE_DETAILS) {
                 return delegate.complete(request, context);
@@ -81,6 +108,13 @@ final class ReplayPrefetchingChatCompletionPort implements ChatCompletionPort {
             return objectMapper.writeValueAsString(comparison);
         } catch (com.fasterxml.jackson.core.JsonProcessingException failure) {
             throw new IllegalStateException("local replay comparison evidence could not be serialized", failure);
+        }
+    }
+
+    private String serialize(LocalReplayPromotionPrefetcher.PrefetchedPromotion promotion) {
+        try { return objectMapper.writeValueAsString(promotion); }
+        catch (com.fasterxml.jackson.core.JsonProcessingException failure) {
+            throw new IllegalStateException("local replay promotion evidence could not be serialized", failure);
         }
     }
 
