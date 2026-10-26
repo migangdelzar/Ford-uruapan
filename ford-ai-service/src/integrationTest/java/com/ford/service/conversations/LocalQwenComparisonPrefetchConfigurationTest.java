@@ -30,6 +30,7 @@ class LocalQwenComparisonPrefetchConfigurationTest {
                     .isNotInstanceOf(ReplayPrefetchingChatCompletionPort.class);
             assertThat(context).doesNotHaveBean(LocalReplayComparisonPrefetcher.class);
             assertThat(context).doesNotHaveBean(LocalReplayVehicleFactPrefetcher.class);
+            assertThat(context).doesNotHaveBean(LocalReplayPromotionPrefetcher.class);
         });
     }
 
@@ -43,6 +44,7 @@ class LocalQwenComparisonPrefetchConfigurationTest {
                     assertThat(port).isInstanceOf(ReplayPrefetchingChatCompletionPort.class);
                     assertThat(context.getBeansOfType(ReplayPrefetchingChatCompletionPort.class)).hasSize(1);
                     assertThat(context.getBeansOfType(LocalReplayVehicleFactPrefetcher.class)).hasSize(1);
+                    assertThat(context.getBeansOfType(LocalReplayPromotionPrefetcher.class)).hasSize(1);
                 });
     }
 

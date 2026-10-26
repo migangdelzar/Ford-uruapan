@@ -11,4 +11,15 @@ class LocalReplayOfferFollowUpTest {
         assertThat(LocalReplayOfferFollowUp.requiresPromotionEvidence(
                 "¿Ese monto corresponde a la XLT que acabamos de revisar?", ToolFamily.OFFERS)).isTrue();
     }
+
+    @Test
+    void recognizesExactTurnTwelveWordingWithoutOffersRouting() {
+        assertThat(LocalReplayOfferFollowUp.requiresPromotionEvidence(
+                "¿Ese monto corresponde a la XLT que acabamos de revisar?", null)).isTrue();
+    }
+
+    @Test
+    void recognizesExplicitOffersRouting() {
+        assertThat(LocalReplayOfferFollowUp.requiresPromotionEvidence("consulta general", ToolFamily.OFFERS)).isTrue();
+    }
 }

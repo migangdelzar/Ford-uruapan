@@ -13,6 +13,7 @@ import com.ford.service.catalog.api.VehicleFact;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -174,6 +175,59 @@ class ReplayPrefetchingChatCompletionPortTest {
                 .complete(request, new ToolContext(request.tenantId(), request.conversationId()));
         assertThat(received.get()).isSameAs(request);
         assertThat(request.traceCollector().snapshot()).isEmpty();
+    }
+
+    @Test
+    void promotionPrefetchPreservesRequestAndContextAndRecordsPositiveEvidenceTrace() {
+        var tools = mock(CatalogTools.class);
+        var promotion = new CatalogTools.PromotionResult("promo", "RANGER", 2027, "Oferta", null, null,
+                null, "MXN", null, "Aplican condiciones", null, null, null, "active",
+                "https://ford.test/promo", null, null, null, null);
+        when(tools.listPromotions("RANGER", 2027, null, false, 20, 0, "full", null))
+                .thenReturn(new CatalogTools.PromotionSearch(1, 0, 20, false, List.of(promotion)));
+        var history = "[HISTORIAL DE CONVERSACIÓN]\n- usuario: RANGER 2027 XLT GASOLINA 4X2\n[FIN DEL HISTORIAL]";
+        var entries = List.of(new VehicleNameIndexEntry("RANGER", 2027, "XLT GASOLINA 4X2"));
+        var promotionPrefetcher = new LocalReplayPromotionPrefetcher(new LocalBuyerVehicleResolver(), () -> entries, tools);
+        var received = new AtomicReference<AssistantRequest>();
+        var receivedContext = new AtomicReference<ToolContext>();
+        var delegate = (com.ford.service.ai.application.port.out.ChatCompletionPort) (req, ctx) -> {
+            received.set(req); receivedContext.set(ctx);
+            return new AssistantResponse("respuesta Qwen", false, "ollama", List.of());
+        };
+        var collector = new DecisionTraceCollector();
+        var original = new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                "¿Ese monto corresponde a la XLT que acabamos de revisar?", "BOT_ACTIVE", history, false,
+                new ConversationDecision(ConversationIntent.GENERAL, LeadTemperature.WARM, LeadStage.NEW,
+                        HandoffRecommendation.NONE, ToolFamily.NONE, SensitiveDataLevel.NONE, List.of()),
+                null, List.of("respuesta previa"), "repair", collector);
+        var context = new ToolContext(original.tenantId(), original.conversationId(), Set.of("list_promotions"));
+        var comparisons = new LocalReplayComparisonPrefetcher(new LocalComparisonPairResolver(), () -> entries, tools);
+        var vehicleFacts = new LocalReplayVehicleFactPrefetcher(new LocalBuyerVehicleResolver(), () -> entries, tools);
+
+        var response = new ReplayPrefetchingChatCompletionPort(delegate, comparisons, vehicleFacts,
+                promotionPrefetcher, new ObjectMapper()).complete(original, context);
+
+        assertThat(response.content()).isEqualTo("respuesta Qwen");
+        assertThat(received.get().memoryContext()).startsWith(history).contains("[REPLAY PREFETCHED PROMOTION EVIDENCE]",
+                "https://ford.test/promo", "Aplican condiciones");
+        assertThat(received.get().tenantId()).isEqualTo(original.tenantId());
+        assertThat(received.get().conversationId()).isEqualTo(original.conversationId());
+        assertThat(received.get().message()).isEqualTo(original.message());
+        assertThat(received.get().conversationState()).isEqualTo(original.conversationState());
+        assertThat(received.get().containsSensitiveData()).isEqualTo(original.containsSensitiveData());
+        assertThat(received.get().decision()).isSameAs(original.decision());
+        assertThat(received.get().leadJourneyContext()).isEqualTo(original.leadJourneyContext());
+        assertThat(received.get().recentAssistantReplies()).isEqualTo(original.recentAssistantReplies());
+        assertThat(received.get().repairInstruction()).isEqualTo(original.repairInstruction());
+        assertThat(received.get().traceCollector()).isSameAs(collector);
+        assertThat(receivedContext.get()).isSameAs(context);
+        verify(tools).listPromotions("RANGER", 2027, null, false, 20, 0, "full", null);
+        assertThat(collector.snapshot()).singleElement().satisfies(event -> {
+            assertThat(event.toolName()).isEqualTo("list_promotions");
+            assertThat(event.outcome()).isEqualTo("returned");
+            assertThat(event.evidenceCount()).isEqualTo(1);
+            assertThat(event.reasonCode()).startsWith("replay_prefetch_");
+        });
     }
 
     private static AssistantRequest request(String message, DecisionTraceCollector traceCollector) {

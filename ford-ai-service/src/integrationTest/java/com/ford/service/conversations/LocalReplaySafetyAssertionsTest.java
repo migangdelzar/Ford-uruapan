@@ -52,6 +52,31 @@ class LocalReplaySafetyAssertionsTest {
     }
 
     @Test
+    void recognizedPromotionFollowUpRequiresSameTurnPositivePromotionEvidence() {
+        var turn = new NaturalBuyerConversationScenario.Turn(12,
+                "¿Ese monto corresponde a la XLT que acabamos de revisar?",
+                NaturalBuyerConversationScenario.Expectation.CATALOG_FACT);
+        var vehicleOnly = List.of(new LocalQwenTranscriptWriter.ToolTrace("get_vehicle", "returned", 2,
+                LocalQwenTranscriptWriter.ToolTraceOrigin.REPLAY_PREFETCH));
+        var validPromotion = List.of(new LocalQwenTranscriptWriter.ToolTrace("list_promotions", "returned", 1,
+                LocalQwenTranscriptWriter.ToolTraceOrigin.REPLAY_PREFETCH));
+
+        assertThat(LocalReplaySafetyAssertions.evaluate(turn, "respuesta", vehicleOnly,
+                List.of(), CURRENT_ENTRIES, List.of(), true))
+                .contains(LocalReplaySafetyAssertions.Violation.MISSING_CATALOG_EVIDENCE);
+        assertThat(LocalReplaySafetyAssertions.evaluate(turn, "respuesta", List.of(
+                new LocalQwenTranscriptWriter.ToolTrace("list_promotions", "returned", 0,
+                        LocalQwenTranscriptWriter.ToolTraceOrigin.REPLAY_PREFETCH)),
+                List.of(), CURRENT_ENTRIES, List.of(), true))
+                .contains(LocalReplaySafetyAssertions.Violation.MISSING_CATALOG_EVIDENCE);
+        assertThat(LocalReplaySafetyAssertions.evaluate(turn, "respuesta", validPromotion,
+                List.of(), CURRENT_ENTRIES, List.of())).contains(
+                LocalReplaySafetyAssertions.Violation.MISSING_CATALOG_EVIDENCE);
+        assertThat(LocalReplaySafetyAssertions.evaluate(turn, "respuesta", validPromotion,
+                List.of(), CURRENT_ENTRIES, List.of(), true)).isEmpty();
+    }
+
+    @Test
     void requiresComparisonEvidenceForComparisonTurns() {
         var traces = List.of(new LocalQwenTranscriptWriter.ToolTrace("get_vehicle", "returned", 1));
 
