@@ -7,9 +7,11 @@ Improve coverage of Ford Mexico public catalog, finance, and promotion data in t
 ## Current State
 
 - The service already reads local `ford_read` catalog views through `JdbcCatalogAdapter`.
+- `CatalogDataSourceConfiguration` requires a dedicated read-only catalog datasource and rejects the `ford_service` database.
 - Vehicle variants, sourced vehicle facts, offers/promotions, freshness, and provenance are represented in the catalog read path.
 - `DefaultSyncCoordinator` can ingest a Ford catalog endpoint, an inventory endpoint, an authorized scraper endpoint, and manual CSV imports.
 - `FordIngestionConfiguration` returns empty snapshots when source endpoints or the import path are blank. Configured sync therefore does not prove source coverage.
+- The app's `JdbcCanonicalDataWriter` writes `ford_service` tables. That writer is not wired to populate the separate `ford_read` views used by customer catalog tools.
 - The latest replay snapshot reported 121 variants and 10 promotions. These counts do not prove complete coverage of Ford Mexico's published catalog.
 - A trim-family query can yield one partial canonical candidate but still be tagged ambiguous. The response tracker requires multiple candidates to recognize ambiguity; the empty-fact evidence gate can then withhold a valid clarification. This is a tool-result contract issue, separate from missing catalog data.
 
@@ -20,7 +22,7 @@ Improve coverage of Ford Mexico public catalog, finance, and promotion data in t
 - Official Ford Mexico public sources for new vehicles: model, model year, canonical trim, published packages, and source-backed specifications.
 - Published Ford Mexico prices with source and observation date.
 - Published finance products and promotions with applicability, requirements, effective dates, and source provenance.
-- Existing catalog sync and local read database; no second database.
+- Existing read-only catalog datasource and its upstream population path; no second customer-query catalog database.
 - Coverage and freshness reporting by source, model year, trim, package, and data domain.
 - Deterministic tool outcomes and tests for exact, unique canonical, ambiguous, missing, stale, and unsupported requests.
 
@@ -39,7 +41,7 @@ Inventory configured source endpoints and import paths. Compare the current loca
 
 ### 2. Reuse existing sync and database
 
-Use `DefaultSyncCoordinator`, the existing source adapters, normalization, precedence policy, and `CanonicalDataWriter`. Configure or extend official catalog and authorized scraper feeds where needed; use manual imports only as an auditable supplemental source. Store records in existing catalog tables/views and preserve source kind, URL, observation time, validity window, and freshness. Do not create a parallel catalog database.
+Keep `ford_read` as the customer-query source and keep its application connection read-only. First identify and audit the process that populates that datasource. Load verified catalog data through that owning process or its approved snapshot-import path, preserving source kind, URL, observation time, validity window, and freshness. The app's existing `DefaultSyncCoordinator`/`JdbcCanonicalDataWriter` may be reused only if an explicit, reviewed projection into the `ford_read` read model is added; its current writes to `ford_service` do not populate customer-query facts. Do not create a second customer-query catalog database or grant the app write access to the read-only datasource.
 
 ### 3. Keep facts applicability- and provenance-bound
 
@@ -72,7 +74,7 @@ Define completeness as coverage of the selected public-source manifest, not as a
 
 ## Alternatives Considered
 
-1. **Enhance the existing local database and sync path (recommended):** preserves one source of truth, provenance, and current tool contracts.
+1. **Enhance the upstream population path for the existing read-only catalog datasource (recommended):** preserves one customer-query source of truth, provenance, and current tool contracts.
 2. **Create a second local database:** rejected due to duplication, drift, and unclear ownership.
 3. **Scrape live for every customer question:** rejected as the primary path due to latency, source variability, and weak replay reproducibility. Live retrieval may be a later, bounded supplement.
 
