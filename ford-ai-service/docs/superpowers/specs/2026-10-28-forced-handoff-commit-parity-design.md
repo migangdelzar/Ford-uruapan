@@ -17,6 +17,8 @@ Extract a shared handoff-commit helper inside `ConversationTurnCommitService`. B
 
 The normal path supplies its assistant decision and trace. The forced path supplies no model decision or model trace when routing occurs before assistant execution; when mandatory routing follows an assistant response, it supplies that response's actual decision and trace. Both paths use the same sanitized payload reason for the handoff decision and notification. Alternate contacts are carried only from the encrypted staging flow into the handoff packet and are deleted after successful handoff.
 
+Routing stays in the server-owned `AdvisorResponseDispositionPolicy`, separate from commit mechanics. Criticality wins: explicit human requests, serious complaints, sensitive documents, and repeated substantive failures take the mandatory-handoff route even if an answer could otherwise be reviewed. Routine uncertainty, missing or conflicting evidence, unsupported commitments, and response-review signals take the advisor-approval route; supported, validated routine responses remain automatic. Confidence is system-grounded in evidence and quality outcomes. The model's self-reported confidence is not a standalone routing signal, and this change adds no numeric threshold or new criticality category.
+
 ## Error Handling and Privacy
 
 All writes and event publication remain within the existing transaction boundary. Preserve request idempotency and optimistic-lock behavior. Do not weaken safety gates, invoke alternate conversation graphs, expose staged contact in public ticket views, or fabricate tool/model evidence. A handoff rejected by CAS returns `DUPLICATE` without publishing a handoff notification or recording a successful ledger outcome.
@@ -24,6 +26,7 @@ All writes and event publication remain within the existing transaction boundary
 ## Verification
 
 - Unit tests verify both ordinary and forced handoffs share reason, decision, trace, ledger, event, idempotency, and duplicate semantics.
+- Policy tests verify mandatory criticality takes precedence over advisor review, while routine evidence uncertainty stays reviewable and safe verified responses stay automatic.
 - PostgreSQL integration tests verify forced handoff through the conversation processor retains consented alternate contact only in the private ticket packet, releases encrypted staging, writes the `HUMAN_PENDING` turn and trace, and does not leak contact data to public or persisted text surfaces.
 - Approval integration coverage remains unchanged; fresh all-live Qwen acceptance is a separate gate and must still pass before catalog import.
 
