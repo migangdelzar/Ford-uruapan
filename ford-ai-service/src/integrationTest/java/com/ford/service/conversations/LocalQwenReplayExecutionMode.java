@@ -85,7 +85,23 @@ enum LocalQwenReplayExecutionMode {
                 }
             }
         }
+        syntheticOperatorApprovalEnabled(environment);
         return mode;
+    }
+
+    static boolean syntheticOperatorApprovalEnabled(Map<String, String> environment) {
+        Objects.requireNonNull(environment, "environment is required");
+        var configured = environment.get("FORD_QWEN_SYNTHETIC_OPERATOR_APPROVAL");
+        if (configured == null) return false;
+        if ("false".equalsIgnoreCase(configured.strip())) return false;
+        if (!"true".equalsIgnoreCase(configured.strip())) {
+            throw new IllegalArgumentException("synthetic operator approval must be true or false");
+        }
+        if (!BOUNDED_LIVE_DIAGNOSTIC.name().equals(environment.get("FORD_QWEN_REPLAY_MODE"))) {
+            throw new IllegalArgumentException("synthetic operator approval requires bounded diagnostic mode");
+        }
+        boundedDiagnosticEndTurn(environment);
+        return true;
     }
 
     static int boundedDiagnosticEndTurn(Map<String, String> environment) {

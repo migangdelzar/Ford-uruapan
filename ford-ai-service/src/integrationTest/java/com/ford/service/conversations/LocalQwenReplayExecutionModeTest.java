@@ -99,4 +99,39 @@ class LocalQwenReplayExecutionModeTest {
                     LocalQwenReplayExecutionMode.resolve(environment));
         }
     }
+
+    @Test
+    void syntheticOperatorApprovalDefaultsOffAndAcceptsBoundedOptIn() {
+        assertThat(LocalQwenReplayExecutionMode.syntheticOperatorApprovalEnabled(Map.of())).isFalse();
+        assertThat(LocalQwenReplayExecutionMode.syntheticOperatorApprovalEnabled(Map.of(
+                "FORD_QWEN_SYNTHETIC_OPERATOR_APPROVAL", "false"))).isFalse();
+
+        var bounded = Map.of(
+                "FORD_QWEN_REPLAY_MODE", "BOUNDED_LIVE_DIAGNOSTIC",
+                "FORD_QWEN_DIAGNOSTIC_END_TURN", "32",
+                "FORD_QWEN_SYNTHETIC_OPERATOR_APPROVAL", "true");
+        assertThat(LocalQwenReplayExecutionMode.syntheticOperatorApprovalEnabled(bounded)).isTrue();
+        assertThat(LocalQwenReplayExecutionMode.resolve(bounded))
+                .isEqualTo(LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC);
+    }
+
+    @Test
+    void syntheticOperatorApprovalRejectsInvalidOrUnboundedConfiguration() {
+        for (var invalid : java.util.List.of(
+                Map.of("FORD_QWEN_SYNTHETIC_OPERATOR_APPROVAL", "yes"),
+                Map.of("FORD_QWEN_REPLAY_MODE", "LIVE_DIAGNOSTIC",
+                        "FORD_QWEN_SYNTHETIC_OPERATOR_APPROVAL", "true"),
+                Map.of("FORD_QWEN_REPLAY_MODE", "BOUNDED_LIVE_DIAGNOSTIC",
+                        "FORD_QWEN_SYNTHETIC_OPERATOR_APPROVAL", "true"),
+                Map.of("FORD_QWEN_REPLAY_MODE", "BOUNDED_LIVE_DIAGNOSTIC",
+                        "FORD_QWEN_DIAGNOSTIC_END_TURN", "33",
+                        "FORD_QWEN_SYNTHETIC_OPERATOR_APPROVAL", "true"),
+                Map.of("FORD_QWEN_REPLAY_MODE", "FRESH_FULL_LIVE",
+                        "FORD_QWEN_100_REPLAY_ENABLED", "true",
+                        "FORD_QWEN_SYNTHETIC_OPERATOR_APPROVAL", "true"))) {
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> LocalQwenReplayExecutionMode.syntheticOperatorApprovalEnabled(invalid));
+            assertThatIllegalArgumentException().isThrownBy(() -> LocalQwenReplayExecutionMode.resolve(invalid));
+        }
+    }
 }
