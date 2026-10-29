@@ -33,7 +33,7 @@
 - Deterministic precedence: not sendable; then `APPROVE` absent; then null/blank draft. Return `null` only when eligible.
 - `approveIfEligible(...)` still returns `APPROVED` only after the real service returns a queued receipt.
 
-- [ ] **Step 1: Write focused failing tests**
+- [x] **Step 1: Write focused failing tests**
 
 Add tests for each failure reason and for the eligible case:
 
@@ -49,7 +49,7 @@ assertThat(LocalQwenSyntheticOperatorApproval.eligibilityFailure(true, true, "Dr
 
 Update the existing non-approvable draft test to expect `DRAFT_NOT_SENDABLE`. Confirm no failure case calls `MessageApprovalService.act`.
 
-- [ ] **Step 2: Run focused test and observe RED**
+- [x] **Step 2: Run focused test and observe RED**
 
 Run from `ford-ai-service/`:
 
@@ -59,7 +59,7 @@ Run from `ford-ai-service/`:
 
 Expected: compile failure because `eligibilityFailure` and the reason statuses are not defined.
 
-- [ ] **Step 3: Implement reason classification without changing approval behavior**
+- [x] **Step 3: Implement reason classification without changing approval behavior**
 
 Implement this helper:
 
@@ -74,7 +74,7 @@ static Status eligibilityFailure(boolean sendable, boolean approveAllowed, Strin
 
 In `approveIfEligible`, after confirming one pending exact-receipt approval, call it with `approval.draftMayBeApproved()`, `approval.allowedActions().contains(Action.APPROVE)`, and `approval.draftText()`. Return that reason status if non-null. Leave service invocation, exact draft, tenant scope, idempotency key, and queued receipt checks unchanged.
 
-- [ ] **Step 4: Run coordinator tests**
+- [x] **Step 4: Run coordinator tests**
 
 ```bash
 ./gradlew integrationTest --tests com.ford.service.conversations.LocalQwenSyntheticOperatorApprovalTest
@@ -82,7 +82,7 @@ In `approveIfEligible`, after confirming one pending exact-receipt approval, cal
 
 Expected: `BUILD SUCCESSFUL`.
 
-- [ ] **Step 5: Commit eligibility classification**
+- [x] **Step 5: Commit eligibility classification**
 
 Run `git diff --check`, inspect that the reason enum has only fixed codes, and commit:
 
@@ -101,7 +101,7 @@ git commit -m "test: classify synthetic approval eligibility failures"
 - Update: `docs/superpowers/specs/2026-10-29-synthetic-operator-approval-diagnostic-design.md`
 - Update: `docs/superpowers/plans/2026-10-29-approval-eligibility-diagnostics.md`
 
-- [ ] **Step 1: Run unit and focused non-live integration gates**
+- [x] **Step 1: Run unit and focused non-live integration gates**
 
 ```bash
 ./gradlew test
@@ -110,11 +110,11 @@ git commit -m "test: classify synthetic approval eligibility failures"
 
 Expected: both commands report `BUILD SUCCESSFUL`; focused integration command makes no Qwen calls.
 
-- [ ] **Step 2: Verify local prerequisites without writes**
+- [x] **Step 2: Verify local prerequisites without writes**
 
 Confirm the approved snapshot directory exists and local Ollama lists `qwen3.5:4b` and `bge-m3`. Do not change catalog state or contact cloud services.
 
-- [ ] **Step 3: Run one fresh bounded diagnostic, ending at turn 31**
+- [x] **Step 3: Run one fresh bounded diagnostic, ending at turn 31**
 
 Use a clean environment; all delivery beans must be absent before replay traffic. Keep cloud disabled and do not set seed, checkpoint, or 100-turn variables. Set `FORD_QWEN_DIAGNOSTIC_END_TURN=31` and `FORD_QWEN_SYNTHETIC_OPERATOR_APPROVAL=true` with the existing local command:
 
@@ -140,7 +140,7 @@ env -i PATH="$PATH" HOME="$HOME" LANG="${LANG:-en_US.UTF-8}" \
 
 Expected: run reaches turn 31 or safely stops earlier. If held approval is ineligible, transcript/telemetry show one fixed reason code; turn 32 is never sent. Never force approval to make the run pass.
 
-- [ ] **Step 4: Record verification truth and commit docs**
+- [x] **Step 4: Record verification truth and commit docs**
 
 Record run ID, exact reason, live replies committed, synthetic approvals queued (likely zero), processed turns, artifact paths, and handoff count only if actually recorded. State whether `MessageApprovalService` successful-approval path was reached. Keep 100-turn acceptance paused and historical price discrepancy unresolved. Run `git diff --check`, inspect docs, and commit:
 
@@ -155,3 +155,11 @@ git commit -m "docs: record approval eligibility diagnostic"
 - Existing replay diagnostics persist only fixed enum names, not message/draft/exception content (Task 2).
 - Rerun is fresh and local-only, capped at turn 31, with no delivery or 100-turn acceptance (Task 2).
 - If this run still stops safely, report the reason; do not add eligibility or bypass behavior.
+
+## Execution Record
+
+- Reason-classification implementation committed as `cd20e6f`.
+- `./gradlew test` passed. Focused non-live integration gates passed. Coordinator tests verified all three fixed reasons and eligible behavior.
+- Fresh local diagnostic ended at turn 31. Run ID: `38dbb30597324e43997fba5a8a2c676b`; 30 live replies committed; turn 31 stayed `NEEDS_OPERATOR`; reason `DRAFT_NOT_SENDABLE`; zero approvals queued; turn 32 not sent.
+- The run cannot say why the processor marked the draft unsendable; it did not persist which hold path/predicate caused the flag. No forced approval. No external delivery. Final aggregate handoff count unavailable.
+- Transcript, HTML, and telemetry paths are recorded in the design spec. Historical price discrepancy unexplained; 100-turn acceptance remains paused.
