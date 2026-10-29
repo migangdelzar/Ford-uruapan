@@ -393,6 +393,37 @@ class CatalogFactResponseRendererTest {
     }
 
     @Test
+    void doesNotAppendVariantSpecificLinksFromAmbiguousVehicleChoices() {
+        var output = renderer.appendSourceLinks("La Ranger XLT Gasolina 4x2 tiene el dato confirmado.", Map.of(
+                "get_vehicle", """
+                        {"model":"RANGER","status":"available_model_year_options","options":[
+                          {"model":"RANGER","year":2027,"trim":"XLT Diésel 4x4",
+                           "modelPageUrl":"https://www.forduruapan.mx/RANGER/27",
+                           "priceSourceUrl":"https://www.forduruapan.mx/RANGER/27/Comparativo/XLT-DIESEL-4X4/",
+                           "comparisonUrl":"https://www.forduruapan.mx/RANGER/27/Comparativo/XLT-DIESEL-4X4/"},
+                          {"model":"RANGER","year":2027,"trim":"XLT Gasolina 4x2",
+                           "modelPageUrl":"https://www.forduruapan.mx/RANGER/27",
+                           "priceSourceUrl":"https://www.forduruapan.mx/RANGER/27/Comparativo/XLT-GASOLINA-4X2/",
+                           "comparisonUrl":"https://www.forduruapan.mx/RANGER/27/Comparativo/XLT-GASOLINA-4X2/"}
+                        ]}
+                        """));
+
+        assertThat(output).contains("https://www.forduruapan.mx/RANGER/27")
+                .doesNotContain("XLT-DIESEL-4X4", "XLT-GASOLINA-4X2");
+    }
+
+    @Test
+    void stillAppendsExactVariantPriceLinkForSingleVehicleEvidence() {
+        var output = renderer.appendSourceLinks("La Ranger XLT Gasolina 4x2 tiene precio publicado.", Map.of(
+                "get_vehicle", """
+                        {"model":"RANGER","year":2027,"trim":"XLT Gasolina 4x2",
+                         "priceSourceUrl":"https://www.forduruapan.mx/RANGER/27/Comparativo/XLT-GASOLINA-4X2/"}
+                        """));
+
+        assertThat(output).contains("XLT-GASOLINA-4X2");
+    }
+
+    @Test
     void doesNotAppendTheSameSourceWhenOnlyTrailingSlashDiffers() {
         var output = renderer.appendSourceLinks(
                 "Ranger: [Ver modelo](https://www.forduruapan.mx/RANGER/27)",

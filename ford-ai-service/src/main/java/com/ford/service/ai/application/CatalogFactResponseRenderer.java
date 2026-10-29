@@ -409,7 +409,11 @@ public class CatalogFactResponseRenderer {
         for (var entry : toolPayloads.entrySet()) {
             if (hasComparisonEvidence && !(entry.getKey().contains("comparison")
                     || entry.getKey().contains("variant_comparison") || entry.getKey().equals("compare_trims"))) continue;
-            parsePayload(entry.getValue()).ifPresent(root -> collectLinks(root, entry.getKey(), links));
+            parsePayload(entry.getValue()).ifPresent(root -> {
+                var candidates = "get_vehicle".equals(entry.getKey()) ? vehicleCandidates(root) : List.<JsonNode>of();
+                if (candidates.size() > 1) addOnlyCommonModelPageUrl(candidates, links);
+                else collectLinks(root, entry.getKey(), links);
+            });
         }
         var seenUrls = new LinkedHashSet<String>();
         var usable = links.stream()
@@ -420,6 +424,26 @@ public class CatalogFactResponseRenderer {
         var block = usable.stream().map(link -> "🔗 " + link.label() + ": " + link.url())
                 .collect(java.util.stream.Collectors.joining("\n"));
         return answer.strip() + "\n\n" + fill(templates.get("source-links"), Map.of("source_links", block));
+    }
+
+    private static List<JsonNode> vehicleCandidates(JsonNode root) {
+        var candidates = root.path("choices");
+        if (!candidates.isArray()) candidates = root.path("options");
+        if (!candidates.isArray()) return List.of();
+        var values = new ArrayList<JsonNode>();
+        candidates.forEach(values::add);
+        return List.copyOf(values);
+    }
+
+    private void addOnlyCommonModelPageUrl(List<JsonNode> candidates, Set<SourceLink> target) {
+        var modelUrls = candidates.stream()
+                .map(candidate -> safeFordUrl(text(candidate, "modelPageUrl", "model_page_url", "modelUrl",
+                        "model_url")))
+                .toList();
+        if (modelUrls.isEmpty() || modelUrls.stream().anyMatch(String::isBlank)) return;
+        var distinctUrls = modelUrls.stream().map(CatalogFactResponseRenderer::urlDeduplicationKey)
+                .distinct().toList();
+        if (distinctUrls.size() == 1) addSource(target, "Ver modelo", modelUrls.getFirst());
     }
 
     private boolean containsSourceUrl(String text, String sourceUrl) {
