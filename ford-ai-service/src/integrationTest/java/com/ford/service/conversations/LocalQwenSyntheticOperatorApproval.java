@@ -40,10 +40,9 @@ final class LocalQwenSyntheticOperatorApproval {
         if (pending.isEmpty()) return new Result(Status.NO_PENDING_APPROVAL, null);
         if (pending.size() != 1) return new Result(Status.MULTIPLE_PENDING_APPROVALS, null);
         var approval = pending.getFirst();
-        if (!approval.draftMayBeApproved() || !approval.allowedActions().contains(Action.APPROVE)
-                || approval.draftText() == null || approval.draftText().isBlank()) {
-            return new Result(Status.NOT_APPROVABLE, null);
-        }
+        var eligibilityFailure = eligibilityFailure(approval.draftMayBeApproved(),
+                approval.allowedActions().contains(Action.APPROVE), approval.draftText());
+        if (eligibilityFailure != null) return new Result(eligibilityFailure, null);
 
         var operatorId = UUID.nameUUIDFromBytes(("synthetic-operator:" + runId).getBytes(StandardCharsets.UTF_8));
         var operator = new AuthenticatedOperator(operatorId.toString(), Set.of("SCOPE_operator:write"),
@@ -63,8 +62,16 @@ final class LocalQwenSyntheticOperatorApproval {
         }
     }
 
+    static Status eligibilityFailure(boolean sendable, boolean approveAllowed, String draftText) {
+        if (!sendable) return Status.DRAFT_NOT_SENDABLE;
+        if (!approveAllowed) return Status.APPROVE_ACTION_NOT_ALLOWED;
+        if (draftText == null || draftText.isBlank()) return Status.DRAFT_MISSING;
+        return null;
+    }
+
     enum Status {
-        APPROVED, NO_PENDING_APPROVAL, MULTIPLE_PENDING_APPROVALS, NOT_APPROVABLE,
+        APPROVED, NO_PENDING_APPROVAL, MULTIPLE_PENDING_APPROVALS,
+        DRAFT_NOT_SENDABLE, APPROVE_ACTION_NOT_ALLOWED, DRAFT_MISSING,
         APPROVAL_NOT_QUEUED, QUEUED_RECEIPT_MISMATCH, APPROVAL_FAILED
     }
 

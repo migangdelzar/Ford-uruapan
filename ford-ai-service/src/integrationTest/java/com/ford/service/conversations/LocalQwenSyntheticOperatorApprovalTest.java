@@ -105,8 +105,19 @@ class LocalQwenSyntheticOperatorApprovalTest {
 
         var result = coordinator.approveIfEligible(tenant, conversation, receipt, runId);
 
-        assertThat(result.status()).isEqualTo(LocalQwenSyntheticOperatorApproval.Status.NOT_APPROVABLE);
+        assertThat(result.status()).isEqualTo(LocalQwenSyntheticOperatorApproval.Status.DRAFT_NOT_SENDABLE);
         verifyNoInteractions(approvalService);
+    }
+
+    @Test
+    void classifiesApprovalEligibilityWithFixedReasonsAndStablePrecedence() {
+        assertThat(LocalQwenSyntheticOperatorApproval.eligibilityFailure(false, true, "Draft"))
+                .isEqualTo(LocalQwenSyntheticOperatorApproval.Status.DRAFT_NOT_SENDABLE);
+        assertThat(LocalQwenSyntheticOperatorApproval.eligibilityFailure(true, false, "Draft"))
+                .isEqualTo(LocalQwenSyntheticOperatorApproval.Status.APPROVE_ACTION_NOT_ALLOWED);
+        assertThat(LocalQwenSyntheticOperatorApproval.eligibilityFailure(true, true, " "))
+                .isEqualTo(LocalQwenSyntheticOperatorApproval.Status.DRAFT_MISSING);
+        assertThat(LocalQwenSyntheticOperatorApproval.eligibilityFailure(true, true, "Draft")).isNull();
     }
 
     @Test
