@@ -138,6 +138,17 @@ class LocalQwenSyntheticOperatorApprovalTest {
         assertThat(result.approvedDraft()).isNull();
     }
 
+    @Test
+    void hidesApprovalLookupFailureDetails() {
+        when(repository.list(tenant, conversation)).thenThrow(new IllegalStateException("LOOKUP_SECRET_SENTINEL"));
+
+        var result = coordinator.approveIfEligible(tenant, conversation, receipt, runId);
+
+        assertThat(result.status()).isEqualTo(LocalQwenSyntheticOperatorApproval.Status.APPROVAL_FAILED);
+        assertThat(result.toString()).doesNotContain("LOOKUP_SECRET_SENTINEL");
+        verifyNoInteractions(approvalService);
+    }
+
     private MessageApproval pending(UUID sourceReceipt, boolean draftMayBeApproved, String draft) {
         return MessageApproval.pending(approvalId, tenant, conversation, sourceReceipt, 7,
                 new AdvisorResponseDisposition(AdvisorResponseDisposition.Route.REVIEW,

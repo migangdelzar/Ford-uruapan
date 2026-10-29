@@ -100,6 +100,17 @@ class LocalQwenTurnTelemetryTest {
     }
 
     @Test
+    void refusesSyntheticApprovalTelemetryOutsideBoundedMode() {
+        assertThatIllegalArgumentException().isThrownBy(() -> LocalQwenTurnTelemetry.TurnRecord.from(
+                "run-synthetic-invalid", "natural-buyer-diagnostic", 1,
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, "a".repeat(64), "qwen3.5:4b", 120,
+                List.of(), List.of(), new LocalQwenTurnTelemetry.MemoryShape(0, 0, 0, 0, 0),
+                LocalQwenTranscriptWriter.ReplyOrigin.SYNTHETIC_OPERATOR_APPROVED,
+                LocalQwenReplayExecutionMode.LIVE_DIAGNOSTIC,
+                LocalQwenTurnTelemetry.Outcome.SYNTHETIC_OPERATOR_APPROVED));
+    }
+
+    @Test
     void rejectsLiveCallsOrCatalogEvidenceOnSeededTelemetry() {
         assertThatIllegalArgumentException().isThrownBy(() -> LocalQwenTurnTelemetry.TurnRecord.from(
                 "run-seed-live-call", "natural-buyer-100", 1,

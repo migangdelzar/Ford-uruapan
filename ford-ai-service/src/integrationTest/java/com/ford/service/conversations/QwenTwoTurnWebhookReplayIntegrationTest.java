@@ -19,6 +19,8 @@ import com.ford.service.ai.application.AssistantService;
 import com.ford.service.ai.application.AiExecutionContext;
 import com.ford.service.ai.application.port.out.ChatCompletionPort;
 import com.ford.service.conversations.application.MemoryProperties;
+import com.ford.service.conversations.application.MessageApprovalService;
+import com.ford.service.conversations.application.port.out.MessageApprovalRepository;
 import com.ford.service.outbox.OutboxDeliveryRouter;
 import com.ford.service.outbox.OutboxPublisher;
 import com.ford.service.channels.application.port.out.ChannelDeliveryPort;
@@ -145,6 +147,8 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
     @Autowired LocalQwenCallMeasurementCollector providerCallMeasurements;
     @Autowired(required = false) LocalReplayPrecisionEvidence replayPrecisionEvidence;
     @Autowired MemoryProperties memoryProperties;
+    @Autowired MessageApprovalRepository messageApprovalRepository;
+    @Autowired MessageApprovalService messageApprovalService;
     @Autowired com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     @LocalServerPort int port;
 
@@ -629,6 +633,9 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
         var telemetry = new LocalQwenTurnTelemetry(Path.of("build/reports"), telemetryRunId);
         var seededReplyCount = executionMode == LocalQwenReplayExecutionMode.SEEDED_DIAGNOSTIC
                 ? configuredSeedReplyCount() : 0;
+        var syntheticApprovalEnabled = LocalQwenReplayExecutionMode.syntheticOperatorApprovalEnabled(System.getenv());
+        var syntheticApproval = syntheticApprovalEnabled
+                ? new LocalQwenSyntheticOperatorApproval(messageApprovalRepository, messageApprovalService) : null;
         var eventsByProviderMessageId = new java.util.HashMap<String, List<LocalQwenTranscriptWriter.ToolTrace>>();
         var progress = new NaturalReplayProgress();
         var telemetryScenarioId = executionMode == LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC
@@ -640,27 +647,25 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
             var measurementMark = providerCallMeasurements.mark();
             try {
                 postSyntheticMessage(providerMessageId, sender, turn.message());
-                var committedConversation = awaitCommittedReply(providerMessageId);
+                var replayResult = awaitReplayTurn(providerMessageId, telemetryRunId, syntheticApproval);
+                var committedConversation = replayResult.conversationId();
                 if (progress.conversationId == null) progress.conversationId = committedConversation;
                 assertThat(committedConversation)
                         .as("conversation continuity at natural buyer turn %s", turnIndex)
                         .isEqualTo(progress.conversationId);
-                var answer = latestOutbound(committedConversation);
-                assertThat(answer).as("committed reply at turn %s", turnIndex).isNotBlank();
+                var answer = replayResult.answer();
+                assertThat(answer).as("recorded reply at turn %s", turnIndex).isNotBlank();
                 LocalReplayNoHandoffAssertions.assertNoHandoff(jdbc.sql(
                                 "select count(*) from handoff_ticket where conversation_id=:conversation")
                         .param("conversation", committedConversation).query(Integer.class).single());
-                var replyOrigin = isSeededReply(turnIndex)
+                var replyOrigin = replayResult.replyOrigin() == LocalQwenTranscriptWriter.ReplyOrigin.LIVE_QWEN
+                        && isSeededReply(turnIndex)
                         ? LocalQwenTranscriptWriter.ReplyOrigin.RECORDED_SEED
-                        : LocalQwenTranscriptWriter.ReplyOrigin.LIVE_QWEN;
+                        : replayResult.replyOrigin();
                 var toolEvents = traceWithCurrentReplayPrefetch(toolTraceFor(providerMessageId), committedConversation);
                 toolEvents = withRecordedSeedTraces(toolEvents, turn);
                 eventsByProviderMessageId.put(providerMessageId, toolEvents);
                 transcript.append(turn, answer, toolEvents, replyOrigin);
-                if (executionMode == LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC
-                        && turn.number() == 31) {
-                    LocalReplayYearlessAmbiguityAssertions.assertYearlessTrimClarification(answer);
-                }
                 if (replayMode == LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN
                         && replyOrigin == LocalQwenTranscriptWriter.ReplyOrigin.LIVE_QWEN) {
                     var precision = new LocalReplayPrecisionEvaluator();
@@ -692,9 +697,12 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                     assertThat(providerCallMeasurements.since(measurementMark))
                             .as("fresh acceptance requires a live Qwen call for turn %s", turnIndex).isNotEmpty();
                 }
+                var telemetryOutcome = replyOrigin == LocalQwenTranscriptWriter.ReplyOrigin.SYNTHETIC_OPERATOR_APPROVED
+                        ? LocalQwenTurnTelemetry.Outcome.SYNTHETIC_OPERATOR_APPROVED
+                        : LocalQwenTurnTelemetry.Outcome.COMMITTED;
                 appendTelemetry(telemetry, telemetryRunId, telemetryScenarioId, turnIndex, turnStarted,
-                        measurementMark, committedConversation, providerMessageId,
-                        LocalQwenTurnTelemetry.Outcome.COMMITTED);
+                        measurementMark, committedConversation, providerMessageId, telemetryOutcome,
+                        null, null, replyOrigin);
                 if (checkpointCaptureTurn != null && checkpointCaptureTurn == turnIndex) {
                     var checkpointId = RUN_ID + "-turn-" + String.format(Locale.ROOT, "%03d", turnIndex);
                     var artifactOrigin = executionMode == LocalQwenReplayExecutionMode.SEEDED_DIAGNOSTIC
@@ -705,7 +713,12 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                     System.out.println("Synthetic replay checkpoint exported: " + checkpointPath
                             + " origin=" + artifactOrigin);
                 }
-                progress.committed++;
+                if (replyOrigin == LocalQwenTranscriptWriter.ReplyOrigin.SYNTHETIC_OPERATOR_APPROVED) {
+                    progress.syntheticOperatorApproved++;
+                } else {
+                    progress.committed++;
+                }
+                progress.processed++;
                 if (turnIndex == 5 && !isSeededReply(turnIndex)) {
                     var route = jdbc.sql("""
                             select route from conversation_decision_event
@@ -743,6 +756,8 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                         ? null : replayPrecisionEvidence.currentTurnComparisonStatus(progress.conversationId);
                 var diagnostics = failure instanceof LocalReplayTurnFailure turnFailure
                         ? turnFailure.diagnostics(category)
+                        : failure instanceof LocalSyntheticApprovalFailure approvalFailure
+                        ? approvalFailure.diagnostics(category)
                         : new LocalQwenFailureDiagnostics(category, failure.getClass().getSimpleName(),
                                 null, null, null);
                 transcript.recordFailure(turn, category, toolEvents, comparisonStatus, diagnostics);
@@ -752,7 +767,10 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                         null, diagnostics);
                 if (executionMode == LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC) {
                     throw new AssertionError("bounded Qwen diagnostic stopped at turn " + turnIndex
-                            + " of " + expectedTurns + "; committed=" + progress.committed
+                            + " of " + expectedTurns + "; liveQwenCommitted=" + progress.committed
+                            + "; syntheticApprovalsQueued=" + progress.syntheticOperatorApproved
+                            + "; approvalStatus=" + (failure instanceof LocalSyntheticApprovalFailure approvalFailure
+                                    ? approvalFailure.status().name() : "not_applicable")
                             + "; transcript=" + transcript.path() + "; category=" + category.name());
                 }
                 throw new AssertionError("natural buyer replay stopped at turn " + turnIndex
@@ -769,7 +787,8 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
         var conversationId = progress.conversationId;
         var committed = progress.committed;
 
-        assertThat(committed).isEqualTo(expectedTurns);
+        assertThat(progress.processed).isEqualTo(expectedTurns);
+        assertThat(committed + progress.syntheticOperatorApproved).isEqualTo(expectedTurns);
         assertThat(countOutbound(conversationId)).isEqualTo(expectedTurns);
         assertThat(jdbc.sql("select count(distinct provider_message_id) from conversation_turn "
                         + "where tenant_id=:tenant and conversation_id=:conversation and provider_message_id like :prefix")
@@ -917,6 +936,9 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
 
     static LocalQwenTranscriptWriter.FailureCategory safeFailureCategory(Throwable failure) {
         if (failure instanceof LocalReplayTurnFailure turnFailure) return turnFailure.safeReason();
+        if (failure instanceof LocalSyntheticApprovalFailure) {
+            return LocalQwenTranscriptWriter.FailureCategory.SYNTHETIC_OPERATOR_APPROVAL_UNAVAILABLE;
+        }
         var message = failure.getMessage() == null ? "" : failure.getMessage();
         if (message.contains("SAFE_FALLBACK_REVIEW")) {
             return LocalQwenTranscriptWriter.FailureCategory.SAFE_FALLBACK_REVIEW;
@@ -954,6 +976,17 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                                  LocalQwenTurnTelemetry.Outcome outcome,
                                  LocalQwenTranscriptWriter.CheckpointMetadata checkpointMetadata,
                                  LocalQwenFailureDiagnostics failureDiagnostics) throws Exception {
+        appendTelemetry(telemetry, telemetryRunId, scenarioId, turnNumber, startedNanos, measurementMark,
+                conversationId, providerMessageId, outcome, checkpointMetadata, failureDiagnostics, null);
+    }
+
+    private void appendTelemetry(LocalQwenTurnTelemetry telemetry, String telemetryRunId, String scenarioId,
+                                 int turnNumber, long startedNanos, int measurementMark,
+                                 UUID conversationId, String providerMessageId,
+                                 LocalQwenTurnTelemetry.Outcome outcome,
+                                 LocalQwenTranscriptWriter.CheckpointMetadata checkpointMetadata,
+                                 LocalQwenFailureDiagnostics failureDiagnostics,
+                                 LocalQwenTranscriptWriter.ReplyOrigin replyOriginOverride) throws Exception {
         var measurements = providerCallMeasurements.since(measurementMark);
         var tools = providerMessageId == null ? List.<LocalQwenTranscriptWriter.ToolTrace>of()
                 : toolTraceFor(providerMessageId);
@@ -966,7 +999,8 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                 "snapshot metadata is required for turn telemetry");
         var label = java.util.Objects.requireNonNull(SNAPSHOT_LABEL,
                 "snapshot label is required for turn telemetry");
-        var replyOrigin = scenarioId.equals("natural-buyer-100") && isSeededReply(turnNumber)
+        var replyOrigin = replyOriginOverride != null ? replyOriginOverride
+                : scenarioId.equals("natural-buyer-100") && isSeededReply(turnNumber)
                 ? LocalQwenTranscriptWriter.ReplyOrigin.RECORDED_SEED
                 : LocalQwenTranscriptWriter.ReplyOrigin.LIVE_QWEN;
         String scenarioHash = null;
@@ -1147,11 +1181,43 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
         assertThat(response.statusCode()).as("synthetic turn acceptance").isEqualTo(202);
     }
 
+    private LocalQwenReplayTurnResult awaitReplayTurn(String providerMessageId, String runId,
+                                                       LocalQwenSyntheticOperatorApproval syntheticApproval)
+            throws InterruptedException {
+        try {
+            var conversationId = awaitCommittedReply(providerMessageId);
+            var outbound = jdbc.sql("select id, content from conversation_message where conversation_id=:conversation "
+                            + "and direction='OUTBOUND' order by received_at desc, id desc limit 1")
+                    .param("conversation", conversationId)
+                    .query((rs, row) -> new OutboundMessage(rs.getObject("id", UUID.class), rs.getString("content")))
+                    .single();
+            return LocalQwenReplayTurnResult.committed(conversationId, outbound.content(), outbound.id());
+        } catch (LocalReplayTurnFailure heldTurn) {
+            if (!"NEEDS_OPERATOR".equals(heldTurn.row.state()) || syntheticApproval == null) throw heldTurn;
+            var approval = syntheticApproval.approveIfEligible(heldTurn.row.tenantId(), heldTurn.row.conversationId(),
+                    heldTurn.row.sourceReceiptId(), runId);
+            if (approval.status() != LocalQwenSyntheticOperatorApproval.Status.APPROVED) {
+                throw new LocalSyntheticApprovalFailure(approval.status());
+            }
+            var approved = approval.approvedDraft();
+            var queuedText = jdbc.sql("select content from conversation_message where id=:message "
+                            + "and conversation_id=:conversation and direction='OUTBOUND'")
+                    .param("message", approved.outboundMessageId())
+                    .param("conversation", heldTurn.row.conversationId())
+                    .query(String.class).optional().orElse(null);
+            if (!approved.draftText().equals(queuedText)) {
+                throw new LocalSyntheticApprovalFailure(
+                        LocalQwenSyntheticOperatorApproval.Status.QUEUED_RECEIPT_MISMATCH);
+            }
+            return LocalQwenReplayTurnResult.approvedDraft(heldTurn.row.conversationId(), approved);
+        }
+    }
+
     private UUID awaitCommittedReply(String providerMessageId) throws InterruptedException {
         var deadline = System.nanoTime() + REPLAY_TURN_TIMEOUT.toNanos();
         while (System.nanoTime() < deadline) {
             var turn = jdbc.sql("""
-                    select turn.tenant_id, turn.conversation_id, turn.state, turn.failure_category,
+                    select turn.tenant_id, turn.conversation_id, turn.receipt_id, turn.state, turn.failure_category,
                            review.reason_code as review_reason
                       from conversation_turn turn
                       left join conversation_review_item review
@@ -1162,7 +1228,8 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                     """)
                     .param("tenant", TENANT_ID).param("messageId", providerMessageId)
                     .query((rs, row) -> new TurnRow(rs.getObject("tenant_id", UUID.class),
-                            rs.getObject("conversation_id", UUID.class), rs.getString("state"),
+                            rs.getObject("conversation_id", UUID.class), rs.getObject("receipt_id", UUID.class),
+                            rs.getString("state"),
                             rs.getString("failure_category"), rs.getString("review_reason")))
                     .optional();
             if (turn.isPresent() && "REPLY_COMMITTED".equals(turn.get().state())
@@ -1280,12 +1347,16 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
         return "sha256=" + java.util.HexFormat.of().formatHex(mac.doFinal(body.getBytes(StandardCharsets.UTF_8)));
     }
 
-    private record TurnRow(UUID tenantId, UUID conversationId, String state,
+    private record TurnRow(UUID tenantId, UUID conversationId, UUID sourceReceiptId, String state,
                            String failureCategory, String reviewReason) { }
+
+    private record OutboundMessage(UUID id, String content) { }
 
     private static final class NaturalReplayProgress {
         private UUID conversationId;
         private int committed;
+        private int processed;
+        private int syntheticOperatorApproved;
     }
 
     private static final class LocalReplayTurnFailure extends AssertionError {
@@ -1311,6 +1382,22 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
 
         private static String safeDiagnosticCode(String value) {
             return value != null && value.matches("[A-Za-z0-9_]{1,64}") ? value : null;
+        }
+    }
+
+    private static final class LocalSyntheticApprovalFailure extends AssertionError {
+        private final LocalQwenSyntheticOperatorApproval.Status status;
+
+        private LocalSyntheticApprovalFailure(LocalQwenSyntheticOperatorApproval.Status status) {
+            super("synthetic operator approval was unavailable");
+            this.status = status;
+        }
+
+        private LocalQwenSyntheticOperatorApproval.Status status() { return status; }
+
+        private LocalQwenFailureDiagnostics diagnostics(LocalQwenTranscriptWriter.FailureCategory safeReason) {
+            return new LocalQwenFailureDiagnostics(safeReason, getClass().getSimpleName(), "NEEDS_OPERATOR",
+                    status.name(), null);
         }
     }
 

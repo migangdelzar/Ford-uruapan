@@ -8,6 +8,7 @@ import com.ford.service.conversations.domain.MessageApproval.Action;
 import com.ford.service.operator.application.AuthenticatedOperator;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -27,10 +28,15 @@ final class LocalQwenSyntheticOperatorApproval {
                 || runId == null || !runId.matches("[A-Za-z0-9-]{1,80}")) {
             throw new IllegalArgumentException("synthetic approval identity is invalid");
         }
-        var pending = approvals.list(tenantId, conversationId).stream()
-                .filter(approval -> approval.sourceReceiptId().equals(sourceReceiptId))
-                .filter(approval -> approval.status() == MessageApproval.Status.PENDING)
-                .toList();
+        final List<MessageApproval> pending;
+        try {
+            pending = approvals.list(tenantId, conversationId).stream()
+                    .filter(approval -> approval.sourceReceiptId().equals(sourceReceiptId))
+                    .filter(approval -> approval.status() == MessageApproval.Status.PENDING)
+                    .toList();
+        } catch (RuntimeException failure) {
+            return new Result(Status.APPROVAL_FAILED, null);
+        }
         if (pending.isEmpty()) return new Result(Status.NO_PENDING_APPROVAL, null);
         if (pending.size() != 1) return new Result(Status.MULTIPLE_PENDING_APPROVALS, null);
         var approval = pending.getFirst();
@@ -59,7 +65,7 @@ final class LocalQwenSyntheticOperatorApproval {
 
     enum Status {
         APPROVED, NO_PENDING_APPROVAL, MULTIPLE_PENDING_APPROVALS, NOT_APPROVABLE,
-        APPROVAL_NOT_QUEUED, APPROVAL_FAILED
+        APPROVAL_NOT_QUEUED, QUEUED_RECEIPT_MISMATCH, APPROVAL_FAILED
     }
 
     record Result(Status status, ApprovedDraft approvedDraft) {

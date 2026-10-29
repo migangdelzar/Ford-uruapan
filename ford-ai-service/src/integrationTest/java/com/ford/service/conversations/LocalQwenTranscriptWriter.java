@@ -519,7 +519,7 @@ final class LocalQwenTranscriptWriter {
 
     enum FailureCategory {
         SAFE_FALLBACK_REVIEW, TURN_TIMEOUT, INVALID_STATE, INVALID_EVIDENCE, UNSAFE_OUTCOME,
-        MISSING_CATALOG_EVIDENCE
+        MISSING_CATALOG_EVIDENCE, SYNTHETIC_OPERATOR_APPROVAL_UNAVAILABLE
     }
 
     record CheckpointMetadata(String checkpointId, String scenarioSha256, int checkpointTurn) {
