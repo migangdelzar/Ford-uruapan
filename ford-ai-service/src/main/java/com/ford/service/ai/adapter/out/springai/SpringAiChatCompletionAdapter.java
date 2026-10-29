@@ -596,11 +596,12 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
 
     private AssistantResponse ambiguousTrimClarification(ToolResultTracker tracker) {
         return tracker.ambiguousVehicleTrim().map(ambiguous -> {
-            var first = ambiguous.choices().getFirst();
             var options = ambiguous.choices().stream()
-                    .map(com.ford.service.ai.application.VehicleTrimCandidate::trim)
+                    .map(choice -> ambiguous.year() == null
+                            ? choice.year() + " " + choice.trim() : choice.trim())
                     .collect(java.util.stream.Collectors.joining(" o "));
-            var content = "Para revisar la versión exacta de " + first.model() + " " + first.year()
+            var vehicle = ambiguous.model() + (ambiguous.year() == null ? "" : " " + ambiguous.year());
+            var content = "Para revisar la versión exacta de " + vehicle
                     + ", ¿cuál busca: " + options + "?";
             return new AssistantResponse(content, false, provider, List.of(), null, null,
                     ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED_EMPTY,

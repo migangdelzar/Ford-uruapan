@@ -257,7 +257,7 @@ class CatalogToolsTest {
     }
 
     @Test
-    void yearlessTrimAliasReturnsCanonicalVariantsAcrossCandidateYears() {
+    void yearlessAmbiguousTrimAliasReturnsIdentityOnlyChoices() {
         var catalog = new FakeCatalog();
         catalog.searchResult = List.of(
                 new VehicleEvidence("Ranger", 2027, null, null, "MXN", "model-27", null, null, List.of()),
@@ -272,15 +272,38 @@ class CatalogToolsTest {
 
         var result = new CatalogTools(catalog).getVehicle("Ranger", null, "XLT");
 
-        assertThat(result).isInstanceOf(CatalogTools.ModelYearOptions.class);
-        var options = (CatalogTools.ModelYearOptions) result;
-        assertThat(options.status()).isEqualTo("available_model_year_options");
-        assertThat(options.options())
-                .extracting(VehicleEvidence::year, VehicleEvidence::trim)
+        assertThat(result).isInstanceOf(CatalogTools.AmbiguousVehicleTrim.class);
+        var ambiguous = (CatalogTools.AmbiguousVehicleTrim) result;
+        assertThat(ambiguous.modelYear()).isNull();
+        assertThat(ambiguous.choices())
+                .extracting(com.ford.service.ai.application.VehicleTrimCandidate::year,
+                        com.ford.service.ai.application.VehicleTrimCandidate::trim)
                 .containsExactly(
                         tuple(2027, "XLT Diésel 4x4"),
                         tuple(2027, "XLT Gasolina 4x2"),
                         tuple(2026, "XLT Sport Gasolina 4x2"));
+        assertThat(catalog.lastLookup).isNull();
+    }
+
+    @Test
+    void yearlessTrimWithOneCanonicalCandidateReturnsExactEvidence() {
+        var catalog = new FakeCatalog();
+        catalog.searchResult = List.of(
+                new VehicleEvidence("Ranger", 2027, null, null, "MXN", "model-27", null, null, List.of()),
+                new VehicleEvidence("Ranger", 2026, null, null, "MXN", "model-26", null, null, List.of()));
+        catalog.nameEntries = List.of(new com.ford.service.catalog.api.VehicleNameIndexEntry(
+                "Ranger", 2027, "XL Gasolina 4x2"));
+        var canonical = vehicle("Ranger", 2027, "XL Gasolina 4x2");
+        catalog.vehicles.put(canonical.trim(), canonical);
+
+        var result = new CatalogTools(catalog).getVehicle("Ranger", null, "XL");
+
+        assertThat(result).isInstanceOf(CatalogTools.ModelYearOptions.class);
+        var options = (CatalogTools.ModelYearOptions) result;
+        assertThat(options.options()).hasSize(1);
+        assertThat(options.options().getFirst()).usingRecursiveComparison()
+                .ignoringFields("modelPopularity").isEqualTo(canonical);
+        assertThat(catalog.lastLookup).isEqualTo(new VehicleLookup("Ranger", 2027, "XL Gasolina 4x2"));
     }
 
     @Test

@@ -74,15 +74,18 @@ public final class ToolResultTracker {
             var root = new com.fasterxml.jackson.databind.ObjectMapper().readTree(payload);
             var choices = root.get("choices");
             if (choices == null || !choices.isArray() || choices.size() < 2
-                    || !root.hasNonNull("modelYear") || !root.hasNonNull("model")) {
+                    || !root.hasNonNull("model")) {
                 return java.util.Optional.empty();
             }
             var model = root.get("model").asText();
-            var year = root.get("modelYear").asInt(-1);
+            Integer year = root.hasNonNull("modelYear") ? root.get("modelYear").asInt(-1) : null;
             var candidates = new java.util.ArrayList<VehicleTrimCandidate>();
             for (var choice : choices) {
                 if (!choice.isObject() || !choice.path("trim").isTextual()) return java.util.Optional.empty();
-                candidates.add(new VehicleTrimCandidate(model, year, choice.path("trim").asText()));
+                var choiceModel = choice.path("model").asText(model);
+                Integer choiceYear = choice.hasNonNull("year") ? Integer.valueOf(choice.path("year").asInt(-1)) : year;
+                if (choiceYear == null) return java.util.Optional.empty();
+                candidates.add(new VehicleTrimCandidate(choiceModel, choiceYear, choice.path("trim").asText()));
             }
             return java.util.Optional.of(new AmbiguousVehicleTrimResult(model, year, candidates));
         } catch (com.fasterxml.jackson.core.JsonProcessingException | IllegalArgumentException ignored) {

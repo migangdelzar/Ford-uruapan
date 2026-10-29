@@ -168,9 +168,48 @@ public final class CatalogTools {
             return new UnavailableModelYear(model, year, status,
                     knownYears, options);
         }
-        var options = availableVehicles(model, trim);
+        if (!isBlank(trim)) {
+            var candidates = yearlessVehicleCandidates(model, trim);
+            if (candidates.size() > 1) return new AmbiguousVehicleTrim(model, null, candidates);
+            var options = candidates.stream()
+                    .map(candidate -> catalog.find(new VehicleLookup(candidate.model(), candidate.year(),
+                            candidate.trim())).orElse(null))
+                    .filter(Objects::nonNull)
+                    .map(this::enrich)
+                    .toList();
+            return new ModelYearOptions(model,
+                    options.isEmpty() ? "no_model_year_options_found" : "available_model_year_options", options);
+        }
+        var options = availableVehicles(model, null);
         return new ModelYearOptions(model,
                 options.isEmpty() ? "no_model_year_options_found" : "available_model_year_options", options);
+    }
+
+    private List<com.ford.service.ai.application.VehicleTrimCandidate> yearlessVehicleCandidates(
+            String model, String trim) {
+        var modelYears = catalog.search(new VehicleSearchQuery(null, model, null,
+                        null, null, null, null, null, 5)).stream()
+                .filter(vehicle -> normalize(vehicle.model()).equals(normalize(model)))
+                .map(VehicleEvidence::year)
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted(java.util.Comparator.reverseOrder())
+                .toList();
+        var nameEntries = catalog.nameIndexEntries();
+        var candidates = new LinkedHashMap<String, com.ford.service.ai.application.VehicleTrimCandidate>();
+        for (var year : modelYears) {
+            var resolution = vehicleResolver.resolve(model, year, trim, nameEntries);
+            var resolved = switch (resolution.status()) {
+                case EXACT, UNIQUE_CANONICAL_MATCH -> List.of(resolution.exact());
+                case AMBIGUOUS -> resolution.choices();
+                case MISSING, NOT_REQUIRED -> List.<com.ford.service.ai.application.VehicleTrimCandidate>of();
+            };
+            for (var candidate : resolved) {
+                var key = normalize(candidate.model()) + ":" + candidate.year() + ":" + normalize(candidate.trim());
+                candidates.putIfAbsent(key, candidate);
+            }
+        }
+        return List.copyOf(candidates.values());
     }
 
     private List<VehicleEvidence> availableVehicles(String model, String trim) {
@@ -757,9 +796,15 @@ public final class CatalogTools {
                                        List<com.ford.service.ai.application.VehicleTrimCandidate> choices) {
         public AmbiguousVehicleTrim {
             if (model == null || model.isBlank()) throw new IllegalArgumentException("model is required");
-            if (modelYear == null) throw new IllegalArgumentException("model year is required");
+            if (modelYear != null && (modelYear < 2000 || modelYear > 2100)) {
+                throw new IllegalArgumentException("model year is outside supported range");
+            }
             choices = List.copyOf(choices == null ? List.of() : choices);
             if (choices.isEmpty()) throw new IllegalArgumentException("trim choices are required");
+            if (choices.stream().anyMatch(choice -> !choice.model().equalsIgnoreCase(model)
+                    || modelYear != null && choice.year() != modelYear)) {
+                throw new IllegalArgumentException("trim choices do not match the requested vehicle");
+            }
         }
     }
 

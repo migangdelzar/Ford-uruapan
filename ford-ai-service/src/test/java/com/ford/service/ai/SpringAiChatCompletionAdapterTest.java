@@ -363,6 +363,39 @@ class SpringAiChatCompletionAdapterTest {
     }
 
     @Test
+    void asksForYearAndTrimWhenYearlessVehicleLookupIsAmbiguous() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenAnswer(invocation -> {
+            invokeFirstToolCallback(invocation.getArgument(0));
+            return requestSpec;
+        });
+        when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("La Ranger cuesta $907,000 MXN.");
+        var ambiguous = callbackWithResult("get_vehicle", "{\"model\":\"RANGER\",\"modelYear\":null,"
+                + "\"choices\":[{\"model\":\"RANGER\",\"year\":2027,\"trim\":\"XLT Gasolina 4x2\"},"
+                + "{\"model\":\"RANGER\",\"year\":2027,\"trim\":\"XLT Diésel 4x4\"}]}");
+        var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_DETAILS,
+                SensitiveDataLevel.NONE, testEvidence());
+        var adapter = new SpringAiChatCompletionAdapter(client, "ollama",
+                new ToolAuthorizationPolicy(List.of(ambiguous)), new DecisionPolicy());
+
+        var response = adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "¿Qué versión XLT me conviene?", "BOT_ACTIVE", null, false, decision), null);
+
+        assertThat(response.responseKind()).isEqualTo(com.ford.service.ai.api.ResponseKind.CLARIFICATION);
+        assertThat(response.content()).contains("¿cuál busca:", "2027 XLT Gasolina 4x2", "2027 XLT Diésel 4x4")
+                .doesNotContain("$907,000", "forduruapan.mx", "cuesta");
+        assertThat(response.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED_EMPTY);
+    }
+
+    @Test
     void invokesAnAuthorizedCatalogToolWhenModelStillSkipsItAfterRetry() throws Exception {
         var client = mock(ChatClient.class);
         var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
