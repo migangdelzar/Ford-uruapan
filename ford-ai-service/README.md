@@ -65,39 +65,78 @@ mise run setup:env
 mise run doctor
 ```
 
-The service defaults to the `dev` mise environment through `.miserc.toml`.
+The service has two Mise environments: `dev` and `prod`. `.miserc.toml` selects
+`dev` by default. Dev selects the core-only Compose override: PostgreSQL with
+pgvector, Redis, and Ford Service. Telemetry backends and the OTel Collector do
+not start. Prod is required for remote emme deployment.
 Useful grouped tasks:
 
 ```bash
 mise run app:run
-mise run docker:deps:up
-mise run docker:deps:ps
-mise run docker:deps:down
+mise run container:deps:up
+mise run container:deps:ps
+mise run container:deps:down
 mise run db:reset -- --confirm
 mise run db:reset-volume -- --confirm
 mise run test:unit
 mise run test:integration
 mise run test:check
-mise run docker:up
-mise run docker:logs
+mise run container:up
+mise run container:logs
 mise run observability:up
 mise run load:gate
 ```
 
-For host-JVM development, start PostgreSQL and Redis in Compose, then run
-Spring Boot directly with the mise-selected Java version:
+`app:run` starts PostgreSQL and Redis containers, runs Gradle continuous
+compilation, then starts Spring Boot on the host JVM with DevTools restart
+enabled. Edit Java/resources; Gradle compiles changes and DevTools restarts the
+app. This is the normal correction loop—no image build or redeploy per edit.
 
 ```bash
-mise run docker:deps:up
 mise run app:run
 ```
 
-For the fully containerized mode, build and start PostgreSQL, Redis, and
-Spring Boot together:
+### Local catalog tools (opt-in)
+
+Catalog tools read a separate local pgvector database. They stay disabled by
+default. Start the catalog database and import the approved filtered snapshot
+once:
 
 ```bash
-mise run docker:up
+mise -E dev run catalog:start
+mise -E dev run catalog:import
 ```
+
+The importer rejects unsupported snapshots, non-loopback targets, and any
+database other than `ford_catalog`. It will not replace an existing `ford_read`
+schema. Import credentials are separate from the application's database
+credentials. The running app receives only the catalog reader account, with
+`SELECT` access to the approved relations; it cannot write catalog data.
+
+To opt in for the host JVM, edit the ignored local `.env` and set:
+
+```dotenv
+FORD_CATALOG_TOOLS_ENABLED=true
+FORD_CATALOG_JDBC_URL=jdbc:postgresql://localhost:55433/ford_catalog
+```
+
+The local environment tasks generate separate private admin and reader
+passwords. Restart the host app after opting in. Container mode overrides the
+JDBC URL with `jdbc:postgresql://catalog-postgres:5432/ford_catalog`; its tools
+remain disabled unless explicitly enabled in local `.env`.
+
+For the core-only containerized mode, build and start PostgreSQL, Redis, and
+Ford Service together. The service applies its Liquibase changelog at startup;
+there is no separate MCP service or migration:
+
+```bash
+mise run container:up
+```
+
+`app:deploy` follows the selected profile: `mise -E dev run app:deploy` builds
+and starts the local container stack; `mise -E prod run app:deploy` deploys to
+emme. The task rejects unsupported environments. Never run the prod profile
+unless you intend a remote deployment.
 
 To start with a clean local database, stop the Spring application first and
 choose one of these explicit reset tasks:
@@ -124,7 +163,7 @@ provide its required variables through the shell, CI, or a secret manager:
 
 ```bash
 mise -E prod run env:check
-mise -E prod run docker:config
+mise -E prod run deploy:check
 ```
 
 The bot-only test mode is explicit and reversible:
@@ -187,11 +226,49 @@ mise run deploy:bootstrap
 mise run deploy:all
 ```
 
+For the monthly Ford catalog refresh, both operator paths invoke the same
+backup-verified Ansible playbook on emme-2. The local task is useful for an
+operator-run refresh from a configured workstation; it does not build, publish,
+migrate, or change the promoted scraper image:
+
+```bash
+mise run deploy:catalog-sync
+```
+
+The production schedule runs monthly from the protected
+`.github/workflows/monthly-catalog-sync.yml` workflow. Use its manual dispatch
+for a production run, with the `deployment-preflight` environment approval and
+the same emme-2 backup gate. Keep `FORD_CATALOG_SYNC_ENABLED` false until that
+first protected manual run has succeeded and the old scraper scheduler has
+been retired through the protected scheduler release flow. Do not run local
+and scheduled syncs concurrently; Actions concurrency and the database
+advisory lock coordinate workflow/database runs, while the local task remains
+operator-controlled.
+
+To release the MÍA catalog cutover, dispatch the coordinated protected release
+for Ford Service, Ford-scraping, and Ford-web together, using the versions
+published by their CI workflows:
+
+```bash
+mise run deploy:release-all -- <service-version> <scraping-version> <web-version>
+```
+
+For example, versions use `vMAJOR.MINOR.PATCH`. This operator task requires all
+three versions, a clean local `main` matching GitHub `main`, and a valid `gh`
+login. It only dispatches `.github/workflows/release-all.yml`; GitHub Actions
+performs the release preflight, immutable image provenance checks, protected
+approvals, production readiness and ordered deployment. Catalog parity must be
+complete before the production workflow allows the Spring AI catalog tools to
+be enabled. The Ford-scraping release removes the obsolete Node MCP runtime
+while retaining the catalog writer and scheduler deployment. Follow all three
+workflow runs and complete their production smoke and rollback checks before
+considering the coordinated release complete.
+
 `mise run deploy:secrets` is the single secret-entry task. It generates
 missing database and operator credentials, then securely prompts for missing
 Meta, Grafana Cloud, and Langfuse credentials without echoing them. The task
-stores them only in the ignored `deployment/config/oci.env`; `mise run
-deploy:app` loads that file and propagates the values through Ansible into
+stores them only in the ignored `deployment/config/oci.env`; `mise -E prod run
+app:deploy` loads that file and propagates the values through Ansible into
 emme-1's mode-0600 application environment. Non-empty secret environment
 variables are adopted into the ignored file before prompting, so CI or a
 secret manager can provide them without placing values on a command line. It
@@ -241,7 +318,7 @@ The local ARM64 publication and rollback flow is Mise-driven:
 ```bash
 mise run release:publish -- <immutable-tag>
 mise run deploy:image-backup -- ford-service:deployment
-mise run deploy:app
+mise -E prod run app:deploy
 ```
 
 Meta webhook deployment requires `FORD_META_APP_SECRET` and

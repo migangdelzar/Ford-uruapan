@@ -33,6 +33,9 @@ class AdvisorResponseRoutingPolicyTest {
         var human = policy.decide(new Signals(Set.of(Signal.HUMAN_REQUEST, Signal.FINANCE_COMMITMENT), 0));
         assertThat(human.route()).isEqualTo(Route.MANDATORY_HANDOFF);
         assertThat(human.reason()).isEqualTo(Reason.HUMAN_REQUEST);
+        var critical = policy.decide(new Signals(Set.of(Signal.SERIOUS_COMPLAINT, Signal.RESPONSE_REVIEW), 0));
+        assertThat(critical.route()).isEqualTo(Route.MANDATORY_HANDOFF);
+        assertThat(critical.reason()).isEqualTo(Reason.SERIOUS_COMPLAINT);
         assertThat(policy.decide(new Signals(Set.of(Signal.RESPONSE_REVIEW), 2)).reason())
                 .isEqualTo(Reason.REPEATED_FAILURE);
     }

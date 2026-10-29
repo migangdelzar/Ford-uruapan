@@ -96,6 +96,39 @@ class AiObservationServiceTest {
     }
 
     @Test
+    void recordsBoundedPerOutputAttemptStageAndOrdinal() {
+        var observations = new ArrayList<Observation.Context>();
+        var service = new DefaultAiObservationService(registry(observations));
+
+        service.event("ford.ai.answer.attempt", Map.of(
+                "attempt_stage", "quality_repair",
+                "attempt", "2",
+                "confidence_band", "high",
+                "evidence_status", "knowledge_documents_returned",
+                "quality_outcome", "pending",
+                "conversation_id", "private-conversation"));
+        service.event("ford.ai.answer.attempt", Map.of(
+                "attempt_stage", "untrusted-stage",
+                "attempt", "999",
+                "quality_outcome", "unknown"));
+
+        assertThat(observations).hasSize(2);
+        assertThat(observations.getFirst().getName()).isEqualTo("ford.ai.answer.attempt");
+        assertThat(observations.getFirst().getAllKeyValues())
+                .extracting(io.micrometer.common.KeyValue::getKey)
+                .containsExactlyInAnyOrder("attempt_stage", "attempt", "confidence_band",
+                        "evidence_status", "quality_outcome");
+        assertThat(observations.getFirst().getLowCardinalityKeyValue("evidence_status").getValue())
+                .isEqualTo("knowledge_documents_returned");
+        assertThat(observations.getFirst().getLowCardinalityKeyValue("attempt_stage").getValue())
+                .isEqualTo("quality_repair");
+        assertThat(observations.getFirst().getLowCardinalityKeyValue("attempt").getValue()).isEqualTo("2");
+        assertThat(observations.get(1).getLowCardinalityKeyValue("attempt_stage").getValue()).isEqualTo("other");
+        assertThat(observations.get(1).getLowCardinalityKeyValue("attempt").getValue()).isEqualTo("other");
+        assertThat(observations.get(1).getLowCardinalityKeyValue("quality_outcome").getValue()).isEqualTo("other");
+    }
+
+    @Test
     void observationInfrastructureFailureNeverChangesBusinessBehavior() {
         var registry = ObservationRegistry.create();
         registry.observationConfig().observationHandler(new ObservationHandler<>() {

@@ -2,8 +2,26 @@ spring:
   config:
     activate:
       on-profile: prod
+  ai:
+    model:
+      chat: openai
+    openai:
+      base-url: ${FORD_AI_CLOUD_BASE_URL:https://api.deepseek.com}
+      api-key: ${DEEPSEEK_API_KEY:}
+      chat:
+        options:
+          model: ${FORD_AI_CLOUD_MODEL_VERSION:deepseek-flash}
 
 ford:
+  catalog:
+    tools:
+      enabled: ${FORD_CATALOG_TOOLS_ENABLED:false}
+  customer-memory:
+    enabled: ${FORD_CUSTOMER_MEMORY_ENABLED:false}
+    hmac-key: ${FORD_CUSTOMER_MEMORY_HMAC_KEY:}
+    hmac-key-version: ${FORD_CUSTOMER_MEMORY_HMAC_KEY_VERSION:}
+    previous-hmac-key: ${FORD_CUSTOMER_MEMORY_PREVIOUS_HMAC_KEY:}
+    previous-hmac-key-version: ${FORD_CUSTOMER_MEMORY_PREVIOUS_HMAC_KEY_VERSION:}
   security:
     jwt:
       enabled: ${FORD_SECURITY_JWT_ENABLED:true}
@@ -15,19 +33,29 @@ ford:
       graph-enabled: ${FORD_CONVERSATION_GRAPH_ENABLED:true}
     human-handoff:
       enabled: ${FORD_HUMAN_HANDOFF_ENABLED:false}
+    shadow-review:
+      enabled: ${FORD_SHADOW_REVIEW_ENABLED:false}
+      kill-switch: ${FORD_SHADOW_REVIEW_KILL_SWITCH:false}
   ai:
+    cloud-chat-provider: openai
+    cloud-chat-model-version: ${FORD_AI_CLOUD_MODEL_VERSION:deepseek-flash}
+    cloud-enabled: ${FORD_AI_CLOUD_ENABLED:true}
+    local-enabled: ${FORD_AI_LOCAL_ENABLED:false}
     provider-max-attempts: ${FORD_AI_PROVIDER_MAX_ATTEMPTS:2}
     classification:
       enabled: ${FORD_AI_CLASSIFICATION_ENABLED:true}
     providers:
-      fallback-order: ${FORD_AI_FALLBACK_ORDER:openrouter}
+      fallback-order: []
       catalog:
         openrouter:
           enabled: ${FORD_AI_OPENROUTER_ENABLED:true}
           model: ${FORD_AI_OPENROUTER_MODEL:xiaomi/mimo-v2.6-flash}
-          tool-calling-verified: ${FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED:true}
-          structured-output-verified: ${FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED:true}
+          tool-calling-verified: ${FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED:false}
+          structured-output-verified: ${FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED:false}
   channels:
+    debounce:
+      enabled: ${FORD_INBOUND_DEBOUNCE_ENABLED:true}
+      window: ${FORD_INBOUND_DEBOUNCE_WINDOW:PT5S}
     meta:
       auto-binding:
         enabled: ${FORD_META_AUTO_BINDING_ENABLED:false}

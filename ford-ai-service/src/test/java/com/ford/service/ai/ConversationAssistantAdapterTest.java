@@ -1,6 +1,7 @@
 package com.ford.service.ai;
 
 import com.ford.service.ai.api.AssistantTurn;
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
 import com.ford.service.ai.application.AssistantService;
 import com.ford.service.ai.application.Intent;
 import com.ford.service.leads.domain.LeadJourneyFact;
@@ -10,12 +11,14 @@ import com.ford.service.leads.domain.LeadJourneySnapshot;
 import com.ford.service.leads.domain.LeadJourneyTopic;
 import com.ford.service.conversations.application.ConversationAssistantAdapter;
 import com.ford.service.conversations.application.PendingTestDriveReplyPolicy;
+import com.ford.service.conversations.application.MemoryProperties;
 import com.ford.service.conversations.api.AssistantReply;
 import com.ford.service.conversations.api.ConversationTurnRequest;
 import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.conversations.domain.ConversationMemoryContext;
 import com.ford.service.conversations.domain.ConversationMemoryKey;
 import com.ford.service.conversations.domain.ConversationMessage;
+import com.ford.service.conversations.domain.MemoryFact;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -25,6 +28,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -82,14 +86,14 @@ class ConversationAssistantAdapterTest {
     }
 
     @Test
-    void requestsHumanHandoffWhenTheAiServiceIsUnavailable() {
+    void holdsTurnWithoutCustomerFallbackWhenTheAiServiceIsUnavailable() {
         var adapter = new ConversationAssistantAdapter(() -> null, new PendingTestDriveReplyPolicy());
 
-        AssistantReply reply = adapter.respond(new ConversationTurnRequest(
-                UUID.randomUUID(), UUID.randomUUID(), "Hola", ConversationState.BOT_ACTIVE));
-
-        assertThat(reply.text()).isNotBlank();
-        assertThat(reply.handoffRequired()).isFalse();
+        assertThatThrownBy(() -> adapter.respond(new ConversationTurnRequest(
+                UUID.randomUUID(), UUID.randomUUID(), "Hola", ConversationState.BOT_ACTIVE)))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
     }
 
     @Test
@@ -124,6 +128,143 @@ class ConversationAssistantAdapterTest {
     }
 
     @Test
+    void fitsOptionalHistoryToBudgetWithoutDroppingFactsOrRewritingCurrentMessage() {
+        var ai = mock(AssistantService.class);
+        when(ai.respond(any(), any())).thenReturn(new AssistantTurn(
+                "Reviso las versiones.", Intent.GENERAL, false, List.of(), "deepseek", "deepseek-chat"));
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var memory = new ConversationMemoryContext(null, "", List.of(
+                new ConversationMessage(UUID.randomUUID(), conversationId, ConversationMessage.Direction.INBOUND,
+                        "in-1", "charla ya resuelta ".repeat(20), Instant.now()),
+                new ConversationMessage(UUID.randomUUID(), conversationId, ConversationMessage.Direction.OUTBOUND,
+                        "out-1", "respuesta social ".repeat(20), Instant.now())),
+                List.of(new MemoryFact("budget", "presupuesto máximo 350000", UUID.randomUUID())), 1);
+        var properties = new MemoryProperties();
+        properties.setPromptTokenBudget(40);
+        var adapter = new ConversationAssistantAdapter(ai, new PendingTestDriveReplyPolicy(), null, properties);
+        var current = "La caja de la Ranger XLT me atrae más, pero la XL quizá sea más práctica en ciudad.";
+
+        adapter.respond(new ConversationTurnRequest(tenantId, conversationId, current,
+                ConversationState.BOT_ACTIVE, memory, null));
+
+        var executionContext = org.mockito.ArgumentCaptor.forClass(
+                com.ford.service.ai.application.AiExecutionContext.class);
+        verify(ai).respond(executionContext.capture(), org.mockito.ArgumentMatchers.eq(current));
+        assertThat(executionContext.getValue().memoryContext())
+                .contains("presupuesto máximo 350000")
+                .doesNotContain("charla ya resuelta", "respuesta social");
+    }
+
+    @Test
+    void retainsPendingOfferAndKnownPassengerCountForShortAffirmativeReply() {
+        var ai = mock(AssistantService.class);
+        when(ai.respond(any(), any())).thenReturn(new AssistantTurn(
+                "Claro, comparemos.", Intent.GENERAL, false, List.of(), "openrouter", "openrouter/free"));
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var memory = new ConversationMemoryContext(null, "Somos cuatro personas", List.of(
+                new ConversationMessage(UUID.randomUUID(), conversationId, ConversationMessage.Direction.INBOUND,
+                        "in-1", "Somos cuatro personas", Instant.now()),
+                new ConversationMessage(UUID.randomUUID(), conversationId, ConversationMessage.Direction.OUTBOUND,
+                        "out-1", "¿Quiere que comparemos las opciones?", Instant.now())), List.of(), 2);
+
+        adapter(ai).respond(new ConversationTurnRequest(tenantId, conversationId, "Sí",
+                ConversationState.BOT_ACTIVE, memory));
+
+        var context = org.mockito.ArgumentCaptor.forClass(com.ford.service.ai.application.AiExecutionContext.class);
+        verify(ai).respond(context.capture(), org.mockito.ArgumentMatchers.eq("Sí"));
+        assertThat(context.getValue().memoryContext()).contains("usuario: Somos cuatro personas")
+                .contains("asistente: ¿Quiere que comparemos las opciones?")
+                .contains("no vuelva a preguntar datos ya confirmados");
+    }
+
+    @Test
+    void assemblesCurrentThreadJourneyAndSharedFactsWithoutRepeatingInboundMessage() {
+        var ai = mock(AssistantService.class);
+        when(ai.respond(any(), any())).thenReturn(new AssistantTurn(
+                "Estas son las versiones.", Intent.CATALOG, false, List.of(), "deepseek", "deepseek-chat"));
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var memoryKey = new ConversationMemoryKey(tenantId, com.ford.service.channels.domain.Channel.WHATSAPP,
+                "meta-account", "523331733925", conversationId);
+        var memory = new ConversationMemoryContext(memoryKey, "Busca Bronco", List.of(new ConversationMessage(
+                UUID.randomUUID(), conversationId, ConversationMessage.Direction.OUTBOUND, "out-1",
+                "¿Qué versión buscas?", Instant.now())), List.of(), 1);
+        var sharedFact = new com.ford.service.conversations.domain.CustomerShoppingFact(UUID.randomUUID(),
+                com.ford.service.conversations.domain.CustomerShoppingFactType.VEHICLE_MODEL, "bronco", "Ford Bronco",
+                com.ford.service.conversations.domain.CustomerShoppingFactState.DECLINED, UUID.randomUUID(),
+                UUID.randomUUID(), Instant.now(), 1, Instant.now(), Instant.now(), null, 2);
+        var adapter = new ConversationAssistantAdapter(ai, new PendingTestDriveReplyPolicy(),
+                (key, current, now, limit) -> List.of(sharedFact));
+
+        adapter.respond(new ConversationTurnRequest(tenantId, conversationId, "¿Qué versiones de Bronco hay?",
+                ConversationState.BOT_ACTIVE, memory, null));
+
+        var context = org.mockito.ArgumentCaptor.forClass(com.ford.service.ai.application.AiExecutionContext.class);
+        verify(ai).respond(context.capture(), org.mockito.ArgumentMatchers.eq("¿Qué versiones de Bronco hay?"));
+        assertThat(context.getValue().memoryContext()).contains("¿Qué versión buscas?")
+                .contains("VEHICLE_MODEL")
+                .contains("RECHAZADO")
+                .contains("Ford Bronco")
+                .doesNotContain("¿Qué versiones de Bronco hay?");
+        assertThat(context.getValue().recentAssistantReplies()).containsExactly("¿Qué versión buscas?");
+    }
+
+    @Test
+    void sharedProfileOutageFallsBackToThreadMemory() {
+        var ai = mock(AssistantService.class);
+        when(ai.respond(any(), any())).thenReturn(new AssistantTurn(
+                "Claro.", Intent.GENERAL, false, List.of(), "deepseek", "deepseek-chat"));
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var memoryKey = new ConversationMemoryKey(tenantId, com.ford.service.channels.domain.Channel.WHATSAPP,
+                "meta-account", "523331733925", conversationId);
+        var memory = new ConversationMemoryContext(memoryKey, "Continúa con la Bronco", List.of(), List.of(), 1);
+        var adapter = new ConversationAssistantAdapter(ai, new PendingTestDriveReplyPolicy(),
+                (key, message, now, limit) -> { throw new IllegalStateException("profile store unavailable"); });
+
+        adapter.respond(new ConversationTurnRequest(tenantId, conversationId, "Quiero ver la Bronco",
+                ConversationState.BOT_ACTIVE, memory, null));
+
+        var context = org.mockito.ArgumentCaptor.forClass(com.ford.service.ai.application.AiExecutionContext.class);
+        verify(ai).respond(context.capture(), org.mockito.ArgumentMatchers.eq("Quiero ver la Bronco"));
+        assertThat(context.getValue().memoryContext()).contains("Continúa con la Bronco");
+    }
+
+    @Test
+    void boundsSharedFactSectionByFactCountAndCharacters() {
+        var ai = mock(AssistantService.class);
+        when(ai.respond(any(), any())).thenReturn(new AssistantTurn(
+                "Información.", Intent.GENERAL, false, List.of(), "deepseek", "deepseek-chat"));
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var memoryKey = new ConversationMemoryKey(tenantId, com.ford.service.channels.domain.Channel.WHATSAPP,
+                "meta-account", "523331733925", conversationId);
+        var memory = new ConversationMemoryContext(memoryKey, "", List.of(), List.of(), 1);
+        var sharedFacts = java.util.stream.IntStream.range(0, 8).mapToObj(index ->
+                new com.ford.service.conversations.domain.CustomerShoppingFact(UUID.randomUUID(),
+                        com.ford.service.conversations.domain.CustomerShoppingFactType.VEHICLE_MODEL,
+                        "model-" + index, "X".repeat(160),
+                        com.ford.service.conversations.domain.CustomerShoppingFactState.ACTIVE,
+                        UUID.randomUUID(), UUID.randomUUID(), Instant.now(), 1, Instant.now(), Instant.now(),
+                        Instant.now().plusSeconds(86400), 1)).toList();
+        var adapter = new ConversationAssistantAdapter(ai, new PendingTestDriveReplyPolicy(),
+                (key, current, now, limit) -> sharedFacts);
+
+        adapter.respond(new ConversationTurnRequest(tenantId, conversationId, "Quiero revisar precios de auto",
+                ConversationState.BOT_ACTIVE, memory, null));
+
+        var context = org.mockito.ArgumentCaptor.forClass(com.ford.service.ai.application.AiExecutionContext.class);
+        verify(ai).respond(context.capture(), org.mockito.ArgumentMatchers.eq("Quiero revisar precios de auto"));
+        var rendered = context.getValue().memoryContext();
+        var section = rendered.substring(rendered.indexOf("[HECHOS DE COMPRA CONFIRMADOS"),
+                rendered.indexOf("[/HECHOS DE COMPRA CONFIRMADOS]"));
+        assertThat(section.length()).isLessThanOrEqualTo(650);
+        assertThat(section.split("\\n- ")).hasSizeLessThanOrEqualTo(4);
+    }
+
+    @Test
     void affirmativeAnswerToTestDriveOfferDoesNotCallTheModelAndPersistsTheNextStep() {
         var ai = mock(AssistantService.class);
         var tenantId = UUID.randomUUID();
@@ -137,7 +278,7 @@ class ConversationAssistantAdapterTest {
         var reply = adapter(ai).respond(new ConversationTurnRequest(tenantId, conversationId,
                 "Sí, me gustaría", ConversationState.BOT_ACTIVE, memory, null));
 
-        assertThat(reply.text()).isEqualTo("¡Perfecto! ¿Qué día te funciona para la prueba de manejo?");
+        assertThat(reply.text()).isEqualTo("¡Perfecto! ¿Qué día le conviene para la prueba de manejo?");
         assertThat(reply.journeyProposal().pendingQuestionKey()).isEqualTo("TEST_DRIVE_DATE");
         org.mockito.Mockito.verifyNoInteractions(ai);
     }

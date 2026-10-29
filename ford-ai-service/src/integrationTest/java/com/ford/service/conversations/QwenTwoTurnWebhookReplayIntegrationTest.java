@@ -143,6 +143,7 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
     @Autowired ToolAuthorizationPolicy toolAuthorizationPolicy;
     @Autowired AssistantService assistantService;
     @Autowired LocalQwenCallMeasurementCollector providerCallMeasurements;
+    @Autowired(required = false) LocalReplayPrecisionEvidence replayPrecisionEvidence;
     @Autowired MemoryProperties memoryProperties;
     @Autowired com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     @LocalServerPort int port;
@@ -174,6 +175,16 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
         var rangerXlt = catalogPort.find(new VehicleLookup("Ranger", 2027, "XLT Gasolina 4x2")).orElseThrow();
         assertThat(rangerXlt.model()).isEqualToIgnoringCase("Ranger");
         assertThat(rangerXlt.facts()).isNotEmpty();
+        var comparisonPrefetcher = new LocalReplayComparisonPrefetcher(new LocalComparisonPairResolver(),
+                catalogPort::nameIndexEntries, new com.ford.service.ai.adapter.in.tool.CatalogTools(
+                catalogPort, catalogRetrievalPort));
+        var prefetchedComparison = comparisonPrefetcher.prefetch(
+                "¿Qué dato no está disponible para hacer una comparación completa?",
+                "[HISTORIAL DE CONVERSACIÓN]\n"
+                        + "- usuario: Compara Ranger 2027 XL Gasolina 4x2 con XLT Gasolina 4x2.\n"
+                        + "[/HISTORIAL DE CONVERSACIÓN]")
+                .orElseThrow(() -> new AssertionError("exact prior buyer pair did not prefetch comparison evidence"));
+        assertThat(objectMapper.writeValueAsString(prefetchedComparison)).hasSizeLessThanOrEqualTo(16_000);
 
         var asOf = LocalDate.now(ZoneOffset.UTC);
         assertThat(catalogPort.promotions(new PromotionQuery("RANGER", 2027, asOf, false, 20)).results())
@@ -205,6 +216,33 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
             assertThat(applicationContext.getBean(LocalReplayComparisonPrefetcher.class)
                     .prefetch(exactComparisonMessage))
                     .as("prefetch must resolve the exact synthetic Ranger comparison from the loaded snapshot")
+                    .isPresent();
+            var promotionHistory = "[HISTORIAL DE CONVERSACIÓN]\n"
+                    + "- usuario: Empecemos por la Ranger 2027 XLT Gasolina 4x2 del catálogo, "
+                    + "¿cuál es su precio publicado?\n[FIN DEL HISTORIAL]";
+            assertThat(catalogPort.nameIndexEntries())
+                    .as("catalog identity index has the exact XLT trim")
+                    .contains(new com.ford.service.catalog.api.VehicleNameIndexEntry(
+                            "RANGER", 2027, "XLT Gasolina 4x2"));
+            assertThat(new LocalBuyerVehicleResolver().resolve(
+                    "¿Ese monto corresponde a la XLT que acabamos de revisar?", promotionHistory,
+                    catalogPort.nameIndexEntries()))
+                    .as("exact buyer history resolves one Ranger trim identity")
+                    .contains(new LocalBuyerVehicleResolver.VehicleRef("RANGER", 2027, "XLT GASOLINA 4X2"));
+            assertThat(new com.ford.service.ai.adapter.in.tool.CatalogTools(catalogPort, catalogRetrievalPort)
+                    .listPromotions("RANGER", 2027, null, false, 0, 20, "full", "RANGER 2027").results())
+                    .as("catalog tool returns exact model/year promotion evidence")
+                    .isNotEmpty();
+            var directPrefetcher = new LocalReplayPromotionPrefetcher(new LocalBuyerVehicleResolver(),
+                    catalogPort::nameIndexEntries,
+                    new com.ford.service.ai.adapter.in.tool.CatalogTools(catalogPort, catalogRetrievalPort));
+            assertThat(directPrefetcher.prefetch(
+                    "¿Ese monto corresponde a la XLT que acabamos de revisar?", promotionHistory))
+                    .as("promotion prefetch succeeds with the exact live catalog index and tool")
+                    .isPresent();
+            assertThat(applicationContext.getBean(LocalReplayPromotionPrefetcher.class)
+                    .prefetch("¿Ese monto corresponde a la XLT que acabamos de revisar?", promotionHistory))
+                    .as("prefetch must resolve exact promotion evidence for the natural replay follow-up")
                     .isPresent();
         }
         assertAllCatalogSpringAiCallbacks(knownPageUrl, catalogDataSource);
@@ -291,6 +329,8 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
     @Order(1)
     void acceptsAndCommitsEachQwenTurnBeforeSendingTheNextWithoutDeliveryBeans() throws Exception {
         Assumptions.assumeTrue(PREFLIGHT_PASSED, "snapshot/BGE preflight did not pass; no webhook sent");
+        Assumptions.assumeFalse(isFreshFullLiveMode(), "fresh acceptance owns the empty test database");
+        Assumptions.assumeFalse(seedReplayEnabled(), "seeded-prefix mode runs only the natural-buyer replay");
         assertThat(applicationContext.getBeansOfType(OutboxPublisher.class)).isEmpty();
         assertThat(applicationContext.getBeansOfType(OutboxDeliveryRouter.class)).isEmpty();
         assertThat(applicationContext.getBeansOfType(ChannelDeliveryPort.class)).isEmpty();
@@ -325,6 +365,8 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
     @EnabledIfEnvironmentVariable(named = "FORD_QWEN_SCENARIOS_ENABLED", matches = "true")
     void runsReviewedCatalogAndMemoryScenarios() throws Exception {
         Assumptions.assumeTrue(PREFLIGHT_PASSED, "snapshot/BGE preflight did not pass; no webhook sent");
+        Assumptions.assumeFalse(isFreshFullLiveMode(), "fresh acceptance runs in isolation");
+        Assumptions.assumeFalse(seedReplayEnabled(), "seeded mode runs only its prefix diagnostic");
         runReviewedScenarios();
     }
 
@@ -333,6 +375,8 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
     @EnabledIfEnvironmentVariable(named = "FORD_QWEN_10_REPLAY_ENABLED", matches = "true")
     void commitsTenNaturalSpanishTurnsAsASequentialCheckpoint() throws Exception {
         Assumptions.assumeTrue(PREFLIGHT_PASSED, "snapshot/BGE preflight did not pass; no webhook sent");
+        Assumptions.assumeFalse(isFreshFullLiveMode(), "fresh acceptance runs in isolation");
+        Assumptions.assumeFalse(seedReplayEnabled(), "seeded mode runs only its prefix diagnostic");
         runNaturalBuyerReplay(10, "10");
     }
 
@@ -341,6 +385,8 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
     @EnabledIfEnvironmentVariable(named = "FORD_QWEN_COMPARISON_PREFETCH_ENABLED", matches = "true")
     void suppliesExactPrefetchedComparisonToQwenAndPassesSafetyGate() throws Exception {
         Assumptions.assumeTrue(PREFLIGHT_PASSED, "snapshot/BGE preflight did not pass; no Qwen call sent");
+        Assumptions.assumeFalse(seedReplayEnabled(), "seeded-prefix mode runs only the natural-buyer replay");
+        Assumptions.assumeFalse(isFreshFullLiveMode(), "fresh acceptance runs in isolation");
         var message = "De las dos versiones, Ranger 2027 XL Gasolina 4x2 y Ranger 2027 XLT Gasolina 4x2, "
                 + "¿cuál tiene el precio publicado menor?";
         var answer = assistantService.respond(new AiExecutionContext(TENANT_ID, false, UUID.randomUUID()), message);
@@ -370,6 +416,8 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
     @EnabledIfEnvironmentVariable(named = "FORD_QWEN_100_REPLAY_ENABLED", matches = "true")
     void runsRawQwenReplayWithoutPrefetch() throws Exception {
         Assumptions.assumeFalse(comparisonPrefetchEnabled(), "raw replay runs only with prefetch disabled");
+        Assumptions.assumeFalse(isFreshFullLiveMode(), "fresh acceptance uses its dedicated prefetched test");
+        Assumptions.assumeFalse(seedReplayEnabled(), "seeded mode runs only its prefix diagnostic");
         Assumptions.assumeTrue(PREFLIGHT_PASSED, "snapshot/BGE preflight did not pass; no webhook sent");
         runNaturalBuyerReplay(100, "100");
     }
@@ -379,11 +427,164 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
     @EnabledIfEnvironmentVariable(named = "FORD_QWEN_100_REPLAY_ENABLED", matches = "true")
     @EnabledIfEnvironmentVariable(named = "FORD_QWEN_COMPARISON_PREFETCH_ENABLED", matches = "true")
     void runsPrefetchedQwenReplayAsSeparateArtifact() throws Exception {
+        var mode = LocalQwenReplayExecutionMode.resolve(System.getenv());
+        Assumptions.assumeFalse(mode == LocalQwenReplayExecutionMode.FRESH_FULL_LIVE
+                        || mode == LocalQwenReplayExecutionMode.SEEDED_DIAGNOSTIC,
+                "seeded diagnostic and fresh acceptance use separate test lanes");
         Assumptions.assumeTrue(PREFLIGHT_PASSED, "snapshot/BGE preflight did not pass; no webhook sent");
         runNaturalBuyerReplay(100, "100-prefetch");
     }
 
+    @Test
+    @Order(7)
+    @EnabledIfEnvironmentVariable(named = "FORD_QWEN_REPLAY_MODE", matches = "SEEDED_DIAGNOSTIC")
+    void runsOnlyValidatedSeedPrefixForPlumbingDiagnostics() throws Exception {
+        Assumptions.assumeTrue(PREFLIGHT_PASSED, "snapshot/BGE preflight did not pass; no webhook sent");
+        var prefix = configuredSeedPrefixTurns();
+        assertThat(prefix).isPositive();
+        runNaturalBuyerReplay(prefix, "seeded-diagnostic");
+    }
+
+    @Test
+    @Order(8)
+    @EnabledIfEnvironmentVariable(named = "FORD_QWEN_REPLAY_MODE", matches = "CHECKPOINT_LIVE_WINDOW")
+    void runsCheckpointedLiveQwenWindow() throws Exception {
+        Assumptions.assumeTrue(PREFLIGHT_PASSED, "snapshot/BGE preflight did not pass; no webhook sent");
+        var executionMode = LocalQwenReplayExecutionMode.resolve(System.getenv());
+        assertThat(executionMode).isEqualTo(LocalQwenReplayExecutionMode.CHECKPOINT_LIVE_WINDOW);
+        assertThat(seedReplayEnabled()).as("checkpoint mode must call Qwen live").isFalse();
+        assertThat(applicationContext.getBeansOfType(OutboxPublisher.class)).isEmpty();
+        assertThat(applicationContext.getBeansOfType(OutboxDeliveryRouter.class)).isEmpty();
+        assertThat(applicationContext.getBeansOfType(ChannelDeliveryPort.class)).isEmpty();
+
+        var turns = NaturalBuyerConversationScenario.load(new tools.jackson.databind.ObjectMapper());
+        var checkpointPath = Path.of(System.getenv("FORD_QWEN_REPLAY_CHECKPOINT"));
+        var checkpoint = LocalQwenReplayCheckpoint.read(checkpointPath, objectMapper);
+        var startTurn = Integer.parseInt(System.getenv("FORD_QWEN_TARGET_START_TURN"));
+        var endTurn = Integer.parseInt(System.getenv("FORD_QWEN_TARGET_END_TURN"));
+        assertThat(startTurn).as("live window must begin immediately after checkpoint")
+                .isEqualTo(checkpoint.checkpointTurn() + 1);
+        assertThat(endTurn).isLessThanOrEqualTo(turns.size());
+        checkpoint.validate(turns, SNAPSHOT_LABEL,
+                java.util.Objects.requireNonNull(SNAPSHOT_SUMMARY).sha256(), checkpoint.checkpointTurn(),
+                memoryProperties.workingMemoryTtl());
+        assertThat(checkpoint.providerAccountId()).isEqualTo(ACCOUNT_ID);
+
+        insertSyntheticBinding();
+        extendReplayPrompt();
+        var conversationId = new LocalQwenReplayCheckpointLoader(jdbc, objectMapper)
+                .restore(checkpoint, TENANT_ID, "WHATSAPP", turns, SNAPSHOT_LABEL,
+                        SNAPSHOT_SUMMARY.sha256(), checkpoint.checkpointTurn(), memoryProperties.workingMemoryTtl());
+        var restoredKey = new com.ford.service.conversations.domain.ConversationMemoryKey(TENANT_ID,
+                com.ford.service.channels.domain.Channel.WHATSAPP, checkpoint.providerAccountId(),
+                checkpoint.participantId(), conversationId);
+        var restoredMemory = new com.ford.service.conversations.adapter.out.JdbcConversationMemoryRepository(
+                jdbc, objectMapper, memoryProperties).load(new com.ford.service.conversations.domain.MemoryQuery(
+                restoredKey, "checkpoint verification", null, 20, 0));
+        assertThat(restoredMemory.summary()).isEqualTo(checkpoint.memorySummary());
+        assertThat(restoredMemory.durableFacts()).hasSize(checkpoint.durableFacts().size());
+        assertThat(restoredMemory.recentMessages()).hasSize(checkpoint.messages().size());
+        var window = turns.subList(startTurn - 1, endTurn);
+        var prefix = "synthetic-qwen-checkpoint-" + RUN_ID;
+        var telemetryRunId = RUN_ID + "-" + SNAPSHOT_LABEL.wireName() + "-checkpoint";
+        var transcript = new LocalQwenTranscriptWriter(Path.of("build/reports"), RUN_ID, SNAPSHOT_SUMMARY,
+                SNAPSHOT_LABEL, window.size(), replayMode(), executionMode, startTurn);
+        var checkpointMetadata = new LocalQwenTranscriptWriter.CheckpointMetadata(
+                checkpoint.checkpointId(), checkpoint.scenarioSha256(), checkpoint.checkpointTurn());
+        transcript.recordCheckpointMetadata(checkpointMetadata);
+        var telemetry = new LocalQwenTurnTelemetry(Path.of("build/reports"), telemetryRunId);
+        for (var turn : window) {
+            var providerMessageId = "wamid." + prefix + "-" + String.format(Locale.ROOT, "%03d", turn.number());
+            var measurementMark = providerCallMeasurements.mark();
+            var started = System.nanoTime();
+            try {
+                postSyntheticMessage(providerMessageId, checkpoint.participantId(), turn.message());
+                var actualConversation = awaitCommittedReply(providerMessageId);
+                assertThat(actualConversation).isEqualTo(conversationId);
+                var answer = latestOutbound(actualConversation);
+                assertThat(answer).isNotBlank();
+                LocalReplayNoHandoffAssertions.assertNoHandoff(jdbc.sql(
+                                "select count(*) from handoff_ticket where conversation_id=:conversation")
+                        .param("conversation", actualConversation).query(Integer.class).single());
+                var toolEvents = traceWithCurrentReplayPrefetch(toolTraceFor(providerMessageId), actualConversation);
+                assertThat(toolEvents).as("target turn must use real catalog evidence: %s", turn.number())
+                        .anySatisfy(event -> assertThat(event.origin())
+                                .isNotEqualTo(LocalQwenTranscriptWriter.ToolTraceOrigin.RECORDED_SEED));
+                assertThat(toolEvents).as("target turn must return catalog evidence: %s", turn.number())
+                        .anySatisfy(event -> {
+                            assertThat(event.outcome()).isEqualTo("returned");
+                            assertThat(event.evidenceCount()).isNotNull().isPositive();
+                        });
+                assertThat(providerCallMeasurements.since(measurementMark))
+                        .as("target turn must call live Qwen: %s", turn.number()).isNotEmpty();
+                transcript.append(turn, answer, toolEvents, LocalQwenTranscriptWriter.ReplyOrigin.LIVE_QWEN);
+                var nameIndex = applicationContext.getBeanProvider(CatalogNameIndexService.class).getIfAvailable();
+                var currentNames = nameIndex == null ? List.<com.ford.service.catalog.api.VehicleNameIndexEntry>of()
+                        : nameIndex.currentEntries();
+                var violations = LocalReplaySafetyAssertions.evaluate(turn, answer,
+                        LocalReplayTurnEvidence.forTurn(providerMessageId, Map.of(providerMessageId, toolEvents)),
+                        replyOptionsFor(actualConversation), currentNames,
+                        approvedInventoryTexts(actualConversation), true, false);
+                assertThat(violations).as("checkpoint live-window safety turn=%s", turn.number()).isEmpty();
+                appendTelemetry(telemetry, telemetryRunId, "natural-buyer-checkpoint-window", turn.number(),
+                        started, measurementMark, actualConversation, providerMessageId,
+                        LocalQwenTurnTelemetry.Outcome.COMMITTED, checkpointMetadata);
+            } catch (Exception | AssertionError failure) {
+                transcript.recordFailure(turn, safeFailureCategory(failure), toolTraceFor(providerMessageId));
+                appendTelemetry(telemetry, telemetryRunId, "natural-buyer-checkpoint-window", turn.number(),
+                        started, measurementMark, conversationId, providerMessageId,
+                        LocalQwenTurnTelemetry.Outcome.FAILED, checkpointMetadata);
+                throw new AssertionError("checkpoint live window failed at turn " + turn.number()
+                        + "; transcript=" + transcript.path() + "; reason=" + failure.getMessage(), failure);
+            }
+        }
+        var checkpointHandoffCount = jdbc.sql("select count(*) from handoff_ticket where conversation_id=:conversation")
+                .param("conversation", conversationId).query(Integer.class).single();
+        LocalReplayNoHandoffAssertions.assertNoHandoff(checkpointHandoffCount);
+        transcript.recordHandoffCount(checkpointHandoffCount);
+        transcript.complete();
+        assertThat(countOutbound(conversationId))
+                .isEqualTo(checkpoint.messages().size() / 2 + window.size());
+        assertThat(jdbc.sql("select count(distinct provider_message_id) from conversation_turn "
+                        + "where tenant_id=:tenant and conversation_id=:conversation and provider_message_id like :prefix")
+                .param("tenant", TENANT_ID).param("conversation", conversationId)
+                .param("prefix", "wamid." + prefix + "%")
+                .query(Integer.class).single()).isEqualTo(window.size());
+        System.out.println("Checkpoint live-window transcript written: " + transcript.path()
+                + "; telemetry: " + telemetry.path());
+    }
+
+    @Test
+    @Order(9)
+    @EnabledIfEnvironmentVariable(named = "FORD_QWEN_REPLAY_MODE", matches = "FRESH_FULL_LIVE")
+    @EnabledIfEnvironmentVariable(named = "FORD_QWEN_100_REPLAY_ENABLED", matches = "true")
+    void acceptsFreshOneHundredTurnAllLiveRunOnly() throws Exception {
+        Assumptions.assumeTrue(PREFLIGHT_PASSED, "snapshot/BGE preflight did not pass; no webhook sent");
+        Assumptions.assumeTrue(comparisonPrefetchEnabled(), "final acceptance uses the approved prefetched lane");
+        runNaturalBuyerReplay(100, "100-fresh-live");
+    }
+
     private void runNaturalBuyerReplay(int expectedTurns, String runLabel) throws Exception {
+        var executionMode = LocalQwenReplayExecutionMode.resolve(System.getenv());
+        var checkpointCaptureTurn = configuredCheckpointCaptureTurn();
+        if (executionMode == LocalQwenReplayExecutionMode.FRESH_FULL_LIVE) {
+            assertThat(expectedTurns).as("fresh all-live acceptance has fixed scenario length").isEqualTo(100);
+            assertThat(seedReplayEnabled()).as("fresh all-live acceptance has no seed adapter").isFalse();
+            assertThat(jdbc.sql("select count(*) from conversation where tenant_id=:tenant")
+                    .param("tenant", TENANT_ID).query(Integer.class).single())
+                    .as("fresh all-live acceptance starts with empty tenant state").isZero();
+        }
+        if (executionMode == LocalQwenReplayExecutionMode.SEEDED_DIAGNOSTIC) {
+            assertThat(comparisonPrefetchEnabled())
+                    .as("seeded mode adapter is installed only in prefetched harness").isTrue();
+        }
+        if (executionMode == LocalQwenReplayExecutionMode.CHECKPOINT_LIVE_WINDOW) {
+            throw new IllegalStateException("checkpoint mode must use the checkpoint live-window runner");
+        }
+        if (checkpointCaptureTurn != null) {
+            assertThat(checkpointCaptureTurn).as("checkpoint capture must be inside replay prefix")
+                    .isLessThanOrEqualTo(expectedTurns);
+        }
         assertThat(applicationContext.getBeansOfType(OutboxPublisher.class)).isEmpty();
         assertThat(applicationContext.getBeansOfType(OutboxDeliveryRouter.class)).isEmpty();
         assertThat(applicationContext.getBeansOfType(ChannelDeliveryPort.class)).isEmpty();
@@ -406,8 +607,11 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
         var transcript = new LocalQwenTranscriptWriter(Path.of("build/reports"), RUN_ID,
                 java.util.Objects.requireNonNull(SNAPSHOT_SUMMARY, "snapshot preflight metadata is required"),
                 java.util.Objects.requireNonNull(SNAPSHOT_LABEL, "snapshot label is required"),
-                expectedTurns, replayMode);
+                expectedTurns, replayMode, executionMode);
+        transcript.recordScenarioSha256(LocalQwenReplayCheckpoint.scenarioSha256(turns));
         var telemetry = new LocalQwenTurnTelemetry(Path.of("build/reports"), telemetryRunId);
+        var seededReplyCount = executionMode == LocalQwenReplayExecutionMode.SEEDED_DIAGNOSTIC
+                ? configuredSeedReplyCount() : 0;
         var eventsByProviderMessageId = new java.util.HashMap<String, List<LocalQwenTranscriptWriter.ToolTrace>>();
         UUID conversationId = null;
         var committed = 0;
@@ -425,9 +629,29 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                         .isEqualTo(conversationId);
                 var answer = latestOutbound(committedConversation);
                 assertThat(answer).as("committed reply at turn %s", turnIndex).isNotBlank();
-                var toolEvents = toolTraceFor(providerMessageId);
+                LocalReplayNoHandoffAssertions.assertNoHandoff(jdbc.sql(
+                                "select count(*) from handoff_ticket where conversation_id=:conversation")
+                        .param("conversation", committedConversation).query(Integer.class).single());
+                var replyOrigin = isSeededReply(turnIndex)
+                        ? LocalQwenTranscriptWriter.ReplyOrigin.RECORDED_SEED
+                        : LocalQwenTranscriptWriter.ReplyOrigin.LIVE_QWEN;
+                var toolEvents = traceWithCurrentReplayPrefetch(toolTraceFor(providerMessageId), committedConversation);
+                toolEvents = withRecordedSeedTraces(toolEvents, turn);
                 eventsByProviderMessageId.put(providerMessageId, toolEvents);
-                transcript.append(turn, answer, toolEvents);
+                transcript.append(turn, answer, toolEvents, replyOrigin);
+                if (replayMode == LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN
+                        && replyOrigin == LocalQwenTranscriptWriter.ReplyOrigin.LIVE_QWEN) {
+                    var precision = new LocalReplayPrecisionEvaluator();
+                    var catalogPrecision = turn.expectation() == NaturalBuyerConversationScenario.Expectation.CATALOG_FACT
+                            || turn.expectation() == NaturalBuyerConversationScenario.Expectation.OFFER
+                            ? precision.evaluateCatalog(turn, answer,
+                            replayPrecisionEvidence.currentTurnEvidence(committedConversation)) : null;
+                    var memoryPrecision = turn.expectation() == NaturalBuyerConversationScenario.Expectation.MEMORY_RECALL
+                            ? precision.evaluateMemory(turn, answer, replayTurns.stream()
+                            .filter(prior -> prior.number() < turnIndex)
+                            .map(NaturalBuyerConversationScenario.Turn::message).toList()) : null;
+                    transcript.recordPrecision(turn, catalogPrecision, memoryPrecision);
+                }
                 var nameIndex = applicationContext.getBeanProvider(CatalogNameIndexService.class).getIfAvailable();
                 var currentNames = nameIndex == null ? List.<com.ford.service.catalog.api.VehicleNameIndexEntry>of()
                         : nameIndex.currentEntries();
@@ -436,15 +660,30 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                 var safetyViolations = LocalReplaySafetyAssertions.evaluate(turn, answer, currentTurnEvents,
                         replyOptionsFor(committedConversation), currentNames,
                         approvedInventoryTexts(committedConversation), replayMode ==
-                                LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN);
+                                LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN,
+                        replyOrigin == LocalQwenTranscriptWriter.ReplyOrigin.RECORDED_SEED);
                 assertThat(safetyViolations)
                         .as("per-turn safety checks: turn=%s expectation=%s", turnIndex, turn.expectation())
                         .isEmpty();
+                if (executionMode == LocalQwenReplayExecutionMode.FRESH_FULL_LIVE) {
+                    assertThat(providerCallMeasurements.since(measurementMark))
+                            .as("fresh acceptance requires a live Qwen call for turn %s", turnIndex).isNotEmpty();
+                }
                 appendTelemetry(telemetry, telemetryRunId, "natural-buyer-100", turnIndex, turnStarted,
                         measurementMark, committedConversation, providerMessageId,
                         LocalQwenTurnTelemetry.Outcome.COMMITTED);
+                if (checkpointCaptureTurn != null && checkpointCaptureTurn == turnIndex) {
+                    var checkpointId = RUN_ID + "-turn-" + String.format(Locale.ROOT, "%03d", turnIndex);
+                    var artifactOrigin = executionMode == LocalQwenReplayExecutionMode.SEEDED_DIAGNOSTIC
+                            ? "SEEDED_REPLAY_EXPORT" : "LIVE_REPLAY_EXPORT";
+                    var checkpointPath = new LocalQwenReplayCheckpointExporter(jdbc, objectMapper).export(
+                            Path.of("build/reports"), checkpointId, TENANT_ID, committedConversation,
+                            turnIndex, turns, SNAPSHOT_LABEL, SNAPSHOT_SUMMARY.sha256(), artifactOrigin);
+                    System.out.println("Synthetic replay checkpoint exported: " + checkpointPath
+                            + " origin=" + artifactOrigin);
+                }
                 committed++;
-                if (turnIndex == 5) {
+                if (turnIndex == 5 && !isSeededReply(turnIndex)) {
                     var route = jdbc.sql("""
                             select route from conversation_decision_event
                              where tenant_id=:tenant and conversation_id=:conversation and stage='route'
@@ -475,11 +714,17 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                 var detail = failure.getMessage() == null ? "" : failure.getMessage();
                 var category = detail.contains("SAFE_FALLBACK_REVIEW")
                         ? LocalQwenTranscriptWriter.FailureCategory.SAFE_FALLBACK_REVIEW
+                        : detail.contains("MISSING_CATALOG_EVIDENCE")
+                        ? LocalQwenTranscriptWriter.FailureCategory.MISSING_CATALOG_EVIDENCE
                         : detail.contains("timed out")
                         ? LocalQwenTranscriptWriter.FailureCategory.TURN_TIMEOUT
                         : LocalQwenTranscriptWriter.FailureCategory.INVALID_STATE;
-                var toolEvents = toolTraceFor(providerMessageId);
-                transcript.recordFailure(turn, category, toolEvents);
+                var toolEvents = conversationId == null ? toolTraceFor(providerMessageId)
+                        : traceWithCurrentReplayPrefetch(toolTraceFor(providerMessageId), conversationId);
+                toolEvents = withRecordedSeedTraces(toolEvents, turn);
+                var comparisonStatus = conversationId == null || replayPrecisionEvidence == null
+                        ? null : replayPrecisionEvidence.currentTurnComparisonStatus(conversationId);
+                transcript.recordFailure(turn, category, toolEvents, comparisonStatus);
                 appendTelemetry(telemetry, telemetryRunId, "natural-buyer-100", turnIndex, turnStarted,
                         measurementMark, conversationId, providerMessageId, LocalQwenTurnTelemetry.Outcome.FAILED);
                 throw new AssertionError("natural buyer replay stopped at turn " + turnIndex
@@ -497,7 +742,15 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                 .param("prefix", "wamid." + prefix + "%")
                 .query(Integer.class).single())
                 .isEqualTo(expectedTurns);
-        transcript.complete();
+        var handoffCount = jdbc.sql("select count(*) from handoff_ticket where conversation_id=:conversation")
+                .param("conversation", conversationId).query(Integer.class).single();
+        LocalReplayNoHandoffAssertions.assertNoHandoff(handoffCount);
+        transcript.recordHandoffCount(handoffCount);
+        if (executionMode == LocalQwenReplayExecutionMode.FRESH_FULL_LIVE) {
+            transcript.completeFreshFullLive();
+        } else {
+            transcript.complete(seededReplyCount);
+        }
         System.out.println("Local Qwen transcript written: " + transcript.path()
                 + " and " + transcript.htmlPath() + "; turn telemetry: " + telemetry.path());
     }
@@ -609,6 +862,11 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
         return "true".equalsIgnoreCase(System.getenv("FORD_QWEN_COMPARISON_PREFETCH_ENABLED"));
     }
 
+    private static boolean isFreshFullLiveMode() {
+        return LocalQwenReplayExecutionMode.resolve(System.getenv())
+                == LocalQwenReplayExecutionMode.FRESH_FULL_LIVE;
+    }
+
     private static LocalQwenTranscriptWriter.ReplayMode replayMode() {
         return comparisonPrefetchEnabled() ? LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN
                 : LocalQwenTranscriptWriter.ReplayMode.RAW_QWEN;
@@ -630,18 +888,93 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                                  int turnNumber, long startedNanos, int measurementMark,
                                  UUID conversationId, String providerMessageId,
                                  LocalQwenTurnTelemetry.Outcome outcome) throws Exception {
+        appendTelemetry(telemetry, telemetryRunId, scenarioId, turnNumber, startedNanos, measurementMark,
+                conversationId, providerMessageId, outcome, null);
+    }
+
+    private void appendTelemetry(LocalQwenTurnTelemetry telemetry, String telemetryRunId, String scenarioId,
+                                 int turnNumber, long startedNanos, int measurementMark,
+                                 UUID conversationId, String providerMessageId,
+                                 LocalQwenTurnTelemetry.Outcome outcome,
+                                 LocalQwenTranscriptWriter.CheckpointMetadata checkpointMetadata) throws Exception {
         var measurements = providerCallMeasurements.since(measurementMark);
         var tools = providerMessageId == null ? List.<LocalQwenTranscriptWriter.ToolTrace>of()
                 : toolTraceFor(providerMessageId);
+        if (scenarioId.equals("natural-buyer-100") && turnNumber <= 100) {
+            var turn = NaturalBuyerConversationScenario.load(new tools.jackson.databind.ObjectMapper())
+                    .get(turnNumber - 1);
+            tools = withRecordedSeedTraces(tools, turn);
+        }
         var summary = java.util.Objects.requireNonNull(SNAPSHOT_SUMMARY,
                 "snapshot metadata is required for turn telemetry");
         var label = java.util.Objects.requireNonNull(SNAPSHOT_LABEL,
                 "snapshot label is required for turn telemetry");
+        var replyOrigin = scenarioId.equals("natural-buyer-100") && isSeededReply(turnNumber)
+                ? LocalQwenTranscriptWriter.ReplyOrigin.RECORDED_SEED
+                : LocalQwenTranscriptWriter.ReplyOrigin.LIVE_QWEN;
+        String scenarioHash = null;
+        if (scenarioId.startsWith("natural-buyer")) {
+            scenarioHash = LocalQwenReplayCheckpoint.scenarioSha256(
+                    NaturalBuyerConversationScenario.load(new tools.jackson.databind.ObjectMapper()));
+        }
+        if (checkpointMetadata != null) {
+            assertThat(scenarioHash).isEqualTo(checkpointMetadata.scenarioSha256());
+        }
         var record = LocalQwenTurnTelemetry.TurnRecord.from(telemetryRunId, scenarioId, turnNumber, label,
                 summary.sha256(), replayModelConfigId(),
                 Math.max(0, (System.nanoTime() - startedNanos) / 1_000_000),
-                measurements, tools, memoryShape(conversationId), outcome);
+                measurements, tools, memoryShape(conversationId), replyOrigin,
+                LocalQwenReplayExecutionMode.resolve(System.getenv()),
+                scenarioHash, checkpointMetadata == null ? null : checkpointMetadata.checkpointId(),
+                checkpointMetadata == null ? null : checkpointMetadata.checkpointTurn(), outcome);
         telemetry.append(record);
+    }
+
+    private static int configuredSeedPrefixTurns() {
+        var transcript = System.getenv("FORD_QWEN_REPLAY_SEED_TRANSCRIPT");
+        if (transcript == null || transcript.isBlank()) return 0;
+        var value = System.getenv("FORD_QWEN_REPLAY_SEED_THROUGH_TURN");
+        if (value == null || value.isBlank()) return 0;
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException failure) {
+            throw new IllegalArgumentException("seed-through turn must be an integer", failure);
+        }
+    }
+
+    private static Integer configuredCheckpointCaptureTurn() {
+        var value = System.getenv("FORD_QWEN_REPLAY_CHECKPOINT_CAPTURE_TURN");
+        if (value == null || value.isBlank()) return null;
+        try {
+            var turn = Integer.parseInt(value);
+            if (turn < 1 || turn > 100) throw new NumberFormatException("outside range");
+            return turn;
+        } catch (NumberFormatException failure) {
+            throw new IllegalArgumentException("checkpoint capture turn must be from 1 through 100", failure);
+        }
+    }
+
+    private static boolean seedReplayEnabled() {
+        var transcript = System.getenv("FORD_QWEN_REPLAY_SEED_TRANSCRIPT");
+        return transcript != null && !transcript.isBlank();
+    }
+
+    private static java.util.Set<Integer> configuredForcedLiveTurns() {
+        var value = System.getenv("FORD_QWEN_REPLAY_FORCE_LIVE_TURNS");
+        if (value == null || value.isBlank()) return java.util.Set.of();
+        return java.util.Arrays.stream(value.split(","))
+                .map(String::strip).filter(turn -> !turn.isEmpty()).map(Integer::parseInt)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    private static boolean isSeededReply(int turnNumber) {
+        return turnNumber <= configuredSeedPrefixTurns() && !configuredForcedLiveTurns().contains(turnNumber);
+    }
+
+    private static int configuredSeedReplyCount() {
+        var prefix = configuredSeedPrefixTurns();
+        return (int) java.util.stream.IntStream.rangeClosed(1, prefix)
+                .filter(QwenTwoTurnWebhookReplayIntegrationTest::isSeededReply).count();
     }
 
     private LocalQwenTurnTelemetry.MemoryShape memoryShape(UUID conversationId) {
@@ -685,6 +1018,35 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                                 ? LocalQwenTranscriptWriter.ToolTraceOrigin.REPLAY_PREFETCH
                                 : LocalQwenTranscriptWriter.ToolTraceOrigin.MODEL))
                 .list();
+    }
+
+    private List<LocalQwenTranscriptWriter.ToolTrace> traceWithCurrentReplayPrefetch(
+            List<LocalQwenTranscriptWriter.ToolTrace> persistedEvents, UUID conversationId) {
+        var events = new java.util.ArrayList<>(persistedEvents);
+        if (replayPrecisionEvidence != null) {
+            for (var prefetch : replayPrecisionEvidence.currentTurnToolTraces(conversationId)) {
+                var alreadyPersisted = events.stream().anyMatch(event ->
+                        event.origin() == LocalQwenTranscriptWriter.ToolTraceOrigin.REPLAY_PREFETCH
+                                && event.toolName().equals(prefetch.toolName())
+                                && java.util.Objects.equals(event.evidenceCount(), prefetch.evidenceCount()));
+                if (!alreadyPersisted) events.add(prefetch);
+            }
+        }
+        return List.copyOf(events);
+    }
+
+    private List<LocalQwenTranscriptWriter.ToolTrace> withRecordedSeedTraces(
+            List<LocalQwenTranscriptWriter.ToolTrace> existing,
+            NaturalBuyerConversationScenario.Turn turn) {
+        if (!isSeededReply(turn.number())) return existing;
+        var replayPort = applicationContext.getBeanProvider(ReplayPrefetchingChatCompletionPort.class)
+                .getIfAvailable();
+        if (replayPort == null) return existing;
+        var seedTraces = replayPort.seedToolTracesForTurn(turn.number(), turn.message());
+        if (seedTraces.isEmpty()) return existing;
+        var events = new java.util.ArrayList<>(existing);
+        events.addAll(seedTraces);
+        return List.copyOf(events);
     }
 
     private void extendReplayPrompt() {

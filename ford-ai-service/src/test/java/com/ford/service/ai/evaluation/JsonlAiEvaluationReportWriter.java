@@ -41,4 +41,22 @@ final class JsonlAiEvaluationReportWriter {
             throw new IllegalStateException("Unable to serialize AI evaluation result", exception);
         }
     }
+
+    Path writeShadowReviewSummary(Path output, ShadowReviewMetrics metrics) throws IOException {
+        Files.createDirectories(output.toAbsolutePath().getParent());
+        var summary = "# Shadow Review Evaluation\n\n"
+                + "- total cases: " + metrics.totalCases() + "\n"
+                + "- categories covered: " + metrics.categories() + "\n"
+                + "- golden cases: " + metrics.goldenCases() + "\n"
+                + "- routing accuracy: " + String.format("%.3f", metrics.routingAccuracy()) + "\n"
+                + "- never-promise violations: " + metrics.neverPromiseViolations() + "\n"
+                + "- never-promise detector misses: " + metrics.detectorMisses() + "\n"
+                + "- packet completeness (golden): " + String.format("%.3f", metrics.packetCompleteness()) + "\n"
+                + "- synthetic policy-evaluation p95 runtime (ms): " + metrics.p95LatencyMs() + "\n"
+                + "- synthetic-only: yes\n"
+                + "- Live launch: BLOCKED\n"
+                + "- External evidence: PENDING\n";
+        Files.writeString(output, summary);
+        return output;
+    }
 }

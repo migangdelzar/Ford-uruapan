@@ -23,10 +23,11 @@ final class LocalReplayPromotionPrefetcher {
         var identity = resolver.resolve(message, memoryContext, entries.get());
         if (identity.isEmpty()) return Optional.empty();
         var ref = identity.orElseThrow();
-        var result = tools.listPromotions(ref.model(), ref.year(), null, false, 20, 0, "full", null);
+        var result = tools.listPromotions(ref.model(), ref.year(), null, false, 0, 20, "full",
+                ref.model() + " " + ref.year());
         var matches = result.results().stream().filter(p -> p.model() != null
                 && p.model().equalsIgnoreCase(ref.model()) && Objects.equals(p.year(), ref.year())).toList();
-        if (matches.isEmpty() || matches.size() != result.results().size()) return Optional.empty();
+        if (matches.isEmpty()) return Optional.empty();
         return Optional.of(new PrefetchedPromotion(ref, matches, matches.size()));
     }
 

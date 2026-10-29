@@ -77,7 +77,7 @@ Use environment variables or a deployment profile; keep secrets outside Git.
   passes; no provider live eval ran as part of this config change.
 - For Oracle, `mise run deploy:secrets` adopts exported keys into the ignored
   config, `mise run deploy:check` reports provider readiness without values,
-  and `mise run deploy:app` renders the settings to emme-1. Do not put keys in
+  and `mise -E prod run app:deploy` renders the settings to emme-1. Do not put keys in
   Terraform variables or state.
 - `FORD_AI_LOG_PROVIDER_ERRORS` (opt-in bounded provider error details)
 - `mise run ai:provider-preflight` (opt-in live smoke test for every enabled catalog provider). It loads the ignored deployment config, calls providers through Spring AI with synthetic input and a read-only fake tool, checks conversion into the app's `AssistantGeneration` type, and reports safe provider/model/error details. Set `FORD_AI_PREFLIGHT_PROVIDER_IDS=groq` to probe a subset or `FORD_AI_PREFLIGHT_MODEL_GROQ=<model-id>` to try another model without changing deployment config. It can incur provider charges and never contacts WhatsApp, CRM, or customer data.
@@ -141,6 +141,37 @@ remain explicit `SCOPE_*` authorities. Webhooks remain unauthenticated at the
 HTTP bearer layer because Meta requests are authenticated with HMAC,
 verify-token, and channel-binding checks.
 
+### Conversation lifecycle and reset inventory
+
+Conversation turn outcomes are recorded separately from channel delivery:
+accepted receipts move through debounce/processing and finish with a committed
+reply, safe-fallback review, human handoff, duplicate/out-of-scope outcome, or
+operator-required state. Retryable worker failures remain visible as
+`RETRY_WAIT`; they are not reported as successful ignored turns. The operator
+review queue is available at `GET /api/v1/conversation-reviews` with
+`operator:read`; `POST /api/v1/conversation-reviews/{reviewId}/resolve` requires
+`operator:write`. Both are tenant-scoped from authenticated tenant claims; a
+multi-tenant operator must select an authorized `tenantId`. Review API payloads
+contain identifiers, reason/status, and timestamps, not customer text or
+rejected model output.
+
+`ConversationResetInventoryService` is a read-only service for a future,
+explicitly approved reset review. It requires a tenant UUID and returns sorted
+counts for tenant-owned conversation data plus separate preserved counts for
+channel bindings and provider-message dedupe tombstones. It fails closed if a
+tenantless audit event references a conversation in scope. It exposes no delete
+or reset operation. Review inventory in a controlled, non-production
+environment before preparing any reset report; do not use the inventory as
+authorization to delete or deploy. A production reset still requires fresh
+counts, pending-outbox drain/reconciliation, verified encrypted backup, and
+separate explicit approval. No production reset, deployment, or live-channel
+test is authorized by this implementation.
+
+The Ford Uruapan reset/cutover approval draft is
+[`docs/superpowers/runbooks/2026-10-20-ford-uruapan-conversation-cutover-draft.md`](../../docs/superpowers/runbooks/2026-10-20-ford-uruapan-conversation-cutover-draft.md).
+It is not an approval or an execution procedure; the tenant UUID and fresh
+production evidence remain unpopulated pending authorized operator review.
+
 ### Meta messaging channels
 
 For a single Meta app, register one callback URL per product at
@@ -175,6 +206,24 @@ the channel-specific endpoint/access-token pairs:
 `FORD_META_WHATSAPP_DELIVERY_ENDPOINT` + `FORD_META_WHATSAPP_ACCESS_TOKEN`,
 `FORD_META_MESSENGER_DELIVERY_ENDPOINT` + `FORD_META_MESSENGER_ACCESS_TOKEN`,
 and `FORD_META_INSTAGRAM_DELIVERY_ENDPOINT` + `FORD_META_INSTAGRAM_ACCESS_TOKEN`.
+WhatsApp selectable reply buttons are separately opt-in with
+`FORD_META_INTERACTIVE_MESSAGES_ENABLED=true`; they default to text-only delivery.
+Buttons are sent only when the customer messaging window is open, the reply has
+one to three current catalog-name choices, and labels meet Meta's button limits.
+Otherwise, the same answer is sent as plain text. The name index confirms names
+only; it never confirms inventory or availability.
+
+Inventory questions create a tenant-scoped advisor task and a neutral customer
+acknowledgement; the assistant cannot answer stock questions directly. Advisors
+use `GET /api/v1/inventory-approvals` (read scope) to list tasks, then
+`POST /{approvalId}/verify` (write scope) to record an outcome and optional
+count. Verification expires after five minutes. `POST /{approvalId}/approve`
+requires the expected approval and conversation versions and the exact verified
+draft text; edited text is rejected and requires a new verification. Only then
+is the exact text queued through the normal conversation outbox. Rejection uses
+`POST /{approvalId}/reject`. Every route is tenant-scoped; approval audit records
+contain actor/action/version metadata, not customer prompts or tool payloads.
+
 The endpoint/API version and credentials must match the corresponding Meta
 product and account. Only text delivery is implemented for Messenger and
 Instagram; their inbound media is acknowledged as unsupported without storing
@@ -230,7 +279,7 @@ to `true` to restore authorized handoff behavior.
 `FORD_CONVERSATION_GRAPH_ENABLED` selects the bounded LangGraph4j inbound
 workflow. It defaults to `true` and is the canonical active path. The graph runs one
 accepted inbound turn at a time and invokes the existing Spring AI assistant
-once; the model, authorized Ford MCP/RAG tools, conversation transcript, lead
+once; the model, authorized Ford catalog/RAG tools, conversation transcript, lead
 journey, and outbox remain owned by their existing application services and
 PostgreSQL tables. Graph checkpoints live in the separate `ford_graph` schema
 and contain only tenant, conversation, and receipt identifiers plus route
@@ -258,7 +307,7 @@ conversation.
 
 For the OCI rollout, use `mise run deploy:flags -- FORD_CONVERSATION_GRAPH_ENABLED
 true FORD_HUMAN_HANDOFF_ENABLED true` to set only these allowlisted booleans in
-the private deployment config, then deploy through `mise run deploy:app`.
+the private deployment config, then deploy through `mise -E prod run app:deploy`.
 Before a release, inspect both hosts and logs, run `mise run backup:run` and
 `mise run backup:verify`, and save the current app image with
 `mise run deploy:image-backup -- <current-image>`. Publish and deploy an
@@ -379,20 +428,21 @@ endpoints or authorized scraper endpoints and credentials are configured.
 ## mise environments and task groups
 
 `ford-ai-service/.miserc.toml` selects `dev` by default, so local commands do
-not need an environment flag. Use `mise -E prod ...` only when validating the
-production overlay.
+not need an environment flag. Only `dev` and `prod` environments exist. Use
+`mise -E prod ...` for emme deployment; `app:deploy` targets the local
+container stack under `dev` and emme under `prod`.
 
 ```bash
 mise run env:check
 mise run env:list
-mise run docker:deps:up
-mise run docker:deps:ps
-mise run docker:deps:down
+mise run container:deps:up
+mise run container:deps:ps
+mise run container:deps:down
 mise run db:reset -- --confirm
 mise run db:reset-volume -- --confirm
 mise run app:run
-mise run docker:up
-mise run docker:ps
+mise run container:up
+mise run container:ps
 mise run observability:up
 mise run observability:logs
 ```
@@ -401,10 +451,10 @@ mise run observability:logs
 application configuration. The separate `mise run test:integration` task uses
 Testcontainers and is not part of this verification.
 
-Use the host-JVM mode when only PostgreSQL and Redis should run in containers:
+Use host-JVM mode when Ford Service should run on the host and only PostgreSQL
+and Redis should run in containers:
 
 ```bash
-mise run docker:deps:up
 mise run app:run
 ```
 
@@ -412,7 +462,7 @@ Use the full container mode when PostgreSQL, Redis, and Spring Boot should all
 run in Compose:
 
 ```bash
-mise run docker:up
+mise run container:up
 ```
 
 Host-JVM observability uses host loopback addresses. Keep these values in the
@@ -466,7 +516,7 @@ Spring AI `TranscriptionModel` bean for the configured cloud provider. Never
 log media URLs, tokens, bytes, or raw media; only successfully resolved
 text/description is written to the canonical transcript.
 
-`docker:deps:down` stops only PostgreSQL and Redis and preserves the named
+`container:deps:down` stops only PostgreSQL and Redis and preserves the named
 PostgreSQL volume.
 
 For a clean local database, stop the application first. The schema reset keeps
@@ -497,7 +547,7 @@ manager:
 
 ```bash
 mise -E prod run env:check
-mise -E prod run docker:config
+mise -E prod run deploy:check
 ```
 
 ## Fresh-host setup
@@ -570,6 +620,32 @@ mise run test:ai-evaluation
 mise run test:check
 ```
 
+`mise run test:parity` is the opt-in real-catalog gate: it boots a disposable
+PostgreSQL container, restores a Ford-scraping catalog snapshot, applies the
+`ford_read` view migrations, and runs `CatalogSnapshotParityIntegrationTest`
+against real data. Pass a snapshot path or set `FORD_CATALOG_SNAPSHOT` /
+`FORD_CATALOG_REPO`; it never touches the deployed catalog.
+
+The AI application reads `ford_read` through its dedicated read-only catalog
+datasource. `DefaultSyncCoordinator` and `JdbcCanonicalDataWriter` populate the
+separate `ford_service` database; they are not the source of `ford_read`.
+Catalog source population must use the approved Ford-scraping snapshot/sync
+owner and its backup and approval gate. Do not write catalog data through the
+application datasource or claim complete Ford Mexico model/trim coverage from
+snapshot row counts alone. Coverage is complete only against a checked official
+source manifest; missing evidence stays `UNKNOWN`, and physical dealer
+inventory remains a separate source domain.
+
+The opt-in `CatalogCoverageAudit` integration report writes only under
+`build/reports/catalog-coverage/`. It includes snapshot provenance, sourced
+coverage/gaps, offer truncation, expired promotions, and safe source hostnames.
+Its initial full-market scope is `UNVERIFIED` until a checked official-source
+manifest is available.
+
+```bash
+mise run test:parity -- /path/to/ford-<timestamp>.dump
+```
+
 The integration gate requires Docker/Testcontainers. The AI evaluation task
 runs deterministic Java and Node fixture tests without contacting OpenRouter;
 `mise run test:ai-evaluation --live` is a separate, opt-in model call and must
@@ -618,7 +694,7 @@ For a production release, additionally validate `mise run deploy:check` and
 `mise run deploy:status`, record the immutable current app image for rollback,
 then publish/deploy only after explicit release approval. The app deploy targets
 `emme-1`; database and Redis services remain on `emme-2`. Verify health and
-redacted startup/provider/MCP summaries after rollout. Do not reset data volumes
+redacted startup/provider/tool summaries after rollout. Do not reset data volumes
 or send a customer test message as part of release verification.
 
 ## Provider and safety controls

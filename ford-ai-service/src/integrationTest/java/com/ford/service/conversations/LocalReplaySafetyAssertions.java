@@ -15,8 +15,9 @@ final class LocalReplaySafetyAssertions {
             "(?iu)\\b(?:hay|no hay|tenemos|no tenemos|contamos con|no contamos con)"
                     + "\\s+(?:(?:\\p{L}+)\\s+){0,2}"
                     + "(?:disponibilidad|existencia|existencias|stock|unidades|veh[ií]culos|camionetas)\\b"
-                    + "|\\b(?:est[aá]n?|se encuentran?)\\s+disponibles?\\b"
-                    + "|\\bdisponibilidad\\s+(?:confirmada|comprobada)\\b"
+                    + "|\\b(?:hay|no hay|tenemos|no tenemos)\\s+(?:(?:\\p{L}+)\\s+){0,3}"
+                    + "disponibles?\\s+(?:en|para)\\s+(?:la\\s+)?(?:sucursal|agencia|ubicaci[oó]n|color)\\b"
+                    + "|\\bdisponibilidad\\s+(?:(?:est[aá])\\s+)?(?:confirmada|comprobada)\\b"
                     + "|\\b(?:agotad[oa]s?|sin existencias|en stock)\\b");
     private static final Pattern RECENT_PAIR_REFERENCE = Pattern.compile(
             "(?iu)\\b(?:las dos|ambas|esas dos|estos dos|esos dos|cu[aá]l de las dos|"
@@ -44,16 +45,29 @@ final class LocalReplaySafetyAssertions {
                                     List<ReplyOption> replyOptions,
                                     List<VehicleNameIndexEntry> currentEntries,
                                     List<String> approvedTexts, boolean prefetchModeEnabled) {
+        return evaluate(turn, answer, toolEvents, replyOptions, currentEntries, approvedTexts,
+                prefetchModeEnabled, false);
+    }
+
+    static List<Violation> evaluate(NaturalBuyerConversationScenario.Turn turn, String answer,
+                                    List<LocalQwenTranscriptWriter.ToolTrace> toolEvents,
+                                    List<ReplyOption> replyOptions,
+                                    List<VehicleNameIndexEntry> currentEntries,
+                                    List<String> approvedTexts, boolean prefetchModeEnabled,
+                                    boolean seededReply) {
         var violations = new ArrayList<Violation>();
         var safeTools = (toolEvents == null ? List.<LocalQwenTranscriptWriter.ToolTrace>of() : toolEvents).stream()
                 .filter(trace -> trace.origin() == LocalQwenTranscriptWriter.ToolTraceOrigin.MODEL
                         || (prefetchModeEnabled
-                        && trace.origin() == LocalQwenTranscriptWriter.ToolTraceOrigin.REPLAY_PREFETCH
+                        && (trace.origin() == LocalQwenTranscriptWriter.ToolTraceOrigin.RECORDED_SEED && seededReply
+                        || trace.origin() == LocalQwenTranscriptWriter.ToolTraceOrigin.REPLAY_PREFETCH
                         && ("compare_trims".equals(trace.toolName())
+                        || (turn.expectation() == NaturalBuyerConversationScenario.Expectation.OFFER
+                        && "list_promotions".equals(trace.toolName()))
                         || (turn.expectation() == NaturalBuyerConversationScenario.Expectation.CATALOG_FACT
                         && (LocalReplayOfferFollowUp.requiresPromotionEvidence(turn.message(), null)
                         ? "list_promotions".equals(trace.toolName())
-                        : "get_vehicle".equals(trace.toolName()))))))
+                        : "get_vehicle".equals(trace.toolName())))))))
                 .toList();
         var safeOptions = replyOptions == null ? List.<ReplyOption>of() : replyOptions;
         var safeEntries = currentEntries == null ? List.<VehicleNameIndexEntry>of() : currentEntries;
@@ -72,7 +86,11 @@ final class LocalReplaySafetyAssertions {
         var expectsDiscoveryEvidence = turn.expectation() == NaturalBuyerConversationScenario.Expectation.DISCOVERY
                 && (mentionsCatalogModel(answer, safeEntries) || !safeOptions.isEmpty());
         var expectedTools = expectsDiscoveryEvidence ? CATALOG_FACT_TOOLS : expectedToolsForTurn;
-        if (!expectedTools.isEmpty() && safeTools.stream().noneMatch(trace ->
+        var ambiguityClarification = turn.expectation() == NaturalBuyerConversationScenario.Expectation.CATALOG_FACT
+                && safeTools.stream().anyMatch(trace -> "get_vehicle".equals(trace.toolName())
+                && "ambiguous".equals(trace.outcome()))
+                && isBoundedAmbiguityClarification(answer);
+        if (!expectedTools.isEmpty() && !ambiguityClarification && safeTools.stream().noneMatch(trace ->
                 "returned".equals(trace.outcome()) && trace.evidenceCount() != null
                         && trace.evidenceCount() > 0 && expectedTools.contains(trace.toolName()))) {
             violations.add(Violation.MISSING_CATALOG_EVIDENCE);
@@ -95,6 +113,13 @@ final class LocalReplaySafetyAssertions {
             violations.add(Violation.UNAPPROVED_INVENTORY_CLAIM);
         }
         return List.copyOf(violations);
+    }
+
+    private static boolean isBoundedAmbiguityClarification(String answer) {
+        if (answer == null) return false;
+        return Pattern.compile("(?iu)^Para revisar la versión exacta de [\\p{L}\\p{N} .-]{1,48}"
+                + " 20\\d{2}, ¿cuál busca: [\\p{L}\\p{N} ./-]{2,80} o [\\p{L}\\p{N} ./-]{2,80}\\?$")
+                .matcher(answer.strip()).matches();
     }
 
     private static boolean mentionsCatalogModel(String answer, List<VehicleNameIndexEntry> entries) {

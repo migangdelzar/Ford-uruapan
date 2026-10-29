@@ -105,6 +105,107 @@ class LeadJourneyPolicyTest {
         assertThat(updated).isEqualTo(current);
     }
 
+    @Test
+    void rejectsPaymentDownPaymentAndNameFactsEvenWhenExactlyQuoted() {
+        var proposal = proposal(LeadJourneyTopic.FINANCING_TRADE_IN,
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.PAYMENT_METHOD, "financiamiento", "Quiero financiar"),
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.DOWN_PAYMENT, "20 mil pesos", "mi enganche sería de 20 mil pesos"),
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.CUSTOMER_NAME, "María Elena", "Me llamo María Elena"));
+
+        var updated = policy.apply(emptyJourney(), proposal,
+                "Quiero financiar; mi enganche sería de 20 mil pesos. Me llamo María Elena", false, "in-packet", NOW);
+
+        assertThat(updated.facts()).isEmpty();
+    }
+
+    @Test
+    void rejectsInferredPaymentDownPaymentAndNameEvenWhenUnrelatedEvidenceIsQuoted() {
+        var proposal = proposal(LeadJourneyTopic.FINANCING_TRADE_IN,
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.PAYMENT_METHOD, "financiamiento", "Quiero una Ranger"),
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.DOWN_PAYMENT, "20 mil pesos", "Quiero una Ranger"),
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.CUSTOMER_NAME, "María", "Quiero una Ranger"));
+
+        var updated = policy.apply(emptyJourney(), proposal, "Quiero una Ranger", false, "in-1", NOW);
+
+        assertThat(updated.facts()).isEmpty();
+    }
+
+    @Test
+    void unsupportedProposalCannotOverwritePreviouslyAcceptedFact() {
+        var accepted = new LeadJourneyFact("contado", "in-1", NOW);
+        var current = new LeadJourneySnapshot(UUID.randomUUID(), UUID.randomUUID(), null,
+                LeadJourneyTopic.FINANCING_TRADE_IN, Set.of(LeadJourneyTopic.FINANCING_TRADE_IN), Set.of(),
+                Map.of(LeadJourneyFactKey.PAYMENT_METHOD, accepted), null, 0, "in-1", 1, NOW);
+        var proposal = proposal(LeadJourneyTopic.FINANCING_TRADE_IN,
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.PAYMENT_METHOD, "financiamiento", "Me interesa una Ranger"));
+
+        var updated = policy.apply(current, proposal, "Me interesa una Ranger", false, "in-2", NOW.plusSeconds(1));
+
+        assertThat(updated.facts().get(LeadJourneyFactKey.PAYMENT_METHOD)).isEqualTo(accepted);
+    }
+
+    @Test
+    void capturesAppointmentAndTrimOnlyFromExactUserQuotes() {
+        var proposal = proposal(LeadJourneyTopic.VEHICLE_DISCOVERY,
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.VEHICLE_TRIM, "XLT", "Busco la versión XLT"),
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.APPOINTMENT_INTEREST, "sí", "Quiero agendar una cita"));
+
+        var updated = policy.apply(emptyJourney(), proposal,
+                "Busco la versión XLT. Quiero agendar una cita", false, "in-3", NOW);
+
+        assertThat(updated.facts()).containsKeys(LeadJourneyFactKey.VEHICLE_TRIM, LeadJourneyFactKey.APPOINTMENT_INTEREST);
+    }
+
+    @Test
+    void capturesOptionalPurchasePriceRangeButNotPaymentOrInstallmentBudget() {
+        var priceProposal = proposal(LeadJourneyTopic.PROMOTIONS_PRICING,
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.BUDGET_RANGE, "hasta 500 mil pesos", "Mi presupuesto para comprar es hasta 500 mil pesos"));
+        var price = policy.apply(emptyJourney(), priceProposal,
+                "Mi presupuesto para comprar es hasta 500 mil pesos", false, "in-4", NOW);
+        assertThat(price.facts()).containsKey(LeadJourneyFactKey.BUDGET_RANGE);
+
+        var paymentProposal = proposal(LeadJourneyTopic.FINANCING_TRADE_IN,
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.BUDGET_RANGE, "10 mil al mes", "Puedo pagar 10 mil al mes"));
+        var payment = policy.apply(emptyJourney(), paymentProposal,
+                "Puedo pagar 10 mil al mes", false, "in-5", NOW);
+        assertThat(payment.facts()).doesNotContainKey(LeadJourneyFactKey.BUDGET_RANGE);
+    }
+
+    @Test
+    void rejectsBudgetValueNotPresentInExactPurchasePriceEvidence() {
+        var evidence = "Mi presupuesto para comprar es hasta 500 mil pesos";
+        var proposal = proposal(LeadJourneyTopic.PROMOTIONS_PRICING,
+                new ProposedLeadJourneyFact(LeadJourneyFactKey.BUDGET_RANGE, "hasta 300 mil pesos", evidence));
+
+        var updated = policy.apply(emptyJourney(), proposal, evidence, false, "in-mismatch", NOW);
+
+        assertThat(updated.facts()).doesNotContainKey(LeadJourneyFactKey.BUDGET_RANGE);
+    }
+
+    @Test
+    void rejectsBudgetAmountsWithMonthlyWeeklyOrBiweeklyCadence() {
+        for (var cadence : List.of("al mes", "por semana", "cada quincena")) {
+            var evidence = "Mi presupuesto es 10 mil " + cadence;
+            var proposal = proposal(LeadJourneyTopic.PROMOTIONS_PRICING,
+                    new ProposedLeadJourneyFact(LeadJourneyFactKey.BUDGET_RANGE, "10 mil " + cadence, evidence));
+
+            var updated = policy.apply(emptyJourney(), proposal, evidence, false, "in-cadence", NOW);
+
+            assertThat(updated.facts()).as("cadence: %s", cadence)
+                    .doesNotContainKey(LeadJourneyFactKey.BUDGET_RANGE);
+        }
+    }
+
+    @Test
+    void rejectsEmailPhoneIdentityAndFinancialAccountData() {
+        for (var value : List.of("ana@example.com", "5512345678", "CURP ABCD123456", "CLABE 123456789012345678")) {
+            var proposal = proposal(LeadJourneyTopic.VEHICLE_DISCOVERY,
+                    new ProposedLeadJourneyFact(LeadJourneyFactKey.BUDGET_RANGE, value, "Mi presupuesto es " + value));
+            var updated = policy.apply(emptyJourney(), proposal, "Mi presupuesto es " + value, false, "in-6", NOW);
+            assertThat(updated.facts()).isEmpty();
+        }
+    }
+
     private static LeadJourneyProposal proposal(LeadJourneyTopic topic, ProposedLeadJourneyFact... facts) {
         return new LeadJourneyProposal(topic, List.of(facts), null);
     }

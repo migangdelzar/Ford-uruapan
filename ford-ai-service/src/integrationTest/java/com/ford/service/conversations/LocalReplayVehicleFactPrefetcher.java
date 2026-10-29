@@ -26,16 +26,28 @@ final class LocalReplayVehicleFactPrefetcher {
     Optional<PrefetchedVehicleFact> prefetch(String currentMessage, String memoryContext) {
         var identity = resolver.resolve(currentMessage, memoryContext, currentEntries.get());
         if (identity.isEmpty()) return Optional.empty();
-        var vehicle = catalogTools.getVehicle(identity.get().model(), identity.get().year(), identity.get().trim());
-        if (!(vehicle instanceof VehicleEvidence evidence) || !matches(identity.get(), evidence) || !hasEvidence(evidence)) {
+        return prefetch(identity.get());
+    }
+
+    List<PrefetchedVehicleFact> prefetch(LocalComparisonPairResolver.Pair pair) {
+        if (pair == null) return List.of();
+        return pair.trims().stream().map(trim -> prefetch(new LocalBuyerVehicleResolver.VehicleRef(
+                        pair.model(), pair.year(), normalize(trim))))
+                .flatMap(Optional::stream).toList();
+    }
+
+    private Optional<PrefetchedVehicleFact> prefetch(LocalBuyerVehicleResolver.VehicleRef identity) {
+        if (identity.trim() == null || identity.trim().isBlank()) return Optional.empty();
+        var vehicle = catalogTools.getVehicle(identity.model(), identity.year(), identity.trim());
+        if (!(vehicle instanceof VehicleEvidence evidence) || !matches(identity, evidence) || !hasEvidence(evidence)) {
             return Optional.empty();
         }
-        return Optional.of(new PrefetchedVehicleFact(identity.get(), evidence,
-                evidence.facts().size() + evidence.retrievedEvidence().size()
-                        + (blank(evidence.modelPageUrl()) ? 0 : 1)
-                        + (blank(evidence.priceSourceUrl()) ? 0 : 1)
-                        + (blank(evidence.technicalSheetUrl()) ? 0 : 1)
-                        + (blank(evidence.comparisonUrl()) ? 0 : 1)));
+        var count = evidence.facts().size() + evidence.retrievedEvidence().size()
+                + (blank(evidence.modelPageUrl()) ? 0 : 1)
+                + (blank(evidence.priceSourceUrl()) ? 0 : 1)
+                + (blank(evidence.technicalSheetUrl()) ? 0 : 1)
+                + (blank(evidence.comparisonUrl()) ? 0 : 1);
+        return Optional.of(new PrefetchedVehicleFact(identity, evidence, count));
     }
 
     private static boolean matches(LocalBuyerVehicleResolver.VehicleRef identity, VehicleEvidence evidence) {

@@ -1,6 +1,6 @@
 # Trusted evidence, advisor approval, and mandatory handoff
 
-Status: Behavior approved in conversation; written specification awaiting review.
+Status: Written specification approved in conversation. Implementation proceeds in independently verified increments.
 
 ## Scope and delivery boundaries
 

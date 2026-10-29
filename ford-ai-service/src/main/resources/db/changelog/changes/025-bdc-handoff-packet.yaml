@@ -1,0 +1,25 @@
+databaseChangeLog:
+  - changeSet:
+      id: 025-bdc-handoff-packet
+      author: ford-service
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              alter table handoff_ticket
+                  add column if not exists packet jsonb,
+                  add column if not exists packet_partial boolean not null default true,
+                  add column if not exists packet_completeness integer not null default 0;
+              alter table handoff_ticket
+                  add constraint handoff_ticket_packet_completeness_check
+                  check (packet_completeness between 0 and 5);
+      rollback:
+        - sql:
+            sql: |
+              alter table handoff_ticket
+                  drop constraint if exists handoff_ticket_packet_completeness_check;
+              alter table handoff_ticket
+                  drop column if exists packet_completeness,
+                  drop column if exists packet_partial,
+                  drop column if exists packet;

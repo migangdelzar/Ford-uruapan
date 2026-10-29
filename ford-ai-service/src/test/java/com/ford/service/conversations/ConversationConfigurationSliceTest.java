@@ -8,6 +8,7 @@ import com.ford.service.conversations.application.ConversationMemoryPort;
 import com.ford.service.conversations.application.ConversationDecisionRepository;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
+import com.ford.service.conversations.application.port.out.ConversationTurnLedgerPort;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -20,7 +21,7 @@ import com.ford.service.ai.application.AssistantService;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @WebMvcTest(controllers = ConversationConfigurationSliceTest.ProbeController.class,
-        properties = "ford.conversations.workflow.graph-enabled=true")
+        properties = "ford.conversations.workflow.graph-enabled=false")
 @Import(ConversationConfiguration.class)
 class ConversationConfigurationSliceTest {
 
@@ -42,11 +43,16 @@ class ConversationConfigurationSliceTest {
     @MockitoBean
     ConversationTurnProcessor conversationTurnProcessor;
 
+    @MockitoBean
+    ConversationTurnLedgerPort conversationTurnLedger;
+
     @Test
     void registersTheAssistantAndWorkflowWithConfiguredDependencies() {
         assertThat(context.getBean(ConversationAssistant.class))
                 .isInstanceOf(ConversationAssistantAdapter.class);
         assertThat(context.getBean(ConversationWorkflow.class)).isNotNull();
+        assertThat(context.getBean(com.ford.service.conversations.application.graph.ConversationGraphRunner.class))
+                .isNotNull();
     }
 
     @RestController

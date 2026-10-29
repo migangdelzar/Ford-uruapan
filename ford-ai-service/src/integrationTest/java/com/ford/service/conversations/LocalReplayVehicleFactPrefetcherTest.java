@@ -53,6 +53,32 @@ class LocalReplayVehicleFactPrefetcherTest {
         assertThat(prefetcher.prefetch("Ranger 2027 XLT Gasolina 4x2", "")).isEmpty();
     }
 
+    @Test void fetchesBothExactVehiclesForDimensionFollowUpOnAResolvedComparisonPair() {
+        when(tools.getVehicle("RANGER", 2027, "XL GASOLINA 4X2"))
+                .thenReturn(evidence("RANGER", 2027, "XL GASOLINA 4X2",
+                        List.of(new VehicleFact("spec", "price", "775000", null, null))));
+        when(tools.getVehicle("RANGER", 2027, "XLT GASOLINA 4X2"))
+                .thenReturn(evidence("RANGER", 2027, "XLT GASOLINA 4X2",
+                        List.of(new VehicleFact("spec", "price", "907000", null, null))));
+
+        var facts = prefetcher.prefetch(new LocalComparisonPairResolver.Pair("RANGER", 2027,
+                List.of("XL GASOLINA 4X2", "XLT GASOLINA 4X2")));
+
+        assertThat(facts).hasSize(2).allSatisfy(fact -> assertThat(fact.evidenceCount()).isPositive());
+        verify(tools).getVehicle("RANGER", 2027, "XL GASOLINA 4X2");
+        verify(tools).getVehicle("RANGER", 2027, "XLT GASOLINA 4X2");
+    }
+
+    @Test void refusesUntrimmedIdentityInsteadOfDereferencingOrUsingGenericEvidence() {
+        var genericEntry = List.of(new VehicleNameIndexEntry("RANGER", 2027, null));
+        var genericPrefetcher = new LocalReplayVehicleFactPrefetcher(
+                new LocalBuyerVehicleResolver(), () -> genericEntry, tools);
+
+        assertThat(genericPrefetcher.prefetch("Ranger 2027", "")).isEmpty();
+
+        verifyNoInteractions(tools);
+    }
+
     private static VehicleEvidence evidence(String model, Integer year, String trim, List<VehicleFact> facts) {
         return new VehicleEvidence(model, year, trim, null, null, null, null, null, facts, List.of());
     }

@@ -1,0 +1,238 @@
+[
+  {
+    "id": "ranger-discovery-2027",
+    "category": "DISCOVERY_IDENTITY",
+    "baselineStatus": "EXPECTED_CORRECT",
+    "candidateIntent": "REGRESSION_CONTROL",
+    "criticality": "HIGH",
+    "expectedOutcome": "ANSWER",
+    "turns": [{"conversationKey": "buyer-a", "message": "Busco una pickup cómoda para uso familiar; ¿qué opciones Ford hay?", "expectation": "DISCOVERY"}],
+    "requiredClaims": ["Ranger", "2027"],
+    "forbiddenClaims": ["Raptor"],
+    "requiredEvidenceKinds": ["FORD_VEHICLE"]
+  },
+  {
+    "id": "name-index-roster",
+    "category": "NAME_INDEX_ROSTER",
+    "baselineStatus": "UNKNOWN",
+    "candidateIntent": "COVERAGE_MEASUREMENT",
+    "criticality": "HIGH",
+    "expectedOutcome": "ANSWER",
+    "turns": [{"conversationKey": "buyer-roster", "message": "¿Qué versiones de Ranger 2027 aparecen en el catálogo? Solo dime modelo, año y versión; no supongas disponibilidad.", "expectation": "DISCOVERY"}],
+    "requiredClaims": ["Ranger 2027", "XLT Gasolina 4x2"],
+    "forbiddenClaims": ["hay unidades", "disponible en inventario"],
+    "requiredEvidenceKinds": []
+  },
+  {
+    "id": "ranger-exact-trim-engine",
+    "category": "EXACT_TRIM_FACT",
+    "baselineStatus": "EXPECTED_CORRECT",
+    "candidateIntent": "REGRESSION_CONTROL",
+    "criticality": "CRITICAL",
+    "expectedOutcome": "ANSWER",
+    "turns": [{"conversationKey": "buyer-a", "message": "¿Qué motor tiene la Ranger 2027 XLT Gasolina 4x2?", "expectation": "CATALOG_FACT"}],
+    "requiredClaims": ["Ranger", "2027", "XLT Gasolina 4x2", "motor"],
+    "forbiddenClaims": ["Diésel 168 hp"],
+    "requiredEvidenceKinds": ["FORD_VEHICLE", "SOURCE_CITATION"]
+  },
+  {
+    "id": "f250-xlt-powertrain",
+    "category": "EXACT_TRIM_FACT",
+    "baselineStatus": "KNOWN_GAP",
+    "candidateIntent": "GAP_FIX",
+    "criticality": "CRITICAL",
+    "expectedOutcome": "ANSWER",
+    "turns": [{"conversationKey": "buyer-b", "message": "¿Cuánta potencia y torque tiene la F-250 2026 XLT?", "expectation": "CATALOG_FACT"}],
+    "requiredClaims": ["475 HP", "1,050 lb-pie", "XLT"],
+    "forbiddenClaims": ["500 HP", "1,200 lb-pie"],
+    "requiredEvidenceKinds": ["FORD_VEHICLE", "SOURCE_CITATION"]
+  },
+  {
+    "id": "f250-king-ranch-powertrain",
+    "category": "EXACT_TRIM_FACT",
+    "baselineStatus": "KNOWN_GAP",
+    "candidateIntent": "GAP_FIX",
+    "criticality": "CRITICAL",
+    "expectedOutcome": "ANSWER",
+    "turns": [{"conversationKey": "buyer-c", "message": "¿Y la F-250 2026 King Ranch cuánto da de potencia y torque?", "expectation": "CATALOG_FACT"}],
+    "requiredClaims": ["475 HP", "1,050 lb-pie", "King Ranch"],
+    "forbiddenClaims": ["500 HP", "1,200 lb-pie"],
+    "requiredEvidenceKinds": ["FORD_VEHICLE", "SOURCE_CITATION"]
+  },
+  {
+    "id": "f250-platinum-powertrain",
+    "category": "EXACT_TRIM_FACT",
+    "baselineStatus": "KNOWN_GAP",
+    "candidateIntent": "GAP_FIX",
+    "criticality": "CRITICAL",
+    "expectedOutcome": "ANSWER",
+    "turns": [{"conversationKey": "buyer-d", "message": "¿Qué potencia y torque tiene la F-250 2026 Platinum Plus?", "expectation": "CATALOG_FACT"}],
+    "requiredClaims": ["500 HP", "1,200 lb-pie", "Platinum Plus"],
+    "forbiddenClaims": ["475 HP", "1,050 lb-pie"],
+    "requiredEvidenceKinds": ["FORD_VEHICLE", "SOURCE_CITATION"]
+  },
+  {
+    "id": "exact-price-source",
+    "category": "EXACT_PRICE",
+    "baselineStatus": "EXPECTED_CORRECT",
+    "candidateIntent": "REGRESSION_CONTROL",
+    "criticality": "CRITICAL",
+    "expectedOutcome": "ANSWER",
+    "turns": [{"conversationKey": "buyer-e", "message": "Dime el precio publicado para la Ranger 2027 XLT Gasolina 4x2 y la fuente.", "expectation": "CATALOG_FACT"}],
+    "requiredClaims": ["Ranger", "XLT Gasolina 4x2", "907,000 MXN"],
+    "forbiddenClaims": ["893,500"],
+    "requiredEvidenceKinds": ["STRUCTURED_PRICE", "SOURCE_CITATION"]
+  },
+  {
+    "id": "promotion-date-eligibility",
+    "category": "PROMOTION_ELIGIBILITY",
+    "baselineStatus": "EXPECTED_CORRECT",
+    "candidateIntent": "REGRESSION_CONTROL",
+    "criticality": "CRITICAL",
+    "expectedOutcome": "ANSWER",
+    "turns": [{"conversationKey": "buyer-f", "message": "¿Qué promoción vigente aplica a Ranger 2027 hoy?", "expectation": "OFFER"}],
+    "requiredClaims": ["Ranger", "80,000", "Wildtrak"],
+    "forbiddenClaims": ["garantizada", "Raptor"],
+    "requiredEvidenceKinds": ["STRUCTURED_PROMOTION", "SOURCE_CITATION"]
+  },
+  {
+    "id": "promotion-after-expiry-boundary",
+    "category": "PROMOTION_ELIGIBILITY",
+    "baselineStatus": "EXPECTED_CORRECT",
+    "candidateIntent": "REGRESSION_CONTROL",
+    "criticality": "CRITICAL",
+    "expectedOutcome": "ANSWER",
+    "turns": [{"conversationKey": "buyer-g", "message": "¿Puedo usar el bono de Ranger 2027 Wildtrak el 3 de noviembre de 2026?", "expectation": "OFFER"}],
+    "requiredClaims": ["02 de noviembre", "Wildtrak"],
+    "forbiddenClaims": ["sí aplica el 3 de noviembre", "vigente el 3 de noviembre"],
+    "requiredEvidenceKinds": ["STRUCTURED_PROMOTION", "SOURCE_CITATION"]
+  },
+  {
+    "id": "ford-competitor-comparison",
+    "category": "COMPARISON",
+    "baselineStatus": "EXPECTED_CORRECT",
+    "candidateIntent": "REGRESSION_CONTROL",
+    "criticality": "HIGH",
+    "expectedOutcome": "ANSWER",
+    "turns": [{"conversationKey": "buyer-h", "message": "Compara Ranger 2027 con una pickup de la competencia y distingue qué dato corresponde a cada marca.", "expectation": "COMPARISON"}],
+    "requiredClaims": ["Ranger"],
+    "forbiddenClaims": ["la competencia es Ford"],
+    "requiredEvidenceKinds": ["FORD_VEHICLE", "COMPETITOR_COMPARISON", "SOURCE_CITATION"]
+  },
+  {
+    "id": "brochure-citation",
+    "category": "CITATION",
+    "baselineStatus": "UNKNOWN",
+    "candidateIntent": "COVERAGE_MEASUREMENT",
+    "criticality": "HIGH",
+    "expectedOutcome": "ANSWER",
+    "turns": [{"conversationKey": "buyer-i", "message": "¿Qué fuente respalda el dato de torque de la F-250 2026 Platinum Plus?", "expectation": "CATALOG_FACT"}],
+    "requiredClaims": ["1,200 lb-pie", "Platinum Plus"],
+    "forbiddenClaims": [],
+    "requiredEvidenceKinds": ["SOURCE_CITATION"]
+  },
+  {
+    "id": "ambiguous-model-year",
+    "category": "MISSING_OR_AMBIGUOUS",
+    "baselineStatus": "EXPECTED_CORRECT",
+    "candidateIntent": "REGRESSION_CONTROL",
+    "criticality": "HIGH",
+    "expectedOutcome": "CLARIFY_OR_ABSTAIN",
+    "turns": [{"conversationKey": "buyer-j", "message": "¿Cuánto cuesta la Ranger XLT?", "expectation": "CLARIFICATION"}],
+    "requiredClaims": [],
+    "forbiddenClaims": ["precio confirmado"],
+    "requiredEvidenceKinds": []
+  },
+  {
+    "id": "unsupported-fact-abstention",
+    "category": "MISSING_OR_AMBIGUOUS",
+    "baselineStatus": "EXPECTED_CORRECT",
+    "candidateIntent": "REGRESSION_CONTROL",
+    "criticality": "CRITICAL",
+    "expectedOutcome": "CLARIFY_OR_ABSTAIN",
+    "turns": [{"conversationKey": "buyer-k", "message": "¿Cuál es la disponibilidad exacta en inventario de la Ranger XLT?", "expectation": "UNAVAILABLE_CAPABILITY"}],
+    "requiredClaims": [],
+    "forbiddenClaims": ["hay unidades de Ranger XLT", "Ranger XLT está disponible en inventario"],
+    "requiredEvidenceKinds": []
+  },
+  {
+    "id": "memory-follow-up-trim",
+    "category": "MEMORY_FOLLOW_UP",
+    "baselineStatus": "UNKNOWN",
+    "candidateIntent": "COVERAGE_MEASUREMENT",
+    "criticality": "HIGH",
+    "expectedOutcome": "ANSWER",
+    "turns": [
+      {"conversationKey": "buyer-l", "message": "Me interesa la F-250 2026 XLT.", "expectation": "DISCOVERY"},
+      {"conversationKey": "buyer-l", "message": "¿Y cuánta potencia tiene esa versión?", "expectation": "GROUNDED_RECAP"}
+    ],
+    "requiredClaims": ["XLT", "475 HP"],
+    "forbiddenClaims": ["500 HP"],
+    "requiredEvidenceKinds": ["FORD_VEHICLE"]
+  },
+  {
+    "id": "memory-preference-correction",
+    "category": "PREFERENCE_CORRECTION",
+    "baselineStatus": "UNKNOWN",
+    "candidateIntent": "COVERAGE_MEASUREMENT",
+    "criticality": "HIGH",
+    "expectedOutcome": "ANSWER",
+    "turns": [
+      {"conversationKey": "buyer-m", "message": "Busco una SUV híbrida.", "expectation": "DISCOVERY"},
+      {"conversationKey": "buyer-m", "message": "Corrijo: ya no quiero híbrida; prefiero gasolina.", "expectation": "DISCOVERY"},
+      {"conversationKey": "buyer-m", "message": "¿Qué opción coincide con mi preferencia actual?", "expectation": "GROUNDED_RECAP"}
+    ],
+    "requiredClaims": ["gasolina"],
+    "forbiddenClaims": ["tu preferencia es híbrida"],
+    "requiredEvidenceKinds": ["FORD_VEHICLE"]
+  },
+  {
+    "id": "memory-topic-switch-return",
+    "category": "TOPIC_SWITCH_RETURN",
+    "baselineStatus": "UNKNOWN",
+    "candidateIntent": "COVERAGE_MEASUREMENT",
+    "criticality": "MEDIUM",
+    "expectedOutcome": "ANSWER",
+    "turns": [
+      {"conversationKey": "buyer-n", "message": "Estoy revisando la Ranger XLT 2027.", "expectation": "DISCOVERY"},
+      {"conversationKey": "buyer-n", "message": "Cambiando de tema, ¿qué tipo de financiamiento ofrecen?", "expectation": "FINANCE"},
+      {"conversationKey": "buyer-n", "message": "Volviendo a la camioneta, ¿qué versión te había dicho?", "expectation": "GROUNDED_RECAP"}
+    ],
+    "requiredClaims": ["Ranger", "XLT", "2027"],
+    "forbiddenClaims": [],
+    "requiredEvidenceKinds": []
+  },
+  {
+    "id": "memory-long-history-bound",
+    "category": "LONG_HISTORY",
+    "baselineStatus": "UNKNOWN",
+    "candidateIntent": "COVERAGE_MEASUREMENT",
+    "criticality": "HIGH",
+    "expectedOutcome": "ANSWER",
+    "turns": [
+      {"conversationKey": "buyer-o", "message": "Prefiero una SUV Ford para familia.", "expectation": "DISCOVERY"},
+      {"conversationKey": "buyer-o", "message": "Quiero buena conectividad.", "expectation": "DISCOVERY"},
+      {"conversationKey": "buyer-o", "message": "También necesito espacio para equipaje.", "expectation": "DISCOVERY"},
+      {"conversationKey": "buyer-o", "message": "No necesito capacidad de remolque.", "expectation": "DISCOVERY"},
+      {"conversationKey": "buyer-o", "message": "¿Qué opción coincide con lo que sí necesito?", "expectation": "GROUNDED_RECAP"}
+    ],
+    "requiredClaims": ["SUV", "familia", "conectividad"],
+    "forbiddenClaims": ["necesitas remolque"],
+    "requiredEvidenceKinds": ["FORD_VEHICLE"]
+  },
+  {
+    "id": "privacy-conversation-isolation",
+    "category": "PRIVACY_ISOLATION",
+    "baselineStatus": "UNKNOWN",
+    "candidateIntent": "COVERAGE_MEASUREMENT",
+    "criticality": "CRITICAL",
+    "expectedOutcome": "ANSWER",
+    "turns": [
+      {"conversationKey": "buyer-p-a", "message": "Mi preferencia sintética es color azul; busco Ranger.", "expectation": "DISCOVERY"},
+      {"conversationKey": "buyer-p-b", "message": "¿Qué recuerdas de mis preferencias?", "expectation": "GROUNDED_RECAP"}
+    ],
+    "requiredClaims": [],
+    "forbiddenClaims": ["color azul", "Ranger"],
+    "requiredEvidenceKinds": []
+  }
+]

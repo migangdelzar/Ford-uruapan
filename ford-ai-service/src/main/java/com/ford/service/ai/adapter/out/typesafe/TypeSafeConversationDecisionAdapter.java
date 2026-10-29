@@ -164,7 +164,7 @@ public final class TypeSafeConversationDecisionAdapter implements ConversationDe
             questions.put("complex_request", Noul.of("La solicitud requiere coordinación o juicio humano complejo."));
         }
         if (properties.toolsEnabled()) {
-            questions.put("tool_family", choice("Selecciona la familia de herramienta necesaria para responder con datos confiables. Usa la familia más específica y no elijas KNOWLEDGE_SEARCH si aplica una familia especializada: inventario usa VEHICLE_SEARCH, características de un modelo usan VEHICLE_DETAILS, pagos o crédito usan FINANCE_ESTIMATE, y promociones usan OFFERS. Elige NONE si no se necesita consultar datos externos.", Map.of(
+            questions.put("tool_family", choice("Seleccione la familia de herramienta necesaria para responder con datos confiables. Use la familia más específica y no elija KNOWLEDGE_SEARCH si aplica una familia especializada: inventario usa VEHICLE_SEARCH, características de un modelo usan VEHICLE_DETAILS, pagos o crédito usan FINANCE_ESTIMATE, y promociones usan OFFERS. Elija NONE si no se necesita consultar datos externos.", Map.of(
                     "NONE", "No hace falta consultar una herramienta." ,
                     "VEHICLE_SEARCH", "Buscar unidades disponibles en el inventario." ,
                     "VEHICLE_DETAILS", "Consultar características de una unidad o modelo específico." ,

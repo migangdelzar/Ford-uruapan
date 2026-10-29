@@ -50,6 +50,14 @@ class ConversationDecisionTest {
                         "sensitive_data=none\n" +
                         "next_action=no_action\n" +
                         "urgency_signal=false\n" +
+                        "vehicle_model=none\n" +
+                        "vehicle_model_source=none\n" +
+                        "vehicle_model_year=none\n" +
+                        "vehicle_model_year_source=none\n" +
+                        "vehicle_comparison_years=\n" +
+                        "vehicle_trim=none\n" +
+                        "vehicle_trim_source=none\n" +
+                        "vehicle_resolution_status=missing\n" +
                         "summary=\n" +
                         "[/DECISION CONTEXT]");
         assertThat(decision.toPromptContext()).doesNotContain("typesafe", "0.91", "model_choice");

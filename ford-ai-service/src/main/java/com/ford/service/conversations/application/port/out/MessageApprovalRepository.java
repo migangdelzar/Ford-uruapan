@@ -10,6 +10,7 @@ import java.util.UUID;
 public interface MessageApprovalRepository {
     Optional<ConversationTarget> lockConversation(UUID tenantId, UUID conversationId);
     Optional<MessageApproval> findForUpdate(UUID tenantId, UUID conversationId, UUID approvalId);
+    MessageApproval savePending(MessageApproval approval);
     List<MessageApproval> list(UUID tenantId, UUID conversationId);
     boolean replace(MessageApproval current, MessageApproval replacement);
     void recordAudit(UUID tenantId, UUID approvalId, UUID actorId, AuditRecord audit, Instant at);

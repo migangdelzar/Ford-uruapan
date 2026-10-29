@@ -12,6 +12,7 @@ import com.ford.service.conversations.domain.MessageApproval;
 import com.ford.service.conversations.domain.MessageApproval.Action;
 import com.ford.service.operator.application.AuthenticatedOperator;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -25,7 +26,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-/** Explicitly not registered until JDBC/effect adapters and their concurrency/rollback gates are verified. */
+/** Transactional advisor approval orchestration; send validation and effects are installed adapters. */
+@Service
 public class MessageApprovalService {
     private static final String OPERATION = "conversation.message-approval.action";
     private final MessageApprovalRepository repository;

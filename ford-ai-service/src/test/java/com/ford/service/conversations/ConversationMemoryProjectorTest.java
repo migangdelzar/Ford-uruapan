@@ -37,6 +37,19 @@ class ConversationMemoryProjectorTest {
     }
 
     @Test
+    void replacesAnEarlierPreferenceFactWhenTheCustomerCorrectsIt() {
+        var originalPreference = new MemoryFact("preference", "SUV híbrida", UUID.randomUUID());
+        var correctionMessageId = UUID.randomUUID();
+
+        var update = new ConversationMemoryProjector(new MemoryProperties()).project(
+                context("", List.of(), List.of(originalPreference)),
+                "Corrijo mi preferencia: prefiero gasolina", correctionMessageId);
+
+        assertThat(update.durableFacts()).containsExactly(
+                new MemoryFact("preference", "gasolina", correctionMessageId));
+    }
+
+    @Test
     void compactsOnlyMessagesThatLeaveTheEightMessageWindow() {
         var properties = new MemoryProperties();
         properties.setPromptRecentMessageLimit(8);
@@ -70,6 +83,61 @@ class ConversationMemoryProjectorTest {
                         "¿Cuánto queda por mes?", UUID.randomUUID());
 
         assertThat(update.summary()).isEqualTo("último resumen válido");
+    }
+
+    @Test
+    void keepsTheEntireRecentWindowAndDoesNotMutateTheSourceTranscriptWhenCompactionFails() {
+        var originalTranscript = eightTurns();
+        var memory = context("último resumen válido", originalTranscript, List.of());
+        ConversationMemoryCompactionPort compactor = (tenant, conversation, summary, expired, maxChars) -> {
+            throw new IllegalStateException("provider unavailable");
+        };
+
+        var update = new ConversationMemoryProjector(new MemoryProperties(), compactor)
+                .project(memory, "¿Cuánto queda por mes?", UUID.randomUUID());
+
+        assertThat(update.summary()).isEqualTo("último resumen válido");
+        assertThat(memory.recentMessages()).containsExactlyElementsOf(originalTranscript);
+        assertThat(memory.recentMessages()).hasSize(8);
+    }
+
+    @Test
+    void rebasesFromCanonicalOlderTranscriptAndNeverFeedsThePreviousSummaryBack() {
+        var priorSummary = "stale generated summary";
+        var canonicalOlderSlice = List.of(message(ConversationMessage.Direction.INBOUND,
+                        "Busco Ranger XL para ciudad y familia"),
+                message(ConversationMessage.Direction.OUTBOUND, "Compararemos Ranger XL y XLT"));
+        var originalTranscript = eightTurns();
+        var memory = context(priorSummary, originalTranscript,
+                List.of(new MemoryFact("budget", "350000", UUID.randomUUID())));
+        var previousSummary = new AtomicReference<String>();
+        var compactionInput = new AtomicReference<List<ConversationMessage>>();
+        ConversationMemoryCompactionPort compactor = (tenant, conversation, summary, source, maxChars) -> {
+            previousSummary.set(summary);
+            compactionInput.set(source);
+            return "Ranger XL para ciudad y familia; compara XLT.";
+        };
+
+        var update = new ConversationMemoryProjector(new MemoryProperties(), compactor)
+                .project(memory, "La caja XLT me atrae más", UUID.randomUUID(), null, canonicalOlderSlice);
+
+        assertThat(previousSummary.get()).isEmpty();
+        assertThat(compactionInput.get()).containsExactlyElementsOf(canonicalOlderSlice);
+        assertThat(update.summary()).contains("Ranger XL para ciudad");
+        assertThat(update.durableFacts()).contains(new MemoryFact("budget", "350000", memory.durableFacts().get(0).sourceMessageId()));
+        assertThat(memory.recentMessages()).containsExactlyElementsOf(originalTranscript);
+    }
+
+    @Test
+    void retainsLastValidSummaryWhenRebaseReturnsNoSummary() {
+        var memory = context("last valid summary", eightTurns(), List.of());
+        var projector = new ConversationMemoryProjector(new MemoryProperties(),
+                (tenant, conversation, previous, messages, maxChars) -> " ");
+
+        var update = projector.project(memory, "¿Y la Ranger XL?", UUID.randomUUID(), null,
+                List.of(message(ConversationMessage.Direction.INBOUND, "Comparó Ranger XL y XLT")));
+
+        assertThat(update.summary()).isEqualTo("last valid summary");
     }
 
     @Test

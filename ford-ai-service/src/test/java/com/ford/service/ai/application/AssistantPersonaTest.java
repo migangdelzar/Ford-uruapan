@@ -11,20 +11,17 @@ class AssistantPersonaTest {
     private final AssistantPersona persona = new AssistantPersona();
 
     @Test
-    void keepsTheMexicanAssistantNameStableForOneConversationAndVariesAcrossNewConversations() {
+    void usesTheSameAssistantNameAcrossConversations() {
         var firstConversation = new UUID(0, 0);
         var secondConversation = new UUID(0, 1);
 
-        var firstName = persona.nameFor(firstConversation);
-
-        assertThat(firstName).isEqualTo(persona.nameFor(firstConversation));
-        assertThat(firstName).isNotEqualTo(persona.nameFor(secondConversation));
-        assertThat(AssistantPersona.APPROVED_NAMES).contains(firstName, persona.nameFor(secondConversation));
+        assertThat(persona.nameFor(firstConversation)).isEqualTo("MÍA");
+        assertThat(persona.nameFor(secondConversation)).isEqualTo("MÍA");
     }
 
     @Test
-    void introducesTheAssistantByAConsistentFriendlyName() {
+    void introducesTheVirtualAssistantWithFormalAddress() {
         assertThat(persona.introductionFor(new UUID(0, 0)))
-                .isEqualTo("Hola, soy *Ana*, su asistente de Ford Uruapan. 👋");
+                .isEqualTo("Hola, soy *MÍA*, su asistente virtual de Ford Uruapan. 👋");
     }
 }

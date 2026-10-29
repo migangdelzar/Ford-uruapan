@@ -30,7 +30,7 @@ public final class PendingTestDriveReplyPolicy {
     private static final Set<String> AFFIRMATIVE = Set.of(
             "si", "si me gustaria", "me gustaria", "si por favor", "claro", "claro que si",
             "por supuesto", "de acuerdo", "adelante", "va", "ok", "okay");
-    private static final String NEXT_QUESTION = "¡Perfecto! ¿Qué día te funciona para la prueba de manejo?";
+    private static final String NEXT_QUESTION = "¡Perfecto! ¿Qué día le conviene para la prueba de manejo?";
 
     public Optional<AssistantReply> replyFor(String userMessage, ConversationMemoryContext memory) {
         return replyFor(userMessage, memory, null);

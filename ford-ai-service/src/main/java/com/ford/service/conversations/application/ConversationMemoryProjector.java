@@ -51,6 +51,14 @@ public final class ConversationMemoryProjector {
                                           String latestUserMessage,
                                           UUID sourceMessageId,
                                           String assistantResponse) {
+        return project(memory, latestUserMessage, sourceMessageId, assistantResponse, null);
+    }
+
+    public MemoryProjectionUpdate project(ConversationMemoryContext memory,
+                                          String latestUserMessage,
+                                          UUID sourceMessageId,
+                                          String assistantResponse,
+                                          List<ConversationMessage> canonicalOlderSlice) {
         var factsByKind = new LinkedHashMap<String, MemoryFact>();
         if (memory != null) {
             memory.durableFacts().forEach(fact -> factsByKind.put(fact.kind(), fact));
@@ -80,8 +88,30 @@ public final class ConversationMemoryProjector {
         if (facts.size() > properties.factLimit()) {
             facts = new ArrayList<>(facts.subList(facts.size() - properties.factLimit(), facts.size()));
         }
-        var summary = compactOlderWindow(memory);
+        var summary = canonicalOlderSlice == null
+                ? compactOlderWindow(memory)
+                : rebaseOlderWindow(memory, canonicalOlderSlice, facts);
         return new MemoryProjectionUpdate(summary, facts, sourceMessageId);
+    }
+
+    private String rebaseOlderWindow(ConversationMemoryContext memory, List<ConversationMessage> sourceMessages,
+                                     List<MemoryFact> currentFacts) {
+        if (memory == null || sourceMessages == null || sourceMessages.isEmpty() || memory.key() == null) {
+            return memory == null ? "" : memory.summary();
+        }
+        try {
+            var rebased = compactor.rebase(memory.key().tenantId(), memory.key().conversationId(), sourceMessages,
+                    currentFacts, properties.summaryMaxChars());
+            if (rebased == null || rebased.isBlank()) {
+                throw new IllegalStateException("Conversation memory rebase returned an empty summary");
+            }
+            return rebased;
+        } catch (RuntimeException exception) {
+            org.slf4j.LoggerFactory.getLogger(ConversationMemoryProjector.class).warn(
+                    "Conversation memory rebase failed; retaining the last valid summary: conversationId={} exceptionType={}",
+                    memory.key().conversationId(), exception.getClass().getSimpleName());
+            return memory.summary();
+        }
     }
 
     private String compactOlderWindow(ConversationMemoryContext memory) {

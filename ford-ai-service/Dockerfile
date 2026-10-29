@@ -12,6 +12,7 @@ RUN JAVA_TOOL_OPTIONS="-Xmx1g -XX:MaxMetaspaceSize=256m -Dfile.encoding=UTF-8" \
     ./gradlew bootJar --no-daemon --max-workers=1 -Dorg.gradle.jvmargs=""
 
 FROM eclipse-temurin:25-jre
+LABEL org.opencontainers.image.source=https://github.com/migangdelzar/Ford-uruapan
 WORKDIR /app
 # The Temurin Ubuntu base includes Pebble as a generic container service manager.
 # This image starts Java directly and does not use Pebble.

@@ -3,6 +3,7 @@ package com.ford.service.channels;
 import com.ford.service.channels.adapter.out.meta.MetaRestClientDeliveryAdapter;
 import com.ford.service.channels.domain.Channel;
 import com.ford.service.channels.domain.OutboundMessage;
+import com.ford.service.channels.domain.ReplyOption;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
@@ -20,6 +21,83 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 
 class MetaRestClientDeliveryAdapterTest {
+
+    @Test
+    void sendsOptedInWhatsAppReplyChoicesAsInteractiveButtons() {
+        var builder = RestClient.builder();
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://graph.example/messages"))
+                .andExpect(content().json("""
+                        {
+                          "messaging_product": "whatsapp",
+                          "to": "recipient-1",
+                          "type": "interactive",
+                          "interactive": {
+                            "type": "button",
+                            "body": {"text": "Ranger 2027. ¿Cuál revisamos?"},
+                            "action": {"buttons": [
+                              {"type": "reply", "reply": {"id": "vehicle-0123456789abcdef", "title": "Ranger 2027 XLT"}}
+                            ]}
+                          }
+                        }
+                        """))
+                .andRespond(withSuccess("{\"messages\":[{\"id\":\"wamid.button\"}]}", MediaType.APPLICATION_JSON));
+        var adapter = new MetaRestClientDeliveryAdapter(builder.build(), URI.create("https://graph.example/messages"),
+                "token", Channel.WHATSAPP, new com.fasterxml.jackson.databind.ObjectMapper(), false, true);
+
+        var result = adapter.send(new OutboundMessage(UUID.randomUUID(), Channel.WHATSAPP, "recipient-1",
+                "Ranger 2027. ¿Cuál revisamos?", "key",
+                java.util.List.of(new ReplyOption("vehicle-0123456789abcdef", "Ranger 2027 XLT"))));
+
+        assertThat(result.accepted()).isTrue();
+        server.verify();
+    }
+
+    @Test
+    void sendsTextWhenInteractiveDeliveryIsDisabled() {
+        var builder = RestClient.builder();
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://graph.example/messages"))
+                .andExpect(content().json("""
+                        {"messaging_product":"whatsapp","to":"recipient-1","type":"text",
+                         "text":{"body":"Ranger 2027. ¿Cuál revisamos?"}}
+                        """))
+                .andRespond(withSuccess("{\"messages\":[{\"id\":\"wamid.text\"}]}", MediaType.APPLICATION_JSON));
+        var adapter = new MetaRestClientDeliveryAdapter(builder.build(), URI.create("https://graph.example/messages"),
+                "token", Channel.WHATSAPP);
+
+        var result = adapter.send(new OutboundMessage(UUID.randomUUID(), Channel.WHATSAPP, "recipient-1",
+                "Ranger 2027. ¿Cuál revisamos?", "key",
+                java.util.List.of(new ReplyOption("vehicle-0123456789abcdef", "Ranger 2027 XLT"))));
+
+        assertThat(result.accepted()).isTrue();
+        server.verify();
+    }
+
+    @Test
+    void fallsBackToTextWhenReplyChoiceCountExceedsWhatsAppButtonLimit() {
+        var builder = RestClient.builder();
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://graph.example/messages"))
+                .andExpect(content().json("""
+                        {"messaging_product":"whatsapp","to":"recipient-1","type":"text",
+                         "text":{"body":"Elija una versión."}}
+                        """))
+                .andRespond(withSuccess("{\"messages\":[{\"id\":\"wamid.text\"}]}", MediaType.APPLICATION_JSON));
+        var adapter = new MetaRestClientDeliveryAdapter(builder.build(), URI.create("https://graph.example/messages"),
+                "token", Channel.WHATSAPP, new com.fasterxml.jackson.databind.ObjectMapper(), false, true);
+        var options = java.util.List.of(
+                new ReplyOption("vehicle-0000000000000001", "Ranger XL"),
+                new ReplyOption("vehicle-0000000000000002", "Ranger XLT"),
+                new ReplyOption("vehicle-0000000000000003", "Ranger Wildtrak"),
+                new ReplyOption("vehicle-0000000000000004", "Ranger Raptor"));
+
+        var result = adapter.send(new OutboundMessage(UUID.randomUUID(), Channel.WHATSAPP, "recipient-1",
+                "Elija una versión.", "key", options));
+
+        assertThat(result.accepted()).isTrue();
+        server.verify();
+    }
 
     @Test
     void sendsConfiguredMetaAccessTokenOnOutboundDelivery() {

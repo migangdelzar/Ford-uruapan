@@ -67,4 +67,22 @@ Task 1 and the application-service core of Task 2 are implemented. Added typed v
 
 Observed red/green tests for the new service and extra identity/size guards. Broad unit selection (`conversations.*`, `ai.*`, `architecture.*`) passed: 898 tests, zero failures/errors/skips. Separate scoped reviews found no critical/important issues in the domain and service foundations. They did not run DB tests and do not prove rollback or concurrent consumption.
 
-Still required before activation: controller registration, migration/JDBC repository, concrete validated outbox and takeover effects, hold/invalidation wiring, mandatory-signal collection and persisted failure counting, DB rollback/concurrency tests, API/webhook integration, and end-to-end verification. No frontend/backend approval feature was enabled and no fresh all-live acceptance was claimed.
+Still required before activation: controller registration, concrete validated outbox and takeover effects, pipeline hold creation/invalidation, mandatory-signal collection and persisted failure counting, API/webhook integration, and end-to-end verification. No frontend/backend approval feature was enabled and no fresh all-live acceptance was claimed.
+
+## Persistence checkpoint — 2026-10-28
+
+Added draft persistence in `038-message-approval.yaml`, tenant-scoped hold rows, content-free action audit rows, and `JdbcMessageApprovalRepository` with conversation-before-approval locking, latest-inbound/source validation, CAS replacement, and hold retention/release rules. `MessageApprovalMigrationTest` applied the migration to H2 and exercised pending insertion/list/hold creation. The PostgreSQL integration suite passes (3 tests): scope, CAS race, hold lifecycle, audit, rollback, version invalidation, and active-hold bot-send denial.
+
+Unit gate passed after the persistence changes: conversations + AI + architecture selection. Integration-test Java compilation passed. The migration master file and many adjacent migrations are already user-modified and interdependent in this worktree; no files were staged or committed to avoid capturing unrelated work. Approval remains unregistered; hold creation has no pipeline producer yet.
+
+### Follow-up: Colima restored; hold now invalidates generations
+
+The `emme` Docker VM had stale `ha.sock`/PID artifacts pointing to an unrelated reused macOS PID. Used Lima's supported forced stop to clear only stale control artifacts (VM disk preserved), then restarted the existing instance. `docker info` reports 29.2.1.
+
+`savePending` now bumps conversation version while holding the conversation row lock and persists the approval against the bumped version. `JdbcConversationRepository.completeBotTurn` denies commits whenever a hold exists; an integration test observed red before adding that guard, then green. Broad unit gate passed again (conversations + AI + architecture). Remaining Task 3 work includes inbound/restart/closure/operator invalidation and approve-versus-takeover race coverage. This remains persistence plumbing only: no pipeline producer/controller/effects are wired, so no advisor approval is available to callers.
+
+### Follow-up: REST boundary
+
+Added `MessageApprovalController` for tenant-scoped GET and versioned/idempotent POST action endpoints. Controller tests cover read, send, cross-tenant denial, and read-only denial. `MessageApprovalService` intentionally remains unregistered; the controller returns 503 while absent, so the incomplete workflow cannot be used. The app-context test confirms this does not break startup.
+
+**Activation blocker:** There is no persisted evidence payload/claim ledger that can revalidate advisor-authored replacement text, and no concrete `MessageApprovalSendValidationPort` or transactional effects adapter. Content-free decision traces cannot establish that a changed message remains grounded. Do not register/enable send actions until a validator can prove both exact-draft freshness and safe replacement grounding, and the effect adapter can atomically use the existing outbox/handoff workflow. Frontend controls stay gated off.

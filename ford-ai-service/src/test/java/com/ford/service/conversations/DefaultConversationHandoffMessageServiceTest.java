@@ -44,7 +44,9 @@ class DefaultConversationHandoffMessageServiceTest {
         verify(commands).appendMessage(sent.capture());
         assertThat(sent.getValue().operatorId()).isEqualTo(operatorId);
         assertThat(sent.getValue().providerMessageId()).isEqualTo("operator:handoff:" + ticketId);
-        assertThat(sent.getValue().content()).isEqualTo("Hola, ya tomé tu conversación. Te responderé por aquí en cuanto pueda.");
+        assertThat(sent.getValue().content()).isEqualTo("Hola, he tomado su conversación. Puede escribirme por aquí.");
+        assertThat(sent.getValue().content().toLowerCase())
+                .doesNotContain("en cuanto", "en breve", "cuanto antes", "en minutos", "le responderé");
         assertThat(sent.getValue().internalNote()).isFalse();
         assertThat(sent.getValue().expectedVersion()).isEqualTo(7);
     }

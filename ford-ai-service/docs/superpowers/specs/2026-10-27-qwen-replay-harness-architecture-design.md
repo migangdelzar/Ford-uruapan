@@ -1,6 +1,6 @@
 # Qwen Replay Harness Architecture
 
-**Status:** Design approved for documentation; implementation not yet approved.
+**Status:** Approved for implementation.
 
 ## Problem
 
@@ -123,6 +123,67 @@ Each mode gets a distinct Gradle task or explicit mode property, unique run ID,
 separate transcript/telemetry paths, and a disposable database. The default
 developer run remains cheap and offline. Live Qwen modes remain opt-in and must
 not run concurrently against shared Gradle result directories.
+
+The integration-test entry points use `FORD_QWEN_REPLAY_MODE`:
+
+- `SEEDED_DIAGNOSTIC`: requires a validated seed transcript and seed prefix.
+  Optionally set `FORD_QWEN_REPLAY_CHECKPOINT_CAPTURE_TURN` to export a
+  synthetic DB-backed checkpoint after that committed turn. The report labels
+  it `SEEDED_REPLAY_EXPORT`; this is continuity state, not proof of live prior
+  Qwen or catalog calls.
+- `CHECKPOINT_LIVE_WINDOW`: requires `FORD_QWEN_REPLAY_CHECKPOINT`,
+  `FORD_QWEN_TARGET_START_TURN`, and `FORD_QWEN_TARGET_END_TURN`. Start must be
+  exactly checkpoint turn + 1. The live-window test rejects all seed settings.
+- `FRESH_FULL_LIVE`: requires the 100-turn opt-in and prefetched harness. It
+  rejects seed/checkpoint settings and is the only mode that writes all-live
+  acceptance status.
+
+Example checkpoint preparation from a validated prior transcript:
+
+```sh
+FORD_QWEN_REPLAY_ENABLED=true \
+FORD_QWEN_COMPARISON_PREFETCH_ENABLED=true \
+FORD_QWEN_REPLAY_MODE=SEEDED_DIAGNOSTIC \
+FORD_QWEN_REPLAY_SEED_THROUGH_TURN=85 \
+FORD_QWEN_REPLAY_SEED_TRANSCRIPT=build/reports/local-qwen/validated-transcript.md \
+FORD_QWEN_REPLAY_CHECKPOINT_CAPTURE_TURN=85 \
+./gradlew integrationTest \
+  --tests com.ford.service.conversations.QwenTwoTurnWebhookReplayIntegrationTest.preflightsLocalCatalogSnapshotAndVectorRetrieval \
+  --tests com.ford.service.conversations.QwenTwoTurnWebhookReplayIntegrationTest.runsOnlyValidatedSeedPrefixForPlumbingDiagnostics
+```
+
+Then run the live target window or final fresh acceptance as separate Gradle
+invocations. Never run them concurrently.
+
+Focused live window:
+
+```sh
+FORD_QWEN_REPLAY_ENABLED=true \
+FORD_QWEN_REPLAY_MODE=CHECKPOINT_LIVE_WINDOW \
+FORD_QWEN_REPLAY_CHECKPOINT=build/reports/local-qwen/checkpoints/<checkpoint>.json \
+FORD_QWEN_TARGET_START_TURN=86 \
+FORD_QWEN_TARGET_END_TURN=87 \
+FORD_QWEN_COMPARISON_PREFETCH_ENABLED=true \
+FORD_CATALOG_SNAPSHOT_LABEL=oct25-candidate \
+FORD_LOCAL_CATALOG_EXPORT_DIR=/path/to/source-export-oct25-candidate \
+./gradlew integrationTest \
+  --tests com.ford.service.conversations.QwenTwoTurnWebhookReplayIntegrationTest.preflightsLocalCatalogSnapshotAndVectorRetrieval \
+  --tests com.ford.service.conversations.QwenTwoTurnWebhookReplayIntegrationTest.runsCheckpointedLiveQwenWindow
+```
+
+Final acceptance uses a fresh disposable DB; it does not reuse the checkpoint:
+
+```sh
+FORD_QWEN_REPLAY_ENABLED=true \
+FORD_QWEN_100_REPLAY_ENABLED=true \
+FORD_QWEN_REPLAY_MODE=FRESH_FULL_LIVE \
+FORD_QWEN_COMPARISON_PREFETCH_ENABLED=true \
+FORD_CATALOG_SNAPSHOT_LABEL=oct25-candidate \
+FORD_LOCAL_CATALOG_EXPORT_DIR=/path/to/source-export-oct25-candidate \
+./gradlew integrationTest \
+  --tests com.ford.service.conversations.QwenTwoTurnWebhookReplayIntegrationTest.preflightsLocalCatalogSnapshotAndVectorRetrieval \
+  --tests com.ford.service.conversations.QwenTwoTurnWebhookReplayIntegrationTest.acceptsFreshOneHundredTurnAllLiveRunOnly
+```
 
 ## Rollout sequence
 

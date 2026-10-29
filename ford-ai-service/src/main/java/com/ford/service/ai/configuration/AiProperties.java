@@ -25,6 +25,8 @@ public class AiProperties {
     private boolean cloudEnabled = false;
     private boolean localEnabled = true;
     private boolean logProviderErrors;
+    private boolean responseVerificationEnabled = true;
+    private boolean responseRepeatCheckEnabled = true;
     @Min(1)
     @Max(5)
     private int providerMaxAttempts = 5;
@@ -129,6 +131,22 @@ public class AiProperties {
 
     public void setLogProviderErrors(boolean value) {
         logProviderErrors = value;
+    }
+
+    public boolean responseVerificationEnabled() {
+        return responseVerificationEnabled;
+    }
+
+    public void setResponseVerificationEnabled(boolean value) {
+        responseVerificationEnabled = value;
+    }
+
+    public boolean responseRepeatCheckEnabled() {
+        return responseRepeatCheckEnabled;
+    }
+
+    public void setResponseRepeatCheckEnabled(boolean value) {
+        responseRepeatCheckEnabled = value;
     }
 
     public int providerMaxAttempts() {

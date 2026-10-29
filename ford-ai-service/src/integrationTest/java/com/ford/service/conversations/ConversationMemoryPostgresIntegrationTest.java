@@ -3,6 +3,7 @@ package com.ford.service.conversations;
 import com.ford.service.channels.domain.Channel;
 import com.ford.service.conversations.adapter.out.JdbcConversationMemoryRepository;
 import com.ford.service.conversations.domain.ConversationMemoryKey;
+import com.ford.service.conversations.domain.ConversationMessage;
 import com.ford.service.conversations.domain.MemoryFact;
 import com.ford.service.conversations.domain.MemoryProjectionUpdate;
 import com.ford.service.conversations.domain.MemoryQuery;
@@ -121,6 +122,49 @@ class ConversationMemoryPostgresIntegrationTest {
             assertThat(context.durableFacts()).isEmpty();
             assertThat(context.recentMessages()).isEmpty();
         }
+    }
+
+    @Test
+    void loadsOnlyTheBoundedOlderTranscriptSliceForTheExactConversationIdentity() {
+        insertConversation();
+        var startedAt = Instant.now().minusSeconds(30);
+        for (var index = 1; index <= 5; index++) {
+            jdbc.sql("""
+                    insert into conversation_message (id, conversation_id, direction, provider_message_id, content, received_at)
+                    values (:id, :conversationId, 'INBOUND', :providerMessageId, :content, :receivedAt)
+                    """)
+                    .param("id", UUID.randomUUID())
+                    .param("conversationId", CONVERSATION_ID)
+                    .param("providerMessageId", "rebase-" + index)
+                    .param("content", "transcript-" + index)
+                    .param("receivedAt", Timestamp.from(startedAt.plusSeconds(index)))
+                    .update();
+        }
+
+        var older = repository.loadTranscriptForRebase(MEMORY_KEY, startedAt, 2, 2);
+        var wrongIdentity = new ConversationMemoryKey(UUID.randomUUID(), MEMORY_KEY.channel(),
+                MEMORY_KEY.providerAccountId(), MEMORY_KEY.participantId(), CONVERSATION_ID);
+
+        assertThat(older).extracting(ConversationMessage::providerMessageId)
+                .containsExactly("rebase-2", "rebase-3");
+        assertThat(repository.loadTranscriptForRebase(wrongIdentity, startedAt, 2, 2)).isEmpty();
+        assertThat(jdbc.sql("select count(*) from conversation_message where conversation_id = :id")
+                .param("id", CONVERSATION_ID).query(Long.class).single()).isEqualTo(5);
+    }
+
+    @Test
+    void rejectsStaleProjectionWithoutOverwritingTheLatestSummary() {
+        insertConversation();
+        var first = repository.updateProjection(MEMORY_KEY,
+                new MemoryProjectionUpdate("latest summary", List.of(new MemoryFact("model", "Ranger", null)), null), 0);
+        var stale = repository.updateProjection(MEMORY_KEY,
+                new MemoryProjectionUpdate("stale summary", List.of(), null), 0);
+        var current = repository.load(new MemoryQuery(MEMORY_KEY, null, 0, 5));
+
+        assertThat(first.applied()).isTrue();
+        assertThat(stale.applied()).isFalse();
+        assertThat(current.summary()).isEqualTo("latest summary");
+        assertThat(current.durableFacts()).containsExactly(new MemoryFact("model", "Ranger", null));
     }
 
     @Test

@@ -162,8 +162,21 @@ public class InputSecurityPolicy {
         SENSITIVE_DATA_BLOCKED
     }
 
+    public enum Status { ALLOWED, BLOCKED }
+
     public record Result(String message, String memoryContext, String leadJourneyContext,
                          boolean containsSensitiveData, boolean blocked, Reason reason, boolean piiRedacted,
                          boolean untrustedContextOmitted) {
+        public Result {
+            if (message == null) throw new IllegalArgumentException("secured message is required");
+            if (reason == null) throw new IllegalArgumentException("security reason is required");
+            if ((!blocked && reason != Reason.NONE) || (blocked && reason == Reason.NONE)) {
+                throw new IllegalArgumentException("security status and reason disagree");
+            }
+        }
+
+        public Status status() {
+            return blocked ? Status.BLOCKED : Status.ALLOWED;
+        }
     }
 }

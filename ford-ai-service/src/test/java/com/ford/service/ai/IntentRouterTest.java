@@ -31,6 +31,18 @@ class IntentRouterTest {
     }
 
     @Test
+    void keepsPreferenceStatementsOutOfInventorySearchUntilBuyerAsksForOptions() {
+        assertThat(router.route("Me interesa una pickup, aunque no quiero que sea demasiado difícil de estacionar en la ciudad."))
+                .isEqualTo(Intent.GENERAL);
+    }
+
+    @Test
+    void keepsDeferredYearAndTrimChoiceOutOfVehicleDetailsRouting() {
+        assertThat(router.route("Me gusta la idea, pero todavía no elijo año ni versión."))
+                .isEqualTo(Intent.GENERAL);
+    }
+
+    @Test
     void routesFordLoboToVehicleCatalog() {
         assertThat(router.route("Me interesa una Ford Lobo"))
                 .isEqualTo(Intent.CATALOG);
@@ -60,6 +72,14 @@ class IntentRouterTest {
     void routesFuelEconomyQuestionsToVehicleKnowledge() {
         assertThat(router.route("¿Cuántos kilómetros por litro da?"))
                 .isEqualTo(Intent.KNOWLEDGE);
+    }
+
+    @Test
+    void routesModelSpecificSpecificationsToTheCatalogSource() {
+        assertThat(router.route("¿Qué rendimiento tiene Ford Ranger 2027?"))
+                .isEqualTo(Intent.CATALOG);
+        assertThat(router.isExplicitFordFactRequest("¿Qué rendimiento tiene Ford Ranger 2027?"))
+                .isTrue();
     }
 
     @Test

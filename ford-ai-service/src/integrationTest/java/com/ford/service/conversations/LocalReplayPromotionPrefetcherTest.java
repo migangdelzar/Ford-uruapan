@@ -19,7 +19,7 @@ class LocalReplayPromotionPrefetcherTest {
     void queriesBuyerIdentityExactlyAndPreservesPromotionSourceAndConditions() {
         var tools = mock(CatalogTools.class);
         var promotion = promotion("RANGER", 2027);
-        when(tools.listPromotions("RANGER", 2027, null, false, 20, 0, "full", null))
+        when(tools.listPromotions("RANGER", 2027, null, false, 0, 20, "full", "RANGER 2027"))
                 .thenReturn(new CatalogTools.PromotionSearch(1, 0, 20, false, List.of(promotion)));
         var prefetcher = new LocalReplayPromotionPrefetcher(new LocalBuyerVehicleResolver(),
                 () -> List.of(new VehicleNameIndexEntry("RANGER", 2027, "XLT GASOLINA 4X2")), tools);
@@ -31,7 +31,7 @@ class LocalReplayPromotionPrefetcherTest {
         assertThat(result.orElseThrow().evidenceCount()).isEqualTo(1);
         assertThat(result.orElseThrow().promotions().getFirst().sourceUrl()).isEqualTo("https://ford.test/promo");
         assertThat(result.orElseThrow().promotions().getFirst().conditions()).isEqualTo("Sujeto a aprobación");
-        verify(tools).listPromotions("RANGER", 2027, null, false, 20, 0, "full", null);
+        verify(tools).listPromotions("RANGER", 2027, null, false, 0, 20, "full", "RANGER 2027");
     }
 
     @Test
@@ -59,6 +59,23 @@ class LocalReplayPromotionPrefetcherTest {
 
         assertThat(prefetcher.prefetch("¿Y la promoción?", history)).isEmpty();
         assertThat(prefetcher.prefetch("¿Y la promoción?", history)).isEmpty();
+    }
+
+    @Test
+    void keepsOnlyExactModelEvidenceWhenCatalogSubstringSearchAlsoReturnsRelatedModel() {
+        var tools = mock(CatalogTools.class);
+        var ranger = promotion("RANGER", 2027);
+        var raptor = promotion("RANGER RAPTOR", 2027);
+        when(tools.listPromotions(anyString(), any(), any(), anyBoolean(), anyInt(), anyInt(), anyString(), any()))
+                .thenReturn(new CatalogTools.PromotionSearch(2, 0, 20, false, List.of(ranger, raptor)));
+        var prefetcher = new LocalReplayPromotionPrefetcher(new LocalBuyerVehicleResolver(),
+                () -> List.of(new VehicleNameIndexEntry("RANGER", 2027, "XLT GASOLINA 4X2")), tools);
+        var history = "[HISTORIAL DE CONVERSACIÓN]\n- usuario: RANGER 2027 XLT GASOLINA 4X2\n[FIN DEL HISTORIAL]";
+
+        var result = prefetcher.prefetch("¿Ese monto aplica?", history);
+
+        assertThat(result).isPresent();
+        assertThat(result.orElseThrow().promotions()).containsExactly(ranger);
     }
 
     private static CatalogTools.PromotionResult promotion(String model, int year) {

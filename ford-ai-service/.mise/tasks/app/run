@@ -1,5 +1,50 @@
 #!/usr/bin/env bash
-#MISE description="Run ford-service with Spring Boot"
+#MISE description="Start PostgreSQL/Redis and run the host JVM with DevTools live reload"
 set -euo pipefail
+if [[ "${FORD_RUNTIME_ENV:-}" != "development" ]]; then
+  echo "app:run is local host-JVM mode; select the dev mise environment." >&2
+  exit 2
+fi
 cd "$MISE_PROJECT_ROOT"
-exec ./gradlew bootRun --no-daemon
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+
+export FORD_DATABASE_URL="${FORD_DATABASE_URL:-jdbc:postgresql://localhost:${POSTGRES_PORT:-55432}/ford_service}"
+export FORD_REDIS_HOST="${FORD_REDIS_HOST:-localhost}"
+export FORD_REDIS_PORT="${FORD_REDIS_PORT:-${REDIS_PORT:-6379}}"
+export FORD_OTEL_TRACES_ENDPOINT="${FORD_OTEL_TRACES_ENDPOINT:-http://localhost:${OTEL_HTTP_PORT:-4318}/v1/traces}"
+export SERVER_PORT="${SERVER_PORT:-${FORD_SERVICE_PORT:-18080}}"
+export SPRING_DEVTOOLS_RESTART_ENABLED="${SPRING_DEVTOOLS_RESTART_ENABLED:-true}"
+
+mise -E dev run deps:start
+ensure_dev_state_dir
+compile_log="$(dev_state_dir)/compile-watch.log"
+mise exec -- ./gradlew classes --continuous --no-daemon >"$compile_log" 2>&1 &
+compile_pid=$!
+
+cleanup_compile_watch() {
+  kill -TERM "$compile_pid" >/dev/null 2>&1 || true
+  wait "$compile_pid" 2>/dev/null || true
+}
+trap cleanup_compile_watch EXIT
+
+compile_ready=false
+for attempt in {1..120}; do
+  if grep -q 'BUILD SUCCESSFUL' "$compile_log"; then
+    compile_ready=true
+    break
+  fi
+  if ! kill -0 "$compile_pid" >/dev/null 2>&1; then
+    cat "$compile_log" >&2
+    echo "Gradle continuous compilation exited before becoming ready." >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+if [[ "$compile_ready" != true ]]; then
+  cat "$compile_log" >&2
+  echo "Gradle continuous compilation did not become ready within 120 seconds." >&2
+  exit 1
+fi
+
+mise exec -- ./gradlew bootRun --no-daemon

@@ -3,6 +3,8 @@ package com.ford.service.ai;
 import com.ford.service.ai.application.AssistantResponseQualityPolicy;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AssistantResponseQualityPolicyTest {
@@ -45,26 +47,38 @@ class AssistantResponseQualityPolicyTest {
     }
 
     @Test
-    void rejectsARepeatedAssistantAnswerFromMemory() {
+    void rejectsEveryCatalogCallbackNameInCustomerFacingText() {
+        var callbackNames = List.of("search_vehicles", "search_vehicle_and_offers", "get_vehicle",
+                "compare_vehicles", "search_offers", "list_promotions", "get_vehicle_provenance",
+                "get_catalog_status", "get_page_links", "compare_trims", "compare_model_years",
+                "get_variant_comparisons");
+
+        for (var callbackName : callbackNames) {
+            var verdict = policy.evaluate("Pregunta", null, "Detalle interno: " + callbackName);
+            assertThat(verdict.accepted()).as(callbackName).isFalse();
+            assertThat(verdict.reason()).as(callbackName).isEqualTo("internal_payload");
+        }
+    }
+
+    @Test
+    void leavesRepeatDetectionToTheAlwaysOnProviderNeutralGuard() {
         var memory = "Historial reciente:\n- asistente: La Ranger está disponible para revisión.\n"
                 + "- usuario: ¿Y la Lobo?";
 
         var verdict = policy.evaluate("¿Y la Lobo?", memory,
                 "La Ranger está disponible para revisión.");
 
-        assertThat(verdict.accepted()).isFalse();
-        assertThat(verdict.reason()).isEqualTo("repeated_response");
+        assertThat(verdict.accepted()).isTrue();
     }
 
     @Test
-    void rejectsAMateriallyRepeatedAnswerWithOnlyMinorWordingChanges() {
+    void doesNotRunOptionalSimilarityDetectionForRepeatedAnswers() {
         var memory = "Historial reciente:\n- asistente: La Ranger está disponible en la agencia Ford Uruapan.";
 
         var verdict = policy.evaluate("¿Sigue disponible?", memory,
                 "La Ranger está disponible en la agencia Ford Uruapan actualmente.");
 
-        assertThat(verdict.accepted()).isFalse();
-        assertThat(verdict.reason()).isEqualTo("repeated_response");
+        assertThat(verdict.accepted()).isTrue();
     }
 
     @Test
@@ -84,6 +98,24 @@ class AssistantResponseQualityPolicyTest {
         assertThat(verdict.accepted()).isFalse();
         assertThat(verdict.reason()).isEqualTo("multiple_questions");
         assertThat(policy.repairInstruction(verdict.reason())).contains("una sola pregunta");
+    }
+
+    @Test
+    void writesRepairInstructionsAndRecoveryRepliesInFormalAddress() {
+        assertThat(policy.repairInstruction("multiple_questions"))
+                .startsWith("Responda directamente")
+                .contains("solicite solo un dato");
+        assertThat(policy.repairInstruction("repeated_response"))
+                .startsWith("Redacte una respuesta nueva");
+        assertThat(policy.repairInstruction("internal_payload"))
+                .startsWith("Responda directamente");
+        assertThat(policy.recoveryMessage("repeated_response"))
+                .isEqualTo("No quiero repetirle la respuesta anterior. ¿Qué detalle desea que revise?");
+        assertThat(policy.recoveryMessage("internal_payload"))
+                .isEqualTo("No pude preparar una respuesta clara con la información disponible. "
+                        + "Intente de nuevo en unos segundos.");
+        assertThat(policy.recoveryMessage("empty_response"))
+                .isEqualTo("No pude responderle en este momento. Intente de nuevo en unos segundos.");
     }
 
     @Test
@@ -140,5 +172,14 @@ class AssistantResponseQualityPolicyTest {
 
         assertThat(verdict.accepted()).isTrue();
         assertThat(verdict.reason()).isEqualTo("accepted");
+    }
+
+    @Test
+    void rejectsResponsesThatExceedTheCustomerReplyLimit() {
+        var verdict = policy.evaluate("¿Qué versiones hay?", null, "a".repeat(1601));
+
+        assertThat(verdict.accepted()).isFalse();
+        assertThat(verdict.reason()).isEqualTo("response_too_long");
+        assertThat(policy.repairInstruction(verdict.reason())).contains("breve");
     }
 }

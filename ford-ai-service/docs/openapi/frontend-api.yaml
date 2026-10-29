@@ -297,6 +297,66 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/conversations/{conversationId}/shadow-drafts:
+    get:
+      tags: [Conversations]
+      summary: List unsent shadow drafts for operator review
+      description: Drafts are never delivered to customers. Requires tenant access and operator:read authority.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Unsent drafts, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ShadowDraft'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/conversations/{conversationId}/shadow-drafts/{draftId}/review:
+    post:
+      tags: [Conversations]
+      summary: Annotate an unsent draft
+      description: Accept or reject a draft for evaluation. Requires tenant access and operator:write authority. This operation cannot send a message.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - name: draftId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/TenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShadowDraftReviewRequest'
+      responses:
+        '204':
+          description: Review annotation recorded
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/conversations/{conversationId}/messages:
     parameters:
       - $ref: '#/components/parameters/ConversationId'
@@ -369,10 +429,16 @@ paths:
     post:
       tags: [Conversations]
       summary: Restart bot context while retaining transcript
-      description: Starts a new bot-memory epoch; transcript messages remain available to authorized operators.
+      description: Starts a new bot-memory epoch; transcript messages remain available to authorized operators. Omitted bodies from legacy clients map to LEGACY_CLIENT_UNSPECIFIED.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationMemoryRestartRequest'
       responses:
         '200':
           description: New memory epoch created
@@ -392,6 +458,32 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ProblemDetail'
+
+  /api/v1/conversations/{conversationId}/customer-memory:
+    parameters:
+      - $ref: '#/components/parameters/ConversationId'
+      - $ref: '#/components/parameters/TenantId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+    delete:
+      tags: [Conversations]
+      summary: Forget shared customer shopping facts
+      description: Deletes shared shopping facts for the identity linked to this conversation and preserves all transcript messages. Requires operator:write authority.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Count-only forget receipt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerMemoryForgetReceipt'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /api/v1/conversations/runtime-settings:
     get:
@@ -559,6 +651,35 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '503':
           $ref: '#/components/responses/UpstreamUnavailable'
+
+  /api/v1/handoffs/after-hours-digest:
+    get:
+      tags: [Handoffs]
+      summary: Read the next-opening-day after-hours BDC digest
+      description: Tenant-scoped, read-only digest for off-hours handoffs; items omit customer PII.
+      operationId: getAfterHoursHandoffDigest
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          description: Tenant must be among the authenticated operator's tenant memberships.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Digest availability and after-hours handoff packet summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AfterHoursDigest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /api/v1/handoffs:
     get:
@@ -1831,6 +1952,26 @@ components:
         contextStartedAt:
           type: string
           format: date-time
+    ConversationMemoryRestartRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          enum: [CUSTOMER_REQUEST, STALE_CONTEXT, OPERATOR_RECOVERY, OTHER, LEGACY_CLIENT_UNSPECIFIED]
+    CustomerMemoryForgetReceipt:
+      type: object
+      required: [conversationId, removedFactCount, forgottenAt]
+      properties:
+        conversationId:
+          type: string
+          format: uuid
+        removedFactCount:
+          type: integer
+          minimum: 0
+        forgottenAt:
+          type: string
+          format: date-time
     ConversationRuntimeSettings:
       type: object
       required: [humanHandoffEnabled, memoryEnabled, promptRecentMessageLimit]
@@ -1866,7 +2007,7 @@ components:
           nullable: true
     Conversation:
       type: object
-      required: [id, tenantId, channel, state, version, participant, updatedAt]
+      required: [id, tenantId, channel, state, version, participant, updatedAt, readOnly]
       properties:
         id:
           type: string
@@ -1896,6 +2037,40 @@ components:
         updatedAt:
           type: string
           format: date-time
+        readOnly:
+          type: boolean
+    ShadowDraft:
+      type: object
+      required: [id, conversationId, createdAt, expiresAt, reviewStatus, text]
+      properties:
+        id:
+          type: string
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        reviewStatus:
+          type: string
+          enum: [PENDING, ACCEPTED, REJECTED]
+        text:
+          type: string
+          maxLength: 2000
+    ShadowDraftReviewRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [ACCEPTED, REJECTED]
+        note:
+          type: string
+          maxLength: 500
     ConversationMessage:
       type: object
       required: [id, conversationId, direction, senderType, content, receivedAt]
@@ -2166,6 +2341,37 @@ components:
           type: string
           format: date-time
           nullable: true
+    AfterHoursDigest:
+      type: object
+      required: [tenantId, businessDate, timeZone, available, availableAt, windowStart, windowEnd,
+                 totalCount, completePacketCount, partialPacketCount, items]
+      properties:
+        tenantId: { type: string, format: uuid }
+        businessDate: { type: string, format: date }
+        timeZone: { type: string, const: America/Mexico_City }
+        available: { type: boolean }
+        availableAt: { type: string, format: date-time }
+        windowStart: { type: string, format: date-time }
+        windowEnd: { type: string, format: date-time }
+        totalCount: { type: integer, minimum: 0 }
+        completePacketCount: { type: integer, minimum: 0 }
+        partialPacketCount: { type: integer, minimum: 0 }
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AfterHoursDigestItem'
+    AfterHoursDigestItem:
+      type: object
+      required: [handoffId, conversationId, createdAt, status, reason, packetCompleteness, packetPartial]
+      properties:
+        handoffId: { type: string, format: uuid }
+        conversationId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        status:
+          $ref: '#/components/schemas/HandoffStatus'
+        reason: { type: string }
+        packetCompleteness: { type: integer, minimum: 0, maximum: 5 }
+        packetPartial: { type: boolean }
     HandoffPage:
       type: object
       required: [items, page]

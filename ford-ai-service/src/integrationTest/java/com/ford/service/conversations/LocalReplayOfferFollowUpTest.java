@@ -7,15 +7,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class LocalReplayOfferFollowUpTest {
     @Test
-    void recognizesExactTurnTwelvePromotionFollowUp() {
+    void doesNotTreatExactVehiclePriceFollowUpAsPromotion() {
         assertThat(LocalReplayOfferFollowUp.requiresPromotionEvidence(
-                "¿Ese monto corresponde a la XLT que acabamos de revisar?", ToolFamily.OFFERS)).isTrue();
+                "¿Ese monto corresponde a la XLT que acabamos de revisar?", null)).isFalse();
     }
 
     @Test
-    void recognizesExactTurnTwelveWordingWithoutOffersRouting() {
+    void explicitPromotionContextStillRequiresPromotionEvidence() {
         assertThat(LocalReplayOfferFollowUp.requiresPromotionEvidence(
-                "¿Ese monto corresponde a la XLT que acabamos de revisar?", null)).isTrue();
+                "¿Ese monto corresponde al descuento de la promoción vigente?", null)).isTrue();
+    }
+
+    @Test
+    void recognizesTurnFiftyNineBenefitFollowUpWithoutOffersRouting() {
+        assertThat(LocalReplayOfferFollowUp.requiresPromotionEvidence(
+                "¿Ese beneficio aplica específicamente a la Ranger XLT?", null)).isTrue();
     }
 
     @Test

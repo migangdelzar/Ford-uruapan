@@ -13,6 +13,7 @@ final class LocalReplayOfferFollowUp {
         if (message == null) return false;
         var normalized = Normalizer.normalize(message, Normalizer.Form.NFD)
                 .replaceAll("\\p{M}+", "").toLowerCase(Locale.ROOT);
-        return normalized.matches("(?s).*\\b(?:ese monto|esa promocion|ese descuento|la promocion)\\b.*");
+        return normalized.matches("(?s).*\\b(?:esa promocion|ese descuento|ese beneficio|"
+                + "la promocion)\\b.*");
     }
 }

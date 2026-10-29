@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Locale;
 import java.util.regex.Pattern;
 
 @Component
@@ -23,6 +24,10 @@ public class LeadJourneyPolicy {
     private static final Pattern LONG_DIGIT_RUN = Pattern.compile("\\d{7,}");
     private static final Pattern CONTACT_OR_ACCOUNT = Pattern.compile(
             "(?i)([\\w.+-]+@[\\w.-]+\\.[a-z]{2,}|(?:\\+?\\d[\\s().-]*){8,}|\\b(?:tarjeta|cuenta|clabe|cvv|curp|rfc)\\b)");
+    private static final Pattern PAYMENT_BUDGET = Pattern.compile(
+            "(?i)\\b(mensualidad(?:es)?|mensual|al mes|por mes|pagar|pago|enganche|inicial|cr[eé]dito|financiar|cuota(?:s)?|semanal|por semana|cada semana|quincenal|quincena|por quincena|cada quincena|cada 15 d[ií]as|catorcenal|por catorcena)\\b");
+    private static final Pattern PURCHASE_PRICE_PREFERENCE = Pattern.compile(
+            "(?i)\\b(presupuesto\\s+(?:total|para comprar|de compra|para (?:el\\s+)?(?:auto|coche|veh[ií]culo|camioneta))|precio\\s+(?:de compra|del?\\s+(?:auto|coche|veh[ií]culo|camioneta)))\\b");
 
     public LeadJourneySnapshot apply(LeadJourneySnapshot current,
                                      LeadJourneyProposal proposal,
@@ -79,7 +84,18 @@ public class LeadJourneyPolicy {
         return !value.isEmpty() && value.length() <= MAX_FACT_LENGTH
                 && !evidence.isBlank() && evidence.length() <= MAX_EVIDENCE_LENGTH
                 && message.contains(evidence)
-                && !hasSensitivePattern(value) && !hasSensitivePattern(evidence);
+                && !hasSensitivePattern(value) && !hasSensitivePattern(evidence)
+                && isSupportedPacketFact(fact.key(), value, evidence);
+    }
+
+    private static boolean isSupportedPacketFact(LeadJourneyFactKey key, String value, String evidence) {
+        return switch (key) {
+            case CUSTOMER_NAME, DOWN_PAYMENT, PAYMENT_METHOD -> false;
+            case BUDGET_RANGE -> evidence.toLowerCase(Locale.ROOT).contains(value.toLowerCase(Locale.ROOT))
+                    && !PAYMENT_BUDGET.matcher(evidence).find()
+                    && PURCHASE_PRICE_PREFERENCE.matcher(evidence).find();
+            default -> true;
+        };
     }
 
     private static boolean hasSensitivePattern(String text) {

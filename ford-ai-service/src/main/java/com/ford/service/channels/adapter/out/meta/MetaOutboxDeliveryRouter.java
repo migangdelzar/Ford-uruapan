@@ -7,6 +7,7 @@ import com.ford.service.channels.application.port.out.CustomerWindowPort;
 import com.ford.service.channels.domain.Channel;
 import com.ford.service.channels.domain.DeliveryResult;
 import com.ford.service.channels.domain.OutboundMessage;
+import com.ford.service.channels.domain.ReplyOption;
 import com.ford.service.outbox.NotificationResult;
 import com.ford.service.outbox.OutboxDeliveryRouter;
 import com.ford.service.outbox.OutboxEvent;
@@ -52,7 +53,7 @@ public final class MetaOutboxDeliveryRouter implements OutboxDeliveryRouter {
                 }
             }
             var result = port.send(new OutboundMessage(event.tenantId(), channel, payload.recipientId(),
-                    payload.text(), event.idempotencyKey()));
+                    payload.text(), event.idempotencyKey(), payload.replyOptions()));
             return toNotificationResult(result);
         } catch (JsonProcessingException | IllegalArgumentException exception) {
             return NotificationResult.permanentFailure(exception.getMessage());
@@ -74,6 +75,7 @@ public final class MetaOutboxDeliveryRouter implements OutboxDeliveryRouter {
         return exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage();
     }
 
-    private record DeliveryPayload(String conversationId, String channel, String recipientId, String text) {
+    private record DeliveryPayload(String conversationId, String channel, String recipientId, String text,
+                                   java.util.List<ReplyOption> replyOptions) {
     }
 }

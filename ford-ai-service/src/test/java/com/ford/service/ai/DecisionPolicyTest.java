@@ -10,10 +10,12 @@ import com.ford.service.ai.application.LeadStage;
 import com.ford.service.ai.application.LeadTemperature;
 import com.ford.service.ai.application.SensitiveDataLevel;
 import com.ford.service.ai.application.ToolFamily;
+import com.ford.service.ai.application.VehicleEntityResolution;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Set;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -47,6 +49,15 @@ class DecisionPolicyTest {
     }
 
     @Test
+    void allowsFinancePlanDiscoveryAndExactVehicleLookupForFinancingRequests() {
+        var decision = decision(ToolFamily.FINANCE_ESTIMATE);
+
+        assertThat(policy.allowedToolNames(decision,
+                Set.of("finance_estimate", "list_finance_products", "get_vehicle", "search_offers")))
+                .containsExactlyInAnyOrder("finance_estimate", "list_finance_products", "get_vehicle");
+    }
+
+    @Test
     void exposesNoUnrelatedToolsWhenNoToolFamilyWasClassified() {
         var decision = decision(ToolFamily.NONE);
 
@@ -63,6 +74,33 @@ class DecisionPolicyTest {
         assertThat(policy.allowedToolNames(decision, Set.of(
                 "search_vehicles", "get_vehicle", "compare_vehicles", "search_offers", "finance_estimate")))
                 .containsExactlyInAnyOrder("search_vehicles", "get_vehicle", "compare_vehicles");
+    }
+
+    @Test
+    void exposesEveryCatalogComparisonAndSourceToolForVehicleDetails() {
+        var decision = decision(ToolFamily.VEHICLE_DETAILS);
+
+        assertThat(policy.allowedToolNames(decision, Set.of(
+                "search_vehicles", "get_vehicle", "compare_vehicles", "get_vehicle_provenance",
+                "get_page_links", "compare_trims", "compare_model_years", "get_variant_comparisons",
+                "vehicle_snapshot_search", "search_offers")))
+                .containsExactlyInAnyOrder("search_vehicles", "get_vehicle", "compare_vehicles",
+                        "get_vehicle_provenance", "get_page_links", "compare_trims",
+                        "compare_model_years", "get_variant_comparisons", "vehicle_snapshot_search");
+    }
+
+    @Test
+    void excludesBroadVehicleSearchWhenExactVehicleIdentityIsResolved() {
+        var decision = decision(ToolFamily.VEHICLE_DETAILS).withVehicleEntities(new VehicleEntityResolution(
+                Optional.of("Ranger"), Optional.of(2027), Optional.of("XLT Gasolina 4x2"), List.of(),
+                VehicleEntityResolution.Source.MEMORY_REFERENCE,
+                VehicleEntityResolution.Source.MEMORY_REFERENCE,
+                VehicleEntityResolution.Source.MEMORY_REFERENCE,
+                VehicleEntityResolution.Status.RESOLVED));
+
+        assertThat(policy.allowedToolNames(decision,
+                Set.of("search_vehicles", "get_vehicle", "compare_trims")))
+                .containsExactlyInAnyOrder("get_vehicle", "compare_trims");
     }
 
     @Test
@@ -106,9 +144,9 @@ class DecisionPolicyTest {
 
         assertThat(policy.allowedToolNames(decision, Set.of(
                 "approved_knowledge_search", "search_vehicles", "get_vehicle",
-                "get_vehicle_provenance", "vehicle_snapshot_search", "send_message")))
+                "get_vehicle_provenance", "get_page_links", "vehicle_snapshot_search", "send_message")))
                 .containsExactlyInAnyOrder("approved_knowledge_search", "search_vehicles", "get_vehicle",
-                "get_vehicle_provenance", "vehicle_snapshot_search");
+                "get_vehicle_provenance", "get_page_links", "vehicle_snapshot_search");
     }
 
     @Test

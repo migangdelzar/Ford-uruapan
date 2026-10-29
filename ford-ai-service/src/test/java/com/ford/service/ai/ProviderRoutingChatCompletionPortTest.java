@@ -13,6 +13,7 @@ import com.ford.service.ai.application.port.out.ProviderChatCompletionPort;
 import com.ford.service.ai.application.port.out.ProviderRoutingChatCompletionPort;
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantResponse;
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
 import com.ford.service.ai.api.AssistantGeneration;
 import com.ford.service.observability.AiObservationService;
 import com.openai.core.http.Headers;
@@ -34,6 +35,18 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 
 class ProviderRoutingChatCompletionPortTest {
+
+    @Test
+    void plainTextTurnDoesNotRequireUnusedToolOrStructuredOutputCapabilities() {
+        var plainText = new ProviderDescriptor("text-only", new ProviderCapabilities(false, false, false),
+                true, true, "text-model");
+        var port = new ProviderRoutingChatCompletionPort(List.of(new StubPort("text-only", "Hola, ¿en qué te ayudo?")),
+                new DefaultModelProviderPolicy(List.of(plainText)));
+
+        var response = port.complete(request(false), new ToolContext(UUID.randomUUID(), UUID.randomUUID()));
+
+        assertThat(response.content()).isEqualTo("Hola, ¿en qué te ayudo?");
+    }
 
     @Test
     void routesToTheProviderSelectedByPrivacyAndCapabilityPolicy() {
@@ -115,7 +128,7 @@ class ProviderRoutingChatCompletionPortTest {
     }
 
     @Test
-    void returnsSafeInformationGapOnlyAfterAllProvidersFailForVolatileInformation() {
+    void requestsSilentRetryAfterAllProvidersFailForVolatileInformation() {
         var primary = new RecordingPort("cloudflare",
                 tools.jackson.databind.exc.MismatchedInputException.from(
                         null, AssistantGeneration.class, "invalid structured response"));
@@ -125,12 +138,43 @@ class ProviderRoutingChatCompletionPortTest {
         var port = new ProviderRoutingChatCompletionPort(
                 List.of(primary, fallback), policy, 6, Duration.ZERO, ignored -> { });
 
-        var response = port.complete(volatileRequest(), new ToolContext(UUID.randomUUID(), UUID.randomUUID()));
+        assertThatThrownBy(() -> port.complete(volatileRequest(),
+                new ToolContext(UUID.randomUUID(), UUID.randomUUID())))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.RETRY));
 
         assertThat(primary.calls).isEqualTo(1);
         assertThat(fallback.calls).isEqualTo(1);
-        assertThat(response.content()).contains("no lo tengo confirmado");
-        assertThat(response.provider()).isEqualTo("fallback");
+    }
+
+    @Test
+    void sendsIdenticalMemoryJourneyAndRecentReplyContextToFallbackProvider() {
+        var cloud = provider("openai", true);
+        var local = provider("ollama", false);
+        var primary = new CapturingPort(cloud.id(), new RateLimitException());
+        var fallback = new CapturingPort(local.id(), null);
+        var port = new ProviderRoutingChatCompletionPort(List.of(primary, fallback),
+                new DefaultModelProviderPolicy(List.of(cloud, local)), 6, Duration.ZERO, ignored -> { });
+        var request = new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(), "Quiero más detalles", "BOT_ACTIVE",
+                "historial reciente", false, null, "journey state", List.of("respuesta anterior"));
+
+        port.complete(request, new ToolContext(request.tenantId(), request.conversationId()));
+
+        assertThat(primary.request).isEqualTo(request);
+        assertThat(fallback.request).isEqualTo(request);
+    }
+
+    @Test
+    void leavesVolatileRequestsForReviewWhenNoProviderIsEligible() {
+        var port = new ProviderRoutingChatCompletionPort(
+                List.of(new StubPort("unused", "unused")), new DefaultModelProviderPolicy(List.of()));
+
+        assertThatThrownBy(() -> port.complete(volatileRequest(),
+                new ToolContext(UUID.randomUUID(), UUID.randomUUID())))
+                .isInstanceOf(AssistantTurnUnavailableException.class)
+                .satisfies(exception -> assertThat(((AssistantTurnUnavailableException) exception).disposition())
+                        .isEqualTo(AssistantTurnUnavailableException.Disposition.REVIEW));
     }
 
     @Test
@@ -351,6 +395,25 @@ class ProviderRoutingChatCompletionPortTest {
         public AssistantResponse complete(AssistantRequest request, ToolContext context) {
             calls++;
             throw failure;
+        }
+    }
+
+    private static final class CapturingPort implements ProviderChatCompletionPort {
+        private final String id;
+        private final RuntimeException failure;
+        private AssistantRequest request;
+
+        private CapturingPort(String id, RuntimeException failure) {
+            this.id = id;
+            this.failure = failure;
+        }
+
+        @Override public String providerId() { return id; }
+
+        @Override public AssistantResponse complete(AssistantRequest request, ToolContext context) {
+            this.request = request;
+            if (failure != null) throw failure;
+            return new AssistantResponse("recovered", false, id, List.of());
         }
     }
 

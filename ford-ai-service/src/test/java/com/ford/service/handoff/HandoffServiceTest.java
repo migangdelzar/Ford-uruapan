@@ -1,5 +1,6 @@
 package com.ford.service.handoff;
 
+import com.ford.service.conversations.api.BdcHandoffPacket;
 import com.ford.service.handoff.api.OperatorPrincipal;
 import com.ford.service.handoff.application.DefaultHandoffService;
 import com.ford.service.handoff.application.HandoffService;
@@ -58,6 +59,59 @@ class HandoffServiceTest {
                 .isThrownBy(() -> service.claim(ticket.id(), 0, principal));
     }
 
+    @Test
+    void requestPersistsTypedPacketAndCompletenessMetadata() {
+        var repository = new InMemoryHandoffRepository();
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        repository.conversationTenants.put(conversationId, tenantId);
+        HandoffService service = new DefaultHandoffService(repository, event -> { },
+                (tenant, conversation, operator, handoffId) -> { });
+        var packet = new BdcHandoffPacket(java.util.Optional.of("Ranger"), java.util.Optional.empty(),
+                java.util.Optional.empty(), java.util.Optional.of("este mes"), java.util.Optional.empty(),
+                java.util.Optional.empty(), java.util.Optional.empty(), java.util.Optional.of("María Elena"));
+
+        var ticket = service.request(new HandoffRequest(tenantId, conversationId, null, "CUSTOMER_REQUEST", packet),
+                principal(tenantId));
+
+        assertThat(ticket.packet()).isEqualTo(packet);
+        assertThat(repository.findRequired(ticket.id()).packet()).isEqualTo(packet);
+    }
+
+    @Test
+    void repeatedHandoffRequestReturnsExistingTicketIdempotently() {
+        var repository = new InMemoryHandoffRepository();
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        repository.conversationTenants.put(conversationId, tenantId);
+        var published = new ArrayList<Object>();
+        HandoffService service = new DefaultHandoffService(repository, published::add,
+                (tenant, conversation, operator, handoffId) -> { });
+        var principal = principal(tenantId);
+
+        var first = service.request(new HandoffRequest(tenantId, conversationId, null, "CUSTOMER_REQUEST"), principal);
+        var second = service.request(new HandoffRequest(tenantId, conversationId, null, "CUSTOMER_REQUEST"), principal);
+
+        assertThat(second.id()).isEqualTo(first.id());
+        assertThat(repository.savedCount).isEqualTo(1);
+    }
+
+    @Test
+    void requestFailsWithoutPublishingWhenConversationCannotEnterHandoff() {
+        var repository = new InMemoryHandoffRepository();
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        repository.conversationTenants.put(conversationId, tenantId);
+        repository.transitionSucceeds = false;
+        var published = new ArrayList<Object>();
+        HandoffService service = new DefaultHandoffService(repository, published::add,
+                (tenant, conversation, operator, handoffId) -> { });
+
+        assertThatIllegalStateException().isThrownBy(() -> service.request(
+                new HandoffRequest(tenantId, conversationId, null, "CUSTOMER_REQUEST"), principal(tenantId)));
+        assertThat(published).isEmpty();
+    }
+
     private static OperatorPrincipal principal(UUID tenantId) {
         return new OperatorPrincipal(UUID.randomUUID(), Set.of(tenantId), Set.of("ROLE_OPERATOR"));
     }
@@ -65,10 +119,13 @@ class HandoffServiceTest {
     private static final class InMemoryHandoffRepository implements HandoffRepository {
         private final Map<UUID, HandoffTicket> tickets = new HashMap<>();
         private final Map<UUID, UUID> conversationTenants = new HashMap<>();
+        private int savedCount;
+        private boolean transitionSucceeds = true;
 
         @Override
         public HandoffTicket save(HandoffTicket ticket) {
             tickets.put(ticket.id(), ticket);
+            savedCount++;
             return ticket;
         }
 
@@ -91,6 +148,21 @@ class HandoffServiceTest {
         @Override
         public UUID findConversationTenant(UUID conversationId) {
             return Optional.ofNullable(conversationTenants.get(conversationId)).orElseThrow();
+        }
+
+        @Override
+        public Optional<HandoffTicket> findOpenByConversation(UUID tenantId, UUID conversationId) {
+            return tickets.values().stream()
+                    .filter(ticket -> ticket.tenantId().equals(tenantId)
+                            && ticket.conversationId().equals(conversationId)
+                            && (ticket.status() == HandoffStatus.HUMAN_PENDING
+                            || ticket.status() == HandoffStatus.HUMAN_ACTIVE))
+                    .findFirst();
+        }
+
+        @Override
+        public boolean transitionConversationToPending(UUID tenantId, UUID conversationId) {
+            return transitionSucceeds;
         }
 
         @Override

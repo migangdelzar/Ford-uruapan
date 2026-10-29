@@ -25,6 +25,26 @@ class OciVaultSecretPropertyLoaderTest {
     }
 
     @Test
+    void mapsSpringRedisEnvironmentNameToCanonicalPropertyName() {
+        var loader = new OciVaultSecretPropertyLoader(secretId -> "redis-password");
+
+        var properties = loader.load(Map.of(
+                "FORD_VAULT_SECRET_OCID_SPRING_DATA_REDIS_PASSWORD", "ocid1.vaultsecret.example"));
+
+        assertThat(properties).containsOnly(Map.entry("spring.data.redis.password", "redis-password"));
+    }
+
+    @Test
+    void preservesExplicitApplicationEnvironmentVariableNames() {
+        var loader = new OciVaultSecretPropertyLoader(secretId -> "provider-key");
+
+        var properties = loader.load(Map.of(
+                "FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY", "ocid1.vaultsecret.example"));
+
+        assertThat(properties).containsOnly(Map.entry("OPENROUTER_API_KEY", "provider-key"));
+    }
+
+    @Test
     void ignoresUnrelatedEnvironmentProperties() {
         var loader = new OciVaultSecretPropertyLoader(secretId -> "unused");
 

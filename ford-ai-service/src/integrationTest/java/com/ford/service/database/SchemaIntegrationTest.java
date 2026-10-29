@@ -39,6 +39,9 @@ class SchemaIntegrationTest {
             assertThat(columnExists(connection, "conversation_memory_embedding", "embedding")).isTrue();
             assertThat(indexExists(connection, "idx_conversation_memory_embedding_scope")).isTrue();
             assertThat(indexExists(connection, "idx_conversation_memory_embedding_hnsw")).isTrue();
+            assertThat(columnExists(connection, "handoff_ticket", "packet")).isTrue();
+            assertThat(columnExists(connection, "handoff_ticket", "packet_partial")).isTrue();
+            assertThat(columnExists(connection, "handoff_ticket", "packet_completeness")).isTrue();
         }
     }
 

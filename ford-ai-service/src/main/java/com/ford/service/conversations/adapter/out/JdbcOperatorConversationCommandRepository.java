@@ -34,15 +34,19 @@ public class JdbcOperatorConversationCommandRepository implements OperatorConver
     @Override
     public Optional<CommandTarget> find(UUID tenantId, UUID conversationId) {
         return jdbc.sql("""
-                select id, tenant_id, channel, provider_conversation_id, state, version
-                from conversation
-                where id = :conversationId and tenant_id = :tenantId
+                select c.id, c.tenant_id, c.channel, c.provider_conversation_id, c.state, c.version,
+                       coalesce(b.enabled, false) as binding_enabled
+                from conversation c
+                left join channel_binding b on b.tenant_id = c.tenant_id and b.channel = c.channel
+                    and b.provider_account_id = c.provider_account_id
+                where c.id = :conversationId and c.tenant_id = :tenantId
                 """)
                 .param("conversationId", conversationId).param("tenantId", tenantId)
                 .query((rs, rowNum) -> new CommandTarget(
                         rs.getObject("tenant_id", UUID.class), rs.getObject("id", UUID.class),
                         Channel.valueOf(rs.getString("channel")), rs.getString("provider_conversation_id"),
-                        ConversationState.valueOf(rs.getString("state")), rs.getLong("version")))
+                        ConversationState.valueOf(rs.getString("state")), rs.getLong("version"),
+                        rs.getBoolean("binding_enabled")))
                 .optional();
     }
 

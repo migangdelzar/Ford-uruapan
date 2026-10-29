@@ -1,0 +1,225 @@
+{
+  "suiteId": "intent-routing",
+  "version": "v1",
+  "cases": [
+    {
+      "caseId": "general-courtesy-only",
+      "generalSubtype": "COURTESY",
+      "message": "Gracias.",
+      "memoryContext": "Cliente: Me interesa la Ranger 2027. MÍA: Con gusto le comparto la información.",
+      "expectedIntent": "GENERAL",
+      "expectedToolFamily": "NONE",
+      "toolMode": "FORBIDDEN",
+      "forbiddenToolFamilies": ["VEHICLE_SEARCH", "VEHICLE_DETAILS", "OFFERS", "FINANCE_ESTIMATE", "KNOWLEDGE_SEARCH", "APPOINTMENT"],
+      "expectedBehavior": "ACKNOWLEDGE",
+      "notes": "Regression: a pure thank-you after vehicle discussion must not trigger catalog tools."
+    },
+    {
+      "caseId": "general-discovery-guidance",
+      "generalSubtype": "DISCOVERY",
+      "message": "Apenas estoy empezando a buscar y me puedes orientar sobre una camioneta.",
+      "expectedIntent": "GENERAL",
+      "expectedToolFamily": "NONE",
+      "toolMode": "FORBIDDEN",
+      "forbiddenToolFamilies": ["VEHICLE_SEARCH", "VEHICLE_DETAILS", "OFFERS", "FINANCE_ESTIMATE", "KNOWLEDGE_SEARCH", "APPOINTMENT"],
+      "expectedBehavior": "CLARIFY",
+      "notes": "Needs-first guidance starts with a discovery question, not a catalog dump."
+    },
+    {
+      "caseId": "general-ambiguous-greeting",
+      "generalSubtype": "AMBIGUOUS",
+      "message": "Hola, buenas tardes.",
+      "expectedIntent": "GENERAL",
+      "expectedToolFamily": "NONE",
+      "toolMode": "FORBIDDEN",
+      "forbiddenToolFamilies": ["VEHICLE_SEARCH", "VEHICLE_DETAILS", "OFFERS", "FINANCE_ESTIMATE", "KNOWLEDGE_SEARCH", "APPOINTMENT"],
+      "expectedBehavior": "CLARIFY",
+      "notes": "A greeting with no product request should invite a useful next step."
+    },
+    {
+      "caseId": "general-process-no-tool",
+      "generalSubtype": "NO_TOOL_NEEDED",
+      "message": "Me interesa saber cómo funciona el proceso de compra.",
+      "expectedIntent": "GENERAL",
+      "expectedToolFamily": "NONE",
+      "toolMode": "FORBIDDEN",
+      "forbiddenToolFamilies": ["VEHICLE_SEARCH", "VEHICLE_DETAILS", "OFFERS", "FINANCE_ESTIMATE", "KNOWLEDGE_SEARCH", "APPOINTMENT"],
+      "expectedBehavior": "ANSWER",
+      "notes": "Process guidance does not require volatile catalog data."
+    },
+    {
+      "caseId": "general-courtesy-after-vehicle",
+      "generalSubtype": "COURTESY",
+      "message": "Muchas gracias, justo eso quería explicar antes de ver modelos.",
+      "memoryContext": "Cliente: Me interesa la Ranger 2027 XLT. MÍA: La Ranger XLT tiene motor 2.3L.",
+      "expectedIntent": "GENERAL",
+      "expectedToolFamily": "NONE",
+      "toolMode": "FORBIDDEN",
+      "forbiddenToolFamilies": ["VEHICLE_SEARCH", "VEHICLE_DETAILS", "OFFERS", "FINANCE_ESTIMATE", "KNOWLEDGE_SEARCH", "APPOINTMENT"],
+      "expectedBehavior": "ACKNOWLEDGE",
+      "notes": "Regression: the word modelos in a courtesy message must not promote it to CATALOG."
+    },
+    {
+      "caseId": "inventory-family-options",
+      "message": "Busco una camioneta para mi familia, ¿qué opciones tienen?",
+      "expectedIntent": "INVENTORY",
+      "expectedToolFamily": "VEHICLE_SEARCH",
+      "toolMode": "REQUIRED",
+      "expectedBehavior": "ANSWER",
+      "notes": "Main-options request must use authorized vehicle search."
+    },
+    {
+      "caseId": "inventory-pickup-parking-preference",
+      "message": "Me interesa una pickup, aunque no quiero que sea demasiado difícil de estacionar en la ciudad.",
+      "expectedIntent": "GENERAL",
+      "generalSubtype": "DISCOVERY",
+      "expectedToolFamily": "NONE",
+      "toolMode": "FORBIDDEN",
+      "expectedBehavior": "ANSWER",
+      "notes": "A category and parking preference without a request for options is discovery context, not an inventory lookup."
+    },
+    {
+      "caseId": "inventory-needs-based-ford-recommendation",
+      "message": "¿Qué Ford me convendría revisar primero con ese uso mixto?",
+      "memoryContext": "Historial reciente:\n- usuario: La usaría para ir al trabajo y salir con mi familia.\n- usuario: Me interesa una pickup fácil de estacionar en ciudad.\n- asistente: ¿Qué prioridad es más importante?",
+      "expectedIntent": "INVENTORY",
+      "expectedToolFamily": "VEHICLE_SEARCH",
+      "toolMode": "REQUIRED",
+      "expectedBehavior": "ANSWER",
+      "notes": "A needs-based Ford recommendation requires semantic vehicle search; known buyer needs are context, not facts to invent."
+    },
+    {
+      "caseId": "vehicle-details-ranger-motor",
+      "message": "¿Qué motor tiene la Ranger 2027 XLT?",
+      "expectedIntent": "VEHICLE_DETAILS",
+      "expectedToolFamily": "VEHICLE_DETAILS",
+      "toolMode": "REQUIRED",
+      "expectedBehavior": "ANSWER",
+      "notes": "Explicit model and specification request must use catalog evidence."
+    },
+    {
+      "caseId": "vehicle-price-exact-variant",
+      "message": "Me interesa la Ranger 2027 XLT Gasolina 4x2. ¿Cuál es su precio publicado?",
+      "expectedIntent": "VEHICLE_DETAILS",
+      "expectedToolFamily": "VEHICLE_DETAILS",
+      "toolMode": "REQUIRED",
+      "expectedBehavior": "ANSWER",
+      "notes": "Live replay regression: exact variant price must resolve to catalog evidence, not ask again for year/version."
+    },
+    {
+      "caseId": "vehicle-details-anaphoric-motor",
+      "message": "¿Y de esa versión, qué motor tiene?",
+      "memoryContext": "Usuario: Me interesa la Ranger 2027 XLT Gasolina 4x2. ¿Cuál es su precio publicado?\nAsistente: No pude confirmar un precio exacto para esa combinación.",
+      "expectedIntent": "VEHICLE_DETAILS",
+      "expectedToolFamily": "VEHICLE_DETAILS",
+      "toolMode": "REQUIRED",
+      "expectedBehavior": "ANSWER",
+      "notes": "Live replay regression: an anaphoric spec follow-up must use the prior vehicle instead of routing to KNOWLEDGE."
+    },
+    {
+      "caseId": "mixed-courtesy-and-ranger-motor",
+      "generalSubtype": "MIXED_REQUEST",
+      "message": "Gracias, y ¿qué motor tiene la Ranger?",
+      "expectedIntent": "VEHICLE_DETAILS",
+      "expectedToolFamily": "VEHICLE_DETAILS",
+      "toolMode": "REQUIRED",
+      "expectedBehavior": "ANSWER",
+      "notes": "A courtesy prefix must not hide a real product question."
+    },
+    {
+      "caseId": "finance-monthly-payment",
+      "message": "¿Cuál sería la mensualidad de la Ranger?",
+      "expectedIntent": "FINANCE",
+      "expectedToolFamily": "FINANCE_ESTIMATE",
+      "toolMode": "REQUIRED",
+      "expectedBehavior": "ANSWER",
+      "notes": "Monthly-payment request routes to the finance estimate family."
+    },
+    {
+      "caseId": "offers-ranger-promotion",
+      "message": "¿Hay promoción de la Ranger este mes?",
+      "expectedIntent": "OFFERS",
+      "expectedToolFamily": "OFFERS",
+      "toolMode": "REQUIRED",
+      "expectedBehavior": "ANSWER",
+      "notes": "Promotion request must use current authorized promotion data."
+    },
+    {
+      "caseId": "appointment-test-drive",
+      "message": "Quiero agendar una prueba de manejo.",
+      "expectedIntent": "APPOINTMENT",
+      "expectedToolFamily": "APPOINTMENT",
+      "toolMode": "REQUIRED",
+      "expectedBehavior": "ANSWER",
+      "notes": "Explicit appointment request routes to the appointment family."
+    },
+    {
+      "caseId": "knowledge-warranty",
+      "message": "¿Qué garantía tiene la Ranger?",
+      "expectedIntent": "KNOWLEDGE",
+      "expectedToolFamily": "KNOWLEDGE_SEARCH",
+      "toolMode": "REQUIRED",
+      "expectedBehavior": "ANSWER",
+      "notes": "Policy knowledge request must use the knowledge family."
+    },
+    {
+      "caseId": "human-request-advisor",
+      "message": "Quiero hablar con un asesor.",
+      "expectedIntent": "HUMAN_REQUEST",
+      "expectedToolFamily": "NONE",
+      "toolMode": "FORBIDDEN",
+      "forbiddenToolFamilies": ["VEHICLE_SEARCH", "VEHICLE_DETAILS", "OFFERS", "FINANCE_ESTIMATE", "KNOWLEDGE_SEARCH", "APPOINTMENT"],
+      "expectedBehavior": "ANSWER",
+      "notes": "User-requested handoff must not be forced through product tools."
+    },
+    {
+      "caseId": "trade-in-valuation",
+      "message": "Quiero dar mi auto a cuenta.",
+      "expectedIntent": "TRADE_IN",
+      "expectedToolFamily": "NONE",
+      "toolMode": "FORBIDDEN",
+      "forbiddenToolFamilies": ["VEHICLE_SEARCH", "VEHICLE_DETAILS", "OFFERS", "FINANCE_ESTIMATE", "KNOWLEDGE_SEARCH", "APPOINTMENT"],
+      "expectedBehavior": "ANSWER",
+      "notes": "Trade-in request routes to handoff, not to a catalog tool."
+    },
+    {
+      "caseId": "dealership-location",
+      "message": "¿Dónde están?",
+      "expectedIntent": "DEALERSHIP_INFO",
+      "expectedToolFamily": "NONE",
+      "toolMode": "FORBIDDEN",
+      "forbiddenToolFamilies": ["VEHICLE_SEARCH", "VEHICLE_DETAILS", "OFFERS", "FINANCE_ESTIMATE", "KNOWLEDGE_SEARCH", "APPOINTMENT"],
+      "expectedBehavior": "ANSWER",
+      "notes": "Dealership location must not trigger vehicle search."
+    },
+    {
+      "caseId": "service-maintenance",
+      "message": "Necesito mantenimiento y refacciones.",
+      "expectedIntent": "SERVICE_SUPPORT",
+      "expectedToolFamily": "KNOWLEDGE_SEARCH",
+      "toolMode": "REQUIRED",
+      "expectedBehavior": "ANSWER",
+      "notes": "Service support uses knowledge search for current policy content."
+    },
+    {
+      "caseId": "complaint-status",
+      "message": "Quiero poner una queja.",
+      "expectedIntent": "COMPLAINT_STATUS",
+      "expectedToolFamily": "NONE",
+      "toolMode": "FORBIDDEN",
+      "forbiddenToolFamilies": ["VEHICLE_SEARCH", "VEHICLE_DETAILS", "OFFERS", "FINANCE_ESTIMATE", "KNOWLEDGE_SEARCH", "APPOINTMENT"],
+      "expectedBehavior": "ANSWER",
+      "notes": "A complaint must go to human review, not product tooling."
+    },
+    {
+      "caseId": "out-of-scope-poem",
+      "message": "Escribe un poema.",
+      "expectedIntent": "OUT_OF_SCOPE",
+      "expectedToolFamily": "NONE",
+      "toolMode": "FORBIDDEN",
+      "forbiddenToolFamilies": ["VEHICLE_SEARCH", "VEHICLE_DETAILS", "OFFERS", "FINANCE_ESTIMATE", "KNOWLEDGE_SEARCH", "APPOINTMENT"],
+      "expectedBehavior": "ANSWER",
+      "notes": "Out-of-scope request stays out of all product tool families."
+    }
+  ]
+}

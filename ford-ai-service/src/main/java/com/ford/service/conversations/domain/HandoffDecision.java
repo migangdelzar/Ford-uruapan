@@ -1,9 +1,21 @@
 package com.ford.service.conversations.domain;
 
+import com.ford.service.conversations.api.BdcHandoffPacket;
+import com.ford.service.conversations.api.InternalHandoffNote;
 
-public record HandoffDecision(String reason, String priority, String idempotencyKey) {
+public record HandoffDecision(String reason, String priority, String idempotencyKey, BdcHandoffPacket packet,
+                              InternalHandoffNote internalNote) {
+
     public HandoffDecision(String reason) {
-        this(reason, "NORMAL", null);
+        this(reason, "NORMAL", null, BdcHandoffPacket.empty(), null);
+    }
+
+    public HandoffDecision(String reason, String priority, String idempotencyKey) {
+        this(reason, priority, idempotencyKey, BdcHandoffPacket.empty(), null);
+    }
+
+    public HandoffDecision(String reason, String priority, String idempotencyKey, BdcHandoffPacket packet) {
+        this(reason, priority, idempotencyKey, packet, null);
     }
 
     public HandoffDecision {
@@ -14,5 +26,6 @@ public record HandoffDecision(String reason, String priority, String idempotency
         if (!priority.equals("LOW") && !priority.equals("NORMAL") && !priority.equals("HIGH")) {
             throw new IllegalArgumentException("Unsupported handoff priority");
         }
+        packet = packet == null ? BdcHandoffPacket.empty() : packet;
     }
 }

@@ -114,6 +114,21 @@ class CreateSecretRequestTest(unittest.TestCase):
             {"secretContentContent", "secretContentName", "secretContentStage"},
         )
 
+    def test_rotation_requests_use_unique_version_names(self):
+        names = []
+        for _ in range(2):
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), "rotate", "ford-test-example-api-key"],
+                input=b"synthetic-test-value",
+                capture_output=True,
+                check=True,
+                env={},
+            )
+            names.append(json.loads(result.stdout)["secretContentName"])
+
+        self.assertRegex(names[0], r"^rotation-[0-9a-f]{32}$")
+        self.assertNotEqual(names[0], names[1])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -6,6 +6,8 @@ import com.ford.service.channels.security.MetaSignatureVerifier;
 import com.ford.service.config.SecurityConfiguration;
 import com.ford.service.handoff.adapter.in.web.OperatorConversationHandoffController;
 import com.ford.service.handoff.application.HandoffService;
+import com.ford.service.handoff.application.AfterHoursDigestService;
+import com.ford.service.handoff.application.AlternateContactRevealService;
 import com.ford.service.handoff.api.OperatorPrincipal;
 import com.ford.service.handoff.domain.HandoffStatus;
 import com.ford.service.handoff.domain.HandoffTicket;
@@ -48,6 +50,12 @@ class ToolAndWebhookSecurityTest {
 
     @MockitoBean
     HandoffService handoffService;
+
+    @MockitoBean
+    AfterHoursDigestService afterHoursDigestService;
+
+    @MockitoBean
+    AlternateContactRevealService alternateContactRevealService;
 
     @MockitoBean
     JwtDecoder jwtDecoder;
@@ -117,6 +125,9 @@ class ToolAndWebhookSecurityTest {
     @Test
     void permitsTheHandoffScopeWithoutRequiringAClientRoleHeader() throws Exception {
         var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        when(handoffService.request(any(), any())).thenReturn(new HandoffTicket(UUID.randomUUID(), tenantId,
+                conversationId, null, HandoffStatus.HUMAN_PENDING, null, "test", 0, Instant.now(), null, null));
         mockMvc.perform(post("/api/v1/handoffs")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt()
                                 .jwt(token -> token
@@ -126,8 +137,8 @@ class ToolAndWebhookSecurityTest {
                                 .authorities(
                                         new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_handoff:manage")))
                         .contentType(APPLICATION_JSON)
-                        .content("{\"tenantId\":\"%s\",\"conversationId\":\"%s\",\"reason\":\"test\"}"
-                                .formatted(tenantId, UUID.randomUUID())))
+                         .content("{\"tenantId\":\"%s\",\"conversationId\":\"%s\",\"reason\":\"test\"}"
+                                .formatted(tenantId, conversationId)))
                 .andExpect(status().isCreated());
     }
 

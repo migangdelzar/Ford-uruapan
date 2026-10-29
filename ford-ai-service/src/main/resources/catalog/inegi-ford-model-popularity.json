@@ -1,0 +1,145 @@
+{
+  "version": "2026-10-28",
+  "geography": "Mexico (national)",
+  "periodStart": "2024-01-01",
+  "periodEnd": "2026-09-30",
+  "ytd2025Start": "2025-01-01",
+  "ytd2025End": "2025-09-30",
+  "ytd2026Start": "2026-01-01",
+  "ytd2026End": "2026-09-30",
+  "sourceLabel": "INEGI RAIAVL — user-reviewed aggregation of RAIAVL_8_9.xlsx",
+  "sourceUrl": "https://www.inegi.org.mx/datosprimarios/iavl/",
+  "retrievalDate": "2026-10-28",
+  "sourceDiagnostics": [
+    {
+      "modelLabel": "Maverick",
+      "diagnostic": "DUPLICATE_SOURCE_LABEL",
+      "includedObservation": "First Maverick row per month: reported numeric units",
+      "excludedObservation": "Second Maverick row per month: dash marker in every checked month",
+      "excludedObservationState": "NOT_REPORTED_OR_NOT_MARKETED",
+      "treatment": "Only the reported numeric observation contributes units; the dash observation is not zero sales."
+    }
+  ],
+  "models": [
+    {
+      "modelFamily": "Territory", "catalogModelAliases": ["Territory"],
+      "cumulativeUnits": 41241, "cumulativeSharePercent": 28.4, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 9478, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 13719, "ytd2026Status": "REPORTED", "origin": "China"
+    },
+    {
+      "modelFamily": "Ranger", "catalogModelAliases": ["Ranger", "Ranger Crew Cab"],
+      "cumulativeUnits": 17452, "cumulativeSharePercent": 12.0, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 4800, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 4411, "ytd2026Status": "REPORTED", "origin": "Argentina"
+    },
+    {
+      "modelFamily": "Transit", "catalogModelAliases": ["Transit"],
+      "cumulativeUnits": 12606, "cumulativeSharePercent": 8.7, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 3710, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 2295, "ytd2026Status": "REPORTED", "origin": "U.K."
+    },
+    {
+      "modelFamily": "F-150", "catalogModelAliases": ["F-150"],
+      "cumulativeUnits": 12475, "cumulativeSharePercent": 8.6, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 4018, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 2805, "ytd2026Status": "REPORTED", "origin": "U.S."
+    },
+    {
+      "modelFamily": "Lobo", "catalogModelAliases": ["Lobo", "Lobo Regular Cab", "Lobo Crew Cab"],
+      "cumulativeUnits": 9884, "cumulativeSharePercent": 6.8, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 2424, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 2433, "ytd2026Status": "REPORTED", "origin": "U.S."
+    },
+    {
+      "modelFamily": "Maverick", "catalogModelAliases": ["Maverick"],
+      "cumulativeUnits": 7128, "cumulativeSharePercent": 4.9, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 2171, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 1798, "ytd2026Status": "REPORTED", "origin": "Mexico"
+    },
+    {
+      "modelFamily": "Explorer", "catalogModelAliases": ["Explorer"],
+      "cumulativeUnits": 6669, "cumulativeSharePercent": 4.6, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 2939, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 1247, "ytd2026Status": "REPORTED", "origin": "U.S."
+    },
+    {
+      "modelFamily": "F-350", "catalogModelAliases": ["F-350"],
+      "cumulativeUnits": 6456, "cumulativeSharePercent": 4.5, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 1974, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 1914, "ytd2026Status": "REPORTED", "origin": "U.S."
+    },
+    {
+      "modelFamily": "Bronco Sport", "catalogModelAliases": ["Bronco Sport"],
+      "cumulativeUnits": 6048, "cumulativeSharePercent": 4.2, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 1735, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 1259, "ytd2026Status": "REPORTED", "origin": "Mexico"
+    },
+    {
+      "modelFamily": "Escape", "catalogModelAliases": ["Escape", "Escape HEV"],
+      "cumulativeUnits": 4830, "cumulativeSharePercent": 3.3, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 1478, "ytd2025Status": "REPORTED",
+      "ytd2026Units": null, "ytd2026Status": "NOT_REPORTED_OR_NOT_MARKETED", "origin": "U.S."
+    },
+    {
+      "modelFamily": "Edge", "catalogModelAliases": ["Edge"],
+      "cumulativeUnits": 2943, "cumulativeSharePercent": 2.0, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 14, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 2379, "ytd2026Status": "REPORTED", "origin": "Canada (per file)"
+    },
+    {
+      "modelFamily": "Bronco", "catalogModelAliases": ["Bronco"],
+      "cumulativeUnits": 2909, "cumulativeSharePercent": 2.0, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 740, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 766, "ytd2026Status": "REPORTED", "origin": "U.S."
+    },
+    {
+      "modelFamily": "F-450", "catalogModelAliases": ["F-450", "F-450 Diesel"],
+      "cumulativeUnits": 2872, "cumulativeSharePercent": 2.0, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 766, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 909, "ytd2026Status": "REPORTED", "origin": "U.S."
+    },
+    {
+      "modelFamily": "Mustang", "catalogModelAliases": ["Mustang"],
+      "cumulativeUnits": 2321, "cumulativeSharePercent": 1.6, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 639, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 615, "ytd2026Status": "REPORTED", "origin": "U.S."
+    },
+    {
+      "modelFamily": "F-250 Super Duty", "catalogModelAliases": ["F-250 Super Duty"],
+      "cumulativeUnits": 2223, "cumulativeSharePercent": 1.5, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 574, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 537, "ytd2026Status": "REPORTED", "origin": "U.S."
+    },
+    {
+      "modelFamily": "F-550", "catalogModelAliases": ["F-550"],
+      "cumulativeUnits": 2140, "cumulativeSharePercent": 1.5, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 637, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 544, "ytd2026Status": "REPORTED", "origin": "U.S."
+    },
+    {
+      "modelFamily": "Expedition", "catalogModelAliases": ["Expedition"],
+      "cumulativeUnits": 2000, "cumulativeSharePercent": 1.4, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 635, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 591, "ytd2026Status": "REPORTED", "origin": "U.S."
+    },
+    {
+      "modelFamily": "E-Transit", "catalogModelAliases": ["E-Transit"],
+      "cumulativeUnits": 1789, "cumulativeSharePercent": 1.2, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 122, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 455, "ytd2026Status": "REPORTED", "origin": "U.S."
+    },
+    {
+      "modelFamily": "Transit Courier", "catalogModelAliases": ["Transit Courier"],
+      "cumulativeUnits": 609, "cumulativeSharePercent": 0.4, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 0, "ytd2025Status": "REPORTED",
+      "ytd2026Units": null, "ytd2026Status": "NOT_REPORTED_OR_NOT_MARKETED", "origin": "Turkey"
+    },
+    {
+      "modelFamily": "Mustang Mach-E", "catalogModelAliases": ["Mustang Mach-E"],
+      "cumulativeUnits": 385, "cumulativeSharePercent": 0.3, "cumulativeStatus": "REPORTED",
+      "ytd2025Units": 103, "ytd2025Status": "REPORTED",
+      "ytd2026Units": 119, "ytd2026Status": "REPORTED", "origin": "Mexico"
+    }
+  ]
+}

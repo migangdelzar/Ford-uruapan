@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantResponse;
+import com.ford.service.ai.api.AssistantTurnUnavailableException;
 
 import java.util.List;
 import java.util.Map;
@@ -27,9 +28,6 @@ import java.time.Duration;
 public final class ProviderRoutingChatCompletionPort implements ChatCompletionPort {
 
     private static final Logger log = LoggerFactory.getLogger(ProviderRoutingChatCompletionPort.class);
-    private static final String VOLATILE_SOURCE_UNAVAILABLE =
-            "Ese dato no lo tengo confirmado ahora; prefiero no darle información incompleta.";
-
     private final Map<String, ProviderChatCompletionPort> ports;
     private final ModelProviderPolicy policy;
     private final int maxAttempts;
@@ -92,15 +90,18 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
     @Override
     public AssistantResponse complete(AssistantRequest request, ToolContext context) {
         Objects.requireNonNull(request, "request must not be null");
+        var toolCallingRequired = !context.authorizedToolNames().isEmpty()
+                || request.decision().toolFamily().requiresVolatileInformation();
         var candidates = policy.candidates(
                 new AiExecutionContext(request.tenantId(), request.containsSensitiveData(), request.conversationId(),
-                        request.memoryContext(), request.decision()),
-                new ModelRequirements(true, true));
+                        request.memoryContext(), request.decision(), request.leadJourneyContext(),
+                        request.recentAssistantReplies(), request.repairInstruction()),
+                new ModelRequirements(toolCallingRequired, false));
         if (candidates.isEmpty()) {
-            log.warn("No AI provider eligible for request: conversationId={} toolCallingRequired=true structuredOutputRequired=true sensitiveData={}",
-                    request.conversationId(), request.containsSensitiveData());
+            log.warn("No AI provider eligible for request: conversationId={} toolCallingRequired={} structuredOutputRequired=false sensitiveData={}",
+                    request.conversationId(), toolCallingRequired, request.containsSensitiveData());
             if (request.decision().toolFamily().requiresVolatileInformation()) {
-                return new AssistantResponse(VOLATILE_SOURCE_UNAVAILABLE, false, "fallback", List.of());
+                throw new AssistantTurnUnavailableException(AssistantTurnUnavailableException.Disposition.REVIEW);
             }
             throw new IllegalStateException("No provider satisfies the request policy");
         }
@@ -114,8 +115,9 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
                 throw new IllegalStateException("Selected AI provider is not configured: " + candidate.id());
             }
             calls++;
-            log.info("AI provider attempt started: conversationId={} provider={} model={} attempt={} maxAttempts={} toolCallingRequired=true structuredOutputRequired=true",
-                    request.conversationId(), candidate.id(), candidate.modelVersion(), calls, maxAttempts);
+            log.info("AI provider attempt started: conversationId={} provider={} model={} attempt={} maxAttempts={} toolCallingRequired={} structuredOutputRequired=false",
+                    request.conversationId(), candidate.id(), candidate.modelVersion(), calls, maxAttempts,
+                    toolCallingRequired);
             try {
                 var response = port.complete(request, context);
                 log.info("AI provider attempt succeeded: conversationId={} provider={} model={} attempt={}",
@@ -161,7 +163,10 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
             }
         }
         if (lastFailure != null && request.decision().toolFamily().requiresVolatileInformation()) {
-            return new AssistantResponse(VOLATILE_SOURCE_UNAVAILABLE, false, "fallback", List.of());
+            var disposition = AiProviderFailureDiagnostics.classify(lastFailure).retryable()
+                    ? AssistantTurnUnavailableException.Disposition.RETRY
+                    : AssistantTurnUnavailableException.Disposition.REVIEW;
+            throw new AssistantTurnUnavailableException(disposition);
         }
         if (lastFailure != null) {
             throw lastFailure;

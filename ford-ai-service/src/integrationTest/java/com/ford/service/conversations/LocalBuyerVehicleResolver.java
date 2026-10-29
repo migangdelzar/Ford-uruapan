@@ -25,11 +25,9 @@ final class LocalBuyerVehicleResolver {
         var lines = new ArrayList<String>();
         var buyer = BUYER_LINE.matcher(block.group(1));
         while (buyer.find()) lines.add(buyer.group(1));
-        var exactBuyerMatches = 0;
         for (int i = lines.size() - 1; i >= 0; i--) {
             var matches = matches(lines.get(i), entries);
             if (!matches.isEmpty()) {
-                exactBuyerMatches++;
                 if (matches.size() == 1) return Optional.of(matches.getFirst());
                 return Optional.empty();
             }

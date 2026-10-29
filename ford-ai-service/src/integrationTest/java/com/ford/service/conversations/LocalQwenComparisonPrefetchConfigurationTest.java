@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -21,6 +22,17 @@ import static org.mockito.Mockito.when;
 class LocalQwenComparisonPrefetchConfigurationTest {
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withUserConfiguration(FixtureConfiguration.class, LocalQwenComparisonPrefetchConfiguration.class);
+
+    @Test
+    void rejectsSeedSnapshotHashThatDoesNotMatchActiveCatalog() {
+        LocalQwenComparisonPrefetchConfiguration.validateSeedSnapshotHash("a".repeat(64), "a".repeat(64));
+        assertThatIllegalArgumentException().isThrownBy(() ->
+                LocalQwenComparisonPrefetchConfiguration.validateSeedSnapshotHash("a".repeat(64), "b".repeat(64)))
+                .withMessageContaining("snapshot hash mismatch");
+        assertThatIllegalArgumentException().isThrownBy(() ->
+                LocalQwenComparisonPrefetchConfiguration.validateSeedSnapshotHash(null, "a".repeat(64)))
+                .withMessageContaining("snapshot hash mismatch");
+    }
 
     @Test
     void rawModeLeavesChatCompletionPortUnwrapped() {

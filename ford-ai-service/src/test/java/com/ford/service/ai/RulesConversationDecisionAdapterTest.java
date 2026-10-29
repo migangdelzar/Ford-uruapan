@@ -3,6 +3,7 @@ package com.ford.service.ai;
 import com.ford.service.ai.adapter.out.rules.RulesConversationDecisionAdapter;
 import com.ford.service.ai.application.ClassificationContext;
 import com.ford.service.ai.application.ConversationIntent;
+import com.ford.service.ai.application.DecisionPolicy;
 import com.ford.service.ai.application.IntentRouter;
 import com.ford.service.ai.application.HandoffRecommendation;
 import com.ford.service.ai.application.ToolFamily;
@@ -70,6 +71,86 @@ class RulesConversationDecisionAdapterTest {
 
         assertThat(decision.intent()).isEqualTo(ConversationIntent.VEHICLE_DETAILS);
         assertThat(decision.handoffRecommendation()).isEqualTo(HandoffRecommendation.NONE);
+    }
+
+    @Test
+    void routesModelYearComparisonsToTheCatalogCallbackFamily() {
+        var decision = adapter.decide(context("¿Qué cambió entre BRONCO modelo 2025 y 2026?"));
+        var allowed = new DecisionPolicy().allowedToolNames(decision,
+                java.util.Set.of("compare_model_years", "search_offers"));
+
+        assertThat(decision.toolFamily()).isEqualTo(ToolFamily.VEHICLE_DETAILS);
+        assertThat(allowed).containsExactly("compare_model_years");
+    }
+
+    @Test
+    void routesMainVehicleOptionsToSearchAndTrimQuestionsToCatalogDetails() {
+        assertDecision("¿Cuáles son las principales opciones de camionetas Ford?",
+                ConversationIntent.INVENTORY, ToolFamily.VEHICLE_SEARCH);
+        assertDecision("¿Qué modelos tienen?", ConversationIntent.INVENTORY, ToolFamily.VEHICLE_SEARCH);
+        assertDecision("¿Me puedes orientar? ¿Qué opciones hay para una camioneta?",
+                ConversationIntent.INVENTORY, ToolFamily.VEHICLE_SEARCH);
+        assertDecision("¿Qué versiones tiene la Ranger?",
+                ConversationIntent.VEHICLE_DETAILS, ToolFamily.VEHICLE_DETAILS);
+    }
+
+    @Test
+    void treatsEarlyBuyerGuidanceAsDiscoveryNotCatalogLookup() {
+        assertDecision("Hola, buenas tardes. ¿Me puedes orientar? Apenas estoy empezando a buscar camioneta.",
+                ConversationIntent.GENERAL, ToolFamily.NONE);
+    }
+
+    @Test
+    void routesNeedsBasedFordRecommendationToVehicleSearch() {
+        assertDecision("¿Qué Ford me convendría revisar primero con ese uso mixto?",
+                ConversationIntent.INVENTORY, ToolFamily.VEHICLE_SEARCH);
+    }
+
+    @Test
+    void keepsPickupCategoryPreferenceInDiscoveryWithoutSearchingInventory() {
+        assertDecision("Me interesa una pickup, aunque no quiero que sea demasiado difícil de estacionar en la ciudad.",
+                ConversationIntent.GENERAL, ToolFamily.NONE);
+    }
+
+    @Test
+    void treatsAdviceAboutWhichDimensionsToReviewAsDiscoveryNotCatalogLookup() {
+        var decision = adapter.decide(new ClassificationContext(UUID.randomUUID(), UUID.randomUUID(),
+                "Para mi familia, ¿qué dimensiones deberíamos revisar antes de decidir?",
+                "Usuario: La caja de la Ranger XLT me atrae más, pero la XL quizá sea más práctica en ciudad.",
+                "BOT_ACTIVE", false));
+
+        assertThat(decision.intent()).isEqualTo(ConversationIntent.GENERAL);
+        assertThat(decision.toolFamily()).isEqualTo(ToolFamily.NONE);
+    }
+
+    @Test
+    void routesAnAnaphoricFordQuestionWhenMemoryNamesOneModel() {
+        var decision = adapter.decide(new ClassificationContext(UUID.randomUUID(), UUID.randomUUID(),
+                "¿Y esa?", "Historial reciente: cliente preguntó por Ford Ranger.", "BOT_ACTIVE", false));
+
+        assertThat(decision.intent()).isEqualTo(ConversationIntent.VEHICLE_DETAILS);
+        assertThat(decision.toolFamily()).isEqualTo(ToolFamily.VEHICLE_DETAILS);
+    }
+
+    @Test
+    void routesAnaphoricSpecificationFollowUpToVehicleDetailsWhenMemoryNamesOneModel() {
+        var decision = adapter.decide(new ClassificationContext(UUID.randomUUID(), UUID.randomUUID(),
+                "¿Y de esa versión, qué motor tiene?",
+                "Usuario: Me interesa la Ranger 2027 XLT Gasolina 4x2. ¿Cuál es su precio publicado?\n"
+                        + "Asistente: No pude confirmar un precio exacto para esa combinación.",
+                "BOT_ACTIVE", false));
+
+        assertThat(decision.intent()).isEqualTo(ConversationIntent.VEHICLE_DETAILS);
+        assertThat(decision.toolFamily()).isEqualTo(ToolFamily.VEHICLE_DETAILS);
+    }
+
+    @Test
+    void doesNotGuessAnAnaphoricVehicleWhenMemoryNamesMultipleModels() {
+        var decision = adapter.decide(new ClassificationContext(UUID.randomUUID(), UUID.randomUUID(),
+                "¿Y esa?", "Historial reciente: comparó Ford Ranger y Ford Bronco.", "BOT_ACTIVE", false));
+
+        assertThat(decision.intent()).isEqualTo(ConversationIntent.GENERAL);
+        assertThat(decision.toolFamily()).isEqualTo(ToolFamily.NONE);
     }
 
     private void assertDecision(String message, ConversationIntent intent, ToolFamily family) {

@@ -1,5 +1,3 @@
-🎉 *{{vehicle}}*
-
-No pude confirmar una promoción aplicable. Ventas puede validar si hay una oferta vigente.
+No encontré una oferta vigente confirmada para {{vehicle}} en el catálogo consultado.
 
 {{promotion_links}}

@@ -23,6 +23,23 @@ class LocalReplaySafetyAssertionsTest {
     }
 
     @Test
+    void acceptsCanonicalAmbiguityClarificationWithoutCallingChoicesFactEvidence() {
+        var entries = List.of(new VehicleNameIndexEntry("Ranger", 2027, "XLT Gasolina 4x2"),
+                new VehicleNameIndexEntry("Ranger", 2027, "XLT Diésel 4x4"));
+        var turn = new NaturalBuyerConversationScenario.Turn(73,
+                "¿Tienes una medida confirmada de la caja para la Ranger XLT 2027?",
+                NaturalBuyerConversationScenario.Expectation.CATALOG_FACT);
+        var ambiguity = List.of(new LocalQwenTranscriptWriter.ToolTrace("get_vehicle", "ambiguous", 0));
+
+        assertThat(LocalReplaySafetyAssertions.evaluate(turn,
+                "Para revisar la versión exacta de Ranger 2027, ¿cuál busca: XLT Gasolina 4x2 o XLT Diésel 4x4?",
+                ambiguity, List.of(), entries, List.of())).isEmpty();
+        assertThat(LocalReplaySafetyAssertions.evaluate(turn,
+                "El consumo es de 8 litros por cada 100 km.", ambiguity, List.of(), entries, List.of()))
+                .contains(LocalReplaySafetyAssertions.Violation.MISSING_CATALOG_EVIDENCE);
+    }
+
+    @Test
     void replayPrefetchVehicleEvidenceIsAcceptedOnlyInPrefetchModeForCatalogFacts() {
         var turn = turn(NaturalBuyerConversationScenario.Expectation.CATALOG_FACT);
         var returnedPrefetch = List.of(new LocalQwenTranscriptWriter.ToolTrace("get_vehicle", "returned", 1,
@@ -41,6 +58,24 @@ class LocalReplaySafetyAssertionsTest {
     }
 
     @Test
+    void recordedSeedEvidenceCountsOnlyForRepliesMarkedAsSeeded() {
+        var turn = turn(NaturalBuyerConversationScenario.Expectation.CATALOG_FACT);
+        var seedTrace = List.of(new LocalQwenTranscriptWriter.ToolTrace("get_vehicle", "returned", 1,
+                LocalQwenTranscriptWriter.ToolTraceOrigin.RECORDED_SEED));
+
+        assertThat(LocalReplaySafetyAssertions.evaluate(turn, "Respuesta", seedTrace, List.of(),
+                CURRENT_ENTRIES, List.of(), true)).contains(
+                LocalReplaySafetyAssertions.Violation.MISSING_CATALOG_EVIDENCE);
+        assertThat(LocalReplaySafetyAssertions.evaluate(turn, "Respuesta", seedTrace, List.of(),
+                CURRENT_ENTRIES, List.of(), true, true)).isEmpty();
+        assertThat(LocalReplaySafetyAssertions.evaluate(turn, "Respuesta", List.of(
+                new LocalQwenTranscriptWriter.ToolTrace("get_vehicle", "returned", 0,
+                        LocalQwenTranscriptWriter.ToolTraceOrigin.RECORDED_SEED)), List.of(),
+                CURRENT_ENTRIES, List.of(), true, true)).contains(
+                LocalReplaySafetyAssertions.Violation.MISSING_CATALOG_EVIDENCE);
+    }
+
+    @Test
     void requiresPromotionEvidenceForOfferTurns() {
         var traces = List.of(new LocalQwenTranscriptWriter.ToolTrace("search_vehicles", "returned", 2));
 
@@ -52,18 +87,40 @@ class LocalReplaySafetyAssertionsTest {
     }
 
     @Test
-    void recognizedPromotionFollowUpRequiresSameTurnPositivePromotionEvidence() {
+    void acceptsPositivePromotionPrefetchForOfferTurnsButNoOtherTool() {
+        var turn = turn(NaturalBuyerConversationScenario.Expectation.OFFER);
+        var promotionPrefetch = List.of(new LocalQwenTranscriptWriter.ToolTrace("list_promotions", "returned", 1,
+                LocalQwenTranscriptWriter.ToolTraceOrigin.REPLAY_PREFETCH));
+
+        assertThat(LocalReplaySafetyAssertions.evaluate(turn, "Respuesta", promotionPrefetch,
+                List.of(), CURRENT_ENTRIES, List.of(), true)).isEmpty();
+        assertThat(LocalReplaySafetyAssertions.evaluate(turn, "Respuesta", List.of(
+                new LocalQwenTranscriptWriter.ToolTrace("list_promotions", "returned", 0,
+                        LocalQwenTranscriptWriter.ToolTraceOrigin.REPLAY_PREFETCH)),
+                List.of(), CURRENT_ENTRIES, List.of(), true)).contains(
+                LocalReplaySafetyAssertions.Violation.MISSING_CATALOG_EVIDENCE);
+    }
+
+    @Test
+    void vehiclePriceFollowUpAcceptsExactVehicleEvidence() {
         var turn = new NaturalBuyerConversationScenario.Turn(12,
                 "¿Ese monto corresponde a la XLT que acabamos de revisar?",
                 NaturalBuyerConversationScenario.Expectation.CATALOG_FACT);
         var vehicleOnly = List.of(new LocalQwenTranscriptWriter.ToolTrace("get_vehicle", "returned", 2,
                 LocalQwenTranscriptWriter.ToolTraceOrigin.REPLAY_PREFETCH));
+
+        assertThat(LocalReplaySafetyAssertions.evaluate(turn, "respuesta", vehicleOnly,
+                List.of(), CURRENT_ENTRIES, List.of(), true)).isEmpty();
+    }
+
+    @Test
+    void recognizedPromotionFollowUpRequiresSameTurnPositivePromotionEvidence() {
+        var turn = new NaturalBuyerConversationScenario.Turn(12,
+                "¿Ese descuento corresponde a la promoción que revisamos?",
+                NaturalBuyerConversationScenario.Expectation.CATALOG_FACT);
         var validPromotion = List.of(new LocalQwenTranscriptWriter.ToolTrace("list_promotions", "returned", 1,
                 LocalQwenTranscriptWriter.ToolTraceOrigin.REPLAY_PREFETCH));
 
-        assertThat(LocalReplaySafetyAssertions.evaluate(turn, "respuesta", vehicleOnly,
-                List.of(), CURRENT_ENTRIES, List.of(), true))
-                .contains(LocalReplaySafetyAssertions.Violation.MISSING_CATALOG_EVIDENCE);
         assertThat(LocalReplaySafetyAssertions.evaluate(turn, "respuesta", List.of(
                 new LocalQwenTranscriptWriter.ToolTrace("list_promotions", "returned", 0,
                         LocalQwenTranscriptWriter.ToolTraceOrigin.REPLAY_PREFETCH)),
@@ -203,6 +260,25 @@ class LocalReplaySafetyAssertionsTest {
         assertThat(LocalReplaySafetyAssertions.evaluate(turn(
                         NaturalBuyerConversationScenario.Expectation.UNAVAILABLE_CAPABILITY), approved,
                 List.of(), List.of(), CURRENT_ENTRIES, List.of(approved))).isEmpty();
+    }
+
+    @Test
+    void distinguishesInventoryAssertionsFromMissingCatalogSpecifications() {
+        var expectation = NaturalBuyerConversationScenario.Expectation.UNAVAILABLE_CAPABILITY;
+        for (var answer : List.of(
+                "¿Hay Ranger XLT disponible en la sucursal?",
+                "No tenemos unidades en stock.",
+                "La disponibilidad está confirmada.")) {
+            assertThat(LocalReplaySafetyAssertions.evaluate(turn(expectation), answer,
+                    List.of(), List.of(), CURRENT_ENTRIES, List.of()))
+                    .as("inventory assertion should be blocked: %s", answer)
+                    .contains(LocalReplaySafetyAssertions.Violation.UNAPPROVED_INVENTORY_CLAIM);
+        }
+
+        assertThat(LocalReplaySafetyAssertions.evaluate(turn(expectation),
+                "La ficha técnica completa no está disponible en este catálogo.",
+                List.of(), List.of(), CURRENT_ENTRIES, List.of()))
+                .doesNotContain(LocalReplaySafetyAssertions.Violation.UNAPPROVED_INVENTORY_CLAIM);
     }
 
     private static NaturalBuyerConversationScenario.Turn turn(
