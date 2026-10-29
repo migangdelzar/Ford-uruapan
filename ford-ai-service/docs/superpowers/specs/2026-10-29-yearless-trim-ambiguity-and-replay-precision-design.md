@@ -55,6 +55,15 @@ Do not serialize raw tool arguments, full tool payloads, secrets, or production 
 - A bounded local replay may run only with the approved snapshot and disposable PostgreSQL, capped at 32 turns, with no handoff and all safety checks enabled.
 - The 100-turn acceptance remains paused until the historical unsupported-price discrepancy is explained. No production/`emme-2` writes, catalog import, or transcript seeding.
 
+## Latest Bounded Replay — 2026-10-29
+
+- Run ID: `7d4daebccbdd4cf1b005e88aa421f188` (approved `oct25-candidate` snapshot; local `qwen3.5:4b`; disposable Testcontainers PostgreSQL).
+- Outcome: turns 1–30 committed. Turn 31 entered `NEEDS_OPERATOR` with safe failure category `inbound_or_turn_invariant`; no assistant reply committed. Turn 32 was not sent. The new turn-31 clarification assertion therefore did not execute.
+- Handoff count: not recorded because the bounded replay stopped before completion. Do not infer zero handoffs from this run.
+- Partial precision: 30 turns recorded; 5 turns had incomplete catalog evidence. Prefetch-only catalog report: 2 supported, 1 unsupported, 15 unscored; 67% precision over 3 scored claims and 17% coverage. This does not explain the historical unsupported-price reply.
+- Artifacts: `build/reports/local-qwen/32-turn-prefetched-qwen-transcript-7d4daebccbdd4cf1b005e88aa421f188.md`, `build/reports/local-qwen/32-turn-transcript-7d4daebccbdd4cf1b005e88aa421f188.html`, and `build/reports/local-qwen/turn-telemetry-7d4daebccbdd4cf1b005e88aa421f188-oct25-candidate-bounded-diagnostic.jsonl` (plus smoke telemetry `build/reports/local-qwen/turn-telemetry-7d4daebccbdd4cf1b005e88aa421f188-smoke.jsonl`).
+- Gate: 100-turn acceptance remains paused. This run is diagnostic only and does not satisfy bounded replay acceptance.
+
 ## Scope
 
 Modify `CatalogTools`, ambiguity tracking/response behavior, source-link rendering, focused unit tests, and local replay precision diagnostics/tests. Do not change production catalog contents, persistence schema, provider credentials, replay cap, or the 100-turn gate.

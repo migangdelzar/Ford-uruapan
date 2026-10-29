@@ -657,6 +657,10 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                 toolEvents = withRecordedSeedTraces(toolEvents, turn);
                 eventsByProviderMessageId.put(providerMessageId, toolEvents);
                 transcript.append(turn, answer, toolEvents, replyOrigin);
+                if (executionMode == LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC
+                        && turn.number() == 31) {
+                    LocalReplayYearlessAmbiguityAssertions.assertYearlessTrimClarification(answer);
+                }
                 if (replayMode == LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN
                         && replyOrigin == LocalQwenTranscriptWriter.ReplyOrigin.LIVE_QWEN) {
                     var precision = new LocalReplayPrecisionEvaluator();
