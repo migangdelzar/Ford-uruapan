@@ -127,8 +127,10 @@ git commit -m "test: approve eligible replay drafts through approval service"
 
 **Files:**
 - Modify: `src/integrationTest/java/com/ford/service/conversations/LocalQwenTranscriptWriter.java`
+- Modify: `src/integrationTest/java/com/ford/service/conversations/LocalQwenTranscriptHtmlRenderer.java`
 - Modify: `src/integrationTest/java/com/ford/service/conversations/LocalQwenTurnTelemetry.java`
 - Test: `src/integrationTest/java/com/ford/service/conversations/LocalQwenTranscriptWriterTest.java`
+- Test: `src/integrationTest/java/com/ford/service/conversations/LocalQwenTranscriptHtmlRendererTest.java`
 - Test: `src/integrationTest/java/com/ford/service/conversations/LocalQwenTurnTelemetryTest.java`
 
 **Interfaces:**
@@ -137,19 +139,19 @@ git commit -m "test: approve eligible replay drafts through approval service"
 
 - [ ] **Step 1: Add failing artifact and telemetry tests**
 
-Add writer test showing a synthetic-origin turn is labeled `SYNTHETIC_OPERATOR_APPROVED`, and bounded completion reports one synthetic approval separately from live Qwen replies without saying all turns were committed by Qwen. Add telemetry test proving the synthetic reply origin/outcome serialize as distinct enum values.
+Add writer/HTML tests showing a synthetic-origin turn is labeled `SYNTHETIC_OPERATOR_APPROVED`, bounded completion reports one synthetic approval separately from live Qwen replies, and a later validation failure says “queued (not delivered)” rather than “reply committed.” Add telemetry test proving the synthetic reply origin/outcome serialize as distinct enum values and are rejected outside bounded mode.
 
 - [ ] **Step 2: Run focused tests and observe RED**
 
 ```bash
-./gradlew integrationTest --tests com.ford.service.conversations.LocalQwenTranscriptWriterTest --tests com.ford.service.conversations.LocalQwenTurnTelemetryTest
+./gradlew integrationTest --tests com.ford.service.conversations.LocalQwenTranscriptWriterTest --tests com.ford.service.conversations.LocalQwenTranscriptHtmlRendererTest --tests com.ford.service.conversations.LocalQwenTurnTelemetryTest
 ```
 
 Expected: compile/assertion failure because the synthetic origin/outcome and separate bounded counters are absent.
 
 - [ ] **Step 3: Implement artifact semantics**
 
-Add the new reply origin and telemetry outcome. Enforce that synthetic origin is accepted only for `BOUNDED_LIVE_DIAGNOSTIC`. Update bounded completion text and assertions to report counts separately and state that synthetic approvals were queued, not delivered. Preserve fresh 100-turn acceptance checks requiring all 100 origins to be `LIVE_QWEN`.
+Add the new reply origin and telemetry outcome. Enforce that synthetic origin/outcome are accepted only for `BOUNDED_LIVE_DIAGNOSTIC`. Update Markdown and HTML completion text to report counts separately and state that synthetic approvals were queued, not delivered. If validation fails after a synthetic approval, render that specific state; do not claim a committed or delivered reply. Preserve fresh 100-turn acceptance checks requiring all 100 origins to be `LIVE_QWEN`.
 
 - [ ] **Step 4: Rerun focused tests**
 
@@ -160,7 +162,7 @@ Rerun the command from Step 2. Expected: both test classes pass.
 Run `git diff --check`, inspect changes, then commit:
 
 ```bash
-git add src/integrationTest/java/com/ford/service/conversations/LocalQwenTranscriptWriter.java src/integrationTest/java/com/ford/service/conversations/LocalQwenTurnTelemetry.java src/integrationTest/java/com/ford/service/conversations/LocalQwenTranscriptWriterTest.java src/integrationTest/java/com/ford/service/conversations/LocalQwenTurnTelemetryTest.java
+git add src/integrationTest/java/com/ford/service/conversations/LocalQwenTranscriptWriter.java src/integrationTest/java/com/ford/service/conversations/LocalQwenTranscriptHtmlRenderer.java src/integrationTest/java/com/ford/service/conversations/LocalQwenTurnTelemetry.java src/integrationTest/java/com/ford/service/conversations/LocalQwenTranscriptWriterTest.java src/integrationTest/java/com/ford/service/conversations/LocalQwenTranscriptHtmlRendererTest.java src/integrationTest/java/com/ford/service/conversations/LocalQwenTurnTelemetryTest.java
 git commit -m "test: distinguish synthetic approval replay outcomes"
 ```
 
@@ -233,7 +235,7 @@ git commit -m "test: continue bounded replay after synthetic approval"
 - [ ] **Step 1: Run focused non-live integration gates**
 
 ```bash
-./gradlew integrationTest --tests com.ford.service.conversations.LocalQwenReplayExecutionModeTest --tests com.ford.service.conversations.LocalQwenSyntheticOperatorApprovalTest --tests com.ford.service.conversations.LocalQwenReplayTurnResultTest --tests com.ford.service.conversations.LocalQwenTranscriptWriterTest --tests com.ford.service.conversations.LocalQwenTurnTelemetryTest --tests com.ford.service.conversations.LocalQwenReplayWindowTest --tests com.ford.service.conversations.LocalReplayYearlessAmbiguityAssertionsTest
+./gradlew integrationTest --tests com.ford.service.conversations.LocalQwenReplayExecutionModeTest --tests com.ford.service.conversations.LocalQwenSyntheticOperatorApprovalTest --tests com.ford.service.conversations.LocalQwenReplayTurnResultTest --tests com.ford.service.conversations.LocalQwenTranscriptWriterTest --tests com.ford.service.conversations.LocalQwenTranscriptHtmlRendererTest --tests com.ford.service.conversations.LocalQwenTurnTelemetryTest --tests com.ford.service.conversations.LocalQwenReplayWindowTest --tests com.ford.service.conversations.LocalReplayYearlessAmbiguityAssertionsTest
 ```
 
 Expected: `BUILD SUCCESSFUL`; no Qwen calls or synthetic webhooks.
