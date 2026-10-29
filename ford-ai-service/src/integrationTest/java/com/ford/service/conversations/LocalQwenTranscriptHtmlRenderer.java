@@ -66,7 +66,10 @@ final class LocalQwenTranscriptHtmlRenderer {
         Objects.requireNonNull(executionMode, "execution mode is required");
         var safeTurns = List.copyOf(turns == null ? List.of() : turns);
         var status = completed ? executionMode == LocalQwenReplayExecutionMode.FRESH_FULL_LIVE
-                ? "Fresh all-live acceptance passed" : seededPrefixTurns == 0 ? "Complete" : "Seeded (not final)"
+                ? "Fresh all-live acceptance passed"
+                : executionMode == LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC
+                ? "Diagnostic only — not acceptance"
+                : seededPrefixTurns == 0 ? "Complete" : "Seeded (not final)"
                 : failedTurn == null ? "Running" : "Stopped";
         var modeLabel = replayMode.status();
         var html = new StringBuilder(8192);
@@ -132,7 +135,11 @@ final class LocalQwenTranscriptHtmlRenderer {
             appendTools(html, failedTurn.toolEvents());
             html.append("</div></article>");
         } else if (completed) {
-            if (seededPrefixTurns == 0) {
+            if (executionMode == LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC) {
+                html.append("<p>Diagnostic window complete — not all-live acceptance. ")
+                        .append(expectedTurns).append("/").append(expectedTurns)
+                        .append(" diagnostic turns complete; no seeded replies.</p>");
+            } else if (seededPrefixTurns == 0) {
                 html.append("<p>Complete — ").append(escape(modeLabel)).append(" · ").append(expectedTurns).append("/")
                         .append(expectedTurns).append(" turns complete; all replies are live Qwen</p>");
             } else {

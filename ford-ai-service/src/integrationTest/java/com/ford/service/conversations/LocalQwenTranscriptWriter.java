@@ -324,6 +324,9 @@ final class LocalQwenTranscriptWriter {
         if (seededPrefixTurns < 0 || seededPrefixTurns > expectedTurns) {
             throw new IllegalArgumentException("seeded prefix must be within the expected turn range");
         }
+        if (executionMode == LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC && seededPrefixTurns != 0) {
+            throw new IllegalArgumentException("bounded diagnostic cannot contain seeded replies");
+        }
         var actualSeededReplies = committedTurns.stream()
                 .filter(turn -> turn.replyOrigin().equals(ReplyOrigin.RECORDED_SEED.name())).count();
         if (actualSeededReplies != seededPrefixTurns) {
@@ -334,6 +337,9 @@ final class LocalQwenTranscriptWriter {
         var completionText = executionMode == LocalQwenReplayExecutionMode.FRESH_FULL_LIVE
                 ? "## Fresh all-live acceptance passed\n\n" + expectedTurns + "/" + expectedTurns
                         + " live Qwen turns; seeded replies: 0; handoffs: 0\n"
+                : executionMode == LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC
+                ? "## Diagnostic window complete — not all-live acceptance\n\n" + expectedTurns + "/"
+                        + expectedTurns + " diagnostic turns complete; live Qwen replies: " + expectedTurns + "\n"
                 : seededPrefixTurns == 0
                 ? "## Complete — " + replayMode.status() + "\n\n" + expectedTurns + "/" + expectedTurns
                         + " turns complete; all replies are live Qwen\n"

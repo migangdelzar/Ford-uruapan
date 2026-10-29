@@ -345,6 +345,29 @@ class LocalQwenTranscriptWriterTest {
     }
 
     @Test
+    void labelsBoundedLiveWindowAsDiagnosticNotAcceptance() throws Exception {
+        var writer = new LocalQwenTranscriptWriter(tempDir, "bounded-diagnostic", snapshot(),
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, 2,
+                LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN,
+                LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC);
+        writer.append(new NaturalBuyerConversationScenario.Turn(1, "Hola.",
+                        NaturalBuyerConversationScenario.Expectation.SOCIAL), "Hola.");
+        writer.append(new NaturalBuyerConversationScenario.Turn(2, "¿Qué busca?",
+                        NaturalBuyerConversationScenario.Expectation.DISCOVERY), "¿Qué tipo de vehículo busca?");
+
+        writer.complete();
+
+        var markdown = Files.readString(writer.path());
+        var html = Files.readString(writer.htmlPath());
+        assertThat(markdown).contains("Diagnostic window complete — not all-live acceptance",
+                "2/2 diagnostic turns complete", "Execution mode: BOUNDED_LIVE_DIAGNOSTIC")
+                .doesNotContain("Fresh all-live acceptance passed", "100/100 live Qwen turns");
+        assertThat(html).contains("Diagnostic window complete — not all-live acceptance",
+                "Execution mode: BOUNDED_LIVE_DIAGNOSTIC")
+                .doesNotContain("Fresh all-live acceptance passed", "100/100 live Qwen turns");
+    }
+
+    @Test
     void marksTenTurnCheckpointCompleteOnlyAfterTenSequentialPairs() throws Exception {
         var writer = new LocalQwenTranscriptWriter(tempDir, "run-10", snapshot(), 10);
         for (var number = 1; number <= 10; number++) {

@@ -564,6 +564,18 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
         runNaturalBuyerReplay(100, "100-fresh-live");
     }
 
+    @Test
+    @Order(10)
+    @EnabledIfEnvironmentVariable(named = "FORD_QWEN_REPLAY_MODE", matches = "BOUNDED_LIVE_DIAGNOSTIC")
+    void runsBoundedLiveQwenDiagnostic() throws Exception {
+        Assumptions.assumeTrue(PREFLIGHT_PASSED, "snapshot/BGE preflight did not pass; no webhook sent");
+        Assumptions.assumeTrue(comparisonPrefetchEnabled(), "diagnostic replay requires the prefetched lane");
+        assertThat(LocalQwenReplayExecutionMode.resolve(System.getenv()))
+                .isEqualTo(LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC);
+        runNaturalBuyerReplay(LocalQwenReplayExecutionMode.boundedDiagnosticEndTurn(System.getenv()),
+                "bounded-diagnostic");
+    }
+
     private void runNaturalBuyerReplay(int expectedTurns, String runLabel) throws Exception {
         var executionMode = LocalQwenReplayExecutionMode.resolve(System.getenv());
         var checkpointCaptureTurn = configuredCheckpointCaptureTurn();
@@ -577,6 +589,11 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
         if (executionMode == LocalQwenReplayExecutionMode.SEEDED_DIAGNOSTIC) {
             assertThat(comparisonPrefetchEnabled())
                     .as("seeded mode adapter is installed only in prefetched harness").isTrue();
+        }
+        if (executionMode == LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC) {
+            assertThat(expectedTurns).isEqualTo(LocalQwenReplayExecutionMode.boundedDiagnosticEndTurn(System.getenv()));
+            assertThat(seedReplayEnabled()).as("bounded diagnostic must use live turns only").isFalse();
+            assertThat(comparisonPrefetchEnabled()).as("bounded diagnostic requires approved prefetch lane").isTrue();
         }
         if (executionMode == LocalQwenReplayExecutionMode.CHECKPOINT_LIVE_WINDOW) {
             throw new IllegalStateException("checkpoint mode must use the checkpoint live-window runner");
@@ -613,9 +630,10 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
         var seededReplyCount = executionMode == LocalQwenReplayExecutionMode.SEEDED_DIAGNOSTIC
                 ? configuredSeedReplyCount() : 0;
         var eventsByProviderMessageId = new java.util.HashMap<String, List<LocalQwenTranscriptWriter.ToolTrace>>();
-        UUID conversationId = null;
-        var committed = 0;
-        for (var turn : replayTurns) {
+        var progress = new NaturalReplayProgress();
+        var telemetryScenarioId = executionMode == LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC
+                ? "natural-buyer-diagnostic" : "natural-buyer-100";
+        LocalQwenReplayWindow.TurnHandler turnHandler = turn -> {
             var turnIndex = turn.number();
             var providerMessageId = "wamid." + prefix + "-" + String.format(Locale.ROOT, "%03d", turnIndex);
             var turnStarted = System.nanoTime();
@@ -623,10 +641,10 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
             try {
                 postSyntheticMessage(providerMessageId, sender, turn.message());
                 var committedConversation = awaitCommittedReply(providerMessageId);
-                if (conversationId == null) conversationId = committedConversation;
+                if (progress.conversationId == null) progress.conversationId = committedConversation;
                 assertThat(committedConversation)
                         .as("conversation continuity at natural buyer turn %s", turnIndex)
-                        .isEqualTo(conversationId);
+                        .isEqualTo(progress.conversationId);
                 var answer = latestOutbound(committedConversation);
                 assertThat(answer).as("committed reply at turn %s", turnIndex).isNotBlank();
                 LocalReplayNoHandoffAssertions.assertNoHandoff(jdbc.sql(
@@ -669,7 +687,7 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                     assertThat(providerCallMeasurements.since(measurementMark))
                             .as("fresh acceptance requires a live Qwen call for turn %s", turnIndex).isNotEmpty();
                 }
-                appendTelemetry(telemetry, telemetryRunId, "natural-buyer-100", turnIndex, turnStarted,
+                appendTelemetry(telemetry, telemetryRunId, telemetryScenarioId, turnIndex, turnStarted,
                         measurementMark, committedConversation, providerMessageId,
                         LocalQwenTurnTelemetry.Outcome.COMMITTED);
                 if (checkpointCaptureTurn != null && checkpointCaptureTurn == turnIndex) {
@@ -682,7 +700,7 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                     System.out.println("Synthetic replay checkpoint exported: " + checkpointPath
                             + " origin=" + artifactOrigin);
                 }
-                committed++;
+                progress.committed++;
                 if (turnIndex == 5 && !isSeededReply(turnIndex)) {
                     var route = jdbc.sql("""
                             select route from conversation_decision_event
@@ -710,34 +728,41 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                              .as("turn 5 recommendation must use successful semantic catalog evidence")
                              .isGreaterThan(0);
                 }
-            } catch (AssertionError failure) {
-                var detail = failure.getMessage() == null ? "" : failure.getMessage();
-                var category = detail.contains("SAFE_FALLBACK_REVIEW")
-                        ? LocalQwenTranscriptWriter.FailureCategory.SAFE_FALLBACK_REVIEW
-                        : detail.contains("MISSING_CATALOG_EVIDENCE")
-                        ? LocalQwenTranscriptWriter.FailureCategory.MISSING_CATALOG_EVIDENCE
-                        : detail.contains("timed out")
-                        ? LocalQwenTranscriptWriter.FailureCategory.TURN_TIMEOUT
-                        : LocalQwenTranscriptWriter.FailureCategory.INVALID_STATE;
-                var toolEvents = conversationId == null ? toolTraceFor(providerMessageId)
-                        : traceWithCurrentReplayPrefetch(toolTraceFor(providerMessageId), conversationId);
+            } catch (Exception | AssertionError failure) {
+                var category = safeFailureCategory(failure);
+                var toolEvents = progress.conversationId == null ? toolTraceFor(providerMessageId)
+                        : traceWithCurrentReplayPrefetch(toolTraceFor(providerMessageId), progress.conversationId);
                 toolEvents = withRecordedSeedTraces(toolEvents, turn);
-                var comparisonStatus = conversationId == null || replayPrecisionEvidence == null
-                        ? null : replayPrecisionEvidence.currentTurnComparisonStatus(conversationId);
+                LocalReplayPrecisionEvidence.ComparisonPrefetchStatus comparisonStatus =
+                        progress.conversationId == null || replayPrecisionEvidence == null
+                        ? null : replayPrecisionEvidence.currentTurnComparisonStatus(progress.conversationId);
                 var diagnostics = failure instanceof LocalReplayTurnFailure turnFailure
                         ? turnFailure.diagnostics(category)
                         : new LocalQwenFailureDiagnostics(category, failure.getClass().getSimpleName(),
                                 null, null, null);
                 transcript.recordFailure(turn, category, toolEvents, comparisonStatus, diagnostics);
-                appendTelemetry(telemetry, telemetryRunId, "natural-buyer-100", turnIndex, turnStarted,
-                        measurementMark, conversationId, providerMessageId, LocalQwenTurnTelemetry.Outcome.FAILED,
+                appendTelemetry(telemetry, telemetryRunId, telemetryScenarioId, turnIndex, turnStarted,
+                        measurementMark, progress.conversationId, providerMessageId,
+                        LocalQwenTurnTelemetry.Outcome.FAILED,
                         null, diagnostics);
+                if (executionMode == LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC) {
+                    throw new AssertionError("bounded Qwen diagnostic stopped at turn " + turnIndex
+                            + " of " + expectedTurns + "; committed=" + progress.committed
+                            + "; transcript=" + transcript.path() + "; category=" + category.name());
+                }
                 throw new AssertionError("natural buyer replay stopped at turn " + turnIndex
-                        + " of " + expectedTurns + "; committed=" + committed
+                        + " of " + expectedTurns + "; committed=" + progress.committed
                         + "; transcript=" + transcript.path()
                         + "; reason=" + failure.getMessage(), failure);
             }
+        };
+        if (executionMode == LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC) {
+            LocalQwenReplayWindow.run(replayTurns, expectedTurns, turnHandler);
+        } else {
+            for (var turn : replayTurns) turnHandler.process(turn);
         }
+        var conversationId = progress.conversationId;
+        var committed = progress.committed;
 
         assertThat(committed).isEqualTo(expectedTurns);
         assertThat(countOutbound(conversationId)).isEqualTo(expectedTurns);
@@ -877,11 +902,14 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                 : LocalQwenTranscriptWriter.ReplayMode.RAW_QWEN;
     }
 
-    private static LocalQwenTranscriptWriter.FailureCategory safeFailureCategory(Throwable failure) {
+    static LocalQwenTranscriptWriter.FailureCategory safeFailureCategory(Throwable failure) {
         if (failure instanceof LocalReplayTurnFailure turnFailure) return turnFailure.safeReason();
         var message = failure.getMessage() == null ? "" : failure.getMessage();
         if (message.contains("SAFE_FALLBACK_REVIEW")) {
             return LocalQwenTranscriptWriter.FailureCategory.SAFE_FALLBACK_REVIEW;
+        }
+        if (message.contains("MISSING_CATALOG_EVIDENCE")) {
+            return LocalQwenTranscriptWriter.FailureCategory.MISSING_CATALOG_EVIDENCE;
         }
         if (failure instanceof java.net.http.HttpTimeoutException
                 || message.toLowerCase(Locale.ROOT).contains("timed out")) {
@@ -1241,6 +1269,11 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
 
     private record TurnRow(UUID tenantId, UUID conversationId, String state,
                            String failureCategory, String reviewReason) { }
+
+    private static final class NaturalReplayProgress {
+        private UUID conversationId;
+        private int committed;
+    }
 
     private static final class LocalReplayTurnFailure extends AssertionError {
         private final TurnRow row;
