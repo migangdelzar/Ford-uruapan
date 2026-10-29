@@ -268,7 +268,7 @@ build/reports/local-qwen/32-turn-transcript-1f8ba9642fdc4d1997aa4c1058331ca3.htm
 
 Finding: on turn 31, intent routing required vehicle details. Qwen omitted the required tool twice. The forced `get_vehicle` call had a model, no year, and a three-character trim; it returned no catalog evidence. The adapter withheld the answer with `READ_ONLY_TOOL_RETURNED_EMPTY`, raised `AssistantTurnUnavailableException`, and the processor correctly committed `SAFE_FALLBACK_REVIEW` with `assistant_response_review`. This reproduces the review stop, not the old transcript's unsupported price reply. The Gradle XML contains sanitized provider/tool lifecycle logs; the transcript does not expose a raw answer or exception message. No 100-turn acceptance ran.
 
-- [ ] **Step 8: Commit the bounded replay integration**
+- [x] **Step 8: Commit the bounded replay integration**
 
 ```bash
 git add src/integrationTest/java/com/ford/service/conversations/QwenTwoTurnWebhookReplayIntegrationTest.java src/integrationTest/java/com/ford/service/conversations/LocalQwenTranscriptWriter.java src/integrationTest/java/com/ford/service/conversations/LocalQwenTranscriptHtmlRenderer.java src/integrationTest/java/com/ford/service/conversations/LocalQwenTranscriptWriterTest.java src/integrationTest/java/com/ford/service/conversations/LocalQwenFailureCategoryTest.java docs/superpowers/plans/2026-10-28-qwen-turn-31-diagnostic-replay.md
