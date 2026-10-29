@@ -410,9 +410,10 @@ public class CatalogFactResponseRenderer {
             if (hasComparisonEvidence && !(entry.getKey().contains("comparison")
                     || entry.getKey().contains("variant_comparison") || entry.getKey().equals("compare_trims"))) continue;
             parsePayload(entry.getValue()).ifPresent(root -> {
+                if (!containsNamedVehicleEntity(root, answer)) return;
                 var candidates = "get_vehicle".equals(entry.getKey()) ? vehicleCandidates(root) : List.<JsonNode>of();
                 if (candidates.size() > 1) addOnlyCommonModelPageUrl(candidates, links);
-                else collectLinks(root, entry.getKey(), links);
+                else collectLinksForNamedEntities(root, entry.getKey(), answer, links);
             });
         }
         var seenUrls = new LinkedHashSet<String>();
@@ -433,6 +434,45 @@ public class CatalogFactResponseRenderer {
         var values = new ArrayList<JsonNode>();
         candidates.forEach(values::add);
         return List.copyOf(values);
+    }
+
+    private void collectLinksForNamedEntities(JsonNode node, String toolName, String answer,
+                                              Set<SourceLink> target) {
+        if (node == null || node.isNull()) return;
+        if (node.isArray()) {
+            node.forEach(child -> collectLinksForNamedEntities(child, toolName, answer, target));
+            return;
+        }
+        if (!node.isObject()) return;
+        if (isNamedVehicleEntity(node, answer)) {
+            collectLinks(node, toolName, target);
+            return;
+        }
+        node.elements().forEachRemaining(child -> collectLinksForNamedEntities(child, toolName, answer, target));
+    }
+
+    private boolean containsNamedVehicleEntity(JsonNode node, String answer) {
+        if (node == null || node.isNull()) return false;
+        if (node.isArray()) {
+            for (var child : node) {
+                if (containsNamedVehicleEntity(child, answer)) return true;
+            }
+            return false;
+        }
+        if (!node.isObject()) return false;
+        if (isNamedVehicleEntity(node, answer)) return true;
+        var children = node.elements();
+        while (children.hasNext()) {
+            if (containsNamedVehicleEntity(children.next(), answer)) return true;
+        }
+        return false;
+    }
+
+    private boolean isNamedVehicleEntity(JsonNode node, String answer) {
+        var model = text(node, "model", "modelName", "model_name");
+        var trim = text(node, "trim", "trimName", "trim_name");
+        return (!model.isBlank() && containsEntity(answer, model))
+                || (!trim.isBlank() && containsEntity(answer, trim));
     }
 
     private void addOnlyCommonModelPageUrl(List<JsonNode> candidates, Set<SourceLink> target) {

@@ -93,6 +93,37 @@ class EvidenceGroundedResponsePolicyTest {
     }
 
     @Test
+    void rejectsParkingEaseClaimsEvenWhenTheModelNameIsKnown() {
+        var verdict = policy.evaluate("Busco una camioneta familiar para estacionar fácil.",
+                "{\"model\":\"Bronco Sport\",\"year\":2026}",
+                "La Bronco Sport 2026 es muy fácil de estacionar en la ciudad.");
+
+        assertThat(verdict.accepted()).isFalse();
+        assertThat(verdict.reason()).isEqualTo("unsupported_fact_claim");
+        assertThat(policy.evaluateDecision("Busco una camioneta familiar para estacionar fácil.",
+                "{\"model\":\"Bronco Sport\",\"year\":2026}",
+                "La Bronco Sport 2026 es muy fácil de estacionar en la ciudad.").status())
+                .isEqualTo(QualityDecision.Status.REPAIR);
+    }
+
+    @Test
+    void acceptsAnExplicitCaveatInsteadOfClaimingParkingEase() {
+        var verdict = policy.evaluate("¿Sí se puede estacionar fácilmente?", "{\"model\":\"Bronco Sport\"}",
+                "No puedo confirmar que sea fácil estacionar; puedo comparar las dimensiones publicadas.");
+
+        assertThat(verdict.accepted()).isTrue();
+    }
+
+    @Test
+    void rejectsUnverifiedTestDriveSchedulingPromises() {
+        var verdict = policy.evaluate("Quiero conocer la camioneta.", "{\"model\":\"Bronco Sport\"}",
+                "Le puedo agendar una prueba de manejo hoy mismo.");
+
+        assertThat(verdict.accepted()).isFalse();
+        assertThat(verdict.reason()).isEqualTo("never_promise");
+    }
+
+    @Test
     void rejectsCreditApprovalLanguage() {
         var verdict = policy.evaluate("¿Ya me autorizaron el crédito?", "{}",
                 "Su crédito ya fue aprobado por el área financiera.");

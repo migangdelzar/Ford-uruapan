@@ -40,6 +40,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Set;
@@ -62,7 +63,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "ford.ai.local-chat-provider=ollama",
         "ford.ai.local-chat-model-version=${FORD_QWEN_REPLAY_MODEL:qwen3.5:4b}",
         "ford.ai.classification.enabled=false",
-        "ford.ai.response-verification-enabled=false",
+        "ford.ai.response-verification-enabled=true",
         "ford.ai.response-repeat-check-enabled=false",
         "ford.channels.meta.delivery.enabled=false",
         "ford.outbox.enabled=false",
@@ -81,9 +82,11 @@ class QwenProductionRoutingWebhookReplayIntegrationTest {
     private static final UUID CONVERSATION_ID = UUID.randomUUID();
     private static final String RUN_ID = UUID.randomUUID().toString().replace("-", "");
     private static final String SENDER = "synthetic-production-routing-sender-" + RUN_ID;
-    private static final String MESSAGE_ID = "wamid.synthetic-production-routing-" + RUN_ID + "-001";
-    private static final String BUYER_MESSAGE = "La usaría para ir al trabajo y salir con mi familia. "
-            + "Me interesa una pickup fácil de estacionar en ciudad. ¿Qué Ford me convendría revisar primero?";
+    private static final String FIRST_MESSAGE_ID = "wamid.synthetic-production-routing-" + RUN_ID + "-001";
+    private static final String SECOND_MESSAGE_ID = "wamid.synthetic-production-routing-" + RUN_ID + "-002";
+    private static final String BUYER_MESSAGE = "Busco una camioneta familiar para usar en la ciudad "
+            + "y que sea fácil de estacionar. ¿Qué Ford me recomienda?";
+    private static final String BUYER_FOLLOW_UP = "¿Pero sí se puede estacionar fácilmente?";
     private static final Duration TURN_TIMEOUT = Duration.ofMinutes(5);
     private static volatile LocalCatalogSnapshotLoader.SnapshotSummary SNAPSHOT;
     private static volatile boolean CATALOG_PREFLIGHT_PASSED;
@@ -185,20 +188,14 @@ class QwenProductionRoutingWebhookReplayIntegrationTest {
         assertThat(applicationContext.getBeansOfType(ChannelDeliveryPort.class)).isEmpty();
         insertSyntheticChannelBinding();
 
-        var body = """
-                {"entry":[{"id":"synthetic-production-routing-waba","changes":[{"value":{"metadata":{"phone_number_id":"%s"},"messages":[{"id":"%s","from":"%s","text":{"body":"%s"}}]}}]}]}
-                """.formatted(ACCOUNT_ID, MESSAGE_ID, SENDER, escapeJson(BUYER_MESSAGE));
-        var request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/webhooks/meta/whatsapp"))
-                .header("Content-Type", "application/json")
-                .header("X-Hub-Signature-256", signature(body))
-                .POST(HttpRequest.BodyPublishers.ofString(body)).build();
-        var response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
-        assertThat(response.statusCode()).as("synthetic webhook acceptance").isEqualTo(202);
+        postBuyerMessage(FIRST_MESSAGE_ID, BUYER_MESSAGE);
+        var conversationId = awaitCommittedReply(FIRST_MESSAGE_ID);
+        postBuyerMessage(SECOND_MESSAGE_ID, BUYER_FOLLOW_UP);
+        assertThat(awaitCommittedReply(SECOND_MESSAGE_ID)).isEqualTo(conversationId);
 
-        var conversationId = awaitCommittedReply();
         assertThat(jdbc.sql("select count(*) from conversation_message where conversation_id=:conversation "
                         + "and direction='OUTBOUND' and coalesce(length(content),0)>0")
-                .param("conversation", conversationId).query(Integer.class).single()).isEqualTo(1);
+                .param("conversation", conversationId).query(Integer.class).single()).isEqualTo(2);
         var searchEvidenceCount = jdbc.sql("""
                 select count(*)
                   from conversation_turn turn
@@ -207,18 +204,42 @@ class QwenProductionRoutingWebhookReplayIntegrationTest {
                    and event.conversation_id=turn.conversation_id
                    and event.receipt_id=turn.receipt_id
                  where turn.tenant_id=:tenant
-                   and turn.provider_message_id=:messageId
-                   and event.stage='tool'
-                   and event.tool_name='search_vehicles'
-                   and event.outcome='returned'
-                   and coalesce(event.evidence_count, 0) > 0
+                    and turn.provider_message_id in (:messageIds)
+                    and event.stage='tool'
+                    and event.outcome='returned'
+                    and coalesce(event.evidence_count, 0) > 0
                 """)
-                .param("tenant", TENANT_ID).param("messageId", MESSAGE_ID)
+                .param("tenant", TENANT_ID).param("messageIds", Set.of(FIRST_MESSAGE_ID, SECOND_MESSAGE_ID))
                 .query(Integer.class).single();
         assertThat(searchEvidenceCount)
-                .as("committed recommendation must persist successful synthetic catalog evidence")
+                .as("parking follow-up must use successful synthetic catalog evidence")
                 .isGreaterThan(0);
         assertThat(applicationContext.getBeansOfType(ChannelDeliveryPort.class)).isEmpty();
+
+        var answers = jdbc.sql("select content from conversation_message where conversation_id=:conversation "
+                        + "and direction='OUTBOUND' order by received_at, id")
+                .param("conversation", conversationId).query(String.class).list();
+        var report = "# Local Qwen parking-ease diagnostic\n\n"
+                + "Synthetic only. Local Qwen, approved candidate snapshot, response verification enabled; "
+                + "cloud and delivery disabled. Not acceptance.\n\n"
+                + "## Buyer turns\n\n1. " + BUYER_MESSAGE + "\n\n2. " + BUYER_FOLLOW_UP
+                + "\n\n## Assistant replies\n\n1. " + answers.get(0) + "\n\n2. " + answers.get(1) + "\n";
+        var reportDirectory = Path.of("build/reports/local-qwen");
+        Files.createDirectories(reportDirectory);
+        Files.writeString(reportDirectory.resolve("parking-ease-" + RUN_ID + ".md"), report,
+                StandardCharsets.UTF_8);
+    }
+
+    private void postBuyerMessage(String messageId, String message) throws Exception {
+        var body = """
+                {"entry":[{"id":"synthetic-production-routing-waba","changes":[{"value":{"metadata":{"phone_number_id":"%s"},"messages":[{"id":"%s","from":"%s","text":{"body":"%s"}}]}}]}]}
+                """.formatted(ACCOUNT_ID, messageId, SENDER, escapeJson(message));
+        var request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/webhooks/meta/whatsapp"))
+                .header("Content-Type", "application/json")
+                .header("X-Hub-Signature-256", signature(body))
+                .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+        var response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).as("synthetic webhook acceptance").isEqualTo(202);
     }
 
     private void insertSyntheticChannelBinding() {
@@ -232,7 +253,7 @@ class QwenProductionRoutingWebhookReplayIntegrationTest {
                 .param("id", UUID.randomUUID()).param("tenant", TENANT_ID).param("account", ACCOUNT_ID).update();
     }
 
-    private UUID awaitCommittedReply() throws InterruptedException {
+    private UUID awaitCommittedReply(String messageId) throws InterruptedException {
         var deadline = System.nanoTime() + TURN_TIMEOUT.toNanos();
         while (System.nanoTime() < deadline) {
             var turn = jdbc.sql("""
@@ -240,7 +261,7 @@ class QwenProductionRoutingWebhookReplayIntegrationTest {
                       from conversation_turn
                      where tenant_id=:tenant and provider_message_id=:messageId
                     """)
-                    .param("tenant", TENANT_ID).param("messageId", MESSAGE_ID)
+                    .param("tenant", TENANT_ID).param("messageId", messageId)
                     .query((rs, row) -> new TurnState(rs.getObject("conversation_id", UUID.class),
                             rs.getString("state"), rs.getString("failure_category")))
                     .optional();

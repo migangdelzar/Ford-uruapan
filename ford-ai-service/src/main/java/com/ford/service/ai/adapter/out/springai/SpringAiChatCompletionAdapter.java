@@ -64,6 +64,12 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
             "Claro, sigamos. Para orientarle mejor, ¿qué pesa más para usted: el presupuesto, el espacio o la facilidad para estacionar?";
     private static final String SAFE_CLARIFICATION_BODY =
             "Entiendo. Para no repetir la misma pregunta, ¿prefiere que le muestre opciones compactas o una con mayor capacidad de carga?";
+    private static final String SAFE_PARKING_CLARIFICATION =
+            "El catálogo no confirma la facilidad para estacionar. "
+                    + "Puedo comparar dimensiones publicadas tomando en cuenta sus necesidades de familia y ciudad.";
+    private static final String SAFE_PARKING_CLARIFICATION_GENERAL =
+            "El catálogo no confirma la facilidad para estacionar. "
+                    + "Puedo comparar las dimensiones publicadas del modelo que le interese.";
     private static final String GENERAL_DISCOVERY_FALLBACK =
             "Para orientarle mejor, ¿qué es lo más importante para usted: espacio para la familia, "
                     + "facilidad para estacionar, consumo o presupuesto? Con eso le puedo sugerir opciones Ford.";
@@ -83,6 +89,9 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
                     + "Usa únicamente entidades y filtros confirmados por el comprador; si faltan filtros, consulta "
                     + "con la pregunta y el contexto confirmado. Después responde solo con la evidencia devuelta.";
     private static final double MIN_GENERAL_KNOWLEDGE_CONFIDENCE = 0.70;
+    private static final Pattern PARKING_EASE_QUESTION = Pattern.compile(
+            "(?iu)\\b(?:f[aá]cil|f[aá]cilmente|facilidad|sencill[oa])\\b.{0,45}\\b(?:estacion\\w*|parque\\w*)\\b"
+                    + "|\\b(?:estacion\\w*|parque\\w*)\\b.{0,45}\\b(?:f[aá]cil|f[aá]cilmente|facilidad|sencill[oa])\\b");
     private static final Pattern EXACT_VEHICLE_FACT_REQUEST = Pattern.compile(
             "(?iu)(?:\\bprecio\\b|\\bcu[aá]nto cuesta\\b|\\bdisponib(?:le|ilidad)\\b|\\binventario\\b|"
                     + "\\bexistencias?\\b|\\bpromoci[oó]n\\b|\\bbono\\b|\\bdescuento\\b|\\bconsumo\\b|"
@@ -490,6 +499,14 @@ public final class SpringAiChatCompletionAdapter implements ProviderChatCompleti
      * suppress a valid safe reply. Every variant is deterministic and fact-free.
      */
     private static String safeClarification(AssistantRequest request) {
+        if (PARKING_EASE_QUESTION.matcher(request.message()).find()) {
+            var priorNeeds = Objects.toString(request.memoryContext(), "") + " " + request.message();
+            if (Pattern.compile("(?iu)\\bfamilia\\w*\\b").matcher(priorNeeds).find()
+                    && Pattern.compile("(?iu)\\bciudad\\w*\\b").matcher(priorNeeds).find()) {
+                return SAFE_PARKING_CLARIFICATION;
+            }
+            return SAFE_PARKING_CLARIFICATION_GENERAL;
+        }
         var previous = request.recentAssistantReplies();
         for (var candidate : List.of(SAFE_CLARIFICATION, SAFE_CLARIFICATION_BUDGET, SAFE_CLARIFICATION_BODY)) {
             if (previous.stream().noneMatch(candidate::equals)) return candidate;

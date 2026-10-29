@@ -376,9 +376,9 @@ class CatalogFactResponseRendererTest {
 
     @Test
     void appendsAtMostTwoDistinctApprovedSourceLinks() {
-        var output = renderer.appendSourceLinks("Comparativo confirmado.", Map.of(
+        var output = renderer.appendSourceLinks("Comparativo de Ranger confirmado.", Map.of(
                 "get_variant_comparisons", """
-                {"modelPageUrl":"https://www.forduruapan.mx/RANGER/",
+                {"model":"Ranger","modelPageUrl":"https://www.forduruapan.mx/RANGER/",
                  "technicalSheetUrl":"https://www.forduruapan.mx/RANGER/Ficha/",
                  "comparisonUrl":"https://www.forduruapan.mx/RANGER/Comparativo/"}
                 """,
@@ -390,6 +390,36 @@ class CatalogFactResponseRendererTest {
         assertThat(output).contains("https://www.forduruapan.mx/RANGER/",
                         "https://www.forduruapan.mx/RANGER/Ficha/")
                 .doesNotContain("RANGER/Comparativo", "UNRELATED", "evil.example");
+    }
+
+    @Test
+    void doesNotAppendSearchLinksWhenFinalAnswerDoesNotNameTheReturnedVehicle() {
+        var output = renderer.appendSourceLinks(
+                "Para orientarle mejor, ¿cuál es su presupuesto máximo?",
+                Map.of("search_vehicles", """
+                        {"choices":[{"model":"Expedition","year":2027,
+                         "modelPageUrl":"https://www.forduruapan.mx/EXPEDITION/27/",
+                         "priceSourceUrl":"https://www.forduruapan.mx/Todos/"}]}
+                        """));
+
+        assertThat(output).isEqualTo("Para orientarle mejor, ¿cuál es su presupuesto máximo?")
+                .doesNotContain("EXPEDITION", "Todos/", "Enlaces útiles");
+    }
+
+    @Test
+    void appendsOnlyLinksForVehiclesNamedInTheFinalAnswer() {
+        var output = renderer.appendSourceLinks("La Expedition 2027 es una opción para revisar.",
+                Map.of("search_vehicles", """
+                        {"choices":[
+                          {"model":"Expedition","year":2027,
+                           "modelPageUrl":"https://www.forduruapan.mx/EXPEDITION/27/"},
+                          {"model":"Explorer","year":2027,
+                           "modelPageUrl":"https://www.forduruapan.mx/EXPLORER/27/"}
+                        ]}
+                        """));
+
+        assertThat(output).contains("https://www.forduruapan.mx/EXPEDITION/27/")
+                .doesNotContain("https://www.forduruapan.mx/EXPLORER/27/");
     }
 
     @Test
@@ -539,9 +569,9 @@ class CatalogFactResponseRendererTest {
 
     @Test
     void appendsOnlyExactFordMexicoLinksReturnedByComparisonTools() {
-        var output = renderer.appendSourceLinks("Estas son las diferencias confirmadas.", Map.of(
+        var output = renderer.appendSourceLinks("Estas son las diferencias confirmadas de Expedition.", Map.of(
                 "get_variant_comparisons", """
-                        {"modelPageUrl":"https://www.forduruapan.mx/EXPEDITION/27/?utm_source=chat",
+                        {"model":"Expedition","modelPageUrl":"https://www.forduruapan.mx/EXPEDITION/27/?utm_source=chat",
                          "technicalSheetUrl":"https://www.forduruapan.mx/EXPEDITION/27/Ficha-Tecnica/",
                          "comparisons":[{"comparisonUrl":"https://www.forduruapan.mx/EXPEDITION/27/Comparativo/KING-RANCH-MAX/"}]}
                         """,
@@ -549,7 +579,7 @@ class CatalogFactResponseRendererTest {
                         {"modelPageUrl":"https://example.com/fake"}
                         """));
 
-        assertThat(output).contains("Estas son las diferencias confirmadas.", "Enlaces útiles",
+        assertThat(output).contains("Estas son las diferencias confirmadas de Expedition.", "Enlaces útiles",
                 "Ver modelo: https://www.forduruapan.mx/EXPEDITION/27/",
                 "Ficha técnica: https://www.forduruapan.mx/EXPEDITION/27/Ficha-Tecnica/")
                 .doesNotContain("example.com", "utm_source", "](");
