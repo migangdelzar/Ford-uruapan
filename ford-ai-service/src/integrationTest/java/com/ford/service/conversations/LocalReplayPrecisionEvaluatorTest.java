@@ -39,6 +39,22 @@ class LocalReplayPrecisionEvaluatorTest {
     }
 
     @Test
+    void marksClaimsUnscoredWhenModelToolEvidenceWasNotCaptured() {
+        var turn = new NaturalBuyerConversationScenario.Turn(31, "version XLT",
+                NaturalBuyerConversationScenario.Expectation.CATALOG_FACT);
+
+        var result = evaluator.evaluateCatalog(turn,
+                "Ranger 2027 XLT Gasolina 4x2 cuesta $907,000 MXN.",
+                List.of(), false);
+
+        assertThat(result.evidenceComplete()).isFalse();
+        assertThat(result.unsupportedClaims()).isEmpty();
+        assertThat(result.unscoredClaims()).contains("Ranger 2027 XLT Gasolina 4x2", "$907,000 MXN");
+        assertThat(result.precision()).isEqualTo("N/A");
+        assertThat(result.coverage()).isEqualTo("0%");
+    }
+
+    @Test
     void scoresExplicitMemoryRecallOnlyFromBuyerHistoryAndReportsOmissions() {
         var turn = new NaturalBuyerConversationScenario.Turn(67,
                 "¿Qué uso te comenté para la camioneta entre semana y los fines de semana?",

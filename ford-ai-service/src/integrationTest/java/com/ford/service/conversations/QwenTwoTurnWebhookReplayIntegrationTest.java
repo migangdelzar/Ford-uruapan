@@ -663,7 +663,8 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                     var catalogPrecision = turn.expectation() == NaturalBuyerConversationScenario.Expectation.CATALOG_FACT
                             || turn.expectation() == NaturalBuyerConversationScenario.Expectation.OFFER
                             ? precision.evaluateCatalog(turn, answer,
-                            replayPrecisionEvidence.currentTurnEvidence(committedConversation)) : null;
+                            replayPrecisionEvidence.currentTurnEvidence(committedConversation),
+                            hasCompletePrefetchCatalogEvidence(toolEvents)) : null;
                     var memoryPrecision = turn.expectation() == NaturalBuyerConversationScenario.Expectation.MEMORY_RECALL
                             ? precision.evaluateMemory(turn, answer, replayTurns.stream()
                             .filter(prior -> prior.number() < turnIndex)
@@ -783,6 +784,14 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
         }
         System.out.println("Local Qwen transcript written: " + transcript.path()
                 + " and " + transcript.htmlPath() + "; turn telemetry: " + telemetry.path());
+    }
+
+    private static boolean hasCompletePrefetchCatalogEvidence(List<LocalQwenTranscriptWriter.ToolTrace> toolEvents) {
+        var catalogFactTools = Set.of("search_vehicles", "get_vehicle", "search_offers",
+                "search_vehicle_and_offers", "compare_vehicles", "compare_trims", "compare_model_years",
+                "get_variant_comparisons", "list_promotions", "finance_estimate", "vehicle_snapshot_search");
+        return toolEvents.stream().noneMatch(event -> event.origin() == LocalQwenTranscriptWriter.ToolTraceOrigin.MODEL
+                && catalogFactTools.contains(event.toolName()));
     }
 
     private void runReviewedScenarios() throws Exception {

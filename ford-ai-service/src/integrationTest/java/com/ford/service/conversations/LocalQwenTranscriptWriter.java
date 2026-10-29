@@ -193,7 +193,8 @@ final class LocalQwenTranscriptWriter {
             throw new IllegalStateException("precision diagnostics can be recorded only once per turn");
         }
         var section = new StringBuilder("**Precision diagnostics**\n\n");
-        if (catalog != null) section.append(formatPrecision("Catalog claim precision", catalog));
+        if (catalog != null) section.append(formatPrecision(
+                "Replay-prefetch-only catalog claim precision", catalog));
         if (memory != null) section.append(formatPrecision("Memory recall precision", memory));
         Files.writeString(path, section.toString(), StandardCharsets.UTF_8,
                 StandardOpenOption.WRITE, StandardOpenOption.APPEND);
@@ -386,8 +387,11 @@ final class LocalQwenTranscriptWriter {
                 .filter(Objects::nonNull).toList();
         var text = new StringBuilder("## Precision summary").append(partial ? " — PARTIAL" : "")
                 .append("\n\nScored turns: ").append(precisionByTurn.size()).append(" / ")
-                .append(expectedTurns).append("\n\n");
-        if (!catalog.isEmpty()) text.append(formatAggregate("Catalog claim precision", catalog));
+                .append(expectedTurns);
+        var incompleteCatalogTurns = (int) catalog.stream().filter(result -> !result.evidenceComplete()).count();
+        if (!catalog.isEmpty()) text.append("\nincompleteTurns=").append(incompleteCatalogTurns);
+        text.append("\n\n");
+        if (!catalog.isEmpty()) text.append(formatAggregate("Replay-prefetch-only catalog claim precision", catalog));
         if (!memory.isEmpty()) text.append(formatAggregate("Memory recall precision", memory));
         Files.writeString(path, text.toString(), StandardCharsets.UTF_8,
                 StandardOpenOption.WRITE, StandardOpenOption.APPEND);
@@ -398,6 +402,7 @@ final class LocalQwenTranscriptWriter {
                 + " unsupported=" + result.unsupportedClaims().size()
                 + " unscored=" + result.unscoredClaims().size()
                 + " precision=" + result.precision() + " coverage=" + result.coverage()
+                + " evidenceComplete=" + result.evidenceComplete()
                 + (result.recallMisses().isEmpty() ? "" : " recall misses=" + result.recallMisses().size()) + "\n\n";
     }
 

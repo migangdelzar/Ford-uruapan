@@ -46,6 +46,11 @@ final class LocalReplayPrecisionEvaluator {
 
     PrecisionResult evaluateCatalog(NaturalBuyerConversationScenario.Turn turn, String answer,
                                     List<String> sameTurnEvidenceTexts) {
+        return evaluateCatalog(turn, answer, sameTurnEvidenceTexts, true);
+    }
+
+    PrecisionResult evaluateCatalog(NaturalBuyerConversationScenario.Turn turn, String answer,
+                                    List<String> sameTurnEvidenceTexts, boolean evidenceComplete) {
         Objects.requireNonNull(turn, "turn is required");
         var evidence = safeTexts(sameTurnEvidenceTexts).stream().map(LocalReplayPrecisionEvaluator::normalize)
                 .toList();
@@ -66,7 +71,10 @@ final class LocalReplayPrecisionEvaluator {
             unscored.add(answer.strip());
         }
         for (var claim : claims) {
-            if (claim.toLowerCase(Locale.ROOT).startsWith("torque") || claim.toLowerCase(Locale.ROOT).startsWith("par motor")) {
+            if (!evidenceComplete) {
+                unscored.add(claim);
+            } else if (claim.toLowerCase(Locale.ROOT).startsWith("torque")
+                    || claim.toLowerCase(Locale.ROOT).startsWith("par motor")) {
                 unscored.add(claim);
             } else if (evidence.stream().anyMatch(text -> containsExactClaim(text, normalize(claim)))) {
                 supported.add(claim);
@@ -74,7 +82,7 @@ final class LocalReplayPrecisionEvaluator {
                 unsupported.add(claim);
             }
         }
-        return new PrecisionResult(supported, unsupported, unscored, List.of());
+        return new PrecisionResult(supported, unsupported, unscored, List.of(), evidenceComplete);
     }
 
     PrecisionResult evaluateMemory(NaturalBuyerConversationScenario.Turn turn, String answer,
@@ -107,7 +115,7 @@ final class LocalReplayPrecisionEvaluator {
             if (contradiction && !unsupported.contains(fact)) unsupported.add(fact);
             else if (!answerClaimsFact && !contradiction) missed.add(fact);
         }
-        return new PrecisionResult(supported, unsupported, List.of(), missed);
+        return new PrecisionResult(supported, unsupported, List.of(), missed, true);
     }
 
     private static void addMatches(Set<String> target, Pattern pattern, String input) {
@@ -134,7 +142,12 @@ final class LocalReplayPrecisionEvaluator {
     }
 
     record PrecisionResult(List<String> supportedClaims, List<String> unsupportedClaims,
-                           List<String> unscoredClaims, List<String> recallMisses) {
+                           List<String> unscoredClaims, List<String> recallMisses, boolean evidenceComplete) {
+        PrecisionResult(List<String> supportedClaims, List<String> unsupportedClaims,
+                        List<String> unscoredClaims, List<String> recallMisses) {
+            this(supportedClaims, unsupportedClaims, unscoredClaims, recallMisses, true);
+        }
+
         PrecisionResult {
             supportedClaims = List.copyOf(supportedClaims == null ? List.of() : supportedClaims);
             unsupportedClaims = List.copyOf(unsupportedClaims == null ? List.of() : unsupportedClaims);

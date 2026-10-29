@@ -205,10 +205,36 @@ class LocalQwenTranscriptWriterTest {
         writer.complete();
 
         var report = Files.readString(writer.path());
-        assertThat(report).contains("Catalog claim precision", "supported=1", "unsupported=1", "unscored=1",
+        assertThat(report).contains("Replay-prefetch-only catalog claim precision", "supported=1", "unsupported=1", "unscored=1",
                 "precision=50%", "coverage=67%", "Memory recall precision", "recall misses=0",
                 "1/1 turns complete");
         assertThat(report).doesNotContain("100/100 turns complete");
+    }
+
+    @Test
+    void reportsPrefetchOnlyPrecisionAndExcludesTurnsWithUncapturedModelToolEvidence() throws Exception {
+        var writer = new LocalQwenTranscriptWriter(tempDir, "run-precision-evidence", snapshot(),
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, 2,
+                LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN);
+        var supportedTurn = new NaturalBuyerConversationScenario.Turn(1, "Precio confirmado",
+                NaturalBuyerConversationScenario.Expectation.CATALOG_FACT);
+        writer.append(supportedTurn, "Ranger 2027 XLT cuesta $907,000 MXN.");
+        writer.recordPrecision(supportedTurn,
+                new LocalReplayPrecisionEvaluator.PrecisionResult(List.of("$907,000 MXN"),
+                        List.of(), List.of(), List.of(), true), null);
+
+        var incompleteTurn = new NaturalBuyerConversationScenario.Turn(2, "Consulta versión XLT",
+                NaturalBuyerConversationScenario.Expectation.CATALOG_FACT);
+        writer.append(incompleteTurn, "Ranger 2027 XLT Gasolina 4x2 cuesta $907,000 MXN.");
+        writer.recordPrecision(incompleteTurn,
+                new LocalReplayPrecisionEvaluator.PrecisionResult(List.of(), List.of(),
+                        List.of("Ranger 2027 XLT Gasolina 4x2", "$907,000 MXN"), List.of(), false), null);
+        writer.complete();
+
+        var report = Files.readString(writer.path());
+        assertThat(report).contains("Replay-prefetch-only catalog claim precision", "incompleteTurns=1",
+                "supported=1", "unsupported=0", "unscored=2");
+        assertThat(report).doesNotContain("Catalog claim precision: supported=1 / denominator=3");
     }
 
     @Test
@@ -224,7 +250,7 @@ class LocalQwenTranscriptWriterTest {
                 null);
         writer.complete();
 
-        assertThat(Files.readString(writer.path())).contains("Catalog claim precision: supported=0 / denominator=0",
+        assertThat(Files.readString(writer.path())).contains("Replay-prefetch-only catalog claim precision: supported=0 / denominator=0",
                 "precision=N/A", "coverage=0%");
     }
 
