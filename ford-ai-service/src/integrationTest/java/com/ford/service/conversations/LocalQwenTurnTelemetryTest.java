@@ -81,6 +81,25 @@ class LocalQwenTurnTelemetryTest {
     }
 
     @Test
+    void recordsSyntheticApprovalAsDistinctBoundedDiagnosticOutcome() throws Exception {
+        var writer = new LocalQwenTurnTelemetry(tempDir, "run-synthetic-approved");
+        var record = LocalQwenTurnTelemetry.TurnRecord.from("run-synthetic-approved", "natural-buyer-diagnostic", 31,
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, "a".repeat(64), "qwen3.5:4b", 120,
+                List.of(actualCall(10, 300, 30, 100)), List.of(),
+                new LocalQwenTurnTelemetry.MemoryShape(61, 3, 256, 0, 2370),
+                LocalQwenTranscriptWriter.ReplyOrigin.SYNTHETIC_OPERATOR_APPROVED,
+                LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC,
+                LocalQwenTurnTelemetry.Outcome.SYNTHETIC_OPERATOR_APPROVED);
+
+        writer.append(record);
+
+        var row = new ObjectMapper().readTree(Files.readString(writer.path()).lines().findFirst().orElseThrow());
+        assertThat(row.path("replyOrigin").asText()).isEqualTo("SYNTHETIC_OPERATOR_APPROVED");
+        assertThat(row.path("outcome").asText()).isEqualTo("SYNTHETIC_OPERATOR_APPROVED");
+        assertThat(row.path("executionMode").asText()).isEqualTo("BOUNDED_LIVE_DIAGNOSTIC");
+    }
+
+    @Test
     void rejectsLiveCallsOrCatalogEvidenceOnSeededTelemetry() {
         assertThatIllegalArgumentException().isThrownBy(() -> LocalQwenTurnTelemetry.TurnRecord.from(
                 "run-seed-live-call", "natural-buyer-100", 1,

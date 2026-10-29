@@ -386,11 +386,71 @@ class LocalQwenTranscriptWriterTest {
         var markdown = Files.readString(writer.path());
         var html = Files.readString(writer.htmlPath());
         assertThat(markdown).contains("Diagnostic window complete — not all-live acceptance",
-                "2/2 diagnostic turns complete", "Execution mode: BOUNDED_LIVE_DIAGNOSTIC")
+                "2/2 diagnostic turns recorded", "0 synthetic operator-approved drafts queued (not delivered)",
+                "2 live Qwen replies", "Execution mode: BOUNDED_LIVE_DIAGNOSTIC")
                 .doesNotContain("Fresh all-live acceptance passed", "100/100 live Qwen turns");
         assertThat(html).contains("Diagnostic window complete — not all-live acceptance",
+                "2/2 diagnostic turns recorded", "0 synthetic operator-approved drafts queued (not delivered)",
                 "Execution mode: BOUNDED_LIVE_DIAGNOSTIC")
                 .doesNotContain("Fresh all-live acceptance passed", "100/100 live Qwen turns");
+    }
+
+    @Test
+    void reportsSyntheticApprovalSeparatelyFromLiveQwenReplies() throws Exception {
+        var writer = new LocalQwenTranscriptWriter(tempDir, "bounded-synthetic-approval", snapshot(),
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, 2,
+                LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN,
+                LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC);
+        var first = new NaturalBuyerConversationScenario.Turn(1, "Consulta retenida",
+                NaturalBuyerConversationScenario.Expectation.DISCOVERY);
+        writer.append(first, "Respuesta exacta aprobada.", List.of(),
+                LocalQwenTranscriptWriter.ReplyOrigin.SYNTHETIC_OPERATOR_APPROVED);
+        var second = new NaturalBuyerConversationScenario.Turn(2, "Sigo buscando",
+                NaturalBuyerConversationScenario.Expectation.DISCOVERY);
+        writer.append(second, "¿Qué modelo busca?");
+
+        writer.complete();
+
+        var markdown = Files.readString(writer.path());
+        var html = Files.readString(writer.htmlPath());
+        assertThat(markdown).contains("**Reply origin:** SYNTHETIC_OPERATOR_APPROVED",
+                "1 synthetic operator-approved draft queued (not delivered)",
+                "1 live Qwen reply", "2/2 diagnostic turns recorded")
+                .doesNotContain("2 live Qwen replies", "all replies are live Qwen");
+        assertThat(html).contains("SYNTHETIC_OPERATOR_APPROVED");
+    }
+
+    @Test
+    void rejectsSyntheticApprovalOriginOutsideBoundedDiagnostic() throws Exception {
+        var writer = new LocalQwenTranscriptWriter(tempDir, "raw-synthetic-approval", snapshot(),
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, 1,
+                LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN,
+                LocalQwenReplayExecutionMode.LIVE_DIAGNOSTIC);
+
+        assertThatIllegalArgumentException().isThrownBy(() -> writer.append(
+                new NaturalBuyerConversationScenario.Turn(1, "Consulta",
+                        NaturalBuyerConversationScenario.Expectation.DISCOVERY),
+                        "Draft", List.of(), LocalQwenTranscriptWriter.ReplyOrigin.SYNTHETIC_OPERATOR_APPROVED));
+    }
+
+    @Test
+    void validationFailureAfterSyntheticApprovalNeverClaimsReplyWasCommittedOrDelivered() throws Exception {
+        var writer = new LocalQwenTranscriptWriter(tempDir, "synthetic-approval-validation", snapshot(),
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, 2,
+                LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN,
+                LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC);
+        var turn = new NaturalBuyerConversationScenario.Turn(1, "Consulta retenida",
+                NaturalBuyerConversationScenario.Expectation.DISCOVERY);
+        writer.append(turn, "Draft exacto.", List.of(),
+                LocalQwenTranscriptWriter.ReplyOrigin.SYNTHETIC_OPERATOR_APPROVED);
+        writer.recordFailure(turn, LocalQwenTranscriptWriter.FailureCategory.INVALID_EVIDENCE);
+
+        var markdown = Files.readString(writer.path());
+        var html = Files.readString(writer.htmlPath());
+        assertThat(markdown).contains("Synthetic operator approval queued (not delivered); validation failed")
+                .doesNotContain("Reply committed; validation failed");
+        assertThat(html).contains("Synthetic operator approval queued (not delivered); validation failed")
+                .doesNotContain("Reply committed; validation failed");
     }
 
     @Test

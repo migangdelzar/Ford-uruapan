@@ -123,7 +123,9 @@ final class LocalQwenTranscriptHtmlRenderer {
             html.append("<article class=\"stop\"><div class=\"stop-head\"><h2>Replay stopped — turn ")
                     .append(String.format(java.util.Locale.ROOT, "%03d", failedTurn.number()))
                     .append("</h2></div><div class=\"turn-body\">");
-            if (failedTurn.replyCommitted()) {
+            if (failedTurn.syntheticApprovalQueued()) {
+                html.append("<div>Synthetic operator approval queued (not delivered); validation failed.</div>");
+            } else if (failedTurn.replyCommitted()) {
                 html.append("<div>Reply committed; validation failed.</div>");
             } else {
                 html.append("<h3 class=\"speaker buyer\">Buyer (reply not committed)</h3><div class=\"text\">")
@@ -136,9 +138,15 @@ final class LocalQwenTranscriptHtmlRenderer {
             html.append("</div></article>");
         } else if (completed) {
             if (executionMode == LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC) {
+                var synthetic = safeTurns.stream().filter(turn -> "SYNTHETIC_OPERATOR_APPROVED"
+                        .equals(turn.replyOrigin())).count();
+                var live = safeTurns.stream().filter(turn -> "LIVE_QWEN".equals(turn.replyOrigin())).count();
                 html.append("<p>Diagnostic window complete — not all-live acceptance. ")
-                        .append(expectedTurns).append("/").append(expectedTurns)
-                        .append(" diagnostic turns complete; no seeded replies.</p>");
+                        .append(expectedTurns).append("/").append(expectedTurns).append(" diagnostic turns recorded; ")
+                        .append(synthetic).append(synthetic == 1
+                                ? " synthetic operator-approved draft queued (not delivered); "
+                                : " synthetic operator-approved drafts queued (not delivered); ")
+                        .append(live).append(live == 1 ? " live Qwen reply.</p>" : " live Qwen replies.</p>");
             } else if (seededPrefixTurns == 0) {
                 html.append("<p>Complete — ").append(escape(modeLabel)).append(" · ").append(expectedTurns).append("/")
                         .append(expectedTurns).append(" turns complete; all replies are live Qwen</p>");
@@ -224,7 +232,7 @@ final class LocalQwenTranscriptHtmlRenderer {
             buyer = Objects.requireNonNull(buyer);
             assistant = Objects.requireNonNull(assistant);
             replyOrigin = Objects.requireNonNull(replyOrigin);
-            if (!List.of("LIVE_QWEN", "RECORDED_SEED").contains(replyOrigin)) {
+            if (!List.of("LIVE_QWEN", "RECORDED_SEED", "SYNTHETIC_OPERATOR_APPROVED").contains(replyOrigin)) {
                 throw new IllegalArgumentException("reply origin is invalid");
             }
             toolEvents = List.copyOf(toolEvents == null ? List.of() : toolEvents);
@@ -233,10 +241,16 @@ final class LocalQwenTranscriptHtmlRenderer {
 
     record FailedTurn(int number, String buyer, String safeReason,
                       List<LocalQwenTranscriptWriter.ToolTrace> toolEvents, boolean replyCommitted,
-                      LocalQwenFailureDiagnostics diagnostics) {
+                      boolean syntheticApprovalQueued, LocalQwenFailureDiagnostics diagnostics) {
         FailedTurn(int number, String buyer, String safeReason,
                    List<LocalQwenTranscriptWriter.ToolTrace> toolEvents, boolean replyCommitted) {
-            this(number, buyer, safeReason, toolEvents, replyCommitted, null);
+            this(number, buyer, safeReason, toolEvents, replyCommitted, false, null);
+        }
+
+        FailedTurn(int number, String buyer, String safeReason,
+                   List<LocalQwenTranscriptWriter.ToolTrace> toolEvents, boolean replyCommitted,
+                   LocalQwenFailureDiagnostics diagnostics) {
+            this(number, buyer, safeReason, toolEvents, replyCommitted, false, diagnostics);
         }
 
         FailedTurn {

@@ -149,6 +149,10 @@ final class LocalQwenTranscriptWriter {
                 ReplyOrigin replyOrigin) throws IOException {
         Objects.requireNonNull(turn, "turn is required");
         Objects.requireNonNull(replyOrigin, "reply origin is required");
+        if (replyOrigin == ReplyOrigin.SYNTHETIC_OPERATOR_APPROVED
+                && executionMode != LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC) {
+            throw new IllegalArgumentException("synthetic operator approval is only valid in bounded diagnostics");
+        }
         var safeToolEvents = java.util.List.copyOf(toolEvents == null ? java.util.List.of() : toolEvents);
         if (replyOrigin == ReplyOrigin.RECORDED_SEED && safeToolEvents.stream()
                 .anyMatch(event -> event.origin() != ToolTraceOrigin.RECORDED_SEED)) {
@@ -267,14 +271,20 @@ final class LocalQwenTranscriptWriter {
         if (turn.number() == firstTurn + writtenTurns - 1 && !committedTurns.isEmpty()) {
             var latestCommitted = committedTurns.get(committedTurns.size() - 1);
             if (latestCommitted.number() == turn.number() && latestCommitted.buyer().equals(turn.message())) {
-                        Files.writeString(path, "## Validation failed after committed reply — turn " + turn.number()
-                                + "\n\nReply committed; validation failed.\n\nFailed validation at turn: "
+                var syntheticApprovalQueued = ReplyOrigin.SYNTHETIC_OPERATOR_APPROVED.name()
+                        .equals(latestCommitted.replyOrigin());
+                var validationStatus = syntheticApprovalQueued
+                        ? "Synthetic operator approval queued (not delivered); validation failed."
+                        : "Reply committed; validation failed.";
+                Files.writeString(path, "## Validation failed after recorded reply — turn " + turn.number()
+                                + "\n\n" + validationStatus + "\n\nFailed validation at turn: "
                                 + turn.number() + "\n\nSafe reason: " + safeReason.name() + "\n\n"
                                 + diagnosticSection + statusLine
                                 + markdownTools(safeToolEvents),
                         StandardCharsets.UTF_8, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
                 failedTurn = new LocalQwenTranscriptHtmlRenderer.FailedTurn(turn.number(), turn.message(),
-                        safeReason.name(), safeToolEvents, true, diagnostics);
+                        safeReason.name(), safeToolEvents, !syntheticApprovalQueued,
+                        syntheticApprovalQueued, diagnostics);
                 failed = true;
                 writeHtml();
                 return;
@@ -339,8 +349,7 @@ final class LocalQwenTranscriptWriter {
                 ? "## Fresh all-live acceptance passed\n\n" + expectedTurns + "/" + expectedTurns
                         + " live Qwen turns; seeded replies: 0; handoffs: 0\n"
                 : executionMode == LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC
-                ? "## Diagnostic window complete — not all-live acceptance\n\n" + expectedTurns + "/"
-                        + expectedTurns + " diagnostic turns complete; live Qwen replies: " + expectedTurns + "\n"
+                ? boundedDiagnosticCompletionText()
                 : seededPrefixTurns == 0
                 ? "## Complete — " + replayMode.status() + "\n\n" + expectedTurns + "/" + expectedTurns
                         + " turns complete; all replies are live Qwen\n"
@@ -351,6 +360,17 @@ final class LocalQwenTranscriptWriter {
                 StandardCharsets.UTF_8, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
         completed = true;
         writeHtml();
+    }
+
+    private String boundedDiagnosticCompletionText() {
+        var synthetic = committedTurns.stream().filter(turn -> ReplyOrigin.SYNTHETIC_OPERATOR_APPROVED.name()
+                .equals(turn.replyOrigin())).count();
+        var live = committedTurns.stream().filter(turn -> ReplyOrigin.LIVE_QWEN.name().equals(turn.replyOrigin())).count();
+        var syntheticLabel = synthetic + (synthetic == 1
+                ? " synthetic operator-approved draft queued (not delivered)" : " synthetic operator-approved drafts queued (not delivered)");
+        var liveLabel = live + (live == 1 ? " live Qwen reply" : " live Qwen replies");
+        return "## Diagnostic window complete — not all-live acceptance\n\n" + expectedTurns + "/"
+                + expectedTurns + " diagnostic turns recorded; " + syntheticLabel + "; " + liveLabel + "\n";
     }
 
     void completeFreshFullLive() throws IOException {
@@ -466,7 +486,7 @@ final class LocalQwenTranscriptWriter {
     }
 
     enum ToolTraceOrigin { MODEL, REPLAY_PREFETCH, RECORDED_SEED }
-    enum ReplyOrigin { LIVE_QWEN, RECORDED_SEED }
+    enum ReplyOrigin { LIVE_QWEN, RECORDED_SEED, SYNTHETIC_OPERATOR_APPROVED }
 
     enum ReplayMode {
         RAW_QWEN("UNVERIFIED_RAW_QWEN"), PREFETCHED_QWEN("PREFETCHED_QWEN");

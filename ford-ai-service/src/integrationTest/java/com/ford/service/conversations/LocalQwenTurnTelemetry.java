@@ -110,6 +110,12 @@ final class LocalQwenTurnTelemetry {
             Objects.requireNonNull(tokenUsageStatus, "token usage status is required");
             Objects.requireNonNull(replyOrigin, "reply origin is required");
             Objects.requireNonNull(outcome, "turn outcome is required");
+            var syntheticApproval = replyOrigin == LocalQwenTranscriptWriter.ReplyOrigin.SYNTHETIC_OPERATOR_APPROVED;
+            if (syntheticApproval != (outcome == Outcome.SYNTHETIC_OPERATOR_APPROVED)
+                    || syntheticApproval && !LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC.name()
+                    .equals(executionMode)) {
+                throw new IllegalArgumentException("synthetic approval telemetry is bounded-diagnostic only");
+            }
             if (providerDurationMillis != null && providerDurationMillis < 0) {
                 throw new IllegalArgumentException("provider duration must be nonnegative");
             }
@@ -260,5 +266,5 @@ final class LocalQwenTurnTelemetry {
         }
     }
 
-    enum Outcome { COMMITTED, FAILED }
+    enum Outcome { COMMITTED, FAILED, SYNTHETIC_OPERATOR_APPROVED }
 }
