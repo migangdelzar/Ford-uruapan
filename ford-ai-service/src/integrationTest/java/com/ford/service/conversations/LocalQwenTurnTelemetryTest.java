@@ -81,6 +81,36 @@ class LocalQwenTurnTelemetryTest {
     }
 
     @Test
+    void recordsSyntheticApprovalAsDistinctBoundedDiagnosticOutcome() throws Exception {
+        var writer = new LocalQwenTurnTelemetry(tempDir, "run-synthetic-approved");
+        var record = LocalQwenTurnTelemetry.TurnRecord.from("run-synthetic-approved", "natural-buyer-diagnostic", 31,
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, "a".repeat(64), "qwen3.5:4b", 120,
+                List.of(actualCall(10, 300, 30, 100)), List.of(),
+                new LocalQwenTurnTelemetry.MemoryShape(61, 3, 256, 0, 2370),
+                LocalQwenTranscriptWriter.ReplyOrigin.SYNTHETIC_OPERATOR_APPROVED,
+                LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC,
+                LocalQwenTurnTelemetry.Outcome.SYNTHETIC_OPERATOR_APPROVED);
+
+        writer.append(record);
+
+        var row = new ObjectMapper().readTree(Files.readString(writer.path()).lines().findFirst().orElseThrow());
+        assertThat(row.path("replyOrigin").asText()).isEqualTo("SYNTHETIC_OPERATOR_APPROVED");
+        assertThat(row.path("outcome").asText()).isEqualTo("SYNTHETIC_OPERATOR_APPROVED");
+        assertThat(row.path("executionMode").asText()).isEqualTo("BOUNDED_LIVE_DIAGNOSTIC");
+    }
+
+    @Test
+    void refusesSyntheticApprovalTelemetryOutsideBoundedMode() {
+        assertThatIllegalArgumentException().isThrownBy(() -> LocalQwenTurnTelemetry.TurnRecord.from(
+                "run-synthetic-invalid", "natural-buyer-diagnostic", 1,
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, "a".repeat(64), "qwen3.5:4b", 120,
+                List.of(), List.of(), new LocalQwenTurnTelemetry.MemoryShape(0, 0, 0, 0, 0),
+                LocalQwenTranscriptWriter.ReplyOrigin.SYNTHETIC_OPERATOR_APPROVED,
+                LocalQwenReplayExecutionMode.LIVE_DIAGNOSTIC,
+                LocalQwenTurnTelemetry.Outcome.SYNTHETIC_OPERATOR_APPROVED));
+    }
+
+    @Test
     void rejectsLiveCallsOrCatalogEvidenceOnSeededTelemetry() {
         assertThatIllegalArgumentException().isThrownBy(() -> LocalQwenTurnTelemetry.TurnRecord.from(
                 "run-seed-live-call", "natural-buyer-100", 1,
@@ -143,6 +173,37 @@ class LocalQwenTurnTelemetryTest {
                 "hash", "qwen3.5:4b", 1, List.of(), List.of(),
                 new LocalQwenTurnTelemetry.MemoryShape(0, 0, 0, 0, 0),
                 LocalQwenTurnTelemetry.Outcome.FAILED));
+    }
+
+    @Test
+    void serializesOnlyAllowlistedFailureDiagnostics() throws Exception {
+        var writer = new LocalQwenTurnTelemetry(tempDir, "run-failure-safe");
+        var diagnostics = new LocalQwenFailureDiagnostics(
+                LocalQwenTranscriptWriter.FailureCategory.SAFE_FALLBACK_REVIEW,
+                "LocalReplayTurnFailure", "FAILED", "assistant_response_review", "assistant_response_review");
+        var record = LocalQwenTurnTelemetry.TurnRecord.from("run-failure-safe", "natural-buyer-diagnostic", 32,
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, "a".repeat(64), "qwen3.5:4b", 130,
+                List.of(), List.of(), new LocalQwenTurnTelemetry.MemoryShape(62, 3, 90, 0, 4096),
+                LocalQwenTurnTelemetry.Outcome.FAILED, diagnostics);
+
+        writer.append(record);
+
+        var jsonl = Files.readString(writer.path());
+        var row = new ObjectMapper().readTree(jsonl.lines().findFirst().orElseThrow());
+        assertThat(row.path("failureDiagnostics").path("safeReason").asText())
+                .isEqualTo("SAFE_FALLBACK_REVIEW");
+        assertThat(row.path("failureDiagnostics").path("exceptionType").asText())
+                .isEqualTo("LocalReplayTurnFailure");
+        assertThat(row.path("failureDiagnostics").path("reviewReason").asText())
+                .isEqualTo("assistant_response_review");
+        assertThat(jsonl).doesNotContain("SYNTHETIC_SECRET_SENTINEL", "raw provider error");
+    }
+
+    @Test
+    void rejectsUnsafePersistedDiagnosticValues() {
+        assertThatIllegalArgumentException().isThrownBy(() -> new LocalQwenFailureDiagnostics(
+                LocalQwenTranscriptWriter.FailureCategory.SAFE_FALLBACK_REVIEW,
+                "LocalReplayTurnFailure", "FAILED", "review\nraw provider error", null));
     }
 
     private static AiProviderCallObserver.ProviderCallMeasurement actualCall(long duration,

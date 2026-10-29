@@ -24,6 +24,13 @@ public class EvidenceGroundedResponsePolicy {
                     + "(?![\\p{L}\\p{N}])"))
             .toList();
     private static final Pattern URL = Pattern.compile("(?iu)https?://[^\\s)\\]\"']+");
+    private static final Pattern UNSUPPORTED_PARKING_CLAIM = Pattern.compile(
+            "(?iu)\\b(?:f[aá]cil|sencill[oa]|sin\\s+(?:problema|dificultad))\\b.{0,35}\\bestacion\\w*"
+                    + "|\\bestacion\\w*.{0,35}\\b(?:f[aá]cil|sencill[oa]|sin\\s+(?:problema|dificultad))\\b"
+                    + "|\\b(?:cabe|cabr[aá]|entra|meterlo)\\b.{0,45}\\b(?:espacio|caj[oó]n|cochera|donde)\\b");
+    private static final Pattern PARKING_UNCERTAINTY = Pattern.compile(
+            "(?iu)\\bno\\s+(?:puedo|podemos|se\\s+puede)\\s+(?:confirmar|asegurar|garantizar)\\b"
+                    + ".{0,60}\\bestacion\\w*");
     private static final List<Pattern> NEVER_PROMISE = List.of(
             Pattern.compile("(?iu)\\b(?:le|te|les)\\s+garantiz\\w*"),
             Pattern.compile("(?iu)\\bgarantizad[oa]s?\\b"),
@@ -37,12 +44,16 @@ public class EvidenceGroundedResponsePolicy {
             Pattern.compile("(?iu)\\b100\\s*%\\s+aprobad[oa]\\b"),
             Pattern.compile("(?iu)\\bmensualidad\\s+(?:es|ser[aá])\\s+fij[ao]\\b"),
             Pattern.compile("(?iu)\\b(?:te|le|les)\\s+aseguro\\b"),
-            Pattern.compile("(?iu)\\bte\\s+prometo\\b"));
+            Pattern.compile("(?iu)\\bte\\s+prometo\\b"),
+            Pattern.compile("(?iu)\\b(?:le|te)\\s+(?:puedo\\s+)?(?:agendar|programar|reservar)\\b"
+                    + ".{0,50}\\b(?:prueba\\s+de\\s+manejo|cita)\\b"),
+            Pattern.compile("(?iu)\\b(?:prueba\\s+de\\s+manejo|cita)\\b"
+                    + ".{0,40}\\b(?:agendada|confirmada|hoy|inmediata)\\b"));
 
     public String repairInstruction(String reason) {
         return switch (reason == null ? "" : reason) {
             case "unsupported_fact_claim" ->
-                    "No incluya cifras, precios, años, porcentajes ni especificaciones que no aparezcan en la información confirmada de esta conversación. Elimine o corrija esos datos.";
+                    "No incluya cifras, precios, años, porcentajes ni especificaciones que no aparezcan en la información confirmada de esta conversación. No asegure que un vehículo es fácil de estacionar ni que cabe en un espacio; describa solo dimensiones o ayudas de estacionamiento publicadas. Elimine o corrija esos datos.";
             case "unsupported_url" ->
                     "Use únicamente los enlaces confirmados para esta conversación. Elimine cualquier enlace no verificado.";
             case "unsupported_model_name" ->
@@ -60,6 +71,9 @@ public class EvidenceGroundedResponsePolicy {
         }
         if (!neverPromiseViolations(answer).isEmpty()) {
             return new Verdict(false, "never_promise");
+        }
+        if (hasUnsupportedParkingClaim(answer)) {
+            return new Verdict(false, "unsupported_fact_claim");
         }
         var evidence = evidenceText == null ? "" : evidenceText;
         var customer = customerMessage == null ? "" : customerMessage;
@@ -101,6 +115,17 @@ public class EvidenceGroundedResponsePolicy {
     private static boolean supportedBy(List<String> known, String claim) {
         for (var candidate : known) {
             if (candidate.equals(claim)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasUnsupportedParkingClaim(String answer) {
+        var clauses = answer.split("(?iu)[.!?;\\n]+|\\b(?:pero|aunque)\\b");
+        for (var clause : clauses) {
+            if (UNSUPPORTED_PARKING_CLAIM.matcher(clause).find()
+                    && !PARKING_UNCERTAINTY.matcher(clause).find()) {
                 return true;
             }
         }

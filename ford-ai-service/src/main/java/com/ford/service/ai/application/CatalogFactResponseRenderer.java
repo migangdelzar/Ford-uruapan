@@ -409,7 +409,12 @@ public class CatalogFactResponseRenderer {
         for (var entry : toolPayloads.entrySet()) {
             if (hasComparisonEvidence && !(entry.getKey().contains("comparison")
                     || entry.getKey().contains("variant_comparison") || entry.getKey().equals("compare_trims"))) continue;
-            parsePayload(entry.getValue()).ifPresent(root -> collectLinks(root, entry.getKey(), links));
+            parsePayload(entry.getValue()).ifPresent(root -> {
+                if (!containsNamedVehicleEntity(root, answer)) return;
+                var candidates = "get_vehicle".equals(entry.getKey()) ? vehicleCandidates(root) : List.<JsonNode>of();
+                if (candidates.size() > 1) addOnlyCommonModelPageUrl(candidates, links);
+                else collectLinksForNamedEntities(root, entry.getKey(), answer, links);
+            });
         }
         var seenUrls = new LinkedHashSet<String>();
         var usable = links.stream()
@@ -420,6 +425,65 @@ public class CatalogFactResponseRenderer {
         var block = usable.stream().map(link -> "🔗 " + link.label() + ": " + link.url())
                 .collect(java.util.stream.Collectors.joining("\n"));
         return answer.strip() + "\n\n" + fill(templates.get("source-links"), Map.of("source_links", block));
+    }
+
+    private static List<JsonNode> vehicleCandidates(JsonNode root) {
+        var candidates = root.path("choices");
+        if (!candidates.isArray()) candidates = root.path("options");
+        if (!candidates.isArray()) return List.of();
+        var values = new ArrayList<JsonNode>();
+        candidates.forEach(values::add);
+        return List.copyOf(values);
+    }
+
+    private void collectLinksForNamedEntities(JsonNode node, String toolName, String answer,
+                                              Set<SourceLink> target) {
+        if (node == null || node.isNull()) return;
+        if (node.isArray()) {
+            node.forEach(child -> collectLinksForNamedEntities(child, toolName, answer, target));
+            return;
+        }
+        if (!node.isObject()) return;
+        if (isNamedVehicleEntity(node, answer)) {
+            collectLinks(node, toolName, target);
+            return;
+        }
+        node.elements().forEachRemaining(child -> collectLinksForNamedEntities(child, toolName, answer, target));
+    }
+
+    private boolean containsNamedVehicleEntity(JsonNode node, String answer) {
+        if (node == null || node.isNull()) return false;
+        if (node.isArray()) {
+            for (var child : node) {
+                if (containsNamedVehicleEntity(child, answer)) return true;
+            }
+            return false;
+        }
+        if (!node.isObject()) return false;
+        if (isNamedVehicleEntity(node, answer)) return true;
+        var children = node.elements();
+        while (children.hasNext()) {
+            if (containsNamedVehicleEntity(children.next(), answer)) return true;
+        }
+        return false;
+    }
+
+    private boolean isNamedVehicleEntity(JsonNode node, String answer) {
+        var model = text(node, "model", "modelName", "model_name");
+        var trim = text(node, "trim", "trimName", "trim_name");
+        return (!model.isBlank() && containsEntity(answer, model))
+                || (!trim.isBlank() && containsEntity(answer, trim));
+    }
+
+    private void addOnlyCommonModelPageUrl(List<JsonNode> candidates, Set<SourceLink> target) {
+        var modelUrls = candidates.stream()
+                .map(candidate -> safeFordUrl(text(candidate, "modelPageUrl", "model_page_url", "modelUrl",
+                        "model_url")))
+                .toList();
+        if (modelUrls.isEmpty() || modelUrls.stream().anyMatch(String::isBlank)) return;
+        var distinctUrls = modelUrls.stream().map(CatalogFactResponseRenderer::urlDeduplicationKey)
+                .distinct().toList();
+        if (distinctUrls.size() == 1) addSource(target, "Ver modelo", modelUrls.getFirst());
     }
 
     private boolean containsSourceUrl(String text, String sourceUrl) {

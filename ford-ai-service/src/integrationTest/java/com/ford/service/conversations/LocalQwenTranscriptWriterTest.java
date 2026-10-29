@@ -205,10 +205,36 @@ class LocalQwenTranscriptWriterTest {
         writer.complete();
 
         var report = Files.readString(writer.path());
-        assertThat(report).contains("Catalog claim precision", "supported=1", "unsupported=1", "unscored=1",
+        assertThat(report).contains("Replay-prefetch-only catalog claim precision", "supported=1", "unsupported=1", "unscored=1",
                 "precision=50%", "coverage=67%", "Memory recall precision", "recall misses=0",
                 "1/1 turns complete");
         assertThat(report).doesNotContain("100/100 turns complete");
+    }
+
+    @Test
+    void reportsPrefetchOnlyPrecisionAndExcludesTurnsWithUncapturedModelToolEvidence() throws Exception {
+        var writer = new LocalQwenTranscriptWriter(tempDir, "run-precision-evidence", snapshot(),
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, 2,
+                LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN);
+        var supportedTurn = new NaturalBuyerConversationScenario.Turn(1, "Precio confirmado",
+                NaturalBuyerConversationScenario.Expectation.CATALOG_FACT);
+        writer.append(supportedTurn, "Ranger 2027 XLT cuesta $907,000 MXN.");
+        writer.recordPrecision(supportedTurn,
+                new LocalReplayPrecisionEvaluator.PrecisionResult(List.of("$907,000 MXN"),
+                        List.of(), List.of(), List.of(), true), null);
+
+        var incompleteTurn = new NaturalBuyerConversationScenario.Turn(2, "Consulta versión XLT",
+                NaturalBuyerConversationScenario.Expectation.CATALOG_FACT);
+        writer.append(incompleteTurn, "Ranger 2027 XLT Gasolina 4x2 cuesta $907,000 MXN.");
+        writer.recordPrecision(incompleteTurn,
+                new LocalReplayPrecisionEvaluator.PrecisionResult(List.of(), List.of(),
+                        List.of("Ranger 2027 XLT Gasolina 4x2", "$907,000 MXN"), List.of(), false), null);
+        writer.complete();
+
+        var report = Files.readString(writer.path());
+        assertThat(report).contains("Replay-prefetch-only catalog claim precision", "incompleteTurns=1",
+                "supported=1", "unsupported=0", "unscored=2");
+        assertThat(report).doesNotContain("Catalog claim precision: supported=1 / denominator=3");
     }
 
     @Test
@@ -224,7 +250,7 @@ class LocalQwenTranscriptWriterTest {
                 null);
         writer.complete();
 
-        assertThat(Files.readString(writer.path())).contains("Catalog claim precision: supported=0 / denominator=0",
+        assertThat(Files.readString(writer.path())).contains("Replay-prefetch-only catalog claim precision: supported=0 / denominator=0",
                 "precision=N/A", "coverage=0%");
     }
 
@@ -301,6 +327,29 @@ class LocalQwenTranscriptWriterTest {
     }
 
     @Test
+    void recordsAllowlistedFailureDiagnosticsWithoutExceptionText() throws Exception {
+        var writer = new LocalQwenTranscriptWriter(tempDir, "run-diagnostic", snapshot(),
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, 32,
+                LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN);
+        var turn = new NaturalBuyerConversationScenario.Turn(1, "Pregunta sintética",
+                NaturalBuyerConversationScenario.Expectation.DISCOVERY);
+        var diagnostics = new LocalQwenFailureDiagnostics(
+                LocalQwenTranscriptWriter.FailureCategory.SAFE_FALLBACK_REVIEW,
+                "LocalReplayTurnFailure", "FAILED", "assistant_response_review", "assistant_response_review");
+
+        writer.recordFailure(turn, LocalQwenTranscriptWriter.FailureCategory.SAFE_FALLBACK_REVIEW,
+                List.of(), null, diagnostics);
+
+        var markdown = Files.readString(writer.path());
+        var html = Files.readString(writer.htmlPath());
+        assertThat(markdown).contains("LocalReplayTurnFailure", "Turn state: FAILED",
+                "Failure category: assistant_response_review", "Review reason: assistant_response_review");
+        assertThat(html).contains("LocalReplayTurnFailure", "assistant_response_review");
+        assertThat(markdown).doesNotContain("SYNTHETIC_SECRET_SENTINEL", "raw provider error");
+        assertThat(html).doesNotContain("SYNTHETIC_SECRET_SENTINEL", "raw provider error");
+    }
+
+    @Test
     void rejectsCompletionUntilExactlyOneHundredRepliesWereWritten() throws Exception {
         var writer = new LocalQwenTranscriptWriter(tempDir, "run-456", snapshot());
 
@@ -319,6 +368,89 @@ class LocalQwenTranscriptWriterTest {
         writer.complete();
 
         assertThat(Files.readString(writer.path())).contains("UNVERIFIED_RAW_QWEN", "100/100 turns complete");
+    }
+
+    @Test
+    void labelsBoundedLiveWindowAsDiagnosticNotAcceptance() throws Exception {
+        var writer = new LocalQwenTranscriptWriter(tempDir, "bounded-diagnostic", snapshot(),
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, 2,
+                LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN,
+                LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC);
+        writer.append(new NaturalBuyerConversationScenario.Turn(1, "Hola.",
+                        NaturalBuyerConversationScenario.Expectation.SOCIAL), "Hola.");
+        writer.append(new NaturalBuyerConversationScenario.Turn(2, "¿Qué busca?",
+                        NaturalBuyerConversationScenario.Expectation.DISCOVERY), "¿Qué tipo de vehículo busca?");
+
+        writer.complete();
+
+        var markdown = Files.readString(writer.path());
+        var html = Files.readString(writer.htmlPath());
+        assertThat(markdown).contains("Diagnostic window complete — not all-live acceptance",
+                "2/2 diagnostic turns recorded", "0 synthetic operator-approved drafts queued (not delivered)",
+                "2 live Qwen replies", "Execution mode: BOUNDED_LIVE_DIAGNOSTIC")
+                .doesNotContain("Fresh all-live acceptance passed", "100/100 live Qwen turns");
+        assertThat(html).contains("Diagnostic window complete — not all-live acceptance",
+                "2/2 diagnostic turns recorded", "0 synthetic operator-approved drafts queued (not delivered)",
+                "Execution mode: BOUNDED_LIVE_DIAGNOSTIC")
+                .doesNotContain("Fresh all-live acceptance passed", "100/100 live Qwen turns");
+    }
+
+    @Test
+    void reportsSyntheticApprovalSeparatelyFromLiveQwenReplies() throws Exception {
+        var writer = new LocalQwenTranscriptWriter(tempDir, "bounded-synthetic-approval", snapshot(),
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, 2,
+                LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN,
+                LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC);
+        var first = new NaturalBuyerConversationScenario.Turn(1, "Consulta retenida",
+                NaturalBuyerConversationScenario.Expectation.DISCOVERY);
+        writer.append(first, "Respuesta exacta aprobada.", List.of(),
+                LocalQwenTranscriptWriter.ReplyOrigin.SYNTHETIC_OPERATOR_APPROVED);
+        var second = new NaturalBuyerConversationScenario.Turn(2, "Sigo buscando",
+                NaturalBuyerConversationScenario.Expectation.DISCOVERY);
+        writer.append(second, "¿Qué modelo busca?");
+
+        writer.complete();
+
+        var markdown = Files.readString(writer.path());
+        var html = Files.readString(writer.htmlPath());
+        assertThat(markdown).contains("**Reply origin:** SYNTHETIC_OPERATOR_APPROVED",
+                "1 synthetic operator-approved draft queued (not delivered)",
+                "1 live Qwen reply", "2/2 diagnostic turns recorded")
+                .doesNotContain("2 live Qwen replies", "all replies are live Qwen");
+        assertThat(html).contains("SYNTHETIC_OPERATOR_APPROVED");
+    }
+
+    @Test
+    void rejectsSyntheticApprovalOriginOutsideBoundedDiagnostic() throws Exception {
+        var writer = new LocalQwenTranscriptWriter(tempDir, "raw-synthetic-approval", snapshot(),
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, 1,
+                LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN,
+                LocalQwenReplayExecutionMode.LIVE_DIAGNOSTIC);
+
+        assertThatIllegalArgumentException().isThrownBy(() -> writer.append(
+                new NaturalBuyerConversationScenario.Turn(1, "Consulta",
+                        NaturalBuyerConversationScenario.Expectation.DISCOVERY),
+                        "Draft", List.of(), LocalQwenTranscriptWriter.ReplyOrigin.SYNTHETIC_OPERATOR_APPROVED));
+    }
+
+    @Test
+    void validationFailureAfterSyntheticApprovalNeverClaimsReplyWasCommittedOrDelivered() throws Exception {
+        var writer = new LocalQwenTranscriptWriter(tempDir, "synthetic-approval-validation", snapshot(),
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, 2,
+                LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN,
+                LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC);
+        var turn = new NaturalBuyerConversationScenario.Turn(1, "Consulta retenida",
+                NaturalBuyerConversationScenario.Expectation.DISCOVERY);
+        writer.append(turn, "Draft exacto.", List.of(),
+                LocalQwenTranscriptWriter.ReplyOrigin.SYNTHETIC_OPERATOR_APPROVED);
+        writer.recordFailure(turn, LocalQwenTranscriptWriter.FailureCategory.INVALID_EVIDENCE);
+
+        var markdown = Files.readString(writer.path());
+        var html = Files.readString(writer.htmlPath());
+        assertThat(markdown).contains("Synthetic operator approval queued (not delivered); validation failed")
+                .doesNotContain("Reply committed; validation failed");
+        assertThat(html).contains("Synthetic operator approval queued (not delivered); validation failed")
+                .doesNotContain("Reply committed; validation failed");
     }
 
     @Test

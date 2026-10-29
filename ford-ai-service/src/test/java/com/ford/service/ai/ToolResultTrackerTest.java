@@ -65,6 +65,36 @@ class ToolResultTrackerTest {
     }
 
     @Test
+    void recognizesYearlessVehicleAmbiguityWithCandidateSpecificYears() {
+        var tracker = new ToolResultTracker();
+        tracker.attempted("get_vehicle");
+        tracker.resultReturned("get_vehicle", "{\"model\":\"RANGER\",\"modelYear\":null,"
+                + "\"choices\":[{\"model\":\"RANGER\",\"year\":2027,\"trim\":\"XLT Gasolina 4x2\"},"
+                + "{\"model\":\"RANGER\",\"year\":2027,\"trim\":\"XLT Diésel 4x4\"},"
+                + "{\"model\":\"RANGER\",\"year\":2026,\"trim\":\"XLT Gasolina 4x2\"}]}");
+
+        assertThat(tracker.hasAmbiguousVehicleTrim()).isTrue();
+        assertThat(tracker.ambiguousVehicleTrim()).hasValueSatisfying(result -> {
+            assertThat(result.model()).isEqualTo("RANGER");
+            assertThat((Integer) result.year()).isNull();
+            assertThat(result.choices()).extracting(VehicleTrimCandidate::year)
+                    .containsExactly(2027, 2027, 2026);
+            assertThat(result.choices()).extracting(VehicleTrimCandidate::trim)
+                    .containsExactly("XLT Gasolina 4x2", "XLT Diésel 4x4", "XLT Gasolina 4x2");
+        });
+    }
+
+    @Test
+    void doesNotTreatYearlessSingleChoiceAsAmbiguous() {
+        var tracker = new ToolResultTracker();
+        tracker.attempted("get_vehicle");
+        tracker.resultReturned("get_vehicle", "{\"model\":\"RANGER\",\"modelYear\":null,"
+                + "\"choices\":[{\"model\":\"RANGER\",\"year\":2027,\"trim\":\"XL Gasolina 4x2\"}]}");
+
+        assertThat(tracker.hasAmbiguousVehicleTrim()).isFalse();
+    }
+
+    @Test
     void executionSnapshotCopiesItsCallList() {
         var calls = new java.util.ArrayList<ToolExecutionSnapshot.ToolCall>();
         var snapshot = new ToolExecutionSnapshot(calls);

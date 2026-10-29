@@ -363,6 +363,39 @@ class SpringAiChatCompletionAdapterTest {
     }
 
     @Test
+    void asksForYearAndTrimWhenYearlessVehicleLookupIsAmbiguous() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.tools(any(Object[].class))).thenAnswer(invocation -> {
+            invokeFirstToolCallback(invocation.getArgument(0));
+            return requestSpec;
+        });
+        when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("La Ranger cuesta $907,000 MXN.");
+        var ambiguous = callbackWithResult("get_vehicle", "{\"model\":\"RANGER\",\"modelYear\":null,"
+                + "\"choices\":[{\"model\":\"RANGER\",\"year\":2027,\"trim\":\"XLT Gasolina 4x2\"},"
+                + "{\"model\":\"RANGER\",\"year\":2027,\"trim\":\"XLT Diésel 4x4\"}]}");
+        var decision = new ConversationDecision(ConversationIntent.VEHICLE_DETAILS, LeadTemperature.UNKNOWN,
+                LeadStage.NEW, HandoffRecommendation.NONE, ToolFamily.VEHICLE_DETAILS,
+                SensitiveDataLevel.NONE, testEvidence());
+        var adapter = new SpringAiChatCompletionAdapter(client, "ollama",
+                new ToolAuthorizationPolicy(List.of(ambiguous)), new DecisionPolicy());
+
+        var response = adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                        "¿Qué versión XLT me conviene?", "BOT_ACTIVE", null, false, decision), null);
+
+        assertThat(response.responseKind()).isEqualTo(com.ford.service.ai.api.ResponseKind.CLARIFICATION);
+        assertThat(response.content()).contains("¿cuál busca:", "2027 XLT Gasolina 4x2", "2027 XLT Diésel 4x4")
+                .doesNotContain("$907,000", "forduruapan.mx", "cuesta");
+        assertThat(response.evidenceStatus()).isEqualTo(ResponseEvidenceStatus.READ_ONLY_TOOL_RETURNED_EMPTY);
+    }
+
+    @Test
     void invokesAnAuthorizedCatalogToolWhenModelStillSkipsItAfterRetry() throws Exception {
         var client = mock(ChatClient.class);
         var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
@@ -786,7 +819,7 @@ class SpringAiChatCompletionAdapterTest {
 
             @Override
             public String call(String input) {
-                return "{\"modelPageUrl\":\"https://www.forduruapan.mx/EXPEDITION/27/\","
+                return "{\"model\":\"Expedition\",\"modelPageUrl\":\"https://www.forduruapan.mx/EXPEDITION/27/\","
                         + "\"comparisons\":[{\"comparisonUrl\":\"https://www.forduruapan.mx/EXPEDITION/27/Comparativo/KING-RANCH-MAX/?ref=x\"}]}";
             }
         };
@@ -799,7 +832,8 @@ class SpringAiChatCompletionAdapterTest {
         });
         when(requestSpec.toolContext(anyMap())).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
-        when(responseSpec.content()).thenReturn("{\"answer\":\"La fuente muestra diferencias de equipamiento.\"}");
+        when(responseSpec.content()).thenReturn(
+                "{\"answer\":\"Para la Expedition, la fuente muestra diferencias de equipamiento.\"}");
 
         var renderer = new CatalogFactResponseRenderer(new DefaultResourceLoader(), new ObjectMapper());
         var adapter = new SpringAiChatCompletionAdapter(client, "openrouter",
@@ -815,7 +849,7 @@ class SpringAiChatCompletionAdapterTest {
                         "Compare Expedition King Ranch Max with competitors", "BOT_ACTIVE", null, false, decision),
                 new ToolContext(tenantId, conversationId));
 
-        assertThat(result.content()).contains("La fuente muestra diferencias de equipamiento.",
+        assertThat(result.content()).contains("Para la Expedition, la fuente muestra diferencias de equipamiento.",
                 "🔎 *Enlaces útiles*",
                 "https://www.forduruapan.mx/EXPEDITION/27/Comparativo/KING-RANCH-MAX/")
                 .doesNotContain("?ref=x", "[Ver");
@@ -1481,7 +1515,7 @@ class SpringAiChatCompletionAdapterTest {
         var result = adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
                 "¿Hay una pickup fácil de estacionar?", "BOT_ACTIVE", null, false, decision), null);
 
-        assertThat(result.content()).contains("detalle");
+        assertThat(result.content()).contains("El catálogo no confirma", "dimensiones publicadas");
         verify(requestSpec, times(2)).call();
     }
 
@@ -1602,7 +1636,7 @@ class SpringAiChatCompletionAdapterTest {
         var result = adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
                 "¿Hay una pickup fácil de estacionar?", "BOT_ACTIVE", null, false, decision), null);
 
-        assertThat(result.content()).contains("detalle")
+        assertThat(result.content()).contains("El catálogo no confirma", "dimensiones publicadas")
                 .doesNotContain("2.3", "EcoBoost", "Ranger");
         verify(requestSpec, times(2)).call();
         verify(requestSpec, times(1)).tools(any(Object[].class));
@@ -1631,7 +1665,7 @@ class SpringAiChatCompletionAdapterTest {
         var result = adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
                 "¿Hay una pickup fácil de estacionar?", "BOT_ACTIVE", null, false, decision), null);
 
-        assertThat(result.content()).contains("detalle");
+        assertThat(result.content()).contains("El catálogo no confirma", "dimensiones publicadas");
         verify(requestSpec, times(2)).call();
     }
 
@@ -1825,6 +1859,39 @@ class SpringAiChatCompletionAdapterTest {
         var systems = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(requestSpec, times(2)).system(systems.capture());
         assertThat(systems.getAllValues().get(1)).contains("No prometa entregas");
+    }
+
+    @Test
+    void parkingFollowUpUsesSafeContextualClarificationAfterRejectedRepair() {
+        var client = mock(ChatClient.class);
+        var requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
+        var responseSpec = mock(ChatClient.CallResponseSpec.class);
+        when(client.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
+        when(requestSpec.advisors(org.mockito.ArgumentMatchers
+                .<java.util.function.Consumer<ChatClient.AdvisorSpec>>any())).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn(
+                "{\"answer\":\"Es fácil estacionar en la ciudad.\"}",
+                "{\"answer\":\"Sí, es fácil estacionar en la ciudad.\"}");
+        var adapter = new SpringAiChatCompletionAdapter(client, "deepseek",
+                new ToolAuthorizationPolicy(List.of()), new DecisionPolicy(), null,
+                new com.ford.service.ai.application.AssistantResponseQualityPolicy(), new ObjectMapper(),
+                new com.ford.service.observability.DefaultAiObservationService(
+                        io.micrometer.observation.ObservationRegistry.NOOP), null, true, null,
+                new com.ford.service.ai.application.EvidenceGroundedResponsePolicy());
+
+        var memoryContext = "[HISTORIAL DE CONVERSACIÓN]\n"
+                + "- usuario: Busco una camioneta familiar para usar en la ciudad.\n"
+                + "- asistente: ¿Qué características prioriza?\n[FIN DEL HISTORIAL]";
+        var result = adapter.complete(new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(),
+                "¿Pero sí se puede estacionar fácilmente?", "BOT_ACTIVE", memoryContext, false), null);
+
+        assertThat(result.content().toLowerCase())
+                .contains("el catálogo no confirma", "facilidad para estacionar", "dimensiones publicadas", "familia", "ciudad")
+                .doesNotContain("es fácil estacionar", "cabe en");
+        verify(requestSpec, times(2)).call();
     }
 
     @Test

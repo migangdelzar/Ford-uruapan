@@ -52,4 +52,86 @@ class LocalQwenReplayExecutionModeTest {
                 "FORD_QWEN_REPLAY_MODE", "FRESH_FULL_LIVE")))
                 .withMessageContaining("explicit 100-turn opt-in");
     }
+
+    @Test
+    void resolvesExplicitBoundedLiveDiagnosticThroughTurnThirtyTwo() {
+        var environment = Map.of(
+                "FORD_QWEN_REPLAY_MODE", "BOUNDED_LIVE_DIAGNOSTIC",
+                "FORD_QWEN_DIAGNOSTIC_END_TURN", "32");
+
+        assertThat(LocalQwenReplayExecutionMode.resolve(environment))
+                .isEqualTo(LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC);
+        assertThat(LocalQwenReplayExecutionMode.boundedDiagnosticEndTurn(environment)).isEqualTo(32);
+    }
+
+    @Test
+    void rejectsMissingOrOutOfRangeBoundedDiagnosticEndTurn() {
+        for (var value : java.util.List.of("0", "-1", "33", "nope")) {
+            assertThatIllegalArgumentException().isThrownBy(() -> LocalQwenReplayExecutionMode.resolve(Map.of(
+                    "FORD_QWEN_REPLAY_MODE", "BOUNDED_LIVE_DIAGNOSTIC",
+                    "FORD_QWEN_DIAGNOSTIC_END_TURN", value)));
+        }
+        assertThatIllegalArgumentException().isThrownBy(() -> LocalQwenReplayExecutionMode.resolve(Map.of(
+                "FORD_QWEN_REPLAY_MODE", "BOUNDED_LIVE_DIAGNOSTIC")))
+                .withMessageContaining("end turn");
+    }
+
+    @Test
+    void boundedEndTurnRequiresExplicitBoundedMode() {
+        assertThatIllegalArgumentException().isThrownBy(() ->
+                LocalQwenReplayExecutionMode.boundedDiagnosticEndTurn(Map.of(
+                        "FORD_QWEN_DIAGNOSTIC_END_TURN", "32")))
+                .withMessageContaining("explicit bounded diagnostic mode");
+    }
+
+    @Test
+    void boundedDiagnosticRejectsSeedCheckpointAndHundredTurnSettings() {
+        var base = Map.of(
+                "FORD_QWEN_REPLAY_MODE", "BOUNDED_LIVE_DIAGNOSTIC",
+                "FORD_QWEN_DIAGNOSTIC_END_TURN", "32");
+        for (var extra : java.util.List.of(
+                Map.of("FORD_QWEN_REPLAY_SEED_TRANSCRIPT", "prior.md"),
+                Map.of("FORD_QWEN_REPLAY_CHECKPOINT", "checkpoint.json"),
+                Map.of("FORD_QWEN_100_REPLAY_ENABLED", "true"))) {
+            var environment = new java.util.HashMap<>(base);
+            environment.putAll(extra);
+            assertThatIllegalArgumentException().isThrownBy(() ->
+                    LocalQwenReplayExecutionMode.resolve(environment));
+        }
+    }
+
+    @Test
+    void syntheticOperatorApprovalDefaultsOffAndAcceptsBoundedOptIn() {
+        assertThat(LocalQwenReplayExecutionMode.syntheticOperatorApprovalEnabled(Map.of())).isFalse();
+        assertThat(LocalQwenReplayExecutionMode.syntheticOperatorApprovalEnabled(Map.of(
+                "FORD_QWEN_SYNTHETIC_OPERATOR_APPROVAL", "false"))).isFalse();
+
+        var bounded = Map.of(
+                "FORD_QWEN_REPLAY_MODE", "BOUNDED_LIVE_DIAGNOSTIC",
+                "FORD_QWEN_DIAGNOSTIC_END_TURN", "32",
+                "FORD_QWEN_SYNTHETIC_OPERATOR_APPROVAL", "true");
+        assertThat(LocalQwenReplayExecutionMode.syntheticOperatorApprovalEnabled(bounded)).isTrue();
+        assertThat(LocalQwenReplayExecutionMode.resolve(bounded))
+                .isEqualTo(LocalQwenReplayExecutionMode.BOUNDED_LIVE_DIAGNOSTIC);
+    }
+
+    @Test
+    void syntheticOperatorApprovalRejectsInvalidOrUnboundedConfiguration() {
+        for (var invalid : java.util.List.of(
+                Map.of("FORD_QWEN_SYNTHETIC_OPERATOR_APPROVAL", "yes"),
+                Map.of("FORD_QWEN_REPLAY_MODE", "LIVE_DIAGNOSTIC",
+                        "FORD_QWEN_SYNTHETIC_OPERATOR_APPROVAL", "true"),
+                Map.of("FORD_QWEN_REPLAY_MODE", "BOUNDED_LIVE_DIAGNOSTIC",
+                        "FORD_QWEN_SYNTHETIC_OPERATOR_APPROVAL", "true"),
+                Map.of("FORD_QWEN_REPLAY_MODE", "BOUNDED_LIVE_DIAGNOSTIC",
+                        "FORD_QWEN_DIAGNOSTIC_END_TURN", "33",
+                        "FORD_QWEN_SYNTHETIC_OPERATOR_APPROVAL", "true"),
+                Map.of("FORD_QWEN_REPLAY_MODE", "FRESH_FULL_LIVE",
+                        "FORD_QWEN_100_REPLAY_ENABLED", "true",
+                        "FORD_QWEN_SYNTHETIC_OPERATOR_APPROVAL", "true"))) {
+            assertThatIllegalArgumentException()
+                    .isThrownBy(() -> LocalQwenReplayExecutionMode.syntheticOperatorApprovalEnabled(invalid));
+            assertThatIllegalArgumentException().isThrownBy(() -> LocalQwenReplayExecutionMode.resolve(invalid));
+        }
+    }
 }
