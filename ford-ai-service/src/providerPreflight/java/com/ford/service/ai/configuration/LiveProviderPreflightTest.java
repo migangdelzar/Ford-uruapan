@@ -131,7 +131,7 @@ class LiveProviderPreflightTest {
             };
         }
         var apiKey = switch (id) {
-            case "openai" -> env("OPENAI_API_KEY");
+            case "openai" -> env("DEEPSEEK_API_KEY");
             case "cloudflare" -> env("CLOUDFLARE_API_TOKEN");
             case "groq" -> env("GROQ_API_KEY");
             case "gemini" -> env("GEMINI_API_KEY");

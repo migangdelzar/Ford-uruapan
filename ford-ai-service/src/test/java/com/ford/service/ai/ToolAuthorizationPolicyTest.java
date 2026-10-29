@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -54,6 +55,18 @@ class ToolAuthorizationPolicyTest {
     }
 
     @Test
+    void authorizedToolSetIsImmutableAndCannotExpandTheRequestedAllowList() {
+        var policy = new ToolAuthorizationPolicy(List.of(
+                callback("finance_estimate"), callback("vehicle_snapshot_search"), callback("send_message")));
+
+        var authorized = policy.authorizedToolSet(Set.of("finance_estimate", "send_message", "unknown_tool"));
+
+        assertThat(authorized.names()).containsExactly("finance_estimate");
+        assertThatThrownBy(() -> authorized.names().add("get_vehicle"))
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
     void allowsOnlyOneCallPerInformationToolInAnAssistantTurn() {
         var calls = new AtomicInteger();
         var delegate = callback("search_offers", calls);
@@ -76,6 +89,36 @@ class ToolAuthorizationPolicyTest {
         assertThat(tracker.hasReturnedResult()).isTrue();
         assertThat(tracker.returnedToolNames()).containsExactly("search_vehicles");
         assertThat(tracker.returnedPayloads()).containsEntry("search_vehicles", "{}");
+    }
+
+    @Test
+    void forwardsSpringAiToolContextToTheAuthorizedCallback() {
+        var received = new AtomicReference<org.springframework.ai.chat.model.ToolContext>();
+        var delegate = new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return org.springframework.ai.tool.definition.DefaultToolDefinition.builder()
+                        .name("search_vehicles").description("search").inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String input) {
+                return "{}";
+            }
+
+            @Override
+            public String call(String input, org.springframework.ai.chat.model.ToolContext context) {
+                received.set(context);
+                return "{}";
+            }
+        };
+        var context = new org.springframework.ai.chat.model.ToolContext(
+                java.util.Map.of("tenantId", "tenant-123", "conversationId", "conversation-456"));
+        var wrapped = new ToolAuthorizationPolicy(List.of(delegate))
+                .readOnlyTools(new AiExecutionContext(UUID.randomUUID(), false)).getFirst();
+
+        assertThat(wrapped.call("{}", context)).isEqualTo("{}");
+        assertThat(received.get()).isSameAs(context);
     }
 
     @Test

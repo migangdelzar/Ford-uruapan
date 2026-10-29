@@ -9,6 +9,7 @@ import com.ford.service.conversations.application.graph.ConversationTurnProcesso
 import com.ford.service.conversations.application.ConversationDecisionRepository;
 import com.ford.service.conversations.application.ConversationMemoryPort;
 import com.ford.service.conversations.application.port.out.ConversationRepository;
+import com.ford.service.conversations.application.port.out.ConversationTurnLedgerPort;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,9 @@ class ConversationConfigurationCacheSliceTest {
 
     @MockitoBean
     ConversationTurnProcessor conversationTurnProcessor;
+
+    @MockitoBean
+    ConversationTurnLedgerPort conversationTurnLedger;
 
     @MockitoBean
     JdbcConversationMemoryRepository durableMemory;

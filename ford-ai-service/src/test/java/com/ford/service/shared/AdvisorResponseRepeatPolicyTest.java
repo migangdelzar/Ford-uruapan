@@ -49,6 +49,18 @@ class AdvisorResponseRepeatPolicyTest {
     }
 
     @Test
+    void rejectsRepeatedGenericFallbackForDifferentQuestion() {
+        var fallback = "Con gusto le ayudo. Para darle información precisa, "
+                + "¿me comparte un poco más de detalle sobre lo que necesita?";
+        var verdict = policy.evaluate(
+                "¿Qué Ford me convendría revisar primero con ese uso mixto?",
+                List.of(fallback), fallback);
+
+        assertThat(verdict.repeated()).isTrue();
+        assertThat(verdict.reasonCode()).isEqualTo("exact_repeat");
+    }
+
+    @Test
     void doesNotRejectDistinctAnswersForSharedGreetingOrHandoffSuffix() {
         var verdict = policy.evaluate("¿Cuánto rinde la Bronco?",
                 List.of("Hola, con gusto. La Bronco rinde hasta 12 km/l. Si gusta, le apoyo."),

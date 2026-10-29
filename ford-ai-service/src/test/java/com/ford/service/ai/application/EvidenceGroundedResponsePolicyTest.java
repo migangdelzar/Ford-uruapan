@@ -9,11 +9,32 @@ class EvidenceGroundedResponsePolicyTest {
     private final EvidenceGroundedResponsePolicy policy = new EvidenceGroundedResponsePolicy();
 
     @Test
+    void returnsTypedQualityOutcomesForSupportedUnsupportedAndUnsafeAnswers() {
+        assertThat(policy.evaluateDecision("Ranger", "Ranger 2027", "Ranger 2027") .status())
+                .isEqualTo(QualityDecision.Status.PASS);
+        assertThat(policy.evaluateDecision("Ranger", "", "Ranger cuesta 500000") .status())
+                .isEqualTo(QualityDecision.Status.REPAIR);
+        assertThat(policy.evaluateDecision("¿Entrega?", "", "Le garantizo entrega inmediata") .status())
+                .isEqualTo(QualityDecision.Status.BLOCK);
+    }
+
+    @Test
     void acceptsNumbersAndUrlsPresentInToolEvidence() {
         var evidence = "{\"price\":\"$650,000\",\"modelYear\":2024,\"url\":\"https://www.ford.mx/ranger\"}";
 
         var verdict = policy.evaluate("¿Cuánto cuesta la Ranger 2024?",
                 evidence, "La Ranger 2024 tiene un precio de lista de $650,000. Detalles en https://www.ford.mx/ranger");
+
+        assertThat(verdict.accepted()).isTrue();
+        assertThat(verdict.reason()).isEqualTo("accepted");
+    }
+
+    @Test
+    void acceptsEvidenceSupportedPublishedPriceResponse() {
+        var evidence = "{\"publishedPrice\":\"$650,000\",\"model\":\"Ranger\",\"trim\":\"XLT\"}";
+
+        var verdict = policy.evaluate("¿Cuál es el precio publicado de la Ranger XLT?", evidence,
+                "El precio publicado de la Ranger XLT es $650,000.");
 
         assertThat(verdict.accepted()).isTrue();
         assertThat(verdict.reason()).isEqualTo("accepted");
@@ -143,5 +164,16 @@ class EvidenceGroundedResponsePolicyTest {
 
         assertThat(verdict.accepted()).isFalse();
         assertThat(verdict.reason()).isEqualTo("unsupported_model_name");
+    }
+
+    @Test
+    void missingEngineDisplacementCannotBeFilledFromModelMemory() {
+        var evidence = "Ranger 2027 XLT Gasolina 4x2. "
+                + "Transmisión automática de 10 velocidades.";
+        var verdict = policy.evaluate("¿Y de esa versión, qué motor tiene?", evidence,
+                "Tiene motor 2.3 EcoBoost.");
+
+        assertThat(verdict.accepted()).isFalse();
+        assertThat(verdict.reason()).isEqualTo("unsupported_fact_claim");
     }
 }

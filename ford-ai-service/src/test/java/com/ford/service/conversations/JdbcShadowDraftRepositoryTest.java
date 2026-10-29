@@ -50,7 +50,7 @@ class JdbcShadowDraftRepositoryTest {
 
     @Test
     void savesAndListsDraftsScopedByTenantAndConversation() {
-        var created = Instant.parse("2026-10-17T12:00:00Z");
+        var created = Instant.now().minusSeconds(60);
         repository.save(draft(UUID.randomUUID(), created, created.plusSeconds(604800), "PENDING"));
         repository.save(draft(UUID.randomUUID(), created.plusSeconds(30), created.plusSeconds(604830), "PENDING"));
         repository.save(new ShadowDraft(UUID.randomUUID(), tenantId, UUID.randomUUID(), UUID.randomUUID(),
@@ -65,7 +65,7 @@ class JdbcShadowDraftRepositoryTest {
 
     @Test
     void reRecordingTheSameInboundIsIdempotent() {
-        var created = Instant.parse("2026-10-17T12:00:00Z");
+        var created = Instant.now().minusSeconds(60);
         var id = UUID.randomUUID();
         repository.save(new ShadowDraft(id, tenantId, conversationId, UUID.randomUUID(),
                 "wamid.same", "primera versión", created, created.plusSeconds(604800), "PENDING"));
@@ -78,7 +78,7 @@ class JdbcShadowDraftRepositoryTest {
 
     @Test
     void listExcludesExpiredDrafts() {
-        var created = Instant.parse("2026-10-17T12:00:00Z");
+        var created = Instant.now().minusSeconds(60);
         repository.save(draft(UUID.randomUUID(), created, created.minusSeconds(1), "PENDING"));
 
         assertThat(repository.list(tenantId, conversationId, 50)).isEmpty();
@@ -87,7 +87,7 @@ class JdbcShadowDraftRepositoryTest {
     @Test
     void reviewIsSingleUseAndTenantScoped() {
         var id = UUID.randomUUID();
-        var created = Instant.parse("2026-10-17T12:00:00Z");
+        var created = Instant.now().minusSeconds(60);
         repository.save(new ShadowDraft(id, tenantId, conversationId, UUID.randomUUID(),
                 "wamid.review", "borrador", created, created.plusSeconds(604800), "PENDING"));
 

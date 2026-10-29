@@ -157,7 +157,7 @@ class CatalogParityFixtureTest {
     void promotionsMatchArchivedNodeValidityStateAndExactSourceUrl() {
         var expected = fixture.path("archivedNodeContract").path("promotion");
         var result = tools.listPromotions("Ranger", 2027,
-                LocalDate.parse("2026-10-17"), false, 0, 3, "full").results().getFirst();
+                LocalDate.parse("2026-10-17"), false, 0, 3, "full", "Ranger 2027").results().getFirst();
 
         assertThat(result.model()).isEqualTo(expected.path("model").asText());
         assertThat(result.year()).isEqualTo(expected.path("year").asInt());

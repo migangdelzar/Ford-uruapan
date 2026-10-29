@@ -83,6 +83,13 @@ public class EvidenceGroundedResponsePolicy {
         return new Verdict(true, "accepted");
     }
 
+    public QualityDecision evaluateDecision(String customerMessage, String evidenceText, String answer) {
+        var verdict = evaluate(customerMessage, evidenceText, answer);
+        if (verdict.accepted()) return QualityDecision.pass();
+        if ("never_promise".equals(verdict.reason())) return QualityDecision.block(verdict.reason());
+        return QualityDecision.repair(verdict.reason());
+    }
+
     public List<String> neverPromiseViolations(String answer) {
         if (answer == null || answer.isBlank()) return List.of();
         return NEVER_PROMISE.stream()

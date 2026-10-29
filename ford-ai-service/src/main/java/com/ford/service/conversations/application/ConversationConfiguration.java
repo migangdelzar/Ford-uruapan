@@ -12,10 +12,10 @@ import com.ford.service.conversations.adapter.out.PgVectorConversationMemoryReca
 import com.ford.service.conversations.adapter.out.RedisCachedConversationMemoryPort;
 import com.ford.service.conversations.adapter.out.RedisConversationMemoryCache;
 import com.ford.service.conversations.application.port.out.ConversationAssistant;
-import com.ford.service.conversations.application.port.out.ConversationRepository;
 import com.ford.service.conversations.application.graph.ConversationGraphRunner;
 import com.ford.service.conversations.application.graph.ConversationTurnProcessor;
 import com.ford.service.conversations.application.graph.FordPostgresSaverV2;
+import com.ford.service.conversations.application.port.out.ConversationTurnLedgerPort;
 import com.ford.service.shared.HumanHandoffPolicy;
 import com.ford.service.observability.AiObservationService;
 import com.ford.service.observability.DefaultAiObservationService;
@@ -171,49 +171,28 @@ public class ConversationConfiguration {
     @Bean
     ConversationAssistant conversationAssistant(AssistantService assistantService,
                                                 PendingTestDriveReplyPolicy pendingTestDriveReplyPolicy,
-                                                ObjectProvider<SharedCustomerFactProvider> sharedFacts) {
+                                                ObjectProvider<SharedCustomerFactProvider> sharedFacts,
+                                                MemoryProperties memoryProperties) {
         return new ConversationAssistantAdapter(assistantService, pendingTestDriveReplyPolicy,
-                sharedFacts.getIfAvailable());
+                sharedFacts.getIfAvailable(), memoryProperties);
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "ford.conversations.workflow", name = "graph-enabled", havingValue = "true")
     ConversationGraphRunner conversationGraphRunner(ConversationTurnProcessor turnProcessor,
                                                      ObjectProvider<FordPostgresSaverV2> checkpointSavers) {
         var checkpointSaver = checkpointSavers.getIfAvailable();
-        return checkpointSaver == null ? new ConversationGraphRunner(turnProcessor)
-                : new ConversationGraphRunner(turnProcessor, checkpointSaver);
+        return new ConversationGraphRunner(turnProcessor, checkpointSaver);
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "ford.conversations.workflow", name = "graph-enabled", havingValue = "true")
     ConversationWorkflow conversationWorkflow(ConversationGraphRunner graphRunner,
-                                               ObjectProvider<com.ford.service.conversations.application.port.out.ConversationTurnLeasePort> turnLeases,
-                                               ObjectProvider<com.ford.service.channels.api.InboundDebounceGate> debounceGates,
-                                               ObjectProvider<AiObservationService> observationServices) {
+                                               ConversationTurnLedgerPort turnLedger,
+                                                ObjectProvider<com.ford.service.conversations.application.port.out.ConversationTurnLeasePort> turnLeases,
+                                                 ObjectProvider<com.ford.service.channels.api.InboundDebounceGate> debounceGates,
+                                                 ObjectProvider<AiObservationService> observationServices) {
         var observations = observationServices.getIfAvailable(
                 () -> new DefaultAiObservationService(ObservationRegistry.NOOP));
         return new ConversationWorkflow(graphRunner, observations, turnLeases.getIfAvailable(),
-                debounceGates.getIfAvailable());
-    }
-
-    @Bean
-    @ConditionalOnProperty(prefix = "ford.conversations.workflow", name = "graph-enabled", havingValue = "false", matchIfMissing = true)
-    ConversationWorkflow legacyConversationWorkflow(ConversationRepository repository,
-                                                     ConversationAssistant assistant,
-                                                     ApplicationEventPublisher publisher,
-                                                     ObjectProvider<HumanHandoffPolicy> handoffPolicies,
-                                                     ConversationMemoryService memoryService,
-                                                     ConversationDecisionRepository decisions,
-                                                     ObjectProvider<com.ford.service.channels.api.AcceptedInboundMessageRepository> inboundTurns,
-                                                     ObjectProvider<com.ford.service.conversations.application.port.out.ConversationTurnLeasePort> turnLeases,
-                                                     ObjectProvider<com.ford.service.channels.api.InboundDebounceGate> debounceGates,
-                                                     ObjectProvider<AiObservationService> observationServices) {
-        var observations = observationServices.getIfAvailable(
-                () -> new DefaultAiObservationService(ObservationRegistry.NOOP));
-        var handoffPolicy = handoffPolicies.getIfAvailable(() -> new HumanHandoffPolicy(false));
-        return new ConversationWorkflow(repository, assistant, publisher, handoffPolicy, memoryService,
-                decisions, observations, inboundTurns.getIfAvailable(), turnLeases.getIfAvailable(),
-                debounceGates.getIfAvailable());
+                debounceGates.getIfAvailable(), turnLedger);
     }
 }

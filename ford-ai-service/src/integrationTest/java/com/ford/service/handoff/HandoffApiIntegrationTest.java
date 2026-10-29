@@ -2,9 +2,15 @@ package com.ford.service.handoff;
 
 import com.ford.service.handoff.application.HandoffService;
 import com.ford.service.handoff.application.AfterHoursDigestService;
+import com.ford.service.handoff.application.AlternateContactRevealService;
 import com.ford.service.handoff.api.AfterHoursDigest;
 import com.ford.service.handoff.adapter.in.web.OperatorConversationHandoffController;
 import com.ford.service.handoff.api.OperatorPrincipal;
+import com.ford.service.handoff.api.AlternateContactRevealView;
+import com.ford.service.conversations.api.BdcHandoffPacket;
+import com.ford.service.handoff.domain.HandoffPriority;
+import com.ford.service.handoffcontact.api.AlternateContactValue;
+import com.ford.service.handoffcontact.api.AlternateContactValue.ContactType;
 import com.ford.service.config.SecurityConfiguration;
 import com.ford.service.handoff.domain.HandoffStatus;
 import com.ford.service.handoff.domain.HandoffTicket;
@@ -43,6 +49,9 @@ class HandoffApiIntegrationTest {
 
     @MockitoBean
     AfterHoursDigestService digestService;
+
+    @MockitoBean
+    AlternateContactRevealService alternateContactRevealService;
 
     @Test
     void createsOperatorInboxTicket() throws Exception {
@@ -117,5 +126,36 @@ class HandoffApiIntegrationTest {
                 .andExpect(jsonPath("$.items[0].packetPartial").value(true))
                 .andExpect(jsonPath("$.items[0].customerName").doesNotExist());
         verify(digestService).get(tenantId, principal);
+    }
+
+    @Test
+    void normalQueueOmitsAlternateContactAndDedicatedRevealReturnsIt() throws Exception {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var handoffId = UUID.randomUUID();
+        var principal = new OperatorPrincipal(UUID.randomUUID(), Set.of(tenantId), Set.of("ROLE_OPERATOR"));
+        var contact = new AlternateContactValue(ContactType.EMAIL, "private@example.com", Instant.now(),
+                "receipt-id", "alternate-contact-consent-v1");
+        var packet = BdcHandoffPacket.empty().withAlternateContact(contact);
+        var ticket = new HandoffTicket(handoffId, tenantId, conversationId, null, HandoffStatus.HUMAN_PENDING,
+                HandoffPriority.NORMAL, null, "CUSTOMER_REQUEST", "idempotency", 0, Instant.now(), null, null, packet);
+        when(service.list(principal)).thenReturn(java.util.List.of(ticket));
+        when(alternateContactRevealService.reveal(eq(handoffId), eq(principal)))
+                .thenReturn(new AlternateContactRevealView(handoffId, ContactType.EMAIL, "private@example.com"));
+        var authentication = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(
+                new UsernamePasswordAuthenticationToken(principal, "n", java.util.List.of(
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_OPERATOR"),
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_operator:read"),
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_handoff:manage"))));
+
+        mockMvc.perform(get("/api/v1/handoffs").with(authentication))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].packet.alternateContactValue").doesNotExist())
+                .andExpect(jsonPath("$.items[0].packet.preferredContactChannel").doesNotExist());
+        mockMvc.perform(get("/api/v1/handoffs/{handoffId}/contact", handoffId).with(authentication))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.type").value("EMAIL"))
+                .andExpect(jsonPath("$.value").value("private@example.com"));
+        verify(alternateContactRevealService).reveal(handoffId, principal);
     }
 }

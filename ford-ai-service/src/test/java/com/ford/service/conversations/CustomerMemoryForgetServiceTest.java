@@ -9,6 +9,7 @@ import com.ford.service.conversations.application.port.out.ConversationMemoryKey
 import com.ford.service.conversations.application.port.out.IdempotencyRepository;
 import com.ford.service.conversations.domain.ConversationMemoryKey;
 import com.ford.service.operator.application.AuthenticatedOperator;
+import com.ford.service.handoffcontact.api.AlternateContactForgetPort;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -38,15 +39,43 @@ class CustomerMemoryForgetServiceTest {
         when(memory.forget(eq(tenant), eq(Channel.WHATSAPP), eq(conversation), any(), any(), eq("operator")))
                 .thenReturn(new com.ford.service.conversations.application.port.out.CustomerMemoryFactRepository.ForgetResult(
                         2, Instant.now()));
-        var service = new CustomerMemoryForgetService(memory, keys, idempotency, new ObjectMapper().findAndRegisterModules());
+        var contacts = mock(AlternateContactForgetPort.class);
+        var service = new CustomerMemoryForgetService(memory, keys, idempotency,
+                new ObjectMapper().findAndRegisterModules(), contacts);
 
         var receipt = service.forget(operator, tenant, conversation, "forget-1");
 
         assertThat(receipt.conversationId()).isEqualTo(conversation);
         assertThat(receipt.removedFactCount()).isEqualTo(2);
         verify(memory).forget(eq(tenant), eq(Channel.WHATSAPP), eq(conversation), any(), any(), eq("operator"));
+        var order = inOrder(contacts, memory);
+        order.verify(contacts).forgetForConversation(eq(tenant), eq(conversation), any(), eq("operator"));
+        order.verify(memory).forget(eq(tenant), eq(Channel.WHATSAPP), eq(conversation), any(), any(), eq("operator"));
         verify(idempotency).complete(eq(tenant), eq("operator"), eq("conversation.customer-memory.forget"),
                 eq("forget-1"), anyString(), any());
+    }
+
+    @Test
+    void deletionJournalFailurePreventsForgetFromConfirmingOrClearingMemory() {
+        var tenant = UUID.randomUUID();
+        var conversation = UUID.randomUUID();
+        var operator = new AuthenticatedOperator("operator", Set.of("SCOPE_operator:write"), Set.of("OPERATOR"), Set.of(tenant));
+        var keys = mock(ConversationMemoryKeyRepository.class);
+        var idempotency = mock(IdempotencyRepository.class);
+        var memory = mock(CustomerMemoryService.class);
+        var contacts = mock(AlternateContactForgetPort.class);
+        when(keys.find(tenant, conversation)).thenReturn(Optional.of(
+                new ConversationMemoryKey(tenant, Channel.WHATSAPP, "meta", "participant", conversation)));
+        when(idempotency.find(eq(tenant), eq("operator"), anyString(), anyString())).thenReturn(Optional.empty());
+        when(idempotency.reserve(eq(tenant), eq("operator"), anyString(), anyString(), anyString(), any())).thenReturn(true);
+        doThrow(new IllegalStateException("journal unavailable"))
+                .when(contacts).forgetForConversation(eq(tenant), eq(conversation), any(), eq("operator"));
+        var service = new CustomerMemoryForgetService(memory, keys, idempotency, new ObjectMapper(), contacts);
+
+        assertThatThrownBy(() -> service.forget(operator, tenant, conversation, "forget-fail"))
+                .isInstanceOf(IllegalStateException.class);
+        verifyNoInteractions(memory);
+        verify(idempotency, never()).complete(any(), anyString(), anyString(), anyString(), anyString(), any());
     }
 
     @Test

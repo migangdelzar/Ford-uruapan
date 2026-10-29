@@ -51,8 +51,19 @@ public final class DefaultAssistantOrchestrator implements AssistantOrchestrator
         var context = new AiExecutionContext(request.tenantId(), request.containsSensitiveData(),
                 request.conversationId(), request.memoryContext(), request.decision(),
                 request.leadJourneyContext(), request.recentAssistantReplies(), request.repairInstruction());
-        toolAuthorizationPolicy.readOnlyTools(context);
+        var availableTools = toolAuthorizationPolicy.availableReadOnlyToolNames();
+        var requestedTools = new DecisionPolicy().allowedToolNames(request.decision(), availableTools);
+        var authorizedTools = toolAuthorizationPolicy.authorizedToolSet(requestedTools);
+        if (request.traceCollector() != null) {
+            request.traceCollector().record(new DecisionTraceEvent("authorization",
+                    authorizedTools.names().isEmpty() ? "no_read_only_tools_authorized" : "read_only_tools_authorized",
+                    null, "none", null, authorizedTools.names().isEmpty() ? "skipped" : "authorized",
+                    authorizedTools.names().size(), java.time.Instant.now()));
+        }
+        toolAuthorizationPolicy.readOnlyTools(context, authorizedTools.names());
         intentRouter.route(request.message());
-        return completion.complete(request, new ToolContext(request.tenantId(), request.conversationId()));
+        return completion.complete(request,
+                new ToolContext(request.tenantId(), request.conversationId(), authorizedTools.names(),
+                        request.traceCollector()));
     }
 }

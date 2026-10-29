@@ -33,6 +33,8 @@ public final class SpringAiAssistantService implements AssistantService {
     private final LeadQualificationPolicy leadQualificationPolicy;
     private final InputSecurityPolicy inputSecurityPolicy;
     private final AssistantPersona assistantPersona;
+    private final DeterministicCatalogAnswerService deterministicCatalogAnswer;
+    private final boolean responseRepeatCheckEnabled;
     private final com.ford.service.shared.AdvisorResponseRepeatPolicy repeatPolicy =
             new com.ford.service.shared.AdvisorResponseRepeatPolicy();
 
@@ -55,6 +57,17 @@ public final class SpringAiAssistantService implements AssistantService {
                                     boolean logProviderErrors) {
         this(orchestrator, handoffPolicy, providerPolicy, logProviderErrors, defaultDecisionService(),
                 new DecisionPolicy(), new AssistantScopePolicy(new IntentRouter()));
+    }
+
+    public SpringAiAssistantService(AssistantOrchestrator orchestrator,
+                                    HumanHandoffPolicy handoffPolicy,
+                                    ModelProviderPolicy providerPolicy,
+                                    boolean logProviderErrors,
+                                    boolean responseRepeatCheckEnabled) {
+        this(orchestrator, handoffPolicy, providerPolicy, logProviderErrors, defaultDecisionService(),
+                new DecisionPolicy(), new AssistantScopePolicy(new IntentRouter()), new LeadQualificationPolicy(),
+                new InputSecurityPolicy(new ClassificationProperties()), new AssistantPersona(), null,
+                responseRepeatCheckEnabled);
     }
 
     public SpringAiAssistantService(AssistantOrchestrator orchestrator,
@@ -122,6 +135,38 @@ public final class SpringAiAssistantService implements AssistantService {
                                     LeadQualificationPolicy leadQualificationPolicy,
                                     InputSecurityPolicy inputSecurityPolicy,
                                     AssistantPersona assistantPersona) {
+        this(orchestrator, handoffPolicy, providerPolicy, logProviderErrors, decisionService, decisionPolicy,
+                scopePolicy, leadQualificationPolicy, inputSecurityPolicy, assistantPersona, null);
+    }
+
+    public SpringAiAssistantService(AssistantOrchestrator orchestrator,
+                                    HumanHandoffPolicy handoffPolicy,
+                                    ModelProviderPolicy providerPolicy,
+                                    boolean logProviderErrors,
+                                    ConversationDecisionService decisionService,
+                                    DecisionPolicy decisionPolicy,
+                                    AssistantScopePolicy scopePolicy,
+                                    LeadQualificationPolicy leadQualificationPolicy,
+                                     InputSecurityPolicy inputSecurityPolicy,
+                                     AssistantPersona assistantPersona,
+                                     DeterministicCatalogAnswerService deterministicCatalogAnswer) {
+        this(orchestrator, handoffPolicy, providerPolicy, logProviderErrors, decisionService, decisionPolicy,
+                scopePolicy, leadQualificationPolicy, inputSecurityPolicy, assistantPersona,
+                deterministicCatalogAnswer, true);
+    }
+
+    public SpringAiAssistantService(AssistantOrchestrator orchestrator,
+                                    HumanHandoffPolicy handoffPolicy,
+                                    ModelProviderPolicy providerPolicy,
+                                    boolean logProviderErrors,
+                                    ConversationDecisionService decisionService,
+                                    DecisionPolicy decisionPolicy,
+                                    AssistantScopePolicy scopePolicy,
+                                    LeadQualificationPolicy leadQualificationPolicy,
+                                    InputSecurityPolicy inputSecurityPolicy,
+                                    AssistantPersona assistantPersona,
+                                    DeterministicCatalogAnswerService deterministicCatalogAnswer,
+                                    boolean responseRepeatCheckEnabled) {
         this.orchestrator = Objects.requireNonNull(orchestrator);
         this.handoffPolicy = Objects.requireNonNull(handoffPolicy);
         this.providerPolicy = Objects.requireNonNull(providerPolicy);
@@ -132,6 +177,8 @@ public final class SpringAiAssistantService implements AssistantService {
         this.leadQualificationPolicy = Objects.requireNonNull(leadQualificationPolicy);
         this.inputSecurityPolicy = Objects.requireNonNull(inputSecurityPolicy);
         this.assistantPersona = Objects.requireNonNull(assistantPersona);
+        this.deterministicCatalogAnswer = deterministicCatalogAnswer;
+        this.responseRepeatCheckEnabled = responseRepeatCheckEnabled;
     }
 
     @Override
@@ -142,8 +189,11 @@ public final class SpringAiAssistantService implements AssistantService {
         }
 
         var conversationId = context.conversationId() == null ? UUID.randomUUID() : context.conversationId();
+        var trace = new DecisionTraceCollector();
         var securedInput = inputSecurityPolicy.apply(userText, context.memoryContext(),
                 context.leadJourneyContext(), context.containsSensitiveData());
+        trace.record(new DecisionTraceEvent("security", "input_security_evaluated", null, "none", null,
+                securedInput.blocked() ? "blocked" : "allowed", null, java.time.Instant.now()));
         var started = System.nanoTime();
         log.info("AI turn started: conversationId={} sensitiveData={} inputGuardrail={} piiRedacted={} untrustedContextOmitted={}",
                 conversationId,
@@ -153,7 +203,8 @@ public final class SpringAiAssistantService implements AssistantService {
             log.warn("AI turn blocked by input security policy: conversationId={} reason={}",
                     conversationId, securedInput.reason());
             return new AssistantTurn(inputSecurityResponse(securedInput.reason()), Intent.GENERAL, false,
-                    List.of(), "input-security-guard", "none", ConversationDecision.deterministicDefault());
+                    List.of(), "input-security-guard", "none", ConversationDecision.deterministicDefault(),
+                    null, trace.snapshot(), com.ford.service.ai.api.ResponseKind.SAFE_FALLBACK);
         }
         var decision = decisionService.decide(new ClassificationContext(
                 context.tenantId(), conversationId, securedInput.message(), securedInput.memoryContext(),
@@ -166,22 +217,37 @@ public final class SpringAiAssistantService implements AssistantService {
         log.info("AI turn classified: conversationId={} intent={} leadTemperature={} leadStage={} toolFamily={} handoff={} nextAction={} evidenceCount={}",
                 conversationId, decision.intent(), decision.leadTemperature(), decision.leadStage(),
                 decision.toolFamily(), decision.handoffRecommendation(), decision.nextAction(), decision.evidence().size());
-        var scopeReason = scopePolicy.reason(securedInput.message(), decision, securedInput.memoryContext());
-        if (!"allowed".equals(scopeReason)) {
+        trace.record(new DecisionTraceEvent("classifier", "classifier_completed", decision.intent().name(),
+                "classifier", null, "completed", decision.evidence().size(), java.time.Instant.now()));
+        trace.record(new DecisionTraceEvent("entity_resolution", "vehicle_entities_resolved", null, "none", null,
+                decision.vehicleEntities().status().name().toLowerCase(java.util.Locale.ROOT), null,
+                java.time.Instant.now()));
+        var scopeDecision = scopePolicy.evaluate(securedInput.message(), decision, securedInput.memoryContext());
+        trace.record(new DecisionTraceEvent("scope", scopeDecision.reasonCode(), null, "none", null,
+                scopeDecision.status() == ScopeDecision.Status.ALLOWED ? "allowed" : "denied", null,
+                java.time.Instant.now()));
+        if (scopeDecision.status() == ScopeDecision.Status.DENIED) {
             log.info("AI turn completed by scope guard: conversationId={} reason={} classifiedIntent={} toolFamily={} durationMs={}",
-                    conversationId, scopeReason, decision.intent(), decision.toolFamily(), elapsedMs(started));
+                    conversationId, scopeDecision.reasonCode(), decision.intent(), decision.toolFamily(), elapsedMs(started));
             return new AssistantTurn(introduceOnce(scopePolicy.scopeResponse(), conversationId,
                     securedInput.memoryContext()), decision.toLegacyIntent(), false,
-                    List.of(), "scope-guard", "none", decision);
+                    List.of(), "scope-guard", "none", decision, null, trace.snapshot(),
+                    com.ford.service.ai.api.ResponseKind.SAFE_FALLBACK);
         }
         try {
+            trace.record(new DecisionTraceEvent("route", "decision_route_selected", decision.intent().name(),
+                    "none", null, "completed", decision.evidence().size(), java.time.Instant.now()));
             var request = new AssistantRequest(
                     context.tenantId(), conversationId, securedInput.message(), "BOT_ACTIVE",
                     securedInput.memoryContext(),
                     securedInput.containsSensitiveData(), decision, securedInput.leadJourneyContext(),
-                    context.recentAssistantReplies(), context.repairInstruction());
-            AssistantResponse response = orchestrator.respond(request);
-            var repeat = repeatPolicy.evaluate(securedInput.message(), context.recentAssistantReplies(), response.content());
+                    context.recentAssistantReplies(), context.repairInstruction(), trace);
+            AssistantResponse response = deterministicCatalogAnswer == null
+                    ? orchestrator.respond(request)
+                    : deterministicCatalogAnswer.tryAnswer(request).orElseGet(() -> orchestrator.respond(request));
+            var repeat = responseRepeatCheckEnabled
+                    ? repeatPolicy.evaluate(securedInput.message(), context.recentAssistantReplies(), response.content())
+                    : new com.ford.service.shared.AdvisorResponseRepeatPolicy.Verdict(false, "disabled");
             if (repeat.repeated()) {
                 log.info("AI response repeat detected: conversationId={} reason={}", conversationId, repeat.reasonCode());
                 response = orchestrator.respond(request.withRepairInstruction(
@@ -195,13 +261,27 @@ public final class SpringAiAssistantService implements AssistantService {
             }
             var requestsHuman = response.handoffRequired()
                     || decisionPolicy.mayCreateHandoff(decision, handoffPolicy.enabled(context.tenantId()));
+            trace.record(new DecisionTraceEvent("answer", "answer_generation_completed", decision.intent().name(),
+                    "answer", null, "completed", response.sourceDocumentIds().size(), java.time.Instant.now()));
+            trace.record(new DecisionTraceEvent("evidence", "response_evidence_assessed", null, "none", null,
+                    switch (response.evidenceStatus()) {
+                        case READ_ONLY_TOOL_RETURNED, KNOWLEDGE_DOCUMENTS_RETURNED -> "supported";
+                        case READ_ONLY_TOOL_RETURNED_EMPTY, READ_ONLY_TOOL_FAILED,
+                                REQUIRED_TOOL_NOT_CALLED -> "unknown";
+                        case NOT_REQUIRED -> "not_applicable";
+                    }, response.sourceDocumentIds().size(), java.time.Instant.now()));
+            trace.record(new DecisionTraceEvent("quality", "quality_checks_passed", decision.intent().name(),
+                    "none", null, response.responseKind() == com.ford.service.ai.api.ResponseKind.CLARIFICATION
+                    ? "clarification" : "pass", null, java.time.Instant.now()));
+            trace.record(new DecisionTraceEvent("finalization", "assistant_turn_finalized", null, "none", null,
+                    "finalized", response.sourceDocumentIds().size(), java.time.Instant.now()));
             log.info("AI turn completed: conversationId={} provider={} model={} requestsHuman={} sourceCount={} journeyProposal={} durationMs={}",
                     conversationId, response.provider(), modelVersion(response.provider()), requestsHuman,
                     response.sourceDocumentIds().size(), response.journeyProposal() != null, elapsedMs(started));
             return new AssistantTurn(introduceOnce(response.content(), conversationId,
                     securedInput.memoryContext()), decision.toLegacyIntent(), requestsHuman,
                     response.sourceDocumentIds(), response.provider(), modelVersion(response.provider()), decision,
-                    response.journeyProposal());
+                    response.journeyProposal(), trace.snapshot(), response.responseKind());
         } catch (RuntimeException exception) {
             log.error("AI turn failed: conversationId={} providers={} exceptionType={} durationMs={} {}",
                     conversationId,

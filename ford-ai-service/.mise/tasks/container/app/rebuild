@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Rebuild and restart the Ford Service container"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ensure_local_env
+ford_compose stop ford-service >/dev/null 2>&1 || true
+ford_compose build ford-service
+ford_compose up -d ford-service

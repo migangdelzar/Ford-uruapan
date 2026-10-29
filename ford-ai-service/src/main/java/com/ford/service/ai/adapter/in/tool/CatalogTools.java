@@ -19,6 +19,7 @@ import com.ford.service.catalog.api.VehicleEvidence;
 import com.ford.service.catalog.api.VehicleFact;
 import com.ford.service.catalog.api.VehicleLookup;
 import com.ford.service.catalog.api.VehicleSearchQuery;
+import com.ford.service.catalog.application.ModelPopularityEnricher;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
@@ -40,19 +41,48 @@ public final class CatalogTools {
 
     private final CatalogPort catalog;
     private final CatalogRetrievalPort retrieval;
+    private final ModelPopularityEnricher popularityEnricher;
+    private final com.ford.service.catalog.application.CatalogPopularityRecommendationService popularityService;
+    private final com.ford.service.ai.application.CatalogVehicleResolver vehicleResolver =
+            new com.ford.service.ai.application.CatalogVehicleResolver();
+
+    public CatalogSearchPage<VehicleEvidence> searchVehicles(String query, String model, Integer modelYear,
+            BigDecimal minPrice, BigDecimal maxPrice, String category, String bodyType, String fuelType, Integer limit) {
+        var filters = publishedVehicleFilters(category, bodyType);
+        requireVehicleSearchCriteria(query, model, modelYear, minPrice, maxPrice, filters, fuelType);
+        var selectedYear = isBlank(query) ? modelYear : explicitYear(query, modelYear);
+        return searchVehicles(new VehicleSearchQuery(query, model, selectedYear, minPrice, maxPrice,
+                filters.category(), filters.bodyType(), fuelType, limit == null ? 5 : Math.min(limit, 5)));
+    }
 
     public CatalogTools(CatalogPort catalog) {
         this(catalog, null);
     }
 
     public CatalogTools(CatalogPort catalog, CatalogRetrievalPort retrieval) {
-        this.catalog = Objects.requireNonNull(catalog);
-        this.retrieval = retrieval;
+        this(catalog, retrieval, null);
     }
 
-    @Tool(name = "search_vehicles", description = "Busca modelos Ford y devuelve solo datos del catálogo con enlaces y fecha de observación. Use filtros expresados por el cliente; no invente precio ni versión.")
-    public CatalogSearchPage<VehicleEvidence> searchVehicles(
-            @ToolParam(description = "Texto de búsqueda breve", required = false) String query,
+    public CatalogTools(CatalogPort catalog, CatalogRetrievalPort retrieval,
+                        ModelPopularityEnricher popularityEnricher) {
+        this.catalog = Objects.requireNonNull(catalog);
+        this.retrieval = retrieval;
+        var index = popularityEnricher == null
+                ? new com.ford.service.catalog.adapter.out.ClasspathModelPopularityIndex()
+                : popularityEnricher.index();
+        this.popularityEnricher = popularityEnricher == null ? new ModelPopularityEnricher(index) : popularityEnricher;
+        this.popularityService = new com.ford.service.catalog.application.CatalogPopularityRecommendationService(catalog, index);
+    }
+
+    public VehicleSearchResult searchVehicles(String query, String model, Integer modelYear, BigDecimal minPrice,
+            BigDecimal maxPrice, String category, String bodyType, String fuelType, Integer limit, String rankingMode) {
+        return searchVehicles(query, model, modelYear, minPrice, maxPrice, category, bodyType, fuelType, limit,
+                rankingMode, null);
+    }
+
+    @Tool(name = "search_vehicles", description = "Busca modelos Ford respetando siempre las restricciones del cliente. Use mostSoldEligibleModel como evidencia de ventas a nivel modelo, nunca afirme que una versión es la más vendida; incluya periodo y fuente INEGI. Las ventas no indican inventario.")
+    public VehicleSearchResult searchVehicles(
+            @ToolParam(description = "Texto de búsqueda opcional; úselo para búsquedas abiertas. Puede omitirse si se proporciona un filtro explícito", required = false) String query,
             @ToolParam(description = "Nombre exacto del modelo si el cliente lo indicó", required = false) String model,
             @ToolParam(description = "Año exacto indicado por el cliente", required = false) Integer modelYear,
             @ToolParam(description = "Precio mínimo en MXN indicado por el cliente", required = false) BigDecimal minPrice,
@@ -60,13 +90,53 @@ public final class CatalogTools {
             @ToolParam(description = "Categoría explícita, por ejemplo SUV", required = false) String category,
             @ToolParam(description = "Carrocería explícita indicada por el cliente", required = false) String bodyType,
             @ToolParam(description = "Combustible explícito indicado por el cliente", required = false) String fuelType,
-            @ToolParam(description = "Máximo de resultados, entre 1 y 20", required = false) Integer limit) {
-        if (isBlank(query) && isBlank(model)) {
-            throw new IllegalArgumentException("query or model is required");
+            @ToolParam(description = "Máximo de resultados, entre 1 y 5", required = false) Integer limit,
+             @ToolParam(description = "FIT_FIRST predeterminado; MOST_SOLD ordena por ventas del periodo seleccionado. Si CURRENT_YTD no tiene ventas reportadas, conserve orden FIT_FIRST: no use acumuladas ni afirme ventas actuales.", required = false) String rankingMode,
+             @ToolParam(description = "Periodo opcional: CUMULATIVE o CURRENT_YTD; si falta, se infiere solo por la consulta", required = false) String salesPeriod) {
+        if (rankingMode != null && !rankingMode.equals("FIT_FIRST") && !rankingMode.equals("MOST_SOLD")) {
+            throw new IllegalArgumentException("rankingMode must be FIT_FIRST or MOST_SOLD");
         }
-        var searchQuery = new VehicleSearchQuery(query, model, modelYear,
-                minPrice, maxPrice, category, bodyType, fuelType, limit == null ? 5 : limit);
-        return searchVehicles(searchQuery);
+        if (salesPeriod != null && !salesPeriod.equals("CUMULATIVE") && !salesPeriod.equals("CURRENT_YTD"))
+            throw new IllegalArgumentException("salesPeriod must be CUMULATIVE or CURRENT_YTD");
+        var filters = publishedVehicleFilters(category, bodyType);
+        requireVehicleSearchCriteria(query, model, modelYear, minPrice, maxPrice, filters, fuelType);
+        var selectedYear = isBlank(query) ? modelYear : explicitYear(query, modelYear);
+        var searchQuery = new VehicleSearchQuery(query, model, selectedYear,
+                minPrice, maxPrice, filters.category(), filters.bodyType(), fuelType,
+                limit == null ? 5 : Math.min(limit, 5));
+        var fit = searchVehicles(searchQuery);
+        var currentTrend = salesPeriod == null ? isCurrentTrend(query) : salesPeriod.equals("CURRENT_YTD");
+        var recommendation = popularityService.recommend(searchQuery, currentTrend, searchQuery.limit());
+        var mode = rankingMode == null ? "FIT_FIRST" : rankingMode;
+        var result = fit.results();
+        var resultCount = fit.resultCount();
+        if (mode.equals("MOST_SOLD")) {
+            if (!recommendation.results().isEmpty()) {
+                result = recommendation.results().stream().map(popularityEnricher::enrich).toList();
+            } else if (currentTrend) {
+                // Approved fallback: current-trend is unavailable, so retain ordinary fit results without
+                // presenting them as a sales ranking.
+                result = fit.results();
+            } else {
+                // Cumulative MOST_SOLD must never present unranked FIT_FIRST vehicles as sales-ranked.
+                result = List.of();
+                resultCount = 0;
+            }
+        }
+        boolean unavailable = currentTrend && recommendation.mostSoldEligibleModel() == null;
+        boolean noEligiblePopularity = mode.equals("MOST_SOLD") && !currentTrend && recommendation.results().isEmpty();
+        return new VehicleSearchResult(query, fit.semanticSearch(), resultCount, result, mode,
+                recommendation.mostSoldEligibleModel(), recommendation.periodDisclosure(),
+                unavailable ? "UNAVAILABLE_NO_REPORTED_YTD"
+                        : noEligiblePopularity ? "UNAVAILABLE_NO_ELIGIBLE_POPULARITY" : "AVAILABLE",
+                salesPeriod == null ? currentTrend ? "CURRENT_YTD" : "CUMULATIVE" : salesPeriod);
+    }
+
+    private static boolean isCurrentTrend(String query) {
+        if (query == null) return false;
+        var normalized = java.text.Normalizer.normalize(query, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "").toLowerCase(java.util.Locale.ROOT);
+        return normalized.matches("(?s).*(actualmente|actual|tendencia|este ano|en lo que va del ano|durante 2026|ventas de 2026|al dia de hoy|reciente|ultimos meses|ytd).*");
     }
 
     @Tool(name = "get_vehicle", description = "Consulta datos y especificaciones del modelo/año/versión exactos. Si no hay coincidencia exacta, no sustituya otra versión. Incluya enlaces y fecha de observación.")
@@ -78,12 +148,24 @@ public final class CatalogTools {
             throw new IllegalArgumentException("model is required");
         }
         if (year != null) {
-            var vehicle = catalog.find(new VehicleLookup(model, year, trim));
-            if (vehicle.isPresent()) return vehicle.orElseThrow();
-            var options = availableVehicles(model, trim);
-            var status = options.isEmpty() ? "no_model_year_options_found" : "model_year_not_found";
+            var resolvedTrim = trim;
+            if (!isBlank(trim)) {
+                var resolution = vehicleResolver.resolve(model, year, trim, catalog.nameIndexEntries());
+                if (resolution.status() == com.ford.service.ai.application.CatalogVehicleResolution.Status.AMBIGUOUS) {
+                    return new AmbiguousVehicleTrim(model, year, resolution.choices());
+                }
+                if (resolution.status() == com.ford.service.ai.application.CatalogVehicleResolution.Status.UNIQUE_CANONICAL_MATCH) {
+                    resolvedTrim = resolution.exact().trim();
+                }
+            }
+            var vehicle = catalog.find(new VehicleLookup(model, year, resolvedTrim));
+            if (vehicle.isPresent()) return enrich(vehicle.orElseThrow());
+            var options = availableVehicles(model, resolvedTrim);
+            var knownYears = availableVehicles(model, null).stream().map(VehicleEvidence::year).toList();
+            var status = knownYears.contains(year) ? "variant_not_found"
+                    : knownYears.isEmpty() ? "no_model_year_options_found" : "model_year_not_found";
             return new UnavailableModelYear(model, year, status,
-                    options.stream().map(VehicleEvidence::year).toList(), options);
+                    knownYears, options);
         }
         var options = availableVehicles(model, trim);
         return new ModelYearOptions(model,
@@ -100,6 +182,7 @@ public final class CatalogTools {
                 .sorted(java.util.Comparator.reverseOrder())
                 .map(year -> catalog.find(new VehicleLookup(model, year, trim)).orElse(null))
                 .filter(Objects::nonNull)
+                .map(this::enrich)
                 .toList();
     }
 
@@ -160,10 +243,18 @@ public final class CatalogTools {
     }
 
     private CatalogSearchPage<VehicleEvidence> searchVehicles(VehicleSearchQuery query) {
-        if (retrieval != null) return retrieval.searchVehicles(query);
+        if (retrieval != null) {
+            var page = retrieval.searchVehicles(query);
+            return new CatalogSearchPage<>(page.semanticSearch(), page.resultCount(),
+                    page.results().stream().map(this::enrich).toList());
+        }
         var results = catalog.search(query);
         var semanticSearch = isBlank(query.query()) ? "not_requested" : "unavailable";
-        return new CatalogSearchPage<>(semanticSearch, results.size(), results);
+        return new CatalogSearchPage<>(semanticSearch, results.size(), results.stream().map(this::enrich).toList());
+    }
+
+    private VehicleEvidence enrich(VehicleEvidence vehicle) {
+        return popularityEnricher.enrich(vehicle);
     }
 
     private CatalogSearchPage<OfferEvidence> searchOffers(OfferQuery query) {
@@ -284,6 +375,7 @@ public final class CatalogTools {
         return vehicles.stream().map(target -> catalog.find(new VehicleLookup(target.model(), target.year(), null))
                 .orElseThrow(() -> new IllegalArgumentException(
                         target.model() + " " + target.year() + " was not found")))
+                .map(this::enrich)
                 .toList();
     }
 
@@ -399,7 +491,7 @@ public final class CatalogTools {
     }
 
     private VehicleComparison lookup(String model, Integer year, String trim) {
-        var result = catalog.find(new VehicleLookup(model, year, trim));
+        var result = catalog.find(new VehicleLookup(model, year, trim)).map(this::enrich);
         return new VehicleComparison(model, year, trim, result.orElse(null), result.isPresent());
     }
 
@@ -416,7 +508,8 @@ public final class CatalogTools {
                         && valueKind(entry.getKey().value()).equals(valueKind(entry.getValue().value()))
                         && !isInvalidQuantitativeBoolean(entry.getKey())
                         && !isInvalidQuantitativeBoolean(entry.getValue())
-                        && !entry.getKey().value().equals(entry.getValue().value()))
+                        && !normalizeComparisonValue(entry.getKey().value())
+                                .equals(normalizeComparisonValue(entry.getValue().value())))
                 .map(entry -> new SharedFactDifference(entry.getKey().name(),
                         side(entry.getKey()), side(entry.getValue())))
                 .toList();
@@ -459,6 +552,29 @@ public final class CatalogTools {
                 java.text.Normalizer.Form.NFD).replaceAll("\\p{M}+", "").replaceAll("[^\\p{L}\\p{N}]+", "");
     }
 
+    private static String normalizeComparisonValue(String value) {
+        // Cosmetic source spelling is not an equipment change. Preserve decimal points,
+        // signs, separators, and technical punctuation: 2.0 L must not become 20 L.
+        return java.text.Normalizer.normalize(value.toLowerCase(java.util.Locale.ROOT),
+                java.text.Normalizer.Form.NFD).replaceAll("\\p{M}+", "")
+                .replaceAll("[\\s\\p{Zs}]+", " ").strip();
+    }
+
+    /**
+     * The published feed groups pickups under "Camiones" and leaves body_type empty. Accept the
+     * buyer-facing body style without passing it as an unpublished filter, which would hide all
+     * otherwise valid candidates.
+     */
+    private static SearchFilters publishedVehicleFilters(String category, String bodyType) {
+        if (normalize(category).contains("pickup") || normalize(bodyType).contains("pickup")) {
+            return new SearchFilters("Camiones", null);
+        }
+        return new SearchFilters(category, bodyType);
+    }
+
+    private record SearchFilters(String category, String bodyType) {
+    }
+
     private static String normalizeTrimForModel(String model, String trim) {
         var modelKey = normalize(model);
         var trimKey = normalize(trim);
@@ -475,17 +591,22 @@ public final class CatalogTools {
 
     @Tool(name = "list_promotions", description = "Consulta promociones Ford publicadas y su vigencia. No convierta una promoción vencida o sin evidencia en una oferta vigente.")
     public PromotionSearch listPromotions(
-            @ToolParam(description = "Modelo exacto, opcional", required = false) String model,
-            @ToolParam(description = "Año exacto, opcional", required = false) Integer modelYear,
-            @ToolParam(description = "Fecha de consulta ISO-8601; si falta se usa la fecha local del catálogo", required = false) LocalDate asOf,
+            @ToolParam(description = "Modelo Ford obligatorio para filtrar promociones de ese vehículo", required = true) String model,
+            @ToolParam(description = "Año exacto; solo úselo si el mismo año aparece en query", required = false) Integer modelYear,
+            @ToolParam(description = "Fecha ISO-8601; úsela solo si la misma fecha aparece en query", required = false) LocalDate asOf,
             @ToolParam(description = "Mostrar solo promociones vigentes en la fecha indicada", required = false) Boolean activeOnly,
             @ToolParam(description = "Desplazamiento de paginación", required = false) Integer offset,
             @ToolParam(description = "Máximo de resultados, entre 1 y 20", required = false) Integer limit,
-            @ToolParam(description = "summary o full", required = false) String detail) {
+            @ToolParam(description = "summary o full", required = false) String detail,
+            @ToolParam(description = "Consulta opcional; incluya el año solo si el cliente lo pidió", required = false) String query) {
+        if (isBlank(model)) {
+            throw new IllegalArgumentException("model is required");
+        }
         if (detail != null && !detail.equalsIgnoreCase("summary") && !detail.equalsIgnoreCase("full")) {
             throw new IllegalArgumentException("detail must be summary or full");
         }
-        var page = catalog.promotions(new PromotionQuery(model, modelYear, asOf,
+        var page = catalog.promotions(new PromotionQuery(model.trim(), explicitYear(query, modelYear),
+                explicitDate(query, asOf),
                 Boolean.TRUE.equals(activeOnly), limit == null ? 3 : limit, offset == null ? 0 : offset));
         return new PromotionSearch(page.totalCount(), page.offset(), page.limit(), page.hasMore(),
                 page.results().stream().map(promotion -> compactPromotion(promotion,
@@ -507,8 +628,33 @@ public final class CatalogTools {
         return value == null || value.isBlank();
     }
 
+    private static void requireVehicleSearchCriteria(String query, String model, Integer modelYear,
+            BigDecimal minPrice, BigDecimal maxPrice, SearchFilters filters, String fuelType) {
+        if (isBlank(query) && isBlank(model) && modelYear == null && minPrice == null && maxPrice == null
+                && isBlank(filters.category()) && isBlank(filters.bodyType()) && isBlank(fuelType)) {
+            throw new IllegalArgumentException("query, model, or an explicit filter is required");
+        }
+    }
+
+    private static Integer explicitYear(String query, Integer modelYear) {
+        if (modelYear == null || isBlank(query)) return null;
+        return java.util.regex.Pattern.compile("(?<!\\d)" + modelYear + "(?!\\d)")
+                .matcher(query).find() ? modelYear : null;
+    }
+
+    private static LocalDate explicitDate(String query, LocalDate asOf) {
+        return asOf != null && !isBlank(query) && query.contains(asOf.toString()) ? asOf : null;
+    }
+
     public record CombinedSearch(String query, String answerSummary, VehicleSelection vehicles,
                                  FinancingSelection offers) { }
+
+    public record VehicleSearchResult(String query, String semanticSearch, int resultCount,
+                                       List<VehicleEvidence> results, String rankingMode,
+                                       com.ford.service.catalog.application.CatalogPopularityRecommendationService.MostSoldEligibleModel mostSoldEligibleModel,
+                                       String periodDisclosure, String rankingStatus, String selectedSalesPeriod) {
+        public VehicleSearchResult { results = List.copyOf(results); }
+    }
 
     public record VehicleSelection(List<VehicleEvidence> results, String summary, int resultCount,
                                    String semanticSearch) {
@@ -577,6 +723,16 @@ public final class CatalogTools {
         public UnavailableModelYear {
             availableModelYears = List.copyOf(availableModelYears);
             options = List.copyOf(options);
+        }
+    }
+
+    public record AmbiguousVehicleTrim(String model, Integer modelYear,
+                                       List<com.ford.service.ai.application.VehicleTrimCandidate> choices) {
+        public AmbiguousVehicleTrim {
+            if (model == null || model.isBlank()) throw new IllegalArgumentException("model is required");
+            if (modelYear == null) throw new IllegalArgumentException("model year is required");
+            choices = List.copyOf(choices == null ? List.of() : choices);
+            if (choices.isEmpty()) throw new IllegalArgumentException("trim choices are required");
         }
     }
 

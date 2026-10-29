@@ -7,12 +7,14 @@ import com.ford.service.finance.domain.FinanceEstimate;
 import com.ford.service.shared.Money;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Currency;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.List;
 
 public final class FinanceEstimateTool {
 
@@ -35,6 +37,19 @@ public final class FinanceEstimateTool {
         var request = new FinanceEstimateRequest(money(vehiclePrice), money(downPayment), termMonths);
         return finance.estimate(request, terms);
     }
+
+    @Tool(name = "list_finance_products", description = "Lista planes de financiamiento sintético activos para esta prueba, con plazo y tasa configurada. No son ofertas Ford Credit ni cotizaciones aprobadas.")
+    public List<AvailablePlan> listFinanceProducts(
+            @ToolParam(description = "Contexto de conversación", required = false) ToolContext context) {
+        var tenantId = tenantId(context);
+        return termsRepository.findAvailable(tenantId).stream()
+                .map(plan -> new AvailablePlan(plan.lenderCode(), plan.productCode(), plan.name(),
+                        plan.termMonths(), plan.annualRate()))
+                .toList();
+    }
+
+    public record AvailablePlan(String lenderCode, String productCode, String name, int termMonths,
+                                BigDecimal annualRate) {}
 
     private static Money money(BigDecimal amount) {
         if (amount == null) {

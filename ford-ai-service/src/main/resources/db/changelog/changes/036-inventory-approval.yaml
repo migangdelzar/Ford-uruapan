@@ -1,0 +1,65 @@
+databaseChangeLog:
+  - changeSet:
+      id: 036-inventory-approval
+      author: ford-service
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              create unique index if not exists uq_conversation_tenant_id
+                  on conversation(tenant_id, id);
+              create table inventory_approval (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  conversation_id uuid not null,
+                  model varchar(100) not null,
+                  model_year integer,
+                  trim varchar(160),
+                  status varchar(32) not null,
+                  outcome varchar(32),
+                  verified_count integer,
+                  verified_at timestamptz,
+                  verification_expires_at timestamptz,
+                  draft_text text,
+                  approved_text text,
+                  verified_by uuid,
+                  approved_by uuid,
+                  rejected_by uuid,
+                  idempotency_key varchar(240) not null,
+                  version bigint not null default 0,
+                  created_at timestamptz not null,
+                  updated_at timestamptz not null,
+                  constraint uq_inventory_approval_tenant_id unique (tenant_id, id),
+                  constraint fk_inventory_approval_tenant_conversation
+                      foreign key (tenant_id, conversation_id) references conversation(tenant_id, id),
+                  constraint uq_inventory_approval_tenant_key unique (tenant_id, idempotency_key),
+                  constraint ck_inventory_approval_version check (version >= 0),
+                  constraint ck_inventory_approval_count check (verified_count is null or verified_count >= 0),
+                  constraint ck_inventory_approval_expiry check (
+                      verification_expires_at is null or verified_at is null
+                      or verification_expires_at > verified_at
+                  )
+              );
+              create index idx_inventory_approval_tenant_status_created
+                  on inventory_approval(tenant_id, status, created_at);
+              create table inventory_approval_audit (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  approval_id uuid not null,
+                  actor_id uuid not null,
+                  action varchar(32) not null,
+                  occurred_at timestamptz not null,
+                  approval_version bigint not null,
+                  constraint fk_inventory_approval_audit_tenant_approval
+                      foreign key (tenant_id, approval_id) references inventory_approval(tenant_id, id),
+                  constraint ck_inventory_approval_audit_version check (approval_version >= 0)
+              );
+              create index idx_inventory_approval_audit_tenant_approval_time
+                  on inventory_approval_audit(tenant_id, approval_id, occurred_at);
+      rollback:
+        - sql:
+            sql: |
+              drop table if exists inventory_approval_audit;
+              drop table if exists inventory_approval;
+              drop index if exists uq_conversation_tenant_id;

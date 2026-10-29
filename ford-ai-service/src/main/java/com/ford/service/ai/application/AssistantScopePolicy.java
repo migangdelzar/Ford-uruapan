@@ -54,7 +54,17 @@ public class AssistantScopePolicy {
     }
 
     public boolean allows(String userText, ConversationDecision decision, String memoryContext) {
-        return "allowed".equals(reason(userText, decision, memoryContext));
+        return evaluate(userText, decision, memoryContext).status() == ScopeDecision.Status.ALLOWED;
+    }
+
+    public ScopeDecision evaluate(String userText, ConversationDecision decision) {
+        return evaluate(userText, decision, null);
+    }
+
+    public ScopeDecision evaluate(String userText, ConversationDecision decision, String memoryContext) {
+        var reason = reason(userText, decision, memoryContext);
+        return new ScopeDecision("allowed".equals(reason) ? ScopeDecision.Status.ALLOWED
+                : ScopeDecision.Status.DENIED, reason);
     }
 
     /** Returns a content-free decision code for safe diagnostics. */
@@ -79,6 +89,9 @@ public class AssistantScopePolicy {
         if (routedIntent == Intent.SERVICE_SUPPORT) {
             return availableReadOnlyTools.contains("approved_knowledge_search")
                     ? "allowed" : "service_knowledge_tool_unavailable";
+        }
+        if (routedIntent == Intent.GENERAL && intentRouter.isBuyerDiscoveryRequest(normalized)) {
+            return "allowed";
         }
         if (decision != null && SUPPORTED_FORD_INTENTS.contains(decision.toLegacyIntent())) {
             return isFordContextualFollowUp(normalized, memoryContext)
@@ -117,7 +130,9 @@ public class AssistantScopePolicy {
     private static boolean hasFordContext(String memoryContext) {
         return memoryContext != null && !memoryContext.isBlank()
                 && containsAny(memoryContext.toLowerCase(Locale.ROOT),
-                List.of("ford", "ranger", "lobo", "raptor", "bronco", "maverick", "territory", "explorer", "vehículo", "vehiculo"));
+                List.of("ford", "ranger", "lobo", "raptor", "bronco", "maverick", "territory", "explorer",
+                        "vehículo", "vehiculo", "camioneta", "suv", "crossover", "pickup", "pick-up",
+                        "auto", "carro"));
     }
 
     private static boolean isFordContextualFollowUp(String normalized, String memoryContext) {

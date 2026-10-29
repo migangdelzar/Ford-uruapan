@@ -4,6 +4,7 @@ import com.ford.service.conversations.domain.ConversationMemoryContext;
 
 import java.util.Locale;
 import java.util.Objects;
+import java.text.Normalizer;
 
 public final class ConversationMemoryRecallPolicy {
 
@@ -14,12 +15,14 @@ public final class ConversationMemoryRecallPolicy {
         if (query == null || query.isBlank()) {
             return false;
         }
-        var normalized = query.toLowerCase(Locale.ROOT).trim();
+        var normalized = normalize(query);
         return containsAny(normalized,
-                "había dicho", "habia dicho", "le dije", "te dije", "antes", "anteriormente",
+                "habia dicho", "le dije", "te dije", "antes", "anteriormente",
                 "recordar", "recuerda", "recuerdas", "qué modelo pregunté", "que modelo pregunte",
                 "what did i say", "what did i tell you", "before", "previously", "earlier",
-                "do you remember", "remember when", "my budget", "my preference");
+                "do you remember", "remember when", "my budget", "my preference",
+                "la otra", "esa opcion", "ese modelo", "el mismo", "la misma",
+                "those options", "the other one", "that version");
     }
 
     public int limit(int requestedLimit) {
@@ -36,5 +39,10 @@ public final class ConversationMemoryRecallPolicy {
             }
         }
         return false;
+    }
+
+    private static String normalize(String value) {
+        return Normalizer.normalize(value, Normalizer.Form.NFD).replaceAll("\\p{M}+", "")
+                .toLowerCase(Locale.ROOT).trim();
     }
 }

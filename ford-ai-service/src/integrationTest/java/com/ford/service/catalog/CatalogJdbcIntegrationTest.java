@@ -64,4 +64,10 @@ class CatalogJdbcIntegrationTest {
         assertThat(repository.inventory(new InventoryQuery(tenantId, "XLT", "URUAPAN"))
                 .availableUnits()).isEqualTo(1);
     }
+
+    @Test
+    void syntheticCatalogDatabaseIsNeverTheFordServiceDatabase() {
+        assertThat(POSTGRES.getDatabaseName()).isNotEqualToIgnoringCase("ford_service");
+        assertThat(POSTGRES.getJdbcUrl()).contains("/" + POSTGRES.getDatabaseName());
+    }
 }

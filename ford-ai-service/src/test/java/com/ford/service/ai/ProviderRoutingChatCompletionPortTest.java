@@ -37,6 +37,18 @@ import static org.mockito.Mockito.verify;
 class ProviderRoutingChatCompletionPortTest {
 
     @Test
+    void plainTextTurnDoesNotRequireUnusedToolOrStructuredOutputCapabilities() {
+        var plainText = new ProviderDescriptor("text-only", new ProviderCapabilities(false, false, false),
+                true, true, "text-model");
+        var port = new ProviderRoutingChatCompletionPort(List.of(new StubPort("text-only", "Hola, ¿en qué te ayudo?")),
+                new DefaultModelProviderPolicy(List.of(plainText)));
+
+        var response = port.complete(request(false), new ToolContext(UUID.randomUUID(), UUID.randomUUID()));
+
+        assertThat(response.content()).isEqualTo("Hola, ¿en qué te ayudo?");
+    }
+
+    @Test
     void routesToTheProviderSelectedByPrivacyAndCapabilityPolicy() {
         var cloud = provider("openai", true);
         var local = provider("ollama", false);

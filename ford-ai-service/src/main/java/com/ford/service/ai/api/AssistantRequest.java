@@ -1,6 +1,7 @@
 package com.ford.service.ai.api;
 
 import com.ford.service.ai.application.ConversationDecision;
+import com.ford.service.ai.application.DecisionTraceCollector;
 
 import java.util.UUID;
 import java.util.List;
@@ -15,11 +16,19 @@ public record AssistantRequest(
         ConversationDecision decision,
         String leadJourneyContext,
         List<String> recentAssistantReplies,
-        String repairInstruction) {
+        String repairInstruction,
+        DecisionTraceCollector traceCollector) {
 
     public AssistantRequest {
         decision = decision == null ? ConversationDecision.deterministicDefault() : decision;
         recentAssistantReplies = List.copyOf(recentAssistantReplies == null ? List.of() : recentAssistantReplies);
+    }
+
+    public AssistantRequest(UUID tenantId, UUID conversationId, String message, String conversationState,
+                            String memoryContext, boolean containsSensitiveData, ConversationDecision decision,
+                            String leadJourneyContext, List<String> recentAssistantReplies, String repairInstruction) {
+        this(tenantId, conversationId, message, conversationState, memoryContext, containsSensitiveData,
+                decision, leadJourneyContext, recentAssistantReplies, repairInstruction, null);
     }
 
     public AssistantRequest(UUID tenantId, UUID conversationId, String message,
@@ -58,6 +67,7 @@ public record AssistantRequest(
 
     public AssistantRequest withRepairInstruction(String instruction) {
         return new AssistantRequest(tenantId, conversationId, message, conversationState, memoryContext,
-                containsSensitiveData, decision, leadJourneyContext, recentAssistantReplies, instruction);
+                containsSensitiveData, decision, leadJourneyContext, recentAssistantReplies, instruction,
+                traceCollector);
     }
 }

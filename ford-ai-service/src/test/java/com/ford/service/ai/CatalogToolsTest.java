@@ -44,6 +44,95 @@ class CatalogToolsTest {
     }
 
     @Test
+    void vehicleSearchToolSchemaAdvertisesTheSupportedResultLimit() {
+        var callback = List.of(ToolCallbacks.from(new CatalogTools(new FakeCatalog()))).stream()
+                .filter(tool -> tool.getToolDefinition().name().equals("search_vehicles"))
+                .findFirst().orElseThrow();
+
+        assertThat(callback.getToolDefinition().inputSchema())
+                .contains("Máximo de resultados, entre 1 y 5")
+                .doesNotContain("entre 1 y 20");
+    }
+
+    @Test
+    void vehicleSearchToolAllowsQueryOmissionWhenExplicitFiltersCanNarrowTheSearch() throws Exception {
+        var callback = List.of(ToolCallbacks.from(new CatalogTools(new FakeCatalog()))).stream()
+                .filter(tool -> tool.getToolDefinition().name().equals("search_vehicles"))
+                .findFirst().orElseThrow();
+        var schema = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(callback.getToolDefinition().inputSchema());
+        var required = java.util.stream.StreamSupport.stream(
+                        schema.path("required").spliterator(), false)
+                .map(com.fasterxml.jackson.databind.JsonNode::asText)
+                .toList();
+
+        assertThat(required).doesNotContain("query", "model");
+        assertThat(schema.at("/properties/query/description").asText())
+                .contains("opcional", "filtro explícito");
+    }
+
+    @Test
+    void vehicleSearchUsesExplicitFiltersWhenQueryIsOmitted() {
+        var catalog = new FakeCatalog();
+
+        new CatalogTools(catalog).searchVehicles(null, null, 2027, null, null,
+                null, "pickup", null, 5);
+
+        assertThat(catalog.lastSearch).isEqualTo(new VehicleSearchQuery(
+                null, null, 2027, null, null, "Camiones", null, null, 5));
+    }
+
+    @Test
+    void vehicleSearchStillRejectsAnEmptySearchWithoutQueryOrFilters() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new CatalogTools(new FakeCatalog())
+                .searchVehicles(null, null, null, null, null, null, null, null, 5))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("query, model, or an explicit filter is required");
+    }
+
+    @Test
+    void promotionsToolRequiresModelInSchema() throws Exception {
+        var callback = List.of(ToolCallbacks.from(new CatalogTools(new FakeCatalog()))).stream()
+                .filter(tool -> tool.getToolDefinition().name().equals("list_promotions"))
+                .findFirst().orElseThrow();
+        var schema = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(callback.getToolDefinition().inputSchema());
+        var required = java.util.stream.StreamSupport.stream(
+                        schema.path("required").spliterator(), false)
+                .map(com.fasterxml.jackson.databind.JsonNode::asText)
+                .toList();
+
+        assertThat(required).contains("model");
+        assertThat(schema.at("/properties/model/description").asText())
+                .contains("obligatorio");
+        assertThat(schema.at("/properties/query").isMissingNode()).isFalse();
+        assertThat(schema.at("/properties/modelYear/description").asText())
+                .contains("mismo año aparece en query");
+    }
+
+    @Test
+    void mapsBuyerPickupCategoryToPublishedTruckCategory() {
+        var catalog = new FakeCatalog();
+
+        new CatalogTools(catalog).searchVehicles("pickup fácil de estacionar", null, null,
+                null, null, "pickup", null, null, 5);
+
+        assertThat(catalog.lastSearch.category()).isEqualTo("Camiones");
+        assertThat(catalog.lastSearch.bodyType()).isNull();
+    }
+
+    @Test
+    void mapsBuyerPickupBodyTypeToPublishedTruckCategory() {
+        var catalog = new FakeCatalog();
+
+        new CatalogTools(catalog).searchVehicles("pickup fácil de estacionar", null, null,
+                null, null, null, "pick-up", null, 5);
+
+        assertThat(catalog.lastSearch.category()).isEqualTo("Camiones");
+        assertThat(catalog.lastSearch.bodyType()).isNull();
+    }
+
+    @Test
     void searchPreservesSourceAndObservationTimeAndDoesNotInventPrice() {
         var catalog = new FakeCatalog();
         var evidence = new VehicleEvidence("Ranger", 2027, null, null, "MXN",
@@ -52,16 +141,37 @@ class CatalogToolsTest {
         catalog.searchResult = List.of(evidence);
         var tools = new CatalogTools(catalog);
 
-        var result = tools.searchVehicles("Ranger", "Ranger", 2027, null, null,
+        var result = tools.searchVehicles("Ranger 2027", "Ranger", 2027, null, null,
                 null, null, null, 5);
 
         assertThat(catalog.lastSearch).isEqualTo(new VehicleSearchQuery(
-                "Ranger", "Ranger", 2027, null, null, null, null, null, 5));
+                "Ranger 2027", "Ranger", 2027, null, null, null, null, null, 5));
         assertThat(result.semanticSearch()).isEqualTo("unavailable");
-        assertThat(result.results()).containsExactly(evidence);
+        assertThat(result.results()).containsExactly(new com.ford.service.catalog.application.ModelPopularityEnricher(
+                new com.ford.service.catalog.adapter.out.ClasspathModelPopularityIndex()).enrich(evidence));
         assertThat(result.results().getFirst().price()).isNull();
         assertThat(result.results().getFirst().modelPageUrl()).isEqualTo("https://www.ford.mx/vehiculos/ranger/");
         assertThat(result.results().getFirst().observedAt()).isEqualTo(Instant.parse("2026-10-16T10:00:00Z"));
+    }
+
+    @Test
+    void vehicleSearchCapsModelRequestedLimitAtSupportedMaximum() {
+        var catalog = new FakeCatalog();
+
+        new CatalogTools(catalog).searchVehicles("", "Ranger", null, null, null,
+                null, null, null, 10);
+
+        assertThat(catalog.lastSearch.limit()).isEqualTo(5);
+    }
+
+    @Test
+    void vehicleSearchIgnoresYearNotPresentInQuery() {
+        var catalog = new FakeCatalog();
+
+        new CatalogTools(catalog).searchVehicles("Ranger", "Ranger", 2018, null, null,
+                null, null, null, 5);
+
+        assertThat(catalog.lastSearch.modelYear()).isNull();
     }
 
     @Test
@@ -78,7 +188,7 @@ class CatalogToolsTest {
                 "SUV compacta", null, null, null, null, null, null, null, 5);
 
         assertThat(result.semanticSearch()).isEqualTo("ready");
-        assertThat(result.results()).containsExactly(evidence);
+        assertThat(result.results().getFirst().modelPopularity()).isNotNull();
     }
 
     @Test
@@ -91,6 +201,40 @@ class CatalogToolsTest {
         assertThat(catalog.lastLookup).isEqualTo(new VehicleLookup("Ranger", 2027, "Raptor"));
         assertThat(result).isInstanceOf(CatalogTools.UnavailableModelYear.class);
         assertThat(((CatalogTools.UnavailableModelYear) result).options()).isEmpty();
+    }
+
+    @Test
+    void partialTrimReturnsCanonicalChoicesInsteadOfClaimingModelYearIsMissing() {
+        var catalog = new FakeCatalog();
+        catalog.searchResult = List.of(new VehicleEvidence("RANGER", 2027, null,
+                null, "MXN", "model-27", null, null, List.of()));
+        catalog.nameEntries = List.of(
+                new com.ford.service.catalog.api.VehicleNameIndexEntry("RANGER", 2027, "XLT Gasolina 4x2"),
+                new com.ford.service.catalog.api.VehicleNameIndexEntry("RANGER", 2027, "XLT Diésel 4x4"));
+
+        var result = new CatalogTools(catalog).getVehicle("Ranger", 2027, "XLT");
+
+        assertThat(result).isInstanceOf(CatalogTools.AmbiguousVehicleTrim.class);
+        var ambiguous = (CatalogTools.AmbiguousVehicleTrim) result;
+        assertThat(ambiguous.modelYear()).isEqualTo(2027);
+        assertThat(ambiguous.choices()).extracting(com.ford.service.ai.application.VehicleTrimCandidate::trim)
+                .containsExactly("XLT Diésel 4x4", "XLT Gasolina 4x2");
+        assertThat(catalog.lastLookup).isNull();
+    }
+
+    @Test
+    void uniqueTrimPrefixLooksUpCanonicalVariant() {
+        var catalog = new FakeCatalog();
+        var canonical = new VehicleEvidence("RANGER", 2027, "XL Gasolina 4x2", null, "MXN",
+                "model-27", "price-27", Instant.parse("2026-10-26T00:00:00Z"), List.of());
+        catalog.nameEntries = List.of(new com.ford.service.catalog.api.VehicleNameIndexEntry(
+                "RANGER", 2027, "XL Gasolina 4x2"));
+        catalog.vehicles.put("XL Gasolina 4x2", canonical);
+
+        var result = new CatalogTools(catalog).getVehicle("Ranger", 2027, "XL");
+
+        assertThat(catalog.lastLookup).isEqualTo(new VehicleLookup("Ranger", 2027, "XL Gasolina 4x2"));
+        assertThat(result).usingRecursiveComparison().ignoringFields("modelPopularity").isEqualTo(canonical);
     }
 
     @Test
@@ -140,7 +284,7 @@ class CatalogToolsTest {
         var tools = new CatalogTools(catalog);
 
         var result = tools.listPromotions("Ranger", 2027, LocalDate.parse("2026-10-17"), true,
-                0, 3, "summary");
+                0, 3, "summary", "Ranger 2027 2026-10-17");
 
         assertThat(catalog.lastPromotionQuery).isEqualTo(new PromotionQuery(
                 "Ranger", 2027, LocalDate.parse("2026-10-17"), true, 3, 0));
@@ -159,6 +303,38 @@ class CatalogToolsTest {
     }
 
     @Test
+    void promotionsIgnoreYearNotPresentInQuery() {
+        var catalog = new FakeCatalog();
+
+        new CatalogTools(catalog).listPromotions("Ranger", 2023, null, true,
+                0, 3, "summary", "promociones para Ranger");
+
+        assertThat(catalog.lastPromotionQuery.modelYear()).isNull();
+    }
+
+    @Test
+    void promotionsIgnoreDateNotPresentInQuery() {
+        var catalog = new FakeCatalog();
+
+        new CatalogTools(catalog).listPromotions("Ranger", null, LocalDate.parse("2026-09-30"), true,
+                0, 3, "summary", "current Ranger promotions");
+
+        assertThat(catalog.lastPromotionQuery.asOf()).isNull();
+    }
+
+    @Test
+    void promotionsRejectMissingModelBeforeCatalogLookup() {
+        var catalog = new FakeCatalog();
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new CatalogTools(catalog)
+                .listPromotions("  ", null, null, true, 0, 3, "summary", null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("model is required");
+
+        assertThat(catalog.lastPromotionQuery).isNull();
+    }
+
+    @Test
     void promotionsOmitLongConditionsInSummaryAndKeepThemInFullDetail() {
         var catalog = new FakeCatalog();
         var longConditions = "x".repeat(281);
@@ -168,8 +344,8 @@ class CatalogToolsTest {
                 Instant.parse("2026-10-16T10:00:00Z"), "https://ford.test/ranger")));
         var tools = new CatalogTools(catalog);
 
-        var summary = tools.listPromotions(null, null, null, false, 0, 3, "summary");
-        var full = tools.listPromotions(null, null, null, false, 0, 3, "full");
+        var summary = tools.listPromotions("Ranger", null, null, false, 0, 3, "summary", null);
+        var full = tools.listPromotions("Ranger", null, null, false, 0, 3, "full", null);
 
         assertThat(summary.results().getFirst().conditions()).isNull();
         assertThat(summary.results().getFirst().conditionsOmitted()).isTrue();
@@ -182,7 +358,7 @@ class CatalogToolsTest {
     @Test
     void promotionsRejectUnknownDetailMode() {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> new CatalogTools(new FakeCatalog())
-                .listPromotions(null, null, null, null, 0, 3, "compact"))
+                .listPromotions("Ranger", null, null, null, 0, 3, "compact", null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("detail must be summary or full");
     }
@@ -287,7 +463,7 @@ class CatalogToolsTest {
         assertThat(result.query()).isEqualTo("Ranger 2027");
         assertThat(catalog.lastSearch).isEqualTo(new VehicleSearchQuery(
                 null, "Ranger", 2027, null, null, null, null, null, 1));
-        assertThat(result.vehicles().results()).containsExactly(vehicle);
+        assertThat(result.vehicles().results()).hasSize(1);
         assertThat(result.vehicles().summary()).isEqualTo("Ranger 2027: MXN $899,000");
         assertThat(result.vehicles().semanticSearch()).isEqualTo("not_requested");
         assertThat(result.offers().query()).isEqualTo("Ranger 2027 financing");
@@ -442,6 +618,48 @@ class CatalogToolsTest {
     }
 
     @Test
+    void trimComparisonIgnoresCosmeticValueDifferencesWithoutHidingRealEquipmentChanges() {
+        var catalog = new FakeCatalog();
+        var observed = Instant.parse("2026-10-16T10:00:00Z");
+        catalog.vehicles.put("XL", new VehicleEvidence("Ranger", 2027, "XL", null, "MXN",
+                "https://ford.test/ranger", null, observed, List.of(
+                new com.ford.service.catalog.api.VehicleFact("Transmisión", " Automática de 10 Velocidades ",
+                        null, "https://ford.test/xl", observed),
+                new com.ford.service.catalog.api.VehicleFact("Asientos", "4 Posiciones",
+                        null, "https://ford.test/xl", observed))));
+        catalog.vehicles.put("XLT", new VehicleEvidence("Ranger", 2027, "XLT", null, "MXN",
+                "https://ford.test/ranger", null, observed, List.of(
+                new com.ford.service.catalog.api.VehicleFact("Transmisión", "Automatica\u00a0de  10 velocidades",
+                        null, "https://ford.test/xlt", observed),
+                new com.ford.service.catalog.api.VehicleFact("Asientos", "6 Posiciones",
+                        null, "https://ford.test/xlt", observed))));
+
+        var result = new CatalogTools(catalog).compareTrims("Ranger", 2027, List.of("XL", "XLT"), "full");
+
+        assertThat(result.comparisons()).singleElement().satisfies(pair ->
+                assertThat(pair.differences()).singleElement().satisfies(difference -> {
+                    assertThat(difference.name()).isEqualTo("Asientos");
+                    assertThat(difference.left().value()).isEqualTo("4 Posiciones");
+                    assertThat(difference.right().value()).isEqualTo("6 Posiciones");
+                }));
+    }
+
+    @Test
+    void trimComparisonPreservesTechnicalPunctuationAndNumbers() {
+        var catalog = new FakeCatalog();
+        var observed = Instant.parse("2026-10-16T10:00:00Z");
+        catalog.vehicles.put("XL", new VehicleEvidence("Ranger", 2027, "XL", null, "MXN",
+                "https://ford.test/ranger", null, observed, List.of(
+                new com.ford.service.catalog.api.VehicleFact("Motor", "2.0 L", null, "https://ford.test/xl", observed))));
+        catalog.vehicles.put("XLT", new VehicleEvidence("Ranger", 2027, "XLT", null, "MXN",
+                "https://ford.test/ranger", null, observed, List.of(
+                new com.ford.service.catalog.api.VehicleFact("Motor", "20 L", null, "https://ford.test/xlt", observed))));
+
+        assertThat(new CatalogTools(catalog).compareTrims("Ranger", 2027, List.of("XL", "XLT"), "full")
+                .comparisons().getFirst().differences()).hasSize(1);
+    }
+
+    @Test
     void modelYearComparisonPairsOnlySharedChangedModelFacts() {
         var catalog = new FakeCatalog();
         var older = new VehicleEvidence("Ranger", 2026, null, new BigDecimal("700000"), "MXN",
@@ -458,7 +676,7 @@ class CatalogToolsTest {
         var comparison = new CatalogTools(catalog).compareModelYears("Ranger", List.of(2026, 2027, 2026));
 
         assertThat(comparison.years()).extracting(CatalogTools.ModelYearSnapshot::vehicle)
-                .containsExactly(older, newer);
+                .extracting(VehicleEvidence::model).containsExactly("Ranger", "Ranger");
         assertThat(comparison.yearPairs()).singleElement().satisfies(pair -> {
             assertThat(pair.priceDifferenceMxn()).isEqualByComparingTo("50000");
             assertThat(pair.sharedFactDifferences()).singleElement().satisfies(difference -> {
@@ -466,6 +684,23 @@ class CatalogToolsTest {
                 assertThat(difference.right().value()).isEqualTo("5 años");
             });
         });
+    }
+
+    @Test
+    void modelYearComparisonRequiresTwoToFiveYearsBeforeCatalogLookup() {
+        var catalog = new FakeCatalog();
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new CatalogTools(catalog)
+                .compareModelYears("Ranger", List.of(2027)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("years");
+        assertThat(catalog.lastLookup).isNull();
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new CatalogTools(catalog)
+                .compareModelYears("Ranger", List.of(2023, 2024, 2025, 2026, 2027, 2028)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("years");
+        assertThat(catalog.lastLookup).isNull();
     }
 
     @Test
@@ -511,11 +746,17 @@ class CatalogToolsTest {
         private CatalogPageLinkPage pageLinks = new CatalogPageLinkPage(null, 0, 0, 20, List.of());
         private Integer lastVariantComparisonYear;
         private int lastVariantComparisonOffset;
+        private List<com.ford.service.catalog.api.VehicleNameIndexEntry> nameEntries = List.of();
 
         @Override
         public List<VehicleEvidence> search(VehicleSearchQuery query) {
             lastSearch = query;
             return searchResult;
+        }
+
+        @Override
+        public List<com.ford.service.catalog.api.VehicleNameIndexEntry> nameIndexEntries() {
+            return nameEntries;
         }
 
         @Override

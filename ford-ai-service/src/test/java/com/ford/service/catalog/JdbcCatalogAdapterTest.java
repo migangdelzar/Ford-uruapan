@@ -154,6 +154,9 @@ class JdbcCatalogAdapterTest {
                    'https://www.ford.mx/vehiculos/ranger/precio/', '2026-10-16T10:00:00Z'),
                   ('Ranger', 'ranger', 2027, 'Raptor', 'raptor', 1500000, 'MXN',
                    'https://www.ford.mx/vehiculos/ranger/', 'https://www.ford.mx/vehiculos/ranger/raptor/',
+                    '2026-10-16T10:00:00Z'),
+                  ('F 250', 'f250', 2026, 'XLT', 'xlt', 1560800, 'MXN',
+                   'https://www.ford.mx/vehiculos/f-250/', 'https://www.ford.mx/vehiculos/f-250/',
                    '2026-10-16T10:00:00Z')
                 """).update();
         jdbc.sql("""
@@ -179,10 +182,14 @@ class JdbcCatalogAdapterTest {
                    'specification', 'Garantía', 'garantia', '3 años', NULL, NULL,
                    'https://www.ford.mx/vehiculos/ranger/ficha-tecnica/', '2026-10-16T10:00:00Z',
                    'https://www.ford.mx/vehiculos/ranger/'),
-                  (NULL, '11111111-1111-1111-1111-111111111111', 'Ranger', 2027, NULL, 'Interior',
-                   'feature', 'Asientos', 'asientos', 'Tela', NULL, NULL,
-                   'https://www.ford.mx/vehiculos/ranger/ficha-tecnica/', '2026-10-16T10:00:00Z',
-                   'https://www.ford.mx/vehiculos/ranger/')
+                   (NULL, '11111111-1111-1111-1111-111111111111', 'Ranger', 2027, NULL, 'Interior',
+                    'feature', 'Asientos', 'asientos', 'Tela', NULL, NULL,
+                    'https://www.ford.mx/vehiculos/ranger/ficha-tecnica/', '2026-10-16T10:00:00Z',
+                    'https://www.ford.mx/vehiculos/ranger/'),
+                   ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '22222222-2222-2222-2222-222222222222',
+                    'F 250', 2026, 'XLT', 'Motor', 'specification', 'Potencia', 'potencia', '475 hp', 475, 'hp',
+                    'https://www.ford.mx/vehiculos/f-250/catalogo.pdf', '2026-10-16T10:00:00Z',
+                    'https://www.ford.mx/vehiculos/f-250/')
                 """).update();
         jdbc.sql("""
                 INSERT INTO ford_read.vehicle_images_v1 VALUES
@@ -260,6 +267,18 @@ class JdbcCatalogAdapterTest {
     }
 
     @Test
+    void nameIndexReturnsOnlyModelYearAndExactTrimNames() {
+        var entries = catalog.nameIndexEntries();
+
+        assertThat(entries).contains(
+                new com.ford.service.catalog.api.VehicleNameIndexEntry("F 250", 2026, "XLT"),
+                new com.ford.service.catalog.api.VehicleNameIndexEntry("Ranger", 2027, "XLT Gasolina 4x2"),
+                new com.ford.service.catalog.api.VehicleNameIndexEntry("Ranger", 2027, null));
+        assertThat(entries).doesNotContain(new com.ford.service.catalog.api.VehicleNameIndexEntry(
+                "Ranger", 2027, "Dato sin fuente"));
+    }
+
+    @Test
     void searchLeavesUnobservedPriceAbsentAndPreservesLinks() {
         var results = catalog.search(new VehicleSearchQuery(
                 "Ranger", "Ranger", 2027, null, null, null, null, null, 5));
@@ -319,6 +338,16 @@ class JdbcCatalogAdapterTest {
         var result = catalog.find(new VehicleLookup("Ranger", 2027, " XLT Gasolina 4x2 "));
 
         assertThat(result).isPresent();
+        assertThat(result.orElseThrow().facts()).extracting("name").containsExactly("Potencia");
+    }
+
+    @Test
+    void exactVehicleLookupNormalizesModelPunctuationWithoutChangingTrimMatching() {
+        var result = catalog.find(new VehicleLookup("F-250", 2026, "XLT"));
+
+        assertThat(result).isPresent();
+        assertThat(result.orElseThrow().model()).isEqualTo("F 250");
+        assertThat(result.orElseThrow().trim()).isEqualTo("XLT");
         assertThat(result.orElseThrow().facts()).extracting("name").containsExactly("Potencia");
     }
 

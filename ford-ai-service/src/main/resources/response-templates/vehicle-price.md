@@ -1,2 +1,2 @@
-*{{vehicle}}*: {{price}} precio publicado.
+*{{vehicle}}{{trim}}*: {{price}} precio publicado de referencia.
 {{price_link}}

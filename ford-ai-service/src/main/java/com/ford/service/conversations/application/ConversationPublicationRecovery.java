@@ -1,11 +1,9 @@
 package com.ford.service.conversations.application;
 
-import com.ford.service.channels.api.InboundMessageAccepted;
 import com.ford.service.shared.PostgresAdvisoryExecutionLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.modulith.events.EventPublication;
 import org.springframework.modulith.events.IncompleteEventPublications;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -23,15 +21,18 @@ public class ConversationPublicationRecovery {
 
     private final IncompleteEventPublications publications;
     private final ThreadPoolTaskExecutor executor;
+    private final ConversationPublicationRecoveryPolicy policy;
     private final ConversationProperties properties;
     private final PostgresAdvisoryExecutionLock executionLock;
 
     public ConversationPublicationRecovery(IncompleteEventPublications publications,
                                            @Qualifier("conversationTurnExecutor") ThreadPoolTaskExecutor executor,
+                                           ConversationPublicationRecoveryPolicy policy,
                                            ConversationProperties properties,
                                            PostgresAdvisoryExecutionLock executionLock) {
         this.publications = publications;
         this.executor = executor;
+        this.policy = policy;
         this.properties = properties;
         this.executionLock = executionLock;
     }
@@ -50,19 +51,11 @@ public class ConversationPublicationRecovery {
         var permits = new AtomicInteger(admissionSlots);
         var retryBefore = Instant.now().minus(properties.workflow().publicationRetryAge());
         try {
-            publications.resubmitIncompletePublications(publication -> eligible(publication, retryBefore)
+            publications.resubmitIncompletePublications(publication -> policy.eligible(publication, retryBefore)
                     && permits.getAndUpdate(value -> value > 0 ? value - 1 : value) > 0);
         } catch (RuntimeException exception) {
             log.warn("Conversation publication recovery failed: exceptionType={}",
                     exception.getClass().getSimpleName());
         }
-    }
-
-    static boolean eligible(EventPublication publication, Instant retryBefore) {
-        var retryable = publication.getStatus() == EventPublication.Status.PUBLISHED
-                || publication.getStatus() == EventPublication.Status.FAILED;
-        return retryable && publication.getCompletionAttempts() < 5
-                && publication.getEvent() instanceof InboundMessageAccepted
-                && publication.getPublicationDate().isBefore(retryBefore);
     }
 }

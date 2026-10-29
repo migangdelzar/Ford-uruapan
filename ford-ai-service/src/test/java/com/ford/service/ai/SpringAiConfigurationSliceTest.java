@@ -37,6 +37,16 @@ class SpringAiConfigurationSliceTest {
     }
 
     @Test
+    void registersReviewedModelPopularityEnrichment() {
+        assertThat(context.getBean(com.ford.service.catalog.application.ModelPopularityIndex.class))
+                .isInstanceOf(com.ford.service.catalog.adapter.out.ClasspathModelPopularityIndex.class);
+        var enricher = context.getBean(com.ford.service.catalog.application.ModelPopularityEnricher.class);
+        var vehicle = new com.ford.service.catalog.api.VehicleEvidence("Ranger", 2027, "XL", null,
+                "MXN", null, null, null, java.util.List.of());
+        assertThat(enricher.enrich(vehicle).modelPopularity().cumulativeUnits()).isEqualTo(17452);
+    }
+
+    @Test
     void registersAssistantChainWhenNoProviderModelIsAvailable() {
         assertThat(context.getBean(AssistantOrchestrator.class)).isNotNull();
         assertThat(context.getBean(AssistantService.class)).isNotNull();

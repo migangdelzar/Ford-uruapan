@@ -7,6 +7,7 @@ import com.ford.service.catalog.api.CatalogQueryVector;
 import com.ford.service.catalog.api.CatalogRetrievalPort;
 import com.ford.service.catalog.api.CatalogRetrievalCandidate;
 import com.ford.service.catalog.api.CatalogSearchPage;
+import com.ford.service.catalog.api.DocumentProvenance;
 import com.ford.service.catalog.api.OfferEvidence;
 import com.ford.service.catalog.api.OfferQuery;
 import com.ford.service.catalog.api.VehicleEvidence;
@@ -16,6 +17,8 @@ import com.ford.service.knowledge.application.ReciprocalRankFusion;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -89,15 +92,34 @@ public final class CatalogRetrievalService implements CatalogRetrievalPort {
 
     private static List<VehicleEvidence> distinctVehicles(
             List<CatalogRetrievalCandidate<VehicleEvidence>> ranked, int limit) {
-        Set<String> seen = new HashSet<>();
+        Map<String, Integer> positions = new LinkedHashMap<>();
         List<VehicleEvidence> results = new ArrayList<>();
         for (var candidate : ranked) {
             var evidence = candidate.evidence();
-            var key = normalize(evidence.model()) + "|" + evidence.year() + "|" + normalize(evidence.trim());
-            if (seen.add(key)) results.add(evidence);
+            var identity = evidence.variantId() == null || evidence.variantId().isBlank()
+                    ? "trim:" + normalize(evidence.trim())
+                    : "variant:" + evidence.variantId();
+            var key = normalize(evidence.model()) + "|" + evidence.year() + "|" + identity;
+            var position = positions.get(key);
+            if (position == null) {
+                positions.put(key, results.size());
+                results.add(evidence);
+            } else {
+                var winner = results.get(position);
+                results.set(position, winner.withRetrievedEvidence(
+                        mergeProvenance(winner.retrievedEvidence(), evidence.retrievedEvidence())));
+            }
             if (results.size() == limit) break;
         }
         return List.copyOf(results);
+    }
+
+    private static List<DocumentProvenance> mergeProvenance(List<DocumentProvenance> first,
+                                                             List<DocumentProvenance> second) {
+        Map<String, DocumentProvenance> unique = new LinkedHashMap<>();
+        for (var provenance : first) unique.putIfAbsent(provenance.documentId(), provenance);
+        for (var provenance : second) unique.putIfAbsent(provenance.documentId(), provenance);
+        return unique.values().stream().limit(5).toList();
     }
 
     private static List<OfferEvidence> distinctOffers(

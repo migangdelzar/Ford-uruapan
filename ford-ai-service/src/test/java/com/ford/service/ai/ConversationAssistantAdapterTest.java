@@ -11,12 +11,14 @@ import com.ford.service.leads.domain.LeadJourneySnapshot;
 import com.ford.service.leads.domain.LeadJourneyTopic;
 import com.ford.service.conversations.application.ConversationAssistantAdapter;
 import com.ford.service.conversations.application.PendingTestDriveReplyPolicy;
+import com.ford.service.conversations.application.MemoryProperties;
 import com.ford.service.conversations.api.AssistantReply;
 import com.ford.service.conversations.api.ConversationTurnRequest;
 import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.conversations.domain.ConversationMemoryContext;
 import com.ford.service.conversations.domain.ConversationMemoryKey;
 import com.ford.service.conversations.domain.ConversationMessage;
+import com.ford.service.conversations.domain.MemoryFact;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -123,6 +125,58 @@ class ConversationAssistantAdapterTest {
                 .contains("pregunta actual")
                 .contains("asistente: ¡Hola! ¿En qué te apoyo?")
                 .contains("FIN DEL HISTORIAL");
+    }
+
+    @Test
+    void fitsOptionalHistoryToBudgetWithoutDroppingFactsOrRewritingCurrentMessage() {
+        var ai = mock(AssistantService.class);
+        when(ai.respond(any(), any())).thenReturn(new AssistantTurn(
+                "Reviso las versiones.", Intent.GENERAL, false, List.of(), "deepseek", "deepseek-chat"));
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var memory = new ConversationMemoryContext(null, "", List.of(
+                new ConversationMessage(UUID.randomUUID(), conversationId, ConversationMessage.Direction.INBOUND,
+                        "in-1", "charla ya resuelta ".repeat(20), Instant.now()),
+                new ConversationMessage(UUID.randomUUID(), conversationId, ConversationMessage.Direction.OUTBOUND,
+                        "out-1", "respuesta social ".repeat(20), Instant.now())),
+                List.of(new MemoryFact("budget", "presupuesto máximo 350000", UUID.randomUUID())), 1);
+        var properties = new MemoryProperties();
+        properties.setPromptTokenBudget(40);
+        var adapter = new ConversationAssistantAdapter(ai, new PendingTestDriveReplyPolicy(), null, properties);
+        var current = "La caja de la Ranger XLT me atrae más, pero la XL quizá sea más práctica en ciudad.";
+
+        adapter.respond(new ConversationTurnRequest(tenantId, conversationId, current,
+                ConversationState.BOT_ACTIVE, memory, null));
+
+        var executionContext = org.mockito.ArgumentCaptor.forClass(
+                com.ford.service.ai.application.AiExecutionContext.class);
+        verify(ai).respond(executionContext.capture(), org.mockito.ArgumentMatchers.eq(current));
+        assertThat(executionContext.getValue().memoryContext())
+                .contains("presupuesto máximo 350000")
+                .doesNotContain("charla ya resuelta", "respuesta social");
+    }
+
+    @Test
+    void retainsPendingOfferAndKnownPassengerCountForShortAffirmativeReply() {
+        var ai = mock(AssistantService.class);
+        when(ai.respond(any(), any())).thenReturn(new AssistantTurn(
+                "Claro, comparemos.", Intent.GENERAL, false, List.of(), "openrouter", "openrouter/free"));
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var memory = new ConversationMemoryContext(null, "Somos cuatro personas", List.of(
+                new ConversationMessage(UUID.randomUUID(), conversationId, ConversationMessage.Direction.INBOUND,
+                        "in-1", "Somos cuatro personas", Instant.now()),
+                new ConversationMessage(UUID.randomUUID(), conversationId, ConversationMessage.Direction.OUTBOUND,
+                        "out-1", "¿Quiere que comparemos las opciones?", Instant.now())), List.of(), 2);
+
+        adapter(ai).respond(new ConversationTurnRequest(tenantId, conversationId, "Sí",
+                ConversationState.BOT_ACTIVE, memory));
+
+        var context = org.mockito.ArgumentCaptor.forClass(com.ford.service.ai.application.AiExecutionContext.class);
+        verify(ai).respond(context.capture(), org.mockito.ArgumentMatchers.eq("Sí"));
+        assertThat(context.getValue().memoryContext()).contains("usuario: Somos cuatro personas")
+                .contains("asistente: ¿Quiere que comparemos las opciones?")
+                .contains("no vuelva a preguntar datos ya confirmados");
     }
 
     @Test

@@ -59,7 +59,7 @@ class ShadowReviewTurnInterceptionTest {
 
         var processor = processor(fx, ShadowReviewGate.of(true, false), recorder);
 
-        assertThat(processor.process(fx.reference()).route()).isEqualTo(ConversationGraphRoute.IGNORED);
+        assertThat(processor.process(fx.reference()).route()).isEqualTo(ConversationGraphRoute.SHADOW_DRAFT);
 
         verify(recorder).record(eq(fx.reference().tenantId()), eq(fx.reference().conversationId()),
                 eq(fx.reference().receiptId()), eq(fx.inbound().providerMessageId()),

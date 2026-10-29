@@ -121,6 +121,49 @@ public class JdbcConversationMemoryRepository implements ConversationMemoryPort 
     }
 
     @Override
+    public List<ConversationMessage> loadTranscriptForRebase(ConversationMemoryKey key, Instant contextStartedAt,
+                                                            int keepRecentCount, int maxRebaseMessages) {
+        if (keepRecentCount < 0) throw new IllegalArgumentException("keepRecentCount cannot be negative");
+        if (maxRebaseMessages < 1) throw new IllegalArgumentException("maxRebaseMessages must be positive");
+        if (contextStartedAt == null) return List.of();
+        return jdbc.sql("""
+                select id, conversation_id, direction, provider_message_id, content, received_at
+                from (
+                    select id, conversation_id, direction, provider_message_id, content, received_at,
+                           row_number() over (order by received_at desc, id desc) as row_number
+                    from conversation_message
+                    where conversation_id = :conversationId
+                      and exists (
+                          select 1 from conversation owner
+                          where owner.id = conversation_message.conversation_id
+                            and owner.tenant_id = :tenantId
+                            and owner.channel = :channel
+                            and owner.provider_account_id = :providerAccountId
+                            and owner.participant_id = :participantId
+                      )
+                      and received_at >= :contextStartedAt
+                ) transcript
+                where row_number > :keepRecentCount
+                  and row_number <= :maximumRowNumber
+                order by received_at asc, id asc
+                """)
+                .param("conversationId", key.conversationId())
+                .param("tenantId", key.tenantId())
+                .param("channel", key.channel().name())
+                .param("providerAccountId", key.providerAccountId())
+                .param("participantId", key.participantId())
+                .param("contextStartedAt", Timestamp.from(contextStartedAt))
+                .param("keepRecentCount", keepRecentCount)
+                .param("maximumRowNumber", keepRecentCount + maxRebaseMessages)
+                .query((rs, rowNum) -> new ConversationMessage(
+                        rs.getObject("id", UUID.class), rs.getObject("conversation_id", UUID.class),
+                        ConversationMessage.Direction.valueOf(rs.getString("direction")),
+                        rs.getString("provider_message_id"), rs.getString("content"),
+                        rs.getTimestamp("received_at").toInstant()))
+                .list();
+    }
+
+    @Override
     @Transactional
     public void resetContext(ConversationMemoryKey key, UUID actorId, Instant resetAt) {
         jdbc.sql("""

@@ -1,0 +1,28 @@
+{
+  "suiteId": "intent-routing",
+  "version": "v1",
+  "caseIds": [
+    "general-courtesy-only",
+    "general-discovery-guidance",
+    "general-ambiguous-greeting",
+    "general-process-no-tool",
+    "general-courtesy-after-vehicle",
+    "inventory-family-options",
+    "inventory-pickup-parking-preference",
+    "inventory-needs-based-ford-recommendation",
+    "vehicle-details-ranger-motor",
+    "vehicle-price-exact-variant",
+    "vehicle-details-anaphoric-motor",
+    "mixed-courtesy-and-ranger-motor",
+    "finance-monthly-payment",
+    "offers-ranger-promotion",
+    "appointment-test-drive",
+    "knowledge-warranty",
+    "human-request-advisor",
+    "trade-in-valuation",
+    "dealership-location",
+    "service-maintenance",
+    "complaint-status",
+    "out-of-scope-poem"
+  ]
+}

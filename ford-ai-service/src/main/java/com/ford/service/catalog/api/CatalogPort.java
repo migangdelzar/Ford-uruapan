@@ -33,6 +33,11 @@ public interface CatalogPort {
 
     Optional<VehicleEvidence> find(VehicleLookup lookup);
 
+    /** Names only; never a source of technical, commercial, or inventory facts. */
+    default List<VehicleNameIndexEntry> nameIndexEntries() {
+        return List.of();
+    }
+
     PromotionPage promotions(PromotionQuery query);
 
     List<OfferEvidence> offers(OfferQuery query);

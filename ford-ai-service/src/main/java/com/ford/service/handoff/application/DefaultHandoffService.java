@@ -38,6 +38,9 @@ public class DefaultHandoffService implements HandoffService {
         if (request.conversationId() == null || request.reason() == null || request.reason().isBlank()) {
             throw new IllegalArgumentException("conversation and reason are required");
         }
+        if (request.packet().alternateContact().isPresent()) {
+            throw new SecurityException("alternate contact can only be attached by the consented conversation pipeline");
+        }
         var tenantId = repository.findConversationTenant(request.conversationId());
         requireTenant(principal, tenantId);
         var existing = repository.findOpenByConversation(tenantId, request.conversationId());

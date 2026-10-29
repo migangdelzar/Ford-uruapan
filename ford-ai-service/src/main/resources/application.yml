@@ -12,7 +12,7 @@ spring:
     runtime:
       verification-enabled: true
     events:
-      republish-outstanding-events-on-restart: true
+      republish-outstanding-events-on-restart: false
       completion-mode: update
       staleness:
         published: 10m
@@ -119,7 +119,7 @@ ford:
     datasource:
       url: ${FORD_CATALOG_JDBC_URL:}
       username: ${FORD_CATALOG_USERNAME:}
-      password: ${FORD_DATABASE_PASSWORD:}
+      password: ${FORD_CATALOG_PASSWORD:}
       driver-class-name: ${FORD_CATALOG_DRIVER:org.postgresql.Driver}
   knowledge:
     rag:
@@ -212,6 +212,7 @@ ford:
         provider-account-id: ${FORD_META_INSTAGRAM_ACCOUNT_ID:}
       delivery:
         enabled: ${FORD_META_DELIVERY_ENABLED:false}
+        interactive-messages-enabled: ${FORD_META_INTERACTIVE_MESSAGES_ENABLED:false}
         whatsapp-endpoint: ${FORD_META_WHATSAPP_DELIVERY_ENDPOINT:}
         diagnostic-stacktraces: ${FORD_META_DIAGNOSTIC_STACKTRACES_ENABLED:false}
         whatsapp-access-token: ${FORD_META_WHATSAPP_ACCESS_TOKEN:}
@@ -228,6 +229,10 @@ ford:
     backoff-base-seconds: ${FORD_OUTBOX_BACKOFF_BASE_SECONDS:2}
     backoff-max-seconds: ${FORD_OUTBOX_BACKOFF_MAX_SECONDS:300}
   ai:
+    catalog-name-index:
+      enabled: ${FORD_AI_CATALOG_NAME_INDEX_ENABLED:true}
+      refresh-interval: ${FORD_AI_CATALOG_NAME_INDEX_REFRESH_INTERVAL:PT15M}
+      maximum-estimated-tokens: ${FORD_AI_CATALOG_NAME_INDEX_MAX_ESTIMATED_TOKENS:2048}
     ollama-access:
       client-id: ${FORD_AI_OLLAMA_ACCESS_CLIENT_ID:}
       client-secret: ${FORD_AI_OLLAMA_ACCESS_CLIENT_SECRET:}

@@ -5,6 +5,7 @@ import com.ford.service.catalog.api.CatalogCandidateLists;
 import com.ford.service.catalog.api.CatalogRetrievalCandidate;
 import com.ford.service.catalog.api.CatalogSearchPage;
 import com.ford.service.catalog.api.CatalogPort;
+import com.ford.service.catalog.api.DocumentProvenance;
 import com.ford.service.catalog.api.OfferEvidence;
 import com.ford.service.catalog.api.OfferQuery;
 import com.ford.service.catalog.api.VehicleEvidence;
@@ -211,6 +212,46 @@ class CatalogSemanticRetrievalTest {
 
         assertThat(page.results()).containsExactly(bronco);
         assertThat(page.resultCount()).isEqualTo(1);
+    }
+
+    @Test
+    void preservesOnlyWinningVariantDocumentProvenanceAfterFusionAndDeduplication() {
+        var query = new VehicleSearchQuery("Ranger XLT", null, null,
+                null, null, null, null, null, 3);
+        var vector = new CatalogQueryVector("bge-m3", vector(1024));
+        var xlt = vehicleWithProvenance("Ranger", 2027, "XLT", "variant-xlt",
+                provenance("doc-xlt-1", "XLT", "https://ford.test/ranger/xlt#page=4"));
+        var xltSecond = vehicleWithProvenance("Ranger", 2027, "XLT", "variant-xlt",
+                provenance("doc-xlt-2", "XLT", "https://ford.test/ranger/xlt#page=5"));
+        var lariat = vehicleWithProvenance("Ranger", 2027, "Lariat", "variant-lariat",
+                provenance("doc-lariat", "Lariat", "https://ford.test/ranger/lariat#page=2"));
+        var port = mock(CatalogPort.class);
+        when(port.searchCandidates(query, vector)).thenReturn(new CatalogCandidateLists<>(
+                List.of(new CatalogRetrievalCandidate<>("doc-xlt-1", "Ranger XLT", xlt),
+                        new CatalogRetrievalCandidate<>("doc-xlt-2", "Ranger XLT equipo", xltSecond)),
+                List.of(new CatalogRetrievalCandidate<>("doc-xlt-2", "Ranger XLT equipo", xltSecond)),
+                List.of(new CatalogRetrievalCandidate<>("doc-lariat", "Ranger Lariat", lariat)), "ready"));
+        var service = new CatalogRetrievalService(port, ignored -> Optional.of(vector), new ReciprocalRankFusion());
+
+        var page = service.searchVehicles(query);
+
+        assertThat(page.results()).extracting(VehicleEvidence::variantId)
+                .containsExactly("variant-xlt", "variant-lariat");
+        assertThat(page.results().getFirst().retrievedEvidence())
+                .extracting(DocumentProvenance::documentId).containsExactly("doc-xlt-2", "doc-xlt-1");
+        assertThat(page.results().getFirst().retrievedEvidence())
+                .allSatisfy(source -> assertThat(source.trim()).isEqualTo("XLT"));
+    }
+
+    private static VehicleEvidence vehicleWithProvenance(String model, int year, String trim, String variantId,
+                                                          DocumentProvenance source) {
+        return new VehicleEvidence(model, year, trim, BigDecimal.valueOf(800_000), "MXN",
+                null, null, null, List.of(), List.of(), null, null, variantId, List.of(source));
+    }
+
+    private static DocumentProvenance provenance(String id, String trim, String sourceUrl) {
+        return new DocumentProvenance(id, "content-hash", null, "Technical profile", "vehicle_profile",
+                sourceUrl, null, java.time.Instant.parse("2026-10-19T10:00:00Z"), "Ranger", 2027, trim);
     }
 
     private static VehicleEvidence vehicle(String model, int year) {

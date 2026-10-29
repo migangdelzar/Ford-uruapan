@@ -2,6 +2,7 @@ package com.ford.service.ai.api;
 
 import com.ford.service.ai.application.Intent;
 import com.ford.service.ai.application.ConversationDecision;
+import com.ford.service.ai.application.DecisionTraceEvent;
 import com.ford.service.leads.domain.LeadJourneyProposal;
 
 import java.util.List;
@@ -15,7 +16,9 @@ public record AssistantTurn(
         String provider,
         String modelVersion,
         ConversationDecision decision,
-        LeadJourneyProposal journeyProposal) {
+        LeadJourneyProposal journeyProposal,
+        List<DecisionTraceEvent> decisionTrace,
+        ResponseKind responseKind) {
 
     public AssistantTurn {
         if (text == null || text.isBlank()) {
@@ -26,6 +29,22 @@ public record AssistantTurn(
         provider = provider == null || provider.isBlank() ? "unknown" : provider;
         modelVersion = modelVersion == null || modelVersion.isBlank() ? "unknown" : modelVersion;
         decision = decision == null ? ConversationDecision.deterministicDefault() : decision;
+        decisionTrace = List.copyOf(decisionTrace == null ? List.of() : decisionTrace);
+        responseKind = responseKind == null ? ResponseKind.ANSWER : responseKind;
+    }
+
+    public AssistantTurn(String text, Intent intent, boolean requestsHuman, List<String> sourceIds,
+                         String provider, String modelVersion, ConversationDecision decision,
+                         LeadJourneyProposal journeyProposal, List<DecisionTraceEvent> decisionTrace) {
+        this(text, intent, requestsHuman, sourceIds, provider, modelVersion, decision, journeyProposal,
+                decisionTrace, ResponseKind.ANSWER);
+    }
+
+    public AssistantTurn(String text, Intent intent, boolean requestsHuman, List<String> sourceIds,
+                         String provider, String modelVersion, ConversationDecision decision,
+                         LeadJourneyProposal journeyProposal) {
+        this(text, intent, requestsHuman, sourceIds, provider, modelVersion, decision, journeyProposal,
+                List.of(), ResponseKind.ANSWER);
     }
 
     public AssistantTurn(String text, Intent intent, boolean requestsHuman,
@@ -39,4 +58,6 @@ public record AssistantTurn(
                          ConversationDecision decision) {
         this(text, intent, requestsHuman, sourceIds, provider, modelVersion, decision, null);
     }
+
+    public ResponseKind responseKind() { return responseKind; }
 }

@@ -104,8 +104,9 @@ class AfterHoursDigestServiceTest {
     }
 
     private static BdcHandoffPacket completePacket() {
-        return new BdcHandoffPacket(Optional.of("Ranger"), Optional.of("financiamiento"),
-                Optional.of("20 mil pesos"), Optional.of("este mes"), Optional.of("Cliente"));
+        return new BdcHandoffPacket(Optional.of("Ranger"), Optional.of("XLT"), Optional.of("familia"),
+                Optional.of("este mes"), Optional.of("Ford Focus 2018"), Optional.of("$25,000-$30,000"),
+                Optional.empty(), Optional.of("Cliente"));
     }
 
     private static OperatorPrincipal principal(UUID tenantId, String authority) {

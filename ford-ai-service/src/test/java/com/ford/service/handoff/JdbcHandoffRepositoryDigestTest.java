@@ -30,7 +30,7 @@ class JdbcHandoffRepositoryDigestTest {
                     status varchar(32) not null, priority varchar(16) not null, assigned_operator_id uuid,
                     reason varchar(500) not null, idempotency_key varchar(240), version bigint not null,
                     created_at timestamp with time zone not null, claimed_at timestamp with time zone,
-                    closed_at timestamp with time zone, packet varchar(2000)
+                    closed_at timestamp with time zone, packet varchar(2000), internal_note varchar(4000)
                 )
                 """).update();
         tenantId = UUID.randomUUID();

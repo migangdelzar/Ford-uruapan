@@ -17,6 +17,7 @@ import com.ford.service.catalog.api.VehicleEvidence;
 import com.ford.service.catalog.api.VehicleFact;
 import com.ford.service.catalog.api.VehicleImage;
 import com.ford.service.catalog.api.VehicleLookup;
+import com.ford.service.catalog.api.VehicleNameIndexEntry;
 import com.ford.service.catalog.api.VehicleSearchQuery;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -113,7 +114,7 @@ public final class JdbcCatalogAdapter implements CatalogPort {
                          currency, model_page_url, null as comparison_url,
                          price_source_url, observed_at
                   from ford_read.vehicle_search_v1
-                  where lower(model) = lower(:model)
+                  where normalized_name = :normalizedModel
                     and (cast(:year as integer) is null or year = cast(:year as integer))
                   order by year desc limit 1
                   """
@@ -123,13 +124,14 @@ public final class JdbcCatalogAdapter implements CatalogPort {
                          currency, model_page_url, comparison_url,
                          price_source_url, observed_at
                   from ford_read.vehicle_variants_v2
-                  where lower(model) = lower(:model)
+                  where normalized_model = :normalizedModel
                     and (cast(:year as integer) is null or year = cast(:year as integer))
                     and normalized_trim = :normalizedTrim
                   order by year desc limit 1
                   """;
         var row = jdbc.sql(baseQuery)
                 .param("model", model)
+                .param("normalizedModel", normalize(model))
                 .param("year", lookup.year())
                 .param("normalizedTrim", normalize(lookup.trim()))
                 .query((rs, rowNum) -> new VehicleRow(
@@ -183,6 +185,25 @@ public final class JdbcCatalogAdapter implements CatalogPort {
         return Optional.of(new VehicleEvidence(vehicle.model(), vehicle.year(), vehicle.trim(),
                 vehicle.price(), vehicle.currency(), vehicle.modelPageUrl(), vehicle.priceSourceUrl(),
                 vehicle.observedAt(), facts, images, technicalSheetUrl, vehicle.comparisonUrl()));
+    }
+
+    @Override
+    public List<VehicleNameIndexEntry> nameIndexEntries() {
+        return jdbc.sql("""
+                select model, year, trim
+                from (
+                  select model, year, cast(null as varchar) as trim
+                  from ford_read.vehicle_search_v1
+                  union
+                  select model, year, trim
+                  from ford_read.vehicle_variants_v2
+                  where trim is not null and btrim(trim) <> ''
+                ) names
+                order by lower(model), year desc, lower(coalesce(trim, ''))
+                """)
+                .query((rs, rowNum) -> new VehicleNameIndexEntry(
+                        rs.getString("model"), rs.getInt("year"), rs.getString("trim")))
+                .list();
     }
 
     private String technicalSheetUrl(String model, int year) {

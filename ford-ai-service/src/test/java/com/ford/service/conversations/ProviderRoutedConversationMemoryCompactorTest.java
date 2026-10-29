@@ -11,6 +11,7 @@ import com.ford.service.channels.domain.Channel;
 import com.ford.service.conversations.adapter.out.ai.ProviderRoutedConversationMemoryCompactor;
 import com.ford.service.conversations.domain.ConversationMemoryKey;
 import com.ford.service.conversations.domain.ConversationMessage;
+import com.ford.service.conversations.domain.MemoryFact;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.tool.ToolCallback;
@@ -87,6 +88,26 @@ class ProviderRoutedConversationMemoryCompactorTest {
         assertThat(request.getValue().decision().toolFamily())
                 .isEqualTo(com.ford.service.ai.application.ToolFamily.NONE);
         assertThat(request.getValue().decision().evidence()).isEmpty();
+        assertThat(request.getValue().conversationState()).isEqualTo("MEMORY_COMPACTION");
+    }
+
+    @Test
+    void rebasePromptUsesCanonicalTranscriptAndCurrentFactsWithoutPriorGeneratedSummary() {
+        var completion = mock(ChatCompletionPort.class);
+        when(completion.complete(any(), any())).thenReturn(
+                new AssistantResponse("Ranger XL; uso en ciudad.", false, "cloudflare", List.of()));
+        var compactor = new ProviderRoutedConversationMemoryCompactor(completion,
+                new InputSecurityPolicy(new ClassificationProperties()));
+        var facts = List.of(new MemoryFact("budget", "presupuesto máximo 350000", UUID.randomUUID()));
+
+        compactor.rebase(UUID.randomUUID(), UUID.randomUUID(), List.of(inbound("La Ranger XL es práctica")),
+                facts, 200);
+
+        var request = org.mockito.ArgumentCaptor.forClass(AssistantRequest.class);
+        verify(completion).complete(request.capture(), any());
+        assertThat(request.getValue().message()).contains("presupuesto máximo 350000")
+                .contains("Busque solo en el transcript y hechos actuales")
+                .doesNotContain("Resumen anterior", "stale generated summary");
     }
 
     @Test

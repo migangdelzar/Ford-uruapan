@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - changeSet:
+      id: 032-internal-handoff-note
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              alter table handoff_ticket add column internal_note jsonb;
+      rollback:
+        - sql:
+            sql: |
+              alter table handoff_ticket drop column if exists internal_note;

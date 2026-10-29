@@ -65,6 +65,7 @@ dependencies {
     implementation(libs.langgraph4j.core)
     implementation(libs.langgraph4j.postgres.saver)
     implementation(libs.oci.sdk.secrets)
+    implementation(libs.oci.sdk.objectstorage)
     implementation(libs.oci.sdk.httpclient.jersey3)
 
     testImplementation(libs.spring.boot.starter.test)
@@ -124,6 +125,14 @@ val integrationTest = tasks.register<Test>("integrationTest") {
     classpath = sourceSets["integrationTest"].runtimeClasspath
     shouldRunAfter(tasks.test)
     useJUnitPlatform()
+}
+
+tasks.register<JavaExec>("importLocalCatalogSnapshot") {
+    description = "Imports the approved filtered snapshot into the dedicated local catalog database."
+    group = "application"
+    dependsOn(tasks.named("integrationTestClasses"))
+    classpath = sourceSets["integrationTest"].runtimeClasspath
+    mainClass.set("com.ford.service.conversations.LocalCatalogSnapshotImportCli")
 }
 
 tasks.register<Test>("providerPreflight") {

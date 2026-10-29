@@ -54,6 +54,13 @@ public class ToolAuthorizationPolicy {
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
+    public AuthorizedToolSet authorizedToolSet(Set<String> requestedNames) {
+        var requested = requestedNames == null ? Set.<String>of() : Set.copyOf(requestedNames);
+        return new AuthorizedToolSet(availableReadOnlyToolNames().stream()
+                .filter(requested::contains)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet()));
+    }
+
     private static boolean isReadOnly(String name) {
         var normalized = name.toLowerCase(Locale.ROOT);
         return DENIED_TERMS.stream().noneMatch(normalized::contains);

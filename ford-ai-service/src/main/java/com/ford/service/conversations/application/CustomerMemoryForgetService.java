@@ -6,6 +6,7 @@ import com.ford.service.conversations.api.CustomerMemoryForgetReceipt;
 import com.ford.service.conversations.application.port.out.ConversationMemoryKeyRepository;
 import com.ford.service.conversations.application.port.out.IdempotencyRepository;
 import com.ford.service.operator.application.AuthenticatedOperator;
+import com.ford.service.handoffcontact.api.AlternateContactForgetPort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,13 +23,22 @@ public class CustomerMemoryForgetService {
     private final ConversationMemoryKeyRepository keys;
     private final IdempotencyRepository idempotency;
     private final ObjectMapper mapper;
+    private final AlternateContactForgetPort alternateContacts;
 
     public CustomerMemoryForgetService(CustomerMemoryService memory, ConversationMemoryKeyRepository keys,
-                                      IdempotencyRepository idempotency, ObjectMapper mapper) {
+                                       IdempotencyRepository idempotency, ObjectMapper mapper) {
+        this(memory, keys, idempotency, mapper, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public CustomerMemoryForgetService(CustomerMemoryService memory, ConversationMemoryKeyRepository keys,
+                                       IdempotencyRepository idempotency, ObjectMapper mapper,
+                                       AlternateContactForgetPort alternateContacts) {
         this.memory = memory;
         this.keys = keys;
         this.idempotency = idempotency;
         this.mapper = mapper;
+        this.alternateContacts = alternateContacts;
     }
 
     @Transactional
@@ -50,6 +60,9 @@ public class CustomerMemoryForgetService {
         var conversationKey = keys.find(tenantId, conversationId)
                 .orElseThrow(() -> new java.util.NoSuchElementException("conversation not found"));
         var forgottenAt = Instant.now();
+        if (alternateContacts != null) {
+            alternateContacts.forgetForConversation(tenantId, conversationId, forgottenAt, operator.subject());
+        }
         var result = memory.forget(tenantId, conversationKey.channel(), conversationId, forgottenAt,
                 UUID.randomUUID(), operator.subject());
         var receipt = new CustomerMemoryForgetReceipt(conversationId, result.removedFactCount(), forgottenAt);

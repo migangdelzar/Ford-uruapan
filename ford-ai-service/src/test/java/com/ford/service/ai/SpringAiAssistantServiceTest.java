@@ -48,6 +48,61 @@ import static org.mockito.Mockito.verify;
 class SpringAiAssistantServiceTest {
 
     @Test
+    void answersExactCatalogPriceWithoutCallingAnswerOrchestrator() {
+        var orchestrator = mock(AssistantOrchestrator.class);
+        var catalog = mock(com.ford.service.catalog.api.CatalogPort.class);
+        when(catalog.promotions(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new com.ford.service.catalog.api.PromotionPage(0, 0, 3, List.of()));
+        when(catalog.find(org.mockito.ArgumentMatchers.any())).thenReturn(java.util.Optional.of(
+                new com.ford.service.catalog.api.VehicleEvidence("Ranger", 2027, "XLT",
+                        new java.math.BigDecimal("799000.00"), "MXN", "https://www.forduruapan.mx/RANGER/27/",
+                        "https://www.forduruapan.mx/RANGER/27/Comparativo/XLT/",
+                        java.time.Instant.parse("2026-10-20T00:00:00Z"), List.of(), List.of())));
+        var objectMapper = new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();
+        var renderer = new com.ford.service.ai.application.CatalogFactResponseRenderer(
+                new org.springframework.core.io.DefaultResourceLoader(), objectMapper);
+        var deterministic = new com.ford.service.ai.application.DeterministicCatalogAnswerService(
+                catalog, renderer, objectMapper);
+        var rules = new RulesConversationDecisionAdapter(new IntentRouter());
+        var properties = new ClassificationProperties();
+        var service = new SpringAiAssistantService(orchestrator, new HumanHandoffPolicy(false),
+                new DefaultModelProviderPolicy(List.of()), false,
+                new ConversationDecisionService(rules, rules, properties),
+                new com.ford.service.ai.application.DecisionPolicy(), new AssistantScopePolicy(new IntentRouter()),
+                new com.ford.service.ai.application.LeadQualificationPolicy(),
+                new com.ford.service.ai.application.InputSecurityPolicy(properties),
+                new com.ford.service.ai.application.AssistantPersona(), deterministic);
+
+        var turn = service.respond(new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID()),
+                "¿Cuál es el precio de Ranger XLT 2027?");
+
+        assertThat(turn.provider()).isEqualTo("deterministic-catalog");
+        assertThat(turn.text()).contains("799,000");
+        assertThat(turn.sourceIds()).containsExactly(
+                "https://www.forduruapan.mx/RANGER/27/Comparativo/XLT/");
+        assertThat(turn.decisionTrace()).anySatisfy(event -> {
+            assertThat(event.stage()).isEqualTo("answer");
+            assertThat(event.reasonCode()).isEqualTo("deterministic_catalog_lookup");
+            assertThat(event.route()).isEqualTo("deterministic-catalog");
+            assertThat(event.modelRole()).isEqualTo("none");
+            assertThat(event.toolName()).isEmpty();
+            assertThat(event.outcome()).isEqualTo("returned");
+            assertThat(event.evidenceCount()).isEqualTo(1);
+        });
+        assertThat(turn.decisionTrace()).anySatisfy(event -> {
+            assertThat(event.stage()).isEqualTo("tool");
+            assertThat(event.toolName()).isEqualTo("get_vehicle");
+            assertThat(event.outcome()).isEqualTo("returned");
+            assertThat(event.evidenceCount()).isEqualTo(1);
+        });
+        verify(orchestrator, org.mockito.Mockito.never()).respond(org.mockito.ArgumentMatchers.any());
+        var catalogCalls = org.mockito.Mockito.inOrder(catalog);
+        catalogCalls.verify(catalog).promotions(org.mockito.ArgumentMatchers.any());
+        catalogCalls.verify(catalog).find(org.mockito.ArgumentMatchers.any());
+        verify(catalog).find(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void introducesAStableFriendlyMexicanNameOnlyOnTheFirstReplyOfEachConversation() {
         var orchestrator = mock(AssistantOrchestrator.class);
         when(orchestrator.respond(org.mockito.ArgumentMatchers.any()))
@@ -190,6 +245,25 @@ class SpringAiAssistantServiceTest {
 
         assertThat(turn.text()).contains("vehículos Ford");
         assertThat(turn.provider()).isEqualTo("scope-guard");
+        verify(orchestrator, org.mockito.Mockito.never()).respond(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void consumesTypedScopeDecisionBeforeCallingTheModel() {
+        var orchestrator = mock(AssistantOrchestrator.class);
+        var scope = org.mockito.Mockito.spy(new AssistantScopePolicy(new IntentRouter()));
+        var service = new SpringAiAssistantService(orchestrator, new HumanHandoffPolicy(false),
+                new DefaultModelProviderPolicy(List.of()), false,
+                new ConversationDecisionService(
+                        new com.ford.service.ai.adapter.out.rules.RulesConversationDecisionAdapter(new IntentRouter()),
+                        new com.ford.service.ai.adapter.out.rules.RulesConversationDecisionAdapter(new IntentRouter()),
+                        new ClassificationProperties()), new com.ford.service.ai.application.DecisionPolicy(), scope);
+
+        service.respond(new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID()),
+                "Escribe un poema sobre volcanes");
+
+        verify(scope).evaluate(org.mockito.ArgumentMatchers.eq("Escribe un poema sobre volcanes"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
         verify(orchestrator, org.mockito.Mockito.never()).respond(org.mockito.ArgumentMatchers.any());
     }
 
@@ -417,6 +491,10 @@ class SpringAiAssistantServiceTest {
         assertThat(turn.sourceIds()).containsExactly("doc-1");
         assertThat(turn.provider()).isEqualTo("ollama");
         assertThat(turn.modelVersion()).isEqualTo("llama3.2");
+        assertThat(turn.decisionTrace()).extracting(com.ford.service.ai.application.DecisionTraceEvent::stage)
+                .containsExactly("security", "classifier", "entity_resolution", "scope", "route", "answer",
+                        "evidence", "quality", "finalization");
+        assertThat(turn.decisionTrace().toString()).doesNotContain("Hay Ranger disponible", "doc-1");
     }
 
     @Test
@@ -453,6 +531,23 @@ class SpringAiAssistantServiceTest {
         verify(orchestrator, org.mockito.Mockito.times(2)).respond(requests.capture());
         assertThat(requests.getAllValues().get(1).repairInstruction()).isNotBlank();
         assertThat(requests.getAllValues().get(1).recentAssistantReplies()).containsExactly(repeated);
+    }
+
+    @Test
+    void rawExplorationModeKeepsRepeatedQwenReplyWithoutRepair() {
+        var orchestrator = mock(AssistantOrchestrator.class);
+        var repeated = "La Ranger está disponible para revisión en la agencia Ford.";
+        when(orchestrator.respond(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AssistantResponse(repeated, false, "ollama", List.of()));
+        var service = new SpringAiAssistantService(orchestrator, new HumanHandoffPolicy(false),
+                new DefaultModelProviderPolicy(List.of()), false, false);
+        var context = new AiExecutionContext(UUID.randomUUID(), false, UUID.randomUUID(), null, null, null,
+                List.of(repeated));
+
+        var turn = service.respond(context, "¿Qué consumo tiene la Ranger?");
+
+        assertThat(turn.text()).endsWith(repeated);
+        verify(orchestrator, org.mockito.Mockito.times(1)).respond(org.mockito.ArgumentMatchers.any());
     }
 
     @Test

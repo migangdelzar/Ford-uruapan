@@ -4,15 +4,13 @@ import com.ford.service.channels.api.InboundDebounceGate;
 import com.ford.service.channels.api.InboundMessageAccepted;
 import com.ford.service.channels.api.InboundTurnReleased;
 import com.ford.service.channels.domain.Channel;
-import com.ford.service.conversations.application.ConversationMemoryService;
 import com.ford.service.conversations.application.ConversationWorkflow;
-import com.ford.service.conversations.application.port.out.ConversationAssistant;
-import com.ford.service.conversations.application.port.out.ConversationRepository;
-import com.ford.service.shared.HumanHandoffPolicy;
-import com.ford.service.observability.DefaultAiObservationService;
-import io.micrometer.observation.ObservationRegistry;
+import com.ford.service.conversations.application.graph.ConversationGraphResult;
+import com.ford.service.conversations.application.graph.ConversationGraphRoute;
+import com.ford.service.conversations.application.graph.ConversationGraphRunner;
+import com.ford.service.conversations.application.port.out.ConversationTurnLedgerPort;
+import com.ford.service.observability.AiObservationService;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -33,13 +31,13 @@ class ConversationWorkflowDebounceTest {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
         var receiptId = UUID.randomUUID();
-        var repository = mock(ConversationRepository.class);
+        var graphRunner = mock(ConversationGraphRunner.class);
         var gate = mock(InboundDebounceGate.class);
         when(gate.isDue(tenantId, conversationId, receiptId)).thenReturn(false);
 
-        workflow(repository, gate).on(event(receiptId, tenantId, conversationId));
+        workflow(graphRunner, gate).on(event(receiptId, tenantId, conversationId));
 
-        verifyNoInteractions(repository);
+        verifyNoInteractions(graphRunner);
     }
 
     @Test
@@ -47,13 +45,15 @@ class ConversationWorkflowDebounceTest {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
         var receiptId = UUID.randomUUID();
-        var repository = mock(ConversationRepository.class);
+        var graphRunner = mock(ConversationGraphRunner.class);
         var gate = mock(InboundDebounceGate.class);
         when(gate.isDue(tenantId, conversationId, receiptId)).thenReturn(true);
+        when(graphRunner.run(any())).thenAnswer(invocation -> new ConversationGraphResult(
+                invocation.getArgument(0), ConversationGraphRoute.BOT_REPLY, true));
 
-        workflow(repository, gate).on(event(receiptId, tenantId, conversationId));
+        workflow(graphRunner, gate).on(event(receiptId, tenantId, conversationId));
 
-        verify(repository).find(conversationId);
+        verify(graphRunner).run(any());
     }
 
     @Test
@@ -61,24 +61,24 @@ class ConversationWorkflowDebounceTest {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
         var receiptId = UUID.randomUUID();
-        var repository = mock(ConversationRepository.class);
+        var graphRunner = mock(ConversationGraphRunner.class);
         var gate = mock(InboundDebounceGate.class);
+        when(graphRunner.run(any())).thenAnswer(invocation -> new ConversationGraphResult(
+                invocation.getArgument(0), ConversationGraphRoute.BOT_REPLY, true));
 
-        workflow(repository, gate).on(new InboundTurnReleased(receiptId, tenantId, conversationId,
+        workflow(graphRunner, gate).on(new InboundTurnReleased(receiptId, tenantId, conversationId,
                 Channel.WHATSAPP, "wamid.1", NOW));
 
         verify(gate, never()).isDue(any(), any(), any());
-        verify(repository).find(conversationId);
+        verify(graphRunner).run(any());
     }
 
     private static InboundMessageAccepted event(UUID receiptId, UUID tenantId, UUID conversationId) {
         return new InboundMessageAccepted(receiptId, tenantId, conversationId, Channel.WHATSAPP, "wamid.1", NOW);
     }
 
-    private static ConversationWorkflow workflow(ConversationRepository repository, InboundDebounceGate gate) {
-        return new ConversationWorkflow(repository, mock(ConversationAssistant.class),
-                mock(ApplicationEventPublisher.class), new HumanHandoffPolicy(true),
-                mock(ConversationMemoryService.class), (id, messageId, decision) -> { },
-                new DefaultAiObservationService(ObservationRegistry.NOOP), null, null, gate);
+    private static ConversationWorkflow workflow(ConversationGraphRunner graphRunner, InboundDebounceGate gate) {
+        return new ConversationWorkflow(graphRunner, mock(AiObservationService.class), null, gate,
+                mock(ConversationTurnLedgerPort.class));
     }
 }

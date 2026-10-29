@@ -12,6 +12,7 @@ public class MetaDeliveryProperties {
     private String messengerAccessToken = "";
     private String instagramAccessToken = "";
     private boolean diagnosticStacktraces;
+    private boolean interactiveMessagesEnabled;
 
     public boolean isEnabled() {
         return enabled;
@@ -73,5 +74,11 @@ public class MetaDeliveryProperties {
 
     public void setDiagnosticStacktraces(boolean diagnosticStacktraces) {
         this.diagnosticStacktraces = diagnosticStacktraces;
+    }
+
+    public boolean isInteractiveMessagesEnabled() { return interactiveMessagesEnabled; }
+
+    public void setInteractiveMessagesEnabled(boolean interactiveMessagesEnabled) {
+        this.interactiveMessagesEnabled = interactiveMessagesEnabled;
     }
 }

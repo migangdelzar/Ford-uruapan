@@ -14,7 +14,22 @@ public record ConversationDecision(
         LeadNextAction nextAction,
         boolean urgencySignal,
         String summary,
-        List<ClassificationEvidence> evidence) {
+        List<ClassificationEvidence> evidence,
+        VehicleEntityResolution vehicleEntities) {
+
+    public ConversationDecision(ConversationIntent intent,
+                                LeadTemperature leadTemperature,
+                                LeadStage leadStage,
+                                HandoffRecommendation handoffRecommendation,
+                                ToolFamily toolFamily,
+                                SensitiveDataLevel sensitiveDataLevel,
+                                LeadNextAction nextAction,
+                                boolean urgencySignal,
+                                String summary,
+                                List<ClassificationEvidence> evidence) {
+        this(intent, leadTemperature, leadStage, handoffRecommendation, toolFamily, sensitiveDataLevel,
+                nextAction, urgencySignal, summary, evidence, VehicleEntityResolution.missing());
+    }
 
     public ConversationDecision(ConversationIntent intent,
                                 LeadTemperature leadTemperature,
@@ -24,7 +39,7 @@ public record ConversationDecision(
                                 SensitiveDataLevel sensitiveDataLevel,
                                 List<ClassificationEvidence> evidence) {
         this(intent, leadTemperature, leadStage, handoffRecommendation, toolFamily,
-                sensitiveDataLevel, LeadNextAction.NO_ACTION, false, "", evidence);
+                sensitiveDataLevel, LeadNextAction.NO_ACTION, false, "", evidence, VehicleEntityResolution.missing());
     }
 
     public static ConversationDecision deterministicDefault() {
@@ -42,6 +57,7 @@ public record ConversationDecision(
         Objects.requireNonNull(nextAction, "next action is required");
         summary = normalizeSummary(summary);
         evidence = List.copyOf(evidence == null ? List.of() : evidence);
+        vehicleEntities = vehicleEntities == null ? VehicleEntityResolution.missing() : vehicleEntities;
     }
 
     public Intent toLegacyIntent() {
@@ -72,12 +88,22 @@ public record ConversationDecision(
             updatedEvidence.add(leadEvidence);
         }
         return new ConversationDecision(intent, temperature, stage, handoffRecommendation,
-                toolFamily, sensitiveDataLevel, nextAction, urgencySignal, summary, updatedEvidence);
+                toolFamily, sensitiveDataLevel, nextAction, urgencySignal, summary, updatedEvidence, vehicleEntities);
     }
 
     public ConversationDecision withHandoffRecommendation(HandoffRecommendation recommendation) {
         return new ConversationDecision(intent, leadTemperature, leadStage, recommendation,
-                toolFamily, sensitiveDataLevel, nextAction, urgencySignal, summary, evidence);
+                toolFamily, sensitiveDataLevel, nextAction, urgencySignal, summary, evidence, vehicleEntities);
+    }
+
+    public ConversationDecision withVehicleEntities(VehicleEntityResolution entities) {
+        return new ConversationDecision(intent, leadTemperature, leadStage, handoffRecommendation,
+                toolFamily, sensitiveDataLevel, nextAction, urgencySignal, summary, evidence, entities);
+    }
+
+    public ConversationDecision withSummary(String value) {
+        return new ConversationDecision(intent, leadTemperature, leadStage, handoffRecommendation,
+                toolFamily, sensitiveDataLevel, nextAction, urgencySignal, value, evidence, vehicleEntities);
     }
 
     public ConversationDecision withDeterministicRoute(ConversationDecision route) {
@@ -91,7 +117,7 @@ public record ConversationDecision(
                 .forEach(updatedEvidence::add);
         return new ConversationDecision(route.intent(), leadTemperature, leadStage, handoffRecommendation,
                 route.toolFamily(), sensitiveDataLevel, route.nextAction(), urgencySignal || route.urgencySignal(),
-                summary.isBlank() ? route.summary() : summary, updatedEvidence);
+                summary.isBlank() ? route.summary() : summary, updatedEvidence, route.vehicleEntities());
     }
 
     public String toPromptContext() {
@@ -104,6 +130,15 @@ public record ConversationDecision(
                 "sensitive_data=" + lower(sensitiveDataLevel) + "\n" +
                 "next_action=" + lower(nextAction) + "\n" +
                 "urgency_signal=" + urgencySignal + "\n" +
+                "vehicle_model=" + vehicleEntities.model().map(value -> value.toLowerCase(Locale.ROOT)).orElse("none") + "\n" +
+                "vehicle_model_source=" + lower(vehicleEntities.modelSource()) + "\n" +
+                "vehicle_model_year=" + vehicleEntities.modelYear().map(String::valueOf).orElse("none") + "\n" +
+                "vehicle_model_year_source=" + lower(vehicleEntities.modelYearSource()) + "\n" +
+                "vehicle_comparison_years=" + vehicleEntities.comparisonYears().stream()
+                        .map(String::valueOf).collect(java.util.stream.Collectors.joining(",")) + "\n" +
+                "vehicle_trim=" + vehicleEntities.trim().map(value -> value.toLowerCase(Locale.ROOT)).orElse("none") + "\n" +
+                "vehicle_trim_source=" + lower(vehicleEntities.trimSource()) + "\n" +
+                "vehicle_resolution_status=" + lower(vehicleEntities.status()) + "\n" +
                 "summary=" + summary + "\n" +
                 "[/DECISION CONTEXT]";
     }

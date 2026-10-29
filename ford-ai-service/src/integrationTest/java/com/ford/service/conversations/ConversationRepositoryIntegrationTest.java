@@ -6,6 +6,7 @@ import com.ford.service.conversations.adapter.out.JdbcOperatorConversationReposi
 import com.ford.service.conversations.adapter.out.JdbcOperatorConversationCommandRepository;
 import com.ford.service.conversations.domain.ConversationState;
 import com.ford.service.conversations.domain.ConversationTurn;
+import com.ford.service.channels.domain.ReplyOption;
 import com.ford.service.conversations.application.DefaultConversationCommandService;
 import com.ford.service.conversations.api.SendMessageRequest;
 import com.ford.service.operator.application.AuthenticatedOperator;
@@ -144,14 +145,15 @@ class ConversationRepositoryIntegrationTest {
     }
 
     @Test
-    void completesTurnOnlyForExpectedVersionAndWritesReplyOutbox() {
+    void completesTurnOnlyForExpectedVersionAndWritesReplyOutbox() throws Exception {
         var tenantId = UUID.randomUUID();
         var conversationId = UUID.randomUUID();
         insertConversation(tenantId, conversationId);
 
         var snapshot = repository.find(conversationId).orElseThrow();
         var completed = repository.completeBotTurn(
-                conversationId, snapshot.version(), new ConversationTurn("Respuesta en español."));
+                conversationId, snapshot.version(), new ConversationTurn("Respuesta en español.",
+                        java.util.List.of(new ReplyOption("vehicle-0123456789abcdef", "Ranger 2027 XLT"))));
 
         assertThat(completed).isTrue();
         assertThat(jdbc.sql("select version from conversation where id = :id")
@@ -160,6 +162,12 @@ class ConversationRepositoryIntegrationTest {
                 .param("id", conversationId).query(Integer.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("select count(*) from outbox_event where aggregate_id = :id and status = 'PENDING'")
                 .param("id", conversationId).query(Integer.class).single()).isEqualTo(1);
+        var payload = jdbc.sql("select payload::text from outbox_event where aggregate_id = :id and status = 'PENDING'")
+                .param("id", conversationId).query(String.class).single();
+        var replyOptions = new tools.jackson.databind.ObjectMapper().readTree(payload).path("replyOptions");
+        assertThat(replyOptions).hasSize(1);
+        assertThat(replyOptions.get(0).path("id").asText()).isEqualTo("vehicle-0123456789abcdef");
+        assertThat(replyOptions.get(0).path("title").asText()).isEqualTo("Ranger 2027 XLT");
 
         assertThat(repository.completeBotTurn(
                 conversationId, snapshot.version(), new ConversationTurn("Respuesta obsoleta.")))

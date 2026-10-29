@@ -25,5 +25,19 @@ public class CatalogDataSourceProperties {
             throw new IllegalStateException(
                     "Local Ford catalog tools require a dedicated read-only catalog JDBC URL and credentials");
         }
+        if (isFordServiceDatabase(url)) {
+            throw new IllegalStateException("Synthetic catalog datasource must not use the ford_service database");
+        }
+    }
+
+    private static boolean isFordServiceDatabase(String jdbcUrl) {
+        var normalized = jdbcUrl.strip();
+        if (!normalized.regionMatches(true, 0, "jdbc:postgresql:", 0, "jdbc:postgresql:".length())) {
+            return false;
+        }
+        var databasePart = normalized.substring("jdbc:postgresql:".length()).split("[?;]", 2)[0];
+        var slash = databasePart.lastIndexOf('/');
+        var databaseName = slash >= 0 ? databasePart.substring(slash + 1) : databasePart;
+        return "ford_service".equalsIgnoreCase(databaseName);
     }
 }

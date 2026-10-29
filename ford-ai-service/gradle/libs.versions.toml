@@ -63,6 +63,7 @@ langgraph4j-core = { module = "org.bsc.langgraph4j:langgraph4j-core", version.re
 langgraph4j-postgres-saver = { module = "org.bsc.langgraph4j:langgraph4j-postgres-saver", version.ref = "langgraph4j" }
 oci-sdk-bom = { module = "com.oracle.oci.sdk:oci-java-sdk-bom", version.ref = "oci-sdk" }
 oci-sdk-secrets = { module = "com.oracle.oci.sdk:oci-java-sdk-secrets" }
+oci-sdk-objectstorage = { module = "com.oracle.oci.sdk:oci-java-sdk-objectstorage" }
 oci-sdk-httpclient-jersey3 = { module = "com.oracle.oci.sdk:oci-java-sdk-common-httpclient-jersey3" }
 
 [plugins]

@@ -4,6 +4,7 @@ import com.ford.service.ai.application.AssistantOrchestrator;
 import com.ford.service.ai.application.DefaultAssistantOrchestrator;
 import com.ford.service.ai.application.IntentRouter;
 import com.ford.service.ai.application.ToolAuthorizationPolicy;
+import com.ford.service.ai.application.DecisionTraceCollector;
 import com.ford.service.ai.application.port.out.ChatCompletionPort;
 import com.ford.service.ai.api.AssistantRequest;
 import com.ford.service.ai.api.AssistantResponse;
@@ -47,6 +48,25 @@ class AssistantOrchestratorTest {
                 UUID.randomUUID(), UUID.randomUUID(), "¿Qué Ranger tienen?", "BOT_ACTIVE", false));
 
         assertThat(response.content()).contains("disponibilidad");
+    }
+
+    @Test
+    void recordsOnlyBoundedToolAuthorizationOutcome() {
+        var completion = mock(ChatCompletionPort.class);
+        when(completion.complete(any(), any())).thenReturn(
+                new AssistantResponse("Respuesta segura.", false, "test", List.of()));
+        var trace = new DecisionTraceCollector();
+        var orchestrator = new DefaultAssistantOrchestrator(new IntentRouter(), new ToolAuthorizationPolicy(), completion);
+        var request = new AssistantRequest(UUID.randomUUID(), UUID.randomUUID(), "¿Qué hay?", "BOT_ACTIVE",
+                null, false, null, null, List.of(), null, trace);
+
+        orchestrator.respond(request);
+
+        assertThat(trace.snapshot()).singleElement().satisfies(event -> {
+            assertThat(event.stage()).isEqualTo("authorization");
+            assertThat(event.outcome()).isEqualTo("skipped");
+            assertThat(event.evidenceCount()).isZero();
+        });
     }
 
 }

@@ -18,13 +18,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ChatProviderPropertiesTest {
 
     @Test
-    void productionKeepsDeepSeekPrimaryAndSetsOneOpenRouterFallbackAttempt() throws Exception {
+    void productionKeepsDeepSeekPrimaryAndDoesNotSetAnOpenRouterFallback() throws Exception {
         var loader = new YamlPropertySourceLoader();
         var environment = new StandardEnvironment();
         loader.load("application-prod", new ClassPathResource("application-prod.yml"))
                 .forEach(environment.getPropertySources()::addFirst);
         loader.load("application", new ClassPathResource("application.yml"))
                 .forEach(environment.getPropertySources()::addLast);
+        environment.getPropertySources().addFirst(new MapPropertySource("test-openrouter",
+                Map.of("DEEPSEEK_API_KEY", "synthetic-deepseek-key",
+                        "OPENROUTER_API_KEY", "test-key",
+                        "ford.ai.providers.catalog.openrouter.api-key", "test-key",
+                        "FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED", "true",
+                        "FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED", "true")));
 
         var ai = Binder.get(environment).bind("ford.ai", Bindable.of(AiProperties.class))
                 .orElseThrow(() -> new IllegalStateException("production AI configuration is missing"));
@@ -37,10 +43,11 @@ class ChatProviderPropertiesTest {
         assertThat(ai.providerMaxAttempts()).isEqualTo(2);
         assertThat(environment.getProperty("spring.ai.model.chat")).isEqualTo("openai");
         assertThat(environment.getProperty("spring.ai.openai.base-url")).isEqualTo("https://api.deepseek.com");
+        assertThat(environment.getProperty("spring.ai.openai.api-key")).isEqualTo("synthetic-deepseek-key");
         assertThat(environment.getProperty("spring.ai.openai.chat.options.model")).isEqualTo("deepseek-flash");
-        assertThat(providers.fallbackOrder()).containsExactly("openrouter");
+        assertThat(providers.fallbackOrder()).isEmpty();
         assertThat(providers.eligibleFallbackIds()).isEmpty();
-        assertThat(providers.providerStatus()).containsEntry("openrouter", "missing_api_key");
+        assertThat(providers.providerStatus()).isEmpty();
     }
 
     @Test
@@ -54,6 +61,7 @@ class ChatProviderPropertiesTest {
         environment.getPropertySources().addFirst(new MapPropertySource("test-credentials",
                 Map.of("OPENROUTER_API_KEY", "test-key",
                         "ford.ai.providers.catalog.openrouter.api-key", "test-key",
+                        "ford.ai.providers.fallback-order", "openrouter",
                         "FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED", "true",
                         "FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED", "true")));
 

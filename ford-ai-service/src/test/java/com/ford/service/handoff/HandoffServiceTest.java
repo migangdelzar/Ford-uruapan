@@ -67,9 +67,9 @@ class HandoffServiceTest {
         repository.conversationTenants.put(conversationId, tenantId);
         HandoffService service = new DefaultHandoffService(repository, event -> { },
                 (tenant, conversation, operator, handoffId) -> { });
-        var packet = new BdcHandoffPacket(java.util.Optional.of("Ranger"), java.util.Optional.of("financiamiento"),
-                java.util.Optional.of("20 mil pesos"), java.util.Optional.of("este mes"),
-                java.util.Optional.of("María Elena"));
+        var packet = new BdcHandoffPacket(java.util.Optional.of("Ranger"), java.util.Optional.empty(),
+                java.util.Optional.empty(), java.util.Optional.of("este mes"), java.util.Optional.empty(),
+                java.util.Optional.empty(), java.util.Optional.empty(), java.util.Optional.of("María Elena"));
 
         var ticket = service.request(new HandoffRequest(tenantId, conversationId, null, "CUSTOMER_REQUEST", packet),
                 principal(tenantId));

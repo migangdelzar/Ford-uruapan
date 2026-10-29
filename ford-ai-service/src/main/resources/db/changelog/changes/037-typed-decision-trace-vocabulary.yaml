@@ -1,0 +1,29 @@
+databaseChangeLog:
+  - changeSet:
+      id: 037-typed-decision-trace-vocabulary
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              alter table conversation_decision_event
+                  drop constraint conversation_decision_event_stage_check,
+                  drop constraint conversation_decision_event_outcome_check;
+              alter table conversation_decision_event
+                  add constraint conversation_decision_event_stage_check check (stage in
+                      ('security','classifier','entity_resolution','scope','authorization','route','tool',
+                       'evidence','answer','quality','handoff','finalization')),
+                  add constraint conversation_decision_event_outcome_check check (outcome in
+                      ('started','completed','skipped','returned','empty','failed','fallback','requested','queued',
+                       'not_applicable','blocked','allowed','ambiguous','denied','authorized','unknown',
+                       'supported','conflicted','clarification','pass','repair','handoff','finalized','missing','resolved'));
+      rollback:
+        - sql:
+            sql: |
+              alter table conversation_decision_event
+                  drop constraint conversation_decision_event_stage_check,
+                  drop constraint conversation_decision_event_outcome_check;
+              alter table conversation_decision_event
+                  add constraint conversation_decision_event_stage_check check (stage in
+                      ('classifier','route','tool','answer','quality','handoff')),
+                  add constraint conversation_decision_event_outcome_check check (outcome in
+                      ('started','completed','skipped','returned','empty','failed','fallback','requested','queued'));

@@ -3,6 +3,7 @@ package com.ford.service.realtime.application;
 import com.ford.service.channels.api.InboundMessageAccepted;
 import com.ford.service.channels.api.AcceptedInboundMessageRepository;
 import com.ford.service.realtime.domain.FrontendEvent;
+import com.ford.service.handoffcontact.api.AlternateContactIntakePort;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.stereotype.Component;
@@ -17,10 +18,18 @@ public class InboundMessageRealtimeListener {
 
     private final RealtimeEventHub hub;
     private final AcceptedInboundMessageRepository inboundTurns;
+    private final AlternateContactIntakePort alternateContacts;
 
     public InboundMessageRealtimeListener(RealtimeEventHub hub, AcceptedInboundMessageRepository inboundTurns) {
+        this(hub, inboundTurns, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public InboundMessageRealtimeListener(RealtimeEventHub hub, AcceptedInboundMessageRepository inboundTurns,
+                                         AlternateContactIntakePort alternateContacts) {
         this.hub = hub;
         this.inboundTurns = inboundTurns;
+        this.alternateContacts = alternateContacts;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -34,7 +43,7 @@ public class InboundMessageRealtimeListener {
             data.put("participantId", inbound.participantId());
         }
         if (inbound != null && inbound.text() != null) {
-            data.put("text", inbound.text());
+            data.put("text", alternateContacts == null ? inbound.text() : alternateContacts.redact(inbound.text()));
         }
         data.put("receivedAt", accepted.acceptedAt().toString());
         hub.publish(new FrontendEvent(

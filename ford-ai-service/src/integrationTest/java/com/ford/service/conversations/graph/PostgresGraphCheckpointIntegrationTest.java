@@ -99,7 +99,7 @@ class PostgresGraphCheckpointIntegrationTest {
         var first = reference();
         var second = new ConversationTurnReference(UUID.randomUUID(), first.conversationId(), UUID.randomUUID());
         var runner = new ConversationGraphRunner(ignored ->
-                new ConversationTurnOutcome(ConversationGraphRoute.IGNORED), saver);
+                new ConversationTurnOutcome(ConversationGraphRoute.DUPLICATE), saver);
 
         runner.run(first);
         runner.run(second);

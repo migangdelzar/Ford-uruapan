@@ -54,6 +54,24 @@ databaseChangeLog:
   - include:
       file: db/changelog/changes/028-customer-memory-profile.yaml
   - include:
+      file: db/changelog/changes/030-conversation-turn-ledger.yaml
+  - include:
+      file: db/changelog/changes/031-conversation-decision-events.yaml
+  - include:
+      file: db/changelog/changes/032-internal-handoff-note.yaml
+  - include:
+      file: db/changelog/changes/033-alternate-contact-retention.yaml
+  - include:
+      file: db/changelog/changes/034-alternate-contact-forget-fence.yaml
+  - include:
+      file: db/changelog/changes/035-alternate-contact-exposure.yaml
+  - include:
+      file: db/changelog/changes/036-inventory-approval.yaml
+  - include:
+      file: db/changelog/changes/037-typed-decision-trace-vocabulary.yaml
+  - include:
+      file: db/changelog/changes/038-message-approval.yaml
+  - include:
       file: db/changelog/langgraph/db.changelog.yaml
   - include:
       file: db/changelog/changes/004-modulith-events.yaml

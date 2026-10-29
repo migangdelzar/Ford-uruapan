@@ -184,11 +184,146 @@ class ConversationMemoryServiceTest {
         assertThat(recall.lastLimit).isEqualTo(3);
     }
 
+    @Test
+    void expandsOneContextDependentMemoryQueryAfterAnInsufficientBaseSearch() {
+        var key = new ConversationMemoryKey(UUID.randomUUID(), Channel.WHATSAPP,
+                "provider", "participant", UUID.randomUUID());
+        var properties = new MemoryProperties();
+        properties.setSemanticRecallEnabled(true);
+        var memory = new FakeMemoryPort();
+        memory.context = new ConversationMemoryContext(key, "", List.of(
+                new ConversationMessage(UUID.randomUUID(), key.conversationId(), ConversationMessage.Direction.INBOUND,
+                        null, "Comparo Ranger XL y Ranger XLT", Instant.now())),
+                List.of(new MemoryFact("vehicle_comparison", "Ranger XL y Ranger XLT", UUID.randomUUID())), 1);
+        var recall = new FakeRecallPort();
+        var expandedResult = new com.ford.service.conversations.domain.ConversationMemoryRecall(
+                UUID.randomUUID(), ConversationMessage.Direction.INBOUND, "Ranger XL y Ranger XLT",
+                Instant.now(), 0.93);
+        recall.responses.put("la otra versión Ranger XL Ranger XLT", List.of(expandedResult));
+        var service = new ConversationMemoryService(memory, properties, new FakeSemanticPort(), recall, event -> { });
+
+        var context = service.load(new MemoryQuery(key, "la otra versión"));
+
+        assertThat(recall.queries).containsExactly("la otra versión", "la otra versión Ranger XL Ranger XLT");
+        assertThat(context.recalledTurns()).containsExactly(expandedResult);
+    }
+
+    @Test
+    void skipsExpandedMemoryQueryWhenBaseRecallAlreadyHasEnoughEvidence() {
+        var key = new ConversationMemoryKey(UUID.randomUUID(), Channel.WHATSAPP,
+                "provider", "participant", UUID.randomUUID());
+        var properties = new MemoryProperties();
+        properties.setSemanticRecallEnabled(true);
+        var recall = new FakeRecallPort();
+        recall.turns = List.of(
+                new com.ford.service.conversations.domain.ConversationMemoryRecall(UUID.randomUUID(),
+                        ConversationMessage.Direction.INBOUND, "Ranger XL", Instant.now(), 0.93),
+                new com.ford.service.conversations.domain.ConversationMemoryRecall(UUID.randomUUID(),
+                        ConversationMessage.Direction.INBOUND, "Ranger XLT", Instant.now(), 0.91));
+        var service = new ConversationMemoryService(new FakeMemoryPort(), properties,
+                new FakeSemanticPort(), recall, event -> { });
+
+        service.load(new MemoryQuery(key, "la otra versión"));
+
+        assertThat(recall.queries).containsExactly("la otra versión");
+    }
+
+    @Test
+    void treatsDuplicateBaseMatchesAsInsufficientEvidenceBeforeExpansion() {
+        var key = new ConversationMemoryKey(UUID.randomUUID(), Channel.WHATSAPP,
+                "provider", "participant", UUID.randomUUID());
+        var properties = new MemoryProperties();
+        properties.setSemanticRecallEnabled(true);
+        var recall = new FakeRecallPort();
+        var sameMessageId = UUID.randomUUID();
+        var first = new com.ford.service.conversations.domain.ConversationMemoryRecall(sameMessageId,
+                ConversationMessage.Direction.INBOUND, "Ranger XL", Instant.now(), 0.93);
+        var duplicate = new com.ford.service.conversations.domain.ConversationMemoryRecall(sameMessageId,
+                ConversationMessage.Direction.INBOUND, "Ranger XL duplicate", Instant.now(), 0.91);
+        recall.turns = List.of(first, duplicate);
+        var expanded = new com.ford.service.conversations.domain.ConversationMemoryRecall(UUID.randomUUID(),
+                ConversationMessage.Direction.INBOUND, "Ranger XLT", Instant.now(), 0.90);
+        recall.responses.put("la otra versión Ranger XL Ranger XLT", List.of(expanded));
+        var port = new FakeMemoryPort();
+        port.context = new ConversationMemoryContext(key, "", List.of(new ConversationMessage(
+                UUID.randomUUID(), key.conversationId(), ConversationMessage.Direction.INBOUND, null,
+                "Comparo Ranger XL y Ranger XLT", Instant.now())), List.of(), 1);
+        var service = new ConversationMemoryService(port, properties, new FakeSemanticPort(), recall, event -> { });
+
+        var context = service.load(new MemoryQuery(key, "la otra versión"));
+
+        assertThat(recall.queries).containsExactly("la otra versión", "la otra versión Ranger XL Ranger XLT");
+        assertThat(context.recalledTurns()).containsExactly(first, expanded);
+    }
+
+    @Test
+    void keepsBaseRecallWhenExpandedSearchFails() {
+        var key = new ConversationMemoryKey(UUID.randomUUID(), Channel.WHATSAPP,
+                "provider", "participant", UUID.randomUUID());
+        var properties = new MemoryProperties();
+        properties.setSemanticRecallEnabled(true);
+        var memory = new FakeMemoryPort();
+        memory.context = new ConversationMemoryContext(key, "", List.of(new ConversationMessage(
+                UUID.randomUUID(), key.conversationId(), ConversationMessage.Direction.INBOUND, null,
+                "Comparo Ranger XL y Ranger XLT", Instant.now())), List.of(), 1);
+        var recall = new FakeRecallPort();
+        var base = new com.ford.service.conversations.domain.ConversationMemoryRecall(UUID.randomUUID(),
+                ConversationMessage.Direction.INBOUND, "Ranger XL", Instant.now(), 0.90);
+        recall.responses.put("la otra versión", List.of(base));
+        recall.failures.put("la otra versión Ranger XL Ranger XLT",
+                new IllegalStateException("recall backend unavailable"));
+        var service = new ConversationMemoryService(memory, properties, new FakeSemanticPort(), recall, event -> { });
+
+        var context = service.load(new MemoryQuery(key, "la otra versión"));
+
+        assertThat(recall.queries).containsExactly("la otra versión", "la otra versión Ranger XL Ranger XLT");
+        assertThat(context.recalledTurns()).containsExactly(base);
+    }
+
+    @Test
+    void projectsFromTheBoundedCanonicalTranscriptSlice() {
+        var key = new ConversationMemoryKey(UUID.randomUUID(), Channel.WHATSAPP,
+                "provider", "participant", UUID.randomUUID());
+        var properties = new MemoryProperties();
+        var port = new FakeMemoryPort();
+        var contextStartedAt = Instant.now().minusSeconds(3600);
+        var context = new ConversationMemoryContext(key, "previous generated summary", List.of(),
+                List.of(new MemoryFact("budget", "350000", UUID.randomUUID())), 2,
+                Instant.now(), List.of(), contextStartedAt);
+        var source = List.of(new ConversationMessage(UUID.randomUUID(), key.conversationId(),
+                ConversationMessage.Direction.INBOUND, "older", "Busco Ranger para ciudad", contextStartedAt));
+        port.rebaseMessages = source;
+        var capturedPreviousSummary = new java.util.concurrent.atomic.AtomicReference<String>();
+        var capturedSource = new java.util.concurrent.atomic.AtomicReference<List<ConversationMessage>>();
+        com.ford.service.conversations.application.ConversationMemoryCompactionPort compactor =
+                (tenant, conversation, summary, messages, maxChars) -> {
+                    capturedPreviousSummary.set(summary);
+                    capturedSource.set(messages);
+                    return "Busca Ranger para ciudad.";
+                };
+        var service = new ConversationMemoryService(port, properties, new FakeSemanticPort(),
+                new FakeRecallPort(), event -> { }, compactor);
+
+        var update = service.project(context, "La Ranger XLT me atrae", UUID.randomUUID());
+
+        assertThat(port.lastRebaseKey).isEqualTo(key);
+        assertThat(port.lastKeepRecentCount).isEqualTo(properties.promptRecentMessageLimit());
+        assertThat(port.lastMaximumRebaseMessages).isEqualTo(properties.rebaseMessageLimit());
+        assertThat(capturedPreviousSummary.get()).isEmpty();
+        assertThat(capturedSource.get()).containsExactlyElementsOf(source);
+        assertThat(update.summary()).isEqualTo("Busca Ranger para ciudad.");
+    }
+
     private static final class FakeMemoryPort implements ConversationMemoryPort {
         private RuntimeException loadFailure;
         private MemoryQuery lastQuery;
         private int recordedInbound;
         private Runnable afterInbound = () -> { };
+        private ConversationMemoryContext context;
+        private List<ConversationMessage> rebaseMessages = List.of();
+        private ConversationMemoryKey lastRebaseKey;
+        private int lastKeepRecentCount;
+        private int lastMaximumRebaseMessages;
 
         @Override
         public ConversationMemoryContext load(MemoryQuery query) {
@@ -196,13 +331,22 @@ class ConversationMemoryServiceTest {
             if (loadFailure != null) {
                 throw loadFailure;
             }
-            return ConversationMemoryContext.empty(query.key());
+            return context == null ? ConversationMemoryContext.empty(query.key()) : context;
         }
 
         @Override
         public void recordInbound(ConversationMemoryKey key, ConversationMessage message) {
             recordedInbound++;
             afterInbound.run();
+        }
+
+        @Override
+        public List<ConversationMessage> loadTranscriptForRebase(ConversationMemoryKey key, Instant contextStartedAt,
+                                                                  int keepRecentCount, int maxRebaseMessages) {
+            lastRebaseKey = key;
+            lastKeepRecentCount = keepRecentCount;
+            lastMaximumRebaseMessages = maxRebaseMessages;
+            return rebaseMessages;
         }
 
         @Override
@@ -229,12 +373,18 @@ class ConversationMemoryServiceTest {
     private static final class FakeRecallPort implements ConversationMemoryRecallPort {
         private List<com.ford.service.conversations.domain.ConversationMemoryRecall> turns = List.of();
         private int lastLimit;
+        private final java.util.Map<String, List<com.ford.service.conversations.domain.ConversationMemoryRecall>> responses =
+                new java.util.HashMap<>();
+        private final java.util.Map<String, RuntimeException> failures = new java.util.HashMap<>();
+        private final java.util.List<String> queries = new java.util.ArrayList<>();
 
         @Override
         public List<com.ford.service.conversations.domain.ConversationMemoryRecall> search(
                 ConversationMemoryKey key, String query, Instant before, int limit, double minimumSimilarity) {
             lastLimit = limit;
-            return turns;
+            queries.add(query);
+            if (failures.containsKey(query)) throw failures.get(query);
+            return responses.getOrDefault(query, turns);
         }
 
         @Override

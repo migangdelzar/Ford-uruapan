@@ -58,21 +58,51 @@ class CatalogDataSourceConfigurationTest {
     }
 
     @Test
-    void catalogPasswordFallsBackToExistingDatabasePassword() throws Exception {
+    void refusesToUseFordServiceDatabaseAsSyntheticCatalogStore() {
+        contextRunner.withPropertyValues(
+                        "ford.catalog.tools.enabled=true",
+                        "ford.catalog.datasource.url=jdbc:postgresql://localhost:55432/ford_service",
+                        "ford.catalog.datasource.username=synthetic_reader",
+                        "ford.catalog.datasource.password=synthetic-only")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasStackTraceContaining("must not use the ford_service database");
+                });
+    }
+
+    @Test
+    void catalogPasswordUsesOnlyItsDedicatedEnvironmentVariable() throws Exception {
         assertThat(Files.readString(Path.of("src/main/resources/application.yml")))
-                .contains("password: ${FORD_DATABASE_PASSWORD:}");
+                .contains("password: ${FORD_CATALOG_PASSWORD:}")
+                .doesNotContain("password: ${FORD_DATABASE_PASSWORD:}");
 
         contextRunner.withPropertyValues(
                         "ford.catalog.tools.enabled=true",
                         "ford.catalog.datasource.url=jdbc:h2:mem:catalog-password-fallback",
                         "ford.catalog.datasource.username=ford_catalog_reader",
-                        "ford.catalog.datasource.password=${FORD_DATABASE_PASSWORD}",
+                        "ford.catalog.datasource.password=${FORD_CATALOG_PASSWORD}",
+                        "FORD_CATALOG_PASSWORD=dedicated-catalog-password",
                         "FORD_DATABASE_PASSWORD=existing-db-password",
                         "ford.catalog.datasource.driver-class-name=org.h2.Driver")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context.getBean(CatalogDataSourceProperties.class).password())
-                            .isEqualTo("existing-db-password");
+                            .isEqualTo("dedicated-catalog-password");
+                });
+
+        contextRunner.withPropertyValues(
+                        "ford.catalog.tools.enabled=true",
+                        "ford.catalog.datasource.url=jdbc:h2:mem:catalog-password-empty",
+                        "ford.catalog.datasource.username=ford_catalog_reader",
+                        "ford.catalog.datasource.password=${FORD_CATALOG_PASSWORD:}",
+                        "FORD_CATALOG_PASSWORD=",
+                        "FORD_DATABASE_PASSWORD=existing-db-password",
+                        "ford.catalog.datasource.driver-class-name=org.h2.Driver")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasStackTraceContaining("dedicated read-only catalog JDBC URL and credentials");
                 });
     }
 }

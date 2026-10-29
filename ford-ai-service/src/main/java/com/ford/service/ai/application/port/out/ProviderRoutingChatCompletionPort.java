@@ -90,14 +90,16 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
     @Override
     public AssistantResponse complete(AssistantRequest request, ToolContext context) {
         Objects.requireNonNull(request, "request must not be null");
+        var toolCallingRequired = !context.authorizedToolNames().isEmpty()
+                || request.decision().toolFamily().requiresVolatileInformation();
         var candidates = policy.candidates(
                 new AiExecutionContext(request.tenantId(), request.containsSensitiveData(), request.conversationId(),
                         request.memoryContext(), request.decision(), request.leadJourneyContext(),
                         request.recentAssistantReplies(), request.repairInstruction()),
-                new ModelRequirements(true, true));
+                new ModelRequirements(toolCallingRequired, false));
         if (candidates.isEmpty()) {
-            log.warn("No AI provider eligible for request: conversationId={} toolCallingRequired=true structuredOutputRequired=true sensitiveData={}",
-                    request.conversationId(), request.containsSensitiveData());
+            log.warn("No AI provider eligible for request: conversationId={} toolCallingRequired={} structuredOutputRequired=false sensitiveData={}",
+                    request.conversationId(), toolCallingRequired, request.containsSensitiveData());
             if (request.decision().toolFamily().requiresVolatileInformation()) {
                 throw new AssistantTurnUnavailableException(AssistantTurnUnavailableException.Disposition.REVIEW);
             }
@@ -113,8 +115,9 @@ public final class ProviderRoutingChatCompletionPort implements ChatCompletionPo
                 throw new IllegalStateException("Selected AI provider is not configured: " + candidate.id());
             }
             calls++;
-            log.info("AI provider attempt started: conversationId={} provider={} model={} attempt={} maxAttempts={} toolCallingRequired=true structuredOutputRequired=true",
-                    request.conversationId(), candidate.id(), candidate.modelVersion(), calls, maxAttempts);
+            log.info("AI provider attempt started: conversationId={} provider={} model={} attempt={} maxAttempts={} toolCallingRequired={} structuredOutputRequired=false",
+                    request.conversationId(), candidate.id(), candidate.modelVersion(), calls, maxAttempts,
+                    toolCallingRequired);
             try {
                 var response = port.complete(request, context);
                 log.info("AI provider attempt succeeded: conversationId={} provider={} model={} attempt={}",

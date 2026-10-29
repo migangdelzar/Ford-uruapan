@@ -22,6 +22,7 @@ public final class ConversationMemoryService {
     private final ConversationMemorySemanticPort semanticMemory;
     private final ConversationMemoryRecallPort recall;
     private final ConversationMemoryRecallPolicy recallPolicy;
+    private final ConversationMemoryQueryExpander queryExpander;
     private final ConversationMemoryProjector projector;
     private final ApplicationEventPublisher eventPublisher;
     private final ConversationRuntimeSettingsService runtimeSettings;
@@ -87,6 +88,7 @@ public final class ConversationMemoryService {
         this.semanticMemory = Objects.requireNonNull(semanticMemory);
         this.recall = Objects.requireNonNull(recall);
         this.recallPolicy = new ConversationMemoryRecallPolicy();
+        this.queryExpander = new ConversationMemoryQueryExpander();
         this.eventPublisher = Objects.requireNonNull(eventPublisher);
         this.projector = new ConversationMemoryProjector(properties, Objects.requireNonNull(compactor));
         this.runtimeSettings = runtimeSettings;
@@ -127,11 +129,49 @@ public final class ConversationMemoryService {
                     && query.latestMessage() != null
                     && recallPolicy.shouldRecall(query.latestMessage(), context)) {
                 try {
-                    var recalled = recall.search(query.key(), query.latestMessage(), Instant.now(),
-                            properties.semanticRecallLimit(), properties.semanticRecallMinimumSimilarity());
+                    var recallLimit = recallPolicy.limit(properties.semanticRecallLimit());
+                    var recalled = new java.util.ArrayList<>(recall.search(query.key(), query.latestMessage(), Instant.now(),
+                            recallLimit, properties.semanticRecallMinimumSimilarity()));
+                    var baseCandidateCount = recalled.size();
+                    var expandedCandidateCount = 0;
+                    var expansionUsed = false;
+                    var distinctBaseMatches = recalled.stream()
+                            .map(com.ford.service.conversations.domain.ConversationMemoryRecall::sourceMessageId)
+                            .distinct().count();
+                    if (distinctBaseMatches < 2) {
+                        var expandedQuery = queryExpander.expand(query.latestMessage(), context.durableFacts(),
+                                context.recentMessages());
+                        if (expandedQuery.isPresent()) {
+                            expansionUsed = true;
+                            try {
+                                var expandedResults = recall.search(query.key(), expandedQuery.get(), Instant.now(),
+                                        recallLimit, properties.semanticRecallMinimumSimilarity());
+                                expandedCandidateCount = expandedResults.size();
+                                recalled.addAll(expandedResults);
+                            } catch (RuntimeException exception) {
+                                log.warn("Expanded conversation recall failed: conversationId={} tenantId={} exceptionType={}",
+                                        query.key().conversationId(), query.key().tenantId(),
+                                        exception.getClass().getSimpleName());
+                            }
+                        }
+                    }
+                    var bestByMessage = new java.util.LinkedHashMap<UUID,
+                            com.ford.service.conversations.domain.ConversationMemoryRecall>();
+                    recalled.stream()
+                            .sorted(java.util.Comparator
+                                    .comparingDouble(com.ford.service.conversations.domain.ConversationMemoryRecall::similarity)
+                                    .reversed()
+                                    .thenComparing(com.ford.service.conversations.domain.ConversationMemoryRecall::occurredAt,
+                                            java.util.Comparator.reverseOrder()))
+                            .forEach(turn -> bestByMessage.putIfAbsent(turn.sourceMessageId(), turn));
+                    var merged = bestByMessage.values().stream().limit(recallLimit).toList();
+                    log.info("Conversation memory recall selected: conversationId={} expansionUsed={} baseCandidates={} "
+                                    + "expandedCandidates={} mergedCandidates={}",
+                            query.key().conversationId(), expansionUsed, baseCandidateCount,
+                            expandedCandidateCount, merged.size());
                     context = new ConversationMemoryContext(context.key(), context.summary(),
                             context.recentMessages(), context.durableFacts(), context.memoryVersion(),
-                            context.updatedAt(), recalled, context.contextStartedAt());
+                            context.updatedAt(), merged, context.contextStartedAt());
                 } catch (RuntimeException exception) {
                     log.warn("Conversation semantic recall failed: conversationId={} tenantId={} exceptionType={}",
                             query.key().conversationId(), query.key().tenantId(),
@@ -187,12 +227,25 @@ public final class ConversationMemoryService {
 
     public MemoryProjectionUpdate project(ConversationMemoryContext context, String latestUserMessage,
                                           UUID sourceMessageId) {
-        return projector.project(context, latestUserMessage, sourceMessageId);
+        return projector.project(context, latestUserMessage, sourceMessageId, null, transcriptForRebase(context));
     }
 
     public MemoryProjectionUpdate project(ConversationMemoryContext context, String latestUserMessage,
                                           UUID sourceMessageId, String assistantResponse) {
-        return projector.project(context, latestUserMessage, sourceMessageId, assistantResponse);
+        return projector.project(context, latestUserMessage, sourceMessageId, assistantResponse,
+                transcriptForRebase(context));
+    }
+
+    private java.util.List<ConversationMessage> transcriptForRebase(ConversationMemoryContext context) {
+        if (context == null || context.key() == null || context.contextStartedAt() == null) return java.util.List.of();
+        try {
+            return memory.loadTranscriptForRebase(context.key(), context.contextStartedAt(),
+                    properties.promptRecentMessageLimit(), properties.rebaseMessageLimit());
+        } catch (RuntimeException exception) {
+            log.warn("Conversation transcript rebase read failed: conversationId={} exceptionType={}",
+                    context.key().conversationId(), exception.getClass().getSimpleName());
+            return java.util.List.of();
+        }
     }
 
     public void invalidate(ConversationMemoryKey key) {

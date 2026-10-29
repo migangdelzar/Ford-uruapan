@@ -11,6 +11,12 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.time.LocalDate;
+import java.time.Instant;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -134,6 +140,51 @@ class CatalogSnapshotParityIntegrationTest {
                 .allSatisfy(fact -> {
                     assertThat(fact.sourceUrl()).isNotBlank();
                     assertThat(fact.observedAt()).isNotNull();
-                });
+        });
+    }
+
+    @Test
+    void auditsConfiguredCandidateCoverageWithoutEquatingSnapshotRowsWithMarketCompleteness() throws Exception {
+        var exportDirectory = System.getenv("FORD_LOCAL_CATALOG_EXPORT_DIR");
+        assumeTrue(exportDirectory != null && !exportDirectory.isBlank(),
+                "approved snapshot export directory is not configured");
+        var directory = Path.of(exportDirectory).toAbsolutePath().normalize();
+        var manifestPath = directory.resolve("snapshot-manifest.json");
+        var manifestBytes = Files.readAllBytes(manifestPath);
+        var manifest = new com.fasterxml.jackson.databind.ObjectMapper().readTree(manifestBytes);
+        var rowCounts = new LinkedHashMap<String, Integer>();
+        manifest.path("files").forEach(file ->
+                rowCounts.put(file.path("name").asText(), file.path("rowCount").asInt()));
+        var refreshedAt = Instant.parse(manifest.path("refreshedAt").asText());
+        var manifestHash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(manifestBytes));
+        var label = System.getenv().getOrDefault("FORD_CATALOG_SNAPSHOT_LABEL", "configured-snapshot");
+        var report = new CatalogCoverageAudit(catalog, LocalDate.now(java.time.ZoneOffset.UTC)).audit(
+                new CatalogCoverageAudit.SnapshotMetadata(label, manifestHash, refreshedAt, rowCounts));
+
+        assertThat(report.officialSourceScope()).isEqualTo("UNVERIFIED");
+        assertThat(report.sourceSyncStatus()).isEqualTo("NOT_RECORDED");
+        assertThat(report.modelYearTrimCount()).isEqualTo(rowCounts.get("vehicle-variants.csv"));
+        assertThat(report.sourcedFactCount()).isPositive();
+        assertThat(report.sourcedPriceCount()).isPositive();
+        assertThat(report.comparisonFactCount()).isPositive();
+        assertThat(report.promotionCount()).isEqualTo(rowCounts.get("promotions.csv"));
+        assertThat(report.variants()).filteredOn(variant -> variant.trim() != null).allSatisfy(variant ->
+                assertThat(variant.packageIdentityStatus()).isEqualTo("UNKNOWN"));
+        var artifact = CatalogCoverageAudit.writeJson(report, Path.of(".").toAbsolutePath());
+        assertThat(artifact).isEqualTo(Path.of("build/reports/catalog-coverage/catalog-coverage-"
+                + label.replaceAll("[^A-Za-z0-9._-]", "_") + ".json").toAbsolutePath().normalize());
+
+        if ("oct25-candidate".equals(label)) {
+            assertThat(rowCounts).containsEntry("vehicle-search.csv", 39)
+                    .containsEntry("vehicle-variants.csv", 121)
+                    .containsEntry("vehicle-facts.csv", 4887)
+                    .containsEntry("comparison-facts.csv", 2447)
+                    .containsEntry("promotions.csv", 10)
+                    .containsEntry("product-vectors.csv", 1882);
+            assertThat(report.modelYearTrimCount()).isEqualTo(121);
+            assertThat(report.modelYearWithoutTrimCount()).isEqualTo(39);
+            assertThat(report.sourcedFactCount()).isEqualTo(4887);
+            assertThat(report.comparisonFactCount()).isEqualTo(2447);
+        }
     }
 }
