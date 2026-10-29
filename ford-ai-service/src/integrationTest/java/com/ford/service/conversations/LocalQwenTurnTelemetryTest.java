@@ -145,6 +145,37 @@ class LocalQwenTurnTelemetryTest {
                 LocalQwenTurnTelemetry.Outcome.FAILED));
     }
 
+    @Test
+    void serializesOnlyAllowlistedFailureDiagnostics() throws Exception {
+        var writer = new LocalQwenTurnTelemetry(tempDir, "run-failure-safe");
+        var diagnostics = new LocalQwenFailureDiagnostics(
+                LocalQwenTranscriptWriter.FailureCategory.SAFE_FALLBACK_REVIEW,
+                "LocalReplayTurnFailure", "FAILED", "assistant_response_review", "assistant_response_review");
+        var record = LocalQwenTurnTelemetry.TurnRecord.from("run-failure-safe", "natural-buyer-diagnostic", 32,
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, "a".repeat(64), "qwen3.5:4b", 130,
+                List.of(), List.of(), new LocalQwenTurnTelemetry.MemoryShape(62, 3, 90, 0, 4096),
+                LocalQwenTurnTelemetry.Outcome.FAILED, diagnostics);
+
+        writer.append(record);
+
+        var jsonl = Files.readString(writer.path());
+        var row = new ObjectMapper().readTree(jsonl.lines().findFirst().orElseThrow());
+        assertThat(row.path("failureDiagnostics").path("safeReason").asText())
+                .isEqualTo("SAFE_FALLBACK_REVIEW");
+        assertThat(row.path("failureDiagnostics").path("exceptionType").asText())
+                .isEqualTo("LocalReplayTurnFailure");
+        assertThat(row.path("failureDiagnostics").path("reviewReason").asText())
+                .isEqualTo("assistant_response_review");
+        assertThat(jsonl).doesNotContain("SYNTHETIC_SECRET_SENTINEL", "raw provider error");
+    }
+
+    @Test
+    void rejectsUnsafePersistedDiagnosticValues() {
+        assertThatIllegalArgumentException().isThrownBy(() -> new LocalQwenFailureDiagnostics(
+                LocalQwenTranscriptWriter.FailureCategory.SAFE_FALLBACK_REVIEW,
+                "LocalReplayTurnFailure", "FAILED", "review\nraw provider error", null));
+    }
+
     private static AiProviderCallObserver.ProviderCallMeasurement actualCall(long duration,
                                                                               int promptTokens,
                                                                               int completionTokens,

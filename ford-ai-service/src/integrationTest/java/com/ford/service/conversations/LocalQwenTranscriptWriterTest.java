@@ -301,6 +301,29 @@ class LocalQwenTranscriptWriterTest {
     }
 
     @Test
+    void recordsAllowlistedFailureDiagnosticsWithoutExceptionText() throws Exception {
+        var writer = new LocalQwenTranscriptWriter(tempDir, "run-diagnostic", snapshot(),
+                LocalCatalogSnapshotSelection.Label.OCT25_CANDIDATE, 32,
+                LocalQwenTranscriptWriter.ReplayMode.PREFETCHED_QWEN);
+        var turn = new NaturalBuyerConversationScenario.Turn(1, "Pregunta sintética",
+                NaturalBuyerConversationScenario.Expectation.DISCOVERY);
+        var diagnostics = new LocalQwenFailureDiagnostics(
+                LocalQwenTranscriptWriter.FailureCategory.SAFE_FALLBACK_REVIEW,
+                "LocalReplayTurnFailure", "FAILED", "assistant_response_review", "assistant_response_review");
+
+        writer.recordFailure(turn, LocalQwenTranscriptWriter.FailureCategory.SAFE_FALLBACK_REVIEW,
+                List.of(), null, diagnostics);
+
+        var markdown = Files.readString(writer.path());
+        var html = Files.readString(writer.htmlPath());
+        assertThat(markdown).contains("LocalReplayTurnFailure", "Turn state: FAILED",
+                "Failure category: assistant_response_review", "Review reason: assistant_response_review");
+        assertThat(html).contains("LocalReplayTurnFailure", "assistant_response_review");
+        assertThat(markdown).doesNotContain("SYNTHETIC_SECRET_SENTINEL", "raw provider error");
+        assertThat(html).doesNotContain("SYNTHETIC_SECRET_SENTINEL", "raw provider error");
+    }
+
+    @Test
     void rejectsCompletionUntilExactlyOneHundredRepliesWereWritten() throws Exception {
         var writer = new LocalQwenTranscriptWriter(tempDir, "run-456", snapshot());
 

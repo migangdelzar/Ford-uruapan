@@ -61,9 +61,10 @@ final class LocalQwenTurnTelemetry {
                       long wallTimeMillis, Long providerDurationMillis, int providerCallCount,
                       int retryCount, List<String> toolNames, int toolCallCount,
                       List<String> replayPrefetchToolNames, List<String> recordedSeedToolNames,
-                      MemoryShape memoryShape, Integer promptTokens, Integer completionTokens,
-                      AiProviderCallObserver.TokenUsageStatus tokenUsageStatus,
-                      LocalQwenTranscriptWriter.ReplyOrigin replyOrigin, Outcome outcome) {
+                       MemoryShape memoryShape, Integer promptTokens, Integer completionTokens,
+                       AiProviderCallObserver.TokenUsageStatus tokenUsageStatus,
+                       LocalQwenTranscriptWriter.ReplyOrigin replyOrigin, Outcome outcome,
+                       LocalQwenFailureDiagnostics failureDiagnostics) {
         TurnRecord {
             requireId(runId, "run ID");
             requireId(scenarioId, "scenario ID");
@@ -131,9 +132,20 @@ final class LocalQwenTurnTelemetry {
                                List<AiProviderCallObserver.ProviderCallMeasurement> calls,
                                List<LocalQwenTranscriptWriter.ToolTrace> tools, MemoryShape memoryShape,
                                Outcome outcome) {
+                return from(runId, scenarioId, turnNumber, snapshotLabel, snapshotSha256, modelConfigId, wallTimeMillis,
+                        calls, tools, memoryShape, LocalQwenTranscriptWriter.ReplyOrigin.LIVE_QWEN,
+                        LocalQwenReplayExecutionMode.LIVE_DIAGNOSTIC, outcome);
+        }
+
+        static TurnRecord from(String runId, String scenarioId, int turnNumber,
+                               LocalCatalogSnapshotSelection.Label snapshotLabel, String snapshotSha256,
+                               String modelConfigId, long wallTimeMillis,
+                               List<AiProviderCallObserver.ProviderCallMeasurement> calls,
+                               List<LocalQwenTranscriptWriter.ToolTrace> tools, MemoryShape memoryShape,
+                               Outcome outcome, LocalQwenFailureDiagnostics failureDiagnostics) {
             return from(runId, scenarioId, turnNumber, snapshotLabel, snapshotSha256, modelConfigId, wallTimeMillis,
                     calls, tools, memoryShape, LocalQwenTranscriptWriter.ReplyOrigin.LIVE_QWEN,
-                    LocalQwenReplayExecutionMode.LIVE_DIAGNOSTIC, outcome);
+                    LocalQwenReplayExecutionMode.LIVE_DIAGNOSTIC, null, null, null, outcome, failureDiagnostics);
         }
 
         static TurnRecord from(String runId, String scenarioId, int turnNumber,
@@ -163,8 +175,22 @@ final class LocalQwenTurnTelemetry {
                                List<AiProviderCallObserver.ProviderCallMeasurement> calls,
                                 List<LocalQwenTranscriptWriter.ToolTrace> tools, MemoryShape memoryShape,
                                LocalQwenTranscriptWriter.ReplyOrigin replyOrigin,
+                                LocalQwenReplayExecutionMode executionMode, String scenarioSha256,
+                                String checkpointId, Integer checkpointTurn, Outcome outcome) {
+            return from(runId, scenarioId, turnNumber, snapshotLabel, snapshotSha256, modelConfigId, wallTimeMillis,
+                    calls, tools, memoryShape, replyOrigin, executionMode, scenarioSha256, checkpointId,
+                    checkpointTurn, outcome, null);
+        }
+
+        static TurnRecord from(String runId, String scenarioId, int turnNumber,
+                               LocalCatalogSnapshotSelection.Label snapshotLabel, String snapshotSha256,
+                               String modelConfigId, long wallTimeMillis,
+                               List<AiProviderCallObserver.ProviderCallMeasurement> calls,
+                               List<LocalQwenTranscriptWriter.ToolTrace> tools, MemoryShape memoryShape,
+                               LocalQwenTranscriptWriter.ReplyOrigin replyOrigin,
                                LocalQwenReplayExecutionMode executionMode, String scenarioSha256,
-                               String checkpointId, Integer checkpointTurn, Outcome outcome) {
+                               String checkpointId, Integer checkpointTurn, Outcome outcome,
+                               LocalQwenFailureDiagnostics failureDiagnostics) {
             var safeCalls = List.copyOf(calls == null ? List.of() : calls);
             var safeTools = List.copyOf(tools == null ? List.of() : tools);
             if (replyOrigin == LocalQwenTranscriptWriter.ReplyOrigin.RECORDED_SEED
@@ -200,7 +226,7 @@ final class LocalQwenTurnTelemetry {
                     executionMode.name(), scenarioSha256, checkpointId, checkpointTurn,
                     modelId, modelConfigId, wallTimeMillis, providerDuration, safeCalls.size(), retryCount,
                     toolNames, toolNames.size(), replayPrefetchToolNames, recordedSeedToolNames,
-                    finalMemoryShape, prompt, completion, commonStatus, replyOrigin, outcome);
+                    finalMemoryShape, prompt, completion, commonStatus, replyOrigin, outcome, failureDiagnostics);
         }
 
         private static List<String> namesFor(List<LocalQwenTranscriptWriter.ToolTrace> events,

@@ -128,6 +128,7 @@ final class LocalQwenTranscriptHtmlRenderer {
             }
             html.append("<div>Safe reason: ")
                     .append(escape(failedTurn.safeReason())).append("</div>");
+            appendFailureDiagnostics(html, failedTurn.diagnostics());
             appendTools(html, failedTurn.toolEvents());
             html.append("</div></article>");
         } else if (completed) {
@@ -153,6 +154,23 @@ final class LocalQwenTranscriptHtmlRenderer {
         var seeded = safeEvents.stream()
                 .filter(event -> event.origin() == LocalQwenTranscriptWriter.ToolTraceOrigin.RECORDED_SEED).toList();
         if (!seeded.isEmpty()) appendToolGroup(html, "Recorded seed tool evidence", seeded);
+    }
+
+    private static void appendFailureDiagnostics(StringBuilder html, LocalQwenFailureDiagnostics diagnostics) {
+        if (diagnostics == null) return;
+        html.append("<section class=\"meta\"><strong>Sanitized failure diagnostics</strong><div>Exception type: ")
+                .append(escape(diagnostics.exceptionType())).append("</div>");
+        if (diagnostics.turnState() != null) {
+            html.append("<div>Turn state: ").append(escape(diagnostics.turnState())).append("</div>");
+        }
+        if (diagnostics.persistedFailureCategory() != null) {
+            html.append("<div>Failure category: ").append(escape(diagnostics.persistedFailureCategory()))
+                    .append("</div>");
+        }
+        if (diagnostics.reviewReason() != null) {
+            html.append("<div>Review reason: ").append(escape(diagnostics.reviewReason())).append("</div>");
+        }
+        html.append("</section>");
     }
 
     private static void appendToolGroup(StringBuilder html, String label,
@@ -207,12 +225,21 @@ final class LocalQwenTranscriptHtmlRenderer {
     }
 
     record FailedTurn(int number, String buyer, String safeReason,
-                      List<LocalQwenTranscriptWriter.ToolTrace> toolEvents, boolean replyCommitted) {
+                      List<LocalQwenTranscriptWriter.ToolTrace> toolEvents, boolean replyCommitted,
+                      LocalQwenFailureDiagnostics diagnostics) {
+        FailedTurn(int number, String buyer, String safeReason,
+                   List<LocalQwenTranscriptWriter.ToolTrace> toolEvents, boolean replyCommitted) {
+            this(number, buyer, safeReason, toolEvents, replyCommitted, null);
+        }
+
         FailedTurn {
             if (number < 1) throw new IllegalArgumentException("turn number must be positive");
             buyer = Objects.requireNonNull(buyer);
             safeReason = Objects.requireNonNull(safeReason);
             toolEvents = List.copyOf(toolEvents == null ? List.of() : toolEvents);
+            if (diagnostics != null && !diagnostics.safeReason().name().equals(safeReason)) {
+                throw new IllegalArgumentException("diagnostic safe reason must match failed turn reason");
+            }
         }
     }
 }

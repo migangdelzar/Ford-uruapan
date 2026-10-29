@@ -245,11 +245,22 @@ final class LocalQwenTranscriptWriter {
     void recordFailure(NaturalBuyerConversationScenario.Turn turn, FailureCategory safeReason,
                        java.util.List<ToolTrace> toolEvents,
                        LocalReplayPrecisionEvidence.ComparisonPrefetchStatus comparisonStatus) throws IOException {
+        recordFailure(turn, safeReason, toolEvents, comparisonStatus, null);
+    }
+
+    void recordFailure(NaturalBuyerConversationScenario.Turn turn, FailureCategory safeReason,
+                       java.util.List<ToolTrace> toolEvents,
+                       LocalReplayPrecisionEvidence.ComparisonPrefetchStatus comparisonStatus,
+                       LocalQwenFailureDiagnostics diagnostics) throws IOException {
         Objects.requireNonNull(turn, "failed turn is required");
         Objects.requireNonNull(safeReason, "safe failure category is required");
+        if (diagnostics != null && diagnostics.safeReason() != safeReason) {
+            throw new IllegalArgumentException("diagnostic safe reason must match transcript safe reason");
+        }
         var safeToolEvents = java.util.List.copyOf(toolEvents == null ? java.util.List.of() : toolEvents);
         var statusLine = comparisonStatus == null ? ""
                 : "Comparison prefetch status: " + comparisonStatus.name() + "\n\n";
+        var diagnosticSection = diagnosticMarkdown(diagnostics);
         if (failed || completed) throw new IllegalStateException("transcript is already terminal");
         appendPartialPrecisionSummary();
         if (turn.number() == firstTurn + writtenTurns - 1 && !committedTurns.isEmpty()) {
@@ -257,11 +268,12 @@ final class LocalQwenTranscriptWriter {
             if (latestCommitted.number() == turn.number() && latestCommitted.buyer().equals(turn.message())) {
                         Files.writeString(path, "## Validation failed after committed reply — turn " + turn.number()
                                 + "\n\nReply committed; validation failed.\n\nFailed validation at turn: "
-                                + turn.number() + "\n\nSafe reason: " + safeReason.name() + "\n\n" + statusLine
+                                + turn.number() + "\n\nSafe reason: " + safeReason.name() + "\n\n"
+                                + diagnosticSection + statusLine
                                 + markdownTools(safeToolEvents),
                         StandardCharsets.UTF_8, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
                 failedTurn = new LocalQwenTranscriptHtmlRenderer.FailedTurn(turn.number(), turn.message(),
-                        safeReason.name(), safeToolEvents, true);
+                        safeReason.name(), safeToolEvents, true, diagnostics);
                 failed = true;
                 writeHtml();
                 return;
@@ -272,13 +284,29 @@ final class LocalQwenTranscriptWriter {
         }
         Files.writeString(path, "## Replay stopped — " + replayMode.status() + "\n\nFailed turn: " + turn.number()
                         + "\n\n**Buyer (reply not committed)**\n\n" + turn.message()
-                        + "\n\nSafe reason: " + safeReason.name() + "\n\n" + statusLine
+                        + "\n\nSafe reason: " + safeReason.name() + "\n\n" + diagnosticSection + statusLine
                         + markdownTools(safeToolEvents),
                 StandardCharsets.UTF_8, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
         failedTurn = new LocalQwenTranscriptHtmlRenderer.FailedTurn(turn.number(), turn.message(),
-                safeReason.name(), safeToolEvents, false);
+                safeReason.name(), safeToolEvents, false, diagnostics);
         failed = true;
         writeHtml();
+    }
+
+    private static String diagnosticMarkdown(LocalQwenFailureDiagnostics diagnostics) {
+        if (diagnostics == null) return "";
+        var section = new StringBuilder("**Sanitized failure diagnostics**\n\n")
+                .append("Exception type: ").append(diagnostics.exceptionType()).append('\n');
+        if (diagnostics.turnState() != null) {
+            section.append("Turn state: ").append(diagnostics.turnState()).append('\n');
+        }
+        if (diagnostics.persistedFailureCategory() != null) {
+            section.append("Failure category: ").append(diagnostics.persistedFailureCategory()).append('\n');
+        }
+        if (diagnostics.reviewReason() != null) {
+            section.append("Review reason: ").append(diagnostics.reviewReason()).append('\n');
+        }
+        return section.append('\n').toString();
     }
 
     void complete() throws IOException {

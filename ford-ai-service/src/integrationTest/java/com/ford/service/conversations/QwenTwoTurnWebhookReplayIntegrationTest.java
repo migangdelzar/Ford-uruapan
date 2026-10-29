@@ -724,9 +724,14 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                 toolEvents = withRecordedSeedTraces(toolEvents, turn);
                 var comparisonStatus = conversationId == null || replayPrecisionEvidence == null
                         ? null : replayPrecisionEvidence.currentTurnComparisonStatus(conversationId);
-                transcript.recordFailure(turn, category, toolEvents, comparisonStatus);
+                var diagnostics = failure instanceof LocalReplayTurnFailure turnFailure
+                        ? turnFailure.diagnostics(category)
+                        : new LocalQwenFailureDiagnostics(category, failure.getClass().getSimpleName(),
+                                null, null, null);
+                transcript.recordFailure(turn, category, toolEvents, comparisonStatus, diagnostics);
                 appendTelemetry(telemetry, telemetryRunId, "natural-buyer-100", turnIndex, turnStarted,
-                        measurementMark, conversationId, providerMessageId, LocalQwenTurnTelemetry.Outcome.FAILED);
+                        measurementMark, conversationId, providerMessageId, LocalQwenTurnTelemetry.Outcome.FAILED,
+                        null, diagnostics);
                 throw new AssertionError("natural buyer replay stopped at turn " + turnIndex
                         + " of " + expectedTurns + "; committed=" + committed
                         + "; transcript=" + transcript.path()
@@ -873,6 +878,7 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
     }
 
     private static LocalQwenTranscriptWriter.FailureCategory safeFailureCategory(Throwable failure) {
+        if (failure instanceof LocalReplayTurnFailure turnFailure) return turnFailure.safeReason();
         var message = failure.getMessage() == null ? "" : failure.getMessage();
         if (message.contains("SAFE_FALLBACK_REVIEW")) {
             return LocalQwenTranscriptWriter.FailureCategory.SAFE_FALLBACK_REVIEW;
@@ -897,6 +903,16 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                                  UUID conversationId, String providerMessageId,
                                  LocalQwenTurnTelemetry.Outcome outcome,
                                  LocalQwenTranscriptWriter.CheckpointMetadata checkpointMetadata) throws Exception {
+        appendTelemetry(telemetry, telemetryRunId, scenarioId, turnNumber, startedNanos, measurementMark,
+                conversationId, providerMessageId, outcome, checkpointMetadata, null);
+    }
+
+    private void appendTelemetry(LocalQwenTurnTelemetry telemetry, String telemetryRunId, String scenarioId,
+                                 int turnNumber, long startedNanos, int measurementMark,
+                                 UUID conversationId, String providerMessageId,
+                                 LocalQwenTurnTelemetry.Outcome outcome,
+                                 LocalQwenTranscriptWriter.CheckpointMetadata checkpointMetadata,
+                                 LocalQwenFailureDiagnostics failureDiagnostics) throws Exception {
         var measurements = providerCallMeasurements.since(measurementMark);
         var tools = providerMessageId == null ? List.<LocalQwenTranscriptWriter.ToolTrace>of()
                 : toolTraceFor(providerMessageId);
@@ -926,7 +942,8 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                 measurements, tools, memoryShape(conversationId), replyOrigin,
                 LocalQwenReplayExecutionMode.resolve(System.getenv()),
                 scenarioHash, checkpointMetadata == null ? null : checkpointMetadata.checkpointId(),
-                checkpointMetadata == null ? null : checkpointMetadata.checkpointTurn(), outcome);
+                checkpointMetadata == null ? null : checkpointMetadata.checkpointTurn(), outcome,
+                failureDiagnostics);
         telemetry.append(record);
     }
 
@@ -1112,10 +1129,7 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
                 return turn.get().conversationId();
             }
             if (turn.isPresent() && !SetOfAcceptedStates.contains(turn.get().state())) {
-                throw new AssertionError("local replay stopped at invalid state for message "
-                        + providerMessageId + ": " + turn.get().state()
-                        + "; category=" + turn.get().failureCategory()
-                        + "; reviewReason=" + turn.get().reviewReason());
+                throw new LocalReplayTurnFailure(turn.get());
             }
             Thread.sleep(100);
         }
@@ -1227,6 +1241,32 @@ class QwenTwoTurnWebhookReplayIntegrationTest {
 
     private record TurnRow(UUID tenantId, UUID conversationId, String state,
                            String failureCategory, String reviewReason) { }
+
+    private static final class LocalReplayTurnFailure extends AssertionError {
+        private final TurnRow row;
+
+        private LocalReplayTurnFailure(TurnRow row) {
+            super("local replay stopped at persisted invalid turn state");
+            this.row = row;
+        }
+
+        private LocalQwenTranscriptWriter.FailureCategory safeReason() {
+            return "assistant_response_review".equals(row.reviewReason())
+                    || "SAFE_FALLBACK_REVIEW".equals(row.state())
+                    ? LocalQwenTranscriptWriter.FailureCategory.SAFE_FALLBACK_REVIEW
+                    : LocalQwenTranscriptWriter.FailureCategory.INVALID_STATE;
+        }
+
+        private LocalQwenFailureDiagnostics diagnostics(LocalQwenTranscriptWriter.FailureCategory safeReason) {
+            return new LocalQwenFailureDiagnostics(safeReason, getClass().getSimpleName(),
+                    safeDiagnosticCode(row.state()), safeDiagnosticCode(row.failureCategory()),
+                    safeDiagnosticCode(row.reviewReason()));
+        }
+
+        private static String safeDiagnosticCode(String value) {
+            return value != null && value.matches("[A-Za-z0-9_]{1,64}") ? value : null;
+        }
+    }
 
     private static final java.util.Set<String> SetOfAcceptedStates = java.util.Set.of(
             "ACCEPTED", "PROCESSING", "DEBOUNCED");
