@@ -57,3 +57,13 @@ No production configuration, operator identity, or delivery adapter is used. The
 ## Verification Boundary
 
 Run unit and focused non-live integration tests first. If a live bounded diagnostic is later authorized, cap it at 32 turns and use only the approved local snapshot, local Qwen/BGE, and disposable PostgreSQL. Keep the historical unsupported-price discrepancy and 100-turn acceptance gate explicitly unresolved unless independently explained.
+
+## Implementation and Diagnostic Record — 2026-10-29
+
+- Implemented the bounded-only opt-in, test-harness coordinator, typed replay result, and distinct transcript/telemetry semantics. Synthetic approval calls the real `MessageApprovalService`; the harness verifies the exact queued outbound ID, conversation, and text before continuing.
+- Unit suite passed: `./gradlew test` (`BUILD SUCCESSFUL`). Focused non-live integration gates passed for execution mode, coordinator, replay result, transcript/HTML, telemetry, replay window, and yearless ambiguity assertions (`BUILD SUCCESSFUL`). Existing approval service/effects unit tests passed.
+- One local 32-turn diagnostic used the approved `oct25-candidate` snapshot, local `qwen3.5:4b`, local BGE preflight, cloud disabled, and disposable Testcontainers PostgreSQL. Run ID: `a5d6f43b1cab4c81bb72d1ac3be91094`.
+- The run safely stopped at turn 31: 30 live Qwen replies committed; the turn remained `NEEDS_OPERATOR`; the exact pending approval returned safe status `NOT_APPROVABLE`; no synthetic approval was queued; turn 32 was not sent. No approval bypass was attempted. Per-turn no-handoff checks passed through turn 30; a final aggregate handoff count was not recorded.
+- Artifacts: `build/reports/local-qwen/32-turn-prefetched-qwen-transcript-a5d6f43b1cab4c81bb72d1ac3be91094.md`, `build/reports/local-qwen/32-turn-transcript-a5d6f43b1cab4c81bb72d1ac3be91094.html`, and `build/reports/local-qwen/turn-telemetry-a5d6f43b1cab4c81bb72d1ac3be91094-oct25-candidate-bounded-diagnostic.jsonl`.
+- The diagnostic test exits failed because it correctly asserted completion of all 32 turns after the configured fail-closed stop. The harness did not reach the real-service successful-approval path; unit tests cover the coordinator contract, while existing service tests cover approval behavior.
+- No external delivery occurred. The outcome remains diagnostic-only; the historical unsupported-price discrepancy is unexplained and 100-turn acceptance stays paused.

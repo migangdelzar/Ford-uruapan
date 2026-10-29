@@ -33,11 +33,11 @@
 - Absent/`false` returns false. `true` requires explicit `FORD_QWEN_REPLAY_MODE=BOUNDED_LIVE_DIAGNOSTIC` and a valid `FORD_QWEN_DIAGNOSTIC_END_TURN` from 1 through 32. Reject other values and all other modes.
 - Existing replay mode behavior remains unchanged when the flag is absent or false.
 
-- [ ] **Step 1: Write configuration tests first**
+- [x] **Step 1: Write configuration tests first**
 
 Add tests proving the flag defaults to false, true is accepted only with bounded mode and end turn 32, and true is rejected in `LIVE_DIAGNOSTIC`, `SEEDED_DIAGNOSTIC`, `CHECKPOINT_LIVE_WINDOW`, and `FRESH_FULL_LIVE`. Reject invalid boolean strings and missing/invalid end-turn values. Preserve existing bounded-mode seed/checkpoint/100-turn rejection tests.
 
-- [ ] **Step 2: Run the focused mode test and observe RED**
+- [x] **Step 2: Run the focused mode test and observe RED**
 
 ```bash
 ./gradlew integrationTest --tests com.ford.service.conversations.LocalQwenReplayExecutionModeTest
@@ -45,15 +45,15 @@ Add tests proving the flag defaults to false, true is accepted only with bounded
 
 Expected: compile failure because `syntheticOperatorApprovalEnabled` is not defined.
 
-- [ ] **Step 3: Implement fail-closed mode validation**
+- [x] **Step 3: Implement fail-closed mode validation**
 
 Parse only absent/`false`/`true` (case-insensitive). For `true`, directly require the configured mode string to equal `BOUNDED_LIVE_DIAGNOSTIC` and call `boundedDiagnosticEndTurn(environment)` before returning true; do not call `resolve` from this helper. In `resolve`, invoke the helper once after selecting/validating the mode so invalid settings fail before a webhook can be posted.
 
-- [ ] **Step 4: Rerun mode tests**
+- [x] **Step 4: Rerun mode tests**
 
 Rerun the focused command. Expected: `BUILD SUCCESSFUL`.
 
-- [ ] **Step 5: Commit config slice**
+- [x] **Step 5: Commit config slice**
 
 Run `git diff --check`, inspect the two-file diff, then commit:
 
@@ -79,11 +79,11 @@ git commit -m "test: gate synthetic approval to bounded replay"
 - `ApprovedDraft` contains exact approved `draftText`, `approvalId`, and queued `outboundMessageId`. It contains no raw tool payload or exception message.
 - Coordinator consumes the actual `MessageApprovalRepository` and `MessageApprovalService`; tests mock these boundaries, replay wiring injects real application beans.
 
-- [ ] **Step 1: Write coordinator tests first**
+- [x] **Step 1: Write coordinator tests first**
 
 Use mocks. Verify no/multiple pending approvals return their safe status without calling `MessageApprovalService.act`. Verify nonmatching `sourceReceiptId`, non-`PENDING` status, `draftMayBeApproved=false`, missing `APPROVE` action, null/blank draft all fail closed. For one eligible approval, verify one `act` call with the same tenant/conversation/approval IDs, expected conversation/approval versions, `Action.APPROVE`, exact stored draft, and run-scoped idempotency key. Return `APPROVED` only for a `QUEUED` result with outbound message ID. Map stale/invalid/failed calls to `APPROVAL_FAILED` without exposing exception details.
 
-- [ ] **Step 2: Run the focused coordinator test and observe RED**
+- [x] **Step 2: Run the focused coordinator test and observe RED**
 
 ```bash
 ./gradlew integrationTest --tests com.ford.service.conversations.LocalQwenSyntheticOperatorApprovalTest
@@ -91,7 +91,7 @@ Use mocks. Verify no/multiple pending approvals return their safe status without
 
 Expected: compile failure because the coordinator does not exist.
 
-- [ ] **Step 3: Implement the coordinator**
+- [x] **Step 3: Implement the coordinator**
 
 Read candidates using `MessageApprovalRepository.list(tenantId, conversationId)`, then filter by exact `sourceReceiptId` and `Status.PENDING`. Require exactly one candidate. Require `draftMayBeApproved()`, `allowedActions().contains(Action.APPROVE)`, and a nonblank stored draft. Construct a synthetic operator with a deterministic run-scoped subject, only `SCOPE_operator:write`, no roles, and only the replay tenant. Call:
 
@@ -103,7 +103,7 @@ approvalService.act(operator, tenantId, conversationId, approval.id(), approval.
 
 Require `status == "QUEUED"` and non-null `messageId`; return the exact persisted draft and receipt IDs. Do not catch fatal JVM errors. Map ordinary service errors to the content-free `APPROVAL_FAILED` status.
 
-- [ ] **Step 4: Rerun coordinator tests and existing approval tests**
+- [x] **Step 4: Rerun coordinator tests and existing approval tests**
 
 ```bash
 ./gradlew integrationTest --tests com.ford.service.conversations.LocalQwenSyntheticOperatorApprovalTest
@@ -112,7 +112,7 @@ Require `status == "QUEUED"` and non-null `messageId`; return the exact persiste
 
 Expected: all selected tests pass; existing authorization/version/fresh-validation behavior remains covered by the service tests.
 
-- [ ] **Step 5: Commit coordinator slice**
+- [x] **Step 5: Commit coordinator slice**
 
 Run `git diff --check`, inspect the diff, then commit:
 
@@ -137,11 +137,11 @@ git commit -m "test: approve eligible replay drafts through approval service"
 - Add `ReplyOrigin.SYNTHETIC_OPERATOR_APPROVED` and telemetry `Outcome.SYNTHETIC_OPERATOR_APPROVED`.
 - Bounded completion reports live Qwen replies and synthetic approvals separately. A synthetic approval is queued, not delivered, and never counted as a committed Qwen reply.
 
-- [ ] **Step 1: Add failing artifact and telemetry tests**
+- [x] **Step 1: Add failing artifact and telemetry tests**
 
 Add writer/HTML tests showing a synthetic-origin turn is labeled `SYNTHETIC_OPERATOR_APPROVED`, bounded completion reports one synthetic approval separately from live Qwen replies, and a later validation failure says “queued (not delivered)” rather than “reply committed.” Add telemetry test proving the synthetic reply origin/outcome serialize as distinct enum values and are rejected outside bounded mode.
 
-- [ ] **Step 2: Run focused tests and observe RED**
+- [x] **Step 2: Run focused tests and observe RED**
 
 ```bash
 ./gradlew integrationTest --tests com.ford.service.conversations.LocalQwenTranscriptWriterTest --tests com.ford.service.conversations.LocalQwenTranscriptHtmlRendererTest --tests com.ford.service.conversations.LocalQwenTurnTelemetryTest
@@ -149,15 +149,15 @@ Add writer/HTML tests showing a synthetic-origin turn is labeled `SYNTHETIC_OPER
 
 Expected: compile/assertion failure because the synthetic origin/outcome and separate bounded counters are absent.
 
-- [ ] **Step 3: Implement artifact semantics**
+- [x] **Step 3: Implement artifact semantics**
 
 Add the new reply origin and telemetry outcome. Enforce that synthetic origin/outcome are accepted only for `BOUNDED_LIVE_DIAGNOSTIC`. Update Markdown and HTML completion text to report counts separately and state that synthetic approvals were queued, not delivered. If validation fails after a synthetic approval, render that specific state; do not claim a committed or delivered reply. Preserve fresh 100-turn acceptance checks requiring all 100 origins to be `LIVE_QWEN`.
 
-- [ ] **Step 4: Rerun focused tests**
+- [x] **Step 4: Rerun focused tests**
 
 Rerun the command from Step 2. Expected: both test classes pass.
 
-- [ ] **Step 5: Commit artifact slice**
+- [x] **Step 5: Commit artifact slice**
 
 Run `git diff --check`, inspect changes, then commit:
 
@@ -184,11 +184,11 @@ git commit -m "test: distinguish synthetic approval replay outcomes"
 - Track processed, assistant-committed, and synthetically approved counts separately.
 - Add `SYNTHETIC_OPERATOR_APPROVAL_UNAVAILABLE` as a safe transcript failure category; never serialize raw exception or draft into telemetry.
 
-- [ ] **Step 1: Add failing replay outcome tests**
+- [x] **Step 1: Add failing replay outcome tests**
 
 Extend coordinator tests to require queued outbound message receipt and exact approval text. Add `LocalQwenReplayTurnResultTest` proving normal committed turns stay `LIVE_QWEN`, an eligible `NEEDS_OPERATOR` becomes `SYNTHETIC_OPERATOR_APPROVED` and retains persisted state `NEEDS_OPERATOR`, and a result cannot be made without a queued approval receipt. Keep the standalone yearless-ambiguity assertion test; do not tie it to replay scenario turn 31.
 
-- [ ] **Step 2: Run focused tests and observe RED**
+- [x] **Step 2: Run focused tests and observe RED**
 
 ```bash
 ./gradlew integrationTest --tests com.ford.service.conversations.LocalQwenSyntheticOperatorApprovalTest --tests com.ford.service.conversations.LocalQwenReplayTurnResultTest --tests com.ford.service.conversations.LocalReplayYearlessAmbiguityAssertionsTest
@@ -196,7 +196,7 @@ Extend coordinator tests to require queued outbound message receipt and exact ap
 
 Expected: new replay outcome assertions fail because the replay has no typed approved-draft result.
 
-- [ ] **Step 3: Integrate synthetic approval into the replay handler**
+- [x] **Step 3: Integrate synthetic approval into the replay handler**
 
 Extend `TurnRow` query with `turn.receipt_id`. Around `awaitCommittedReply`, catch only `LocalReplayTurnFailure` whose persisted state is `NEEDS_OPERATOR`. If opt-in is false, rethrow unchanged. If true, call the coordinator with exact tenant, conversation, receipt, and run ID. If the result is not `APPROVED`, record safe category `SYNTHETIC_OPERATOR_APPROVAL_UNAVAILABLE` and a safe status code, then stop. If approved, query the queued outbound message by `outboundMessageId`, require same conversation and exact text equal to the stored draft, and never modify the inbound turn state. Construct `LocalQwenReplayTurnResult.approvedDraft(conversationId, approvedDraft)`; ordinary `REPLY_COMMITTED` turns use `LocalQwenReplayTurnResult.committed(conversationId, answer)`.
 
@@ -204,7 +204,7 @@ Use the stored draft as text for the transcript and existing `LocalReplaySafetyA
 
 Count this result as processed and synthetically approved, not assistant-committed. At bounded completion require `committedTurns + syntheticOperatorApprovedTurns == expectedTurns`; preserve inbound-turn/outbound-message count checks. Keep pre-replay assertions that `OutboxPublisher`, `OutboxDeliveryRouter`, and `ChannelDeliveryPort` beans are absent. If no eligible approval exists, stop safely at that turn.
 
-- [ ] **Step 4: Run targeted tests and full unit suite**
+- [x] **Step 4: Run targeted tests and full unit suite**
 
 ```bash
 ./gradlew integrationTest --tests com.ford.service.conversations.LocalQwenSyntheticOperatorApprovalTest --tests com.ford.service.conversations.LocalQwenReplayTurnResultTest --tests com.ford.service.conversations.LocalReplayYearlessAmbiguityAssertionsTest
@@ -213,7 +213,7 @@ Count this result as processed and synthetically approved, not assistant-committ
 
 Expected: both commands finish with `BUILD SUCCESSFUL`.
 
-- [ ] **Step 5: Commit replay wiring**
+- [x] **Step 5: Commit replay wiring**
 
 Run `git diff --check`, inspect control flow and confirm the no-delivery bean assertions precede all replay traffic, then commit:
 
@@ -232,7 +232,7 @@ git commit -m "test: continue bounded replay after synthetic approval"
 - Update after run: `docs/superpowers/specs/2026-10-29-synthetic-operator-approval-diagnostic-design.md`
 - Update after run: `docs/superpowers/plans/2026-10-29-synthetic-operator-approval-diagnostic.md`
 
-- [ ] **Step 1: Run focused non-live integration gates**
+- [x] **Step 1: Run focused non-live integration gates**
 
 ```bash
 ./gradlew integrationTest --tests com.ford.service.conversations.LocalQwenReplayExecutionModeTest --tests com.ford.service.conversations.LocalQwenSyntheticOperatorApprovalTest --tests com.ford.service.conversations.LocalQwenReplayTurnResultTest --tests com.ford.service.conversations.LocalQwenTranscriptWriterTest --tests com.ford.service.conversations.LocalQwenTranscriptHtmlRendererTest --tests com.ford.service.conversations.LocalQwenTurnTelemetryTest --tests com.ford.service.conversations.LocalQwenReplayWindowTest --tests com.ford.service.conversations.LocalReplayYearlessAmbiguityAssertionsTest
@@ -240,11 +240,11 @@ git commit -m "test: continue bounded replay after synthetic approval"
 
 Expected: `BUILD SUCCESSFUL`; no Qwen calls or synthetic webhooks.
 
-- [ ] **Step 2: Verify harness delivery isolation before live replay**
+- [x] **Step 2: Verify harness delivery isolation before live replay**
 
 In `runNaturalBuyerReplay`, retain and run assertions that all three bean maps are empty: `OutboxPublisher`, `OutboxDeliveryRouter`, and `ChannelDeliveryPort`. Confirm the bounded test resolves explicitly to `BOUNDED_LIVE_DIAGNOSTIC` and the opt-in parser is true only when requested. Do not create an alternate environment path that enables delivery.
 
-- [ ] **Step 3: Run one bounded diagnostic with synthetic approval enabled**
+- [x] **Step 3: Run one bounded diagnostic with synthetic approval enabled**
 
 Only after unit and non-live gates pass, use the approved Oct 25 snapshot, local Ollama `qwen3.5:4b`, local BGE preflight, disposable Testcontainers PostgreSQL, and clean environment. Set `FORD_QWEN_SYNTHETIC_OPERATOR_APPROVAL=true`, `FORD_QWEN_REPLAY_MODE=BOUNDED_LIVE_DIAGNOSTIC`, and `FORD_QWEN_DIAGNOSTIC_END_TURN=32`. Keep cloud disabled; leave seed/checkpoint variables and `FORD_QWEN_100_REPLAY_ENABLED` unset. Use the existing bounded command:
 
@@ -270,7 +270,7 @@ env -i PATH="$PATH" HOME="$HOME" LANG="${LANG:-en_US.UTF-8}" \
 
 Expected only if each held draft is genuinely eligible: replay records turns through 32; every synthetic approval has a queued receipt, distinct transcript/telemetry origin, and no external delivery; safety/no-handoff checks remain active. If no eligible pending draft exists, stop at that turn and record the safe reason. Either outcome remains diagnostic-only and does not resolve the historical unsupported-price discrepancy.
 
-- [ ] **Step 4: Record outcome and commit docs**
+- [x] **Step 4: Record outcome and commit docs**
 
 Record run ID, artifact paths, committed versus synthetically approved turn counts, queued approval receipts count, turns processed, handoff count only if actually recorded, and any safe stop reason. State explicitly that queued approval was not delivered and 100-turn acceptance remains paused. Run `git diff --check`, inspect docs, then commit:
 
@@ -286,3 +286,12 @@ git commit -m "docs: record synthetic approval diagnostic outcome"
 - The held turn remains `NEEDS_OPERATOR`; transcript/telemetry distinguish synthetic approval and counters (Task 3).
 - Delivery isolation, TDD gates, local-only capped replay, artifact recording, and paused 100-turn acceptance are covered (Task 5).
 - The historical turn-31 assumption was corrected: fixture turn 31 is `DISCOVERY`; yearless-ambiguity assertions stay in focused tests, not hardcoded to that scenario turn.
+
+## Execution Record
+
+- Task 1 committed as `f026829`; mode test passed.
+- Task 2 committed as `ff66ffc`; coordinator integration tests and existing approval service/effects unit tests passed.
+- Task 3 committed as `031f442`; transcript, HTML, telemetry tests passed.
+- Task 4 committed as `35dbaf2`; replay result and no-live integration tests passed. Full unit suite passed with `BUILD SUCCESSFUL`.
+- Task 5 local diagnostic run: `a5d6f43b1cab4c81bb72d1ac3be91094`. It safely stopped at turn 31 after 30 live replies because the exact pending approval status was `NOT_APPROVABLE`. Zero synthetic approvals queued; turn 32 not sent. The Gradle diagnostic test therefore reported failure at its expected all-turn completion assertion. No forced approval was attempted.
+- Artifacts are listed in the design spec's implementation record. Per-turn no-handoff assertions passed through turn 30; no final aggregate handoff count exists. No external delivery occurred. Historical unsupported-price discrepancy remains unexplained; 100-turn acceptance remains paused.
