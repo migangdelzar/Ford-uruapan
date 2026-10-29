@@ -30,6 +30,7 @@ import java.time.LocalDate;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.List;
 import java.util.Locale;
@@ -173,14 +174,40 @@ public final class CatalogTools {
     }
 
     private List<VehicleEvidence> availableVehicles(String model, String trim) {
-        return catalog.search(new VehicleSearchQuery(null, model, null,
+        var modelYears = catalog.search(new VehicleSearchQuery(null, model, null,
                         null, null, null, null, null, 5)).stream()
                 .filter(vehicle -> normalize(vehicle.model()).equals(normalize(model)))
                 .map(VehicleEvidence::year)
                 .filter(Objects::nonNull)
                 .distinct()
                 .sorted(java.util.Comparator.reverseOrder())
-                .map(year -> catalog.find(new VehicleLookup(model, year, trim)).orElse(null))
+                .toList();
+        if (isBlank(trim)) {
+            return modelYears.stream()
+                    .map(year -> catalog.find(new VehicleLookup(model, year, null)).orElse(null))
+                    .filter(Objects::nonNull)
+                    .map(this::enrich)
+                    .toList();
+        }
+
+        var nameEntries = catalog.nameIndexEntries();
+        var canonicalCandidates = new LinkedHashMap<String,
+                com.ford.service.ai.application.VehicleTrimCandidate>();
+        for (var year : modelYears) {
+            var resolution = vehicleResolver.resolve(model, year, trim, nameEntries);
+            var candidates = switch (resolution.status()) {
+                case EXACT, UNIQUE_CANONICAL_MATCH -> List.of(resolution.exact());
+                case AMBIGUOUS -> resolution.choices();
+                case MISSING, NOT_REQUIRED -> List.<com.ford.service.ai.application.VehicleTrimCandidate>of();
+            };
+            for (var candidate : candidates) {
+                var key = normalize(candidate.model()) + ":" + candidate.year() + ":" + normalize(candidate.trim());
+                canonicalCandidates.putIfAbsent(key, candidate);
+            }
+        }
+        return canonicalCandidates.values().stream()
+                .map(candidate -> catalog.find(new VehicleLookup(candidate.model(), candidate.year(), candidate.trim()))
+                        .orElse(null))
                 .filter(Objects::nonNull)
                 .map(this::enrich)
                 .toList();

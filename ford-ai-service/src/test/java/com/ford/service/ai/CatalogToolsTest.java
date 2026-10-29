@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 class CatalogToolsTest {
 
@@ -253,6 +254,53 @@ class CatalogToolsTest {
         assertThat(options.model()).isEqualTo("Ranger");
         assertThat(options.status()).isEqualTo("available_model_year_options");
         assertThat(options.options()).extracting(VehicleEvidence::year).containsExactly(2027, 2026);
+    }
+
+    @Test
+    void yearlessTrimAliasReturnsCanonicalVariantsAcrossCandidateYears() {
+        var catalog = new FakeCatalog();
+        catalog.searchResult = List.of(
+                new VehicleEvidence("Ranger", 2027, null, null, "MXN", "model-27", null, null, List.of()),
+                new VehicleEvidence("Ranger", 2026, null, null, "MXN", "model-26", null, null, List.of()));
+        catalog.nameEntries = List.of(
+                new com.ford.service.catalog.api.VehicleNameIndexEntry("Ranger", 2027, "XLT Gasolina 4x2"),
+                new com.ford.service.catalog.api.VehicleNameIndexEntry("Ranger", 2027, "XLT Diésel 4x4"),
+                new com.ford.service.catalog.api.VehicleNameIndexEntry("Ranger", 2026, "XLT Sport Gasolina 4x2"));
+        catalog.vehicles.put("XLT Gasolina 4x2", vehicle("Ranger", 2027, "XLT Gasolina 4x2"));
+        catalog.vehicles.put("XLT Diésel 4x4", vehicle("Ranger", 2027, "XLT Diésel 4x4"));
+        catalog.vehicles.put("XLT Sport Gasolina 4x2", vehicle("Ranger", 2026, "XLT Sport Gasolina 4x2"));
+
+        var result = new CatalogTools(catalog).getVehicle("Ranger", null, "XLT");
+
+        assertThat(result).isInstanceOf(CatalogTools.ModelYearOptions.class);
+        var options = (CatalogTools.ModelYearOptions) result;
+        assertThat(options.status()).isEqualTo("available_model_year_options");
+        assertThat(options.options())
+                .extracting(VehicleEvidence::year, VehicleEvidence::trim)
+                .containsExactly(
+                        tuple(2027, "XLT Diésel 4x4"),
+                        tuple(2027, "XLT Gasolina 4x2"),
+                        tuple(2026, "XLT Sport Gasolina 4x2"));
+    }
+
+    @Test
+    void yearlessUnknownTrimAliasReturnsNoEvidence() {
+        var catalog = new FakeCatalog();
+        catalog.searchResult = List.of(
+                new VehicleEvidence("Ranger", 2027, null, null, "MXN", "model-27", null, null, List.of()));
+        catalog.nameEntries = List.of(new com.ford.service.catalog.api.VehicleNameIndexEntry(
+                "Ranger", 2027, "XLT Gasolina 4x2"));
+
+        var result = new CatalogTools(catalog).getVehicle("Ranger", null, "Wildtrak");
+
+        assertThat(result).isInstanceOf(CatalogTools.ModelYearOptions.class);
+        var options = (CatalogTools.ModelYearOptions) result;
+        assertThat(options.status()).isEqualTo("no_model_year_options_found");
+        assertThat(options.options()).isEmpty();
+    }
+
+    private static VehicleEvidence vehicle(String model, int year, String trim) {
+        return new VehicleEvidence(model, year, trim, null, "MXN", "model-" + year, null, null, List.of());
     }
 
     @Test
