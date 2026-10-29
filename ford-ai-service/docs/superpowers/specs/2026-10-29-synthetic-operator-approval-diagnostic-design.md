@@ -38,6 +38,15 @@ No production configuration, operator identity, or delivery adapter is used. The
 - A run with any synthetic approval remains diagnostic-only and cannot satisfy bounded replay acceptance or the 100-turn gate.
 - If the application lacks an eligible pending approval, keep the existing stop behavior and record the safe reason.
 
+### Eligibility-failure diagnostics follow-up
+
+The first opt-in run stopped safely at turn 31 with `NOT_APPROVABLE`, but that combined status did not identify which eligibility check failed. Refine only the test-harness status reporting:
+
+- Return one allowlisted reason: `DRAFT_NOT_SENDABLE`, `APPROVE_ACTION_NOT_ALLOWED`, or `DRAFT_MISSING` (deterministic precedence: sendability, allowed action, then draft presence).
+- Record only that reason in the bounded transcript/telemetry failure diagnostics. Never include draft text, raw tool/provider output, exception messages, or operator identifiers.
+- Keep the approval decision and all guards unchanged. Every reason still stops the run; no edit, forced approval, or state mutation.
+- Run a fresh local replay capped at turn 31, since disposable replay state cannot be resumed or seeded. Use approved snapshot, local Qwen/BGE, cloud disabled, disposable PostgreSQL; retain all no-delivery assertions. 100-turn acceptance stays paused.
+
 ## Alternatives
 
 - **Resolve the review item and continue:** rejected because review resolution does not approve or queue the held customer reply.
@@ -56,7 +65,7 @@ No production configuration, operator identity, or delivery adapter is used. The
 
 ## Verification Boundary
 
-Run unit and focused non-live integration tests first. If a live bounded diagnostic is later authorized, cap it at 32 turns and use only the approved local snapshot, local Qwen/BGE, and disposable PostgreSQL. Keep the historical unsupported-price discrepancy and 100-turn acceptance gate explicitly unresolved unless independently explained.
+Run unit and focused non-live integration tests first. The approved follow-up diagnostic is capped at turn 31 and uses only the approved local snapshot, local Qwen/BGE, and disposable PostgreSQL. Keep the historical unsupported-price discrepancy and 100-turn acceptance gate explicitly unresolved unless independently explained.
 
 ## Implementation and Diagnostic Record — 2026-10-29
 
@@ -67,3 +76,4 @@ Run unit and focused non-live integration tests first. If a live bounded diagnos
 - Artifacts: `build/reports/local-qwen/32-turn-prefetched-qwen-transcript-a5d6f43b1cab4c81bb72d1ac3be91094.md`, `build/reports/local-qwen/32-turn-transcript-a5d6f43b1cab4c81bb72d1ac3be91094.html`, and `build/reports/local-qwen/turn-telemetry-a5d6f43b1cab4c81bb72d1ac3be91094-oct25-candidate-bounded-diagnostic.jsonl`.
 - The diagnostic test exits failed because it correctly asserted completion of all 32 turns after the configured fail-closed stop. The harness did not reach the real-service successful-approval path; unit tests cover the coordinator contract, while existing service tests cover approval behavior.
 - No external delivery occurred. The outcome remains diagnostic-only; the historical unsupported-price discrepancy is unexplained and 100-turn acceptance stays paused.
+- Follow-up approved: add allowlisted eligibility-reason reporting and rerun only through turn 31; no follow-up code or run has started yet.
