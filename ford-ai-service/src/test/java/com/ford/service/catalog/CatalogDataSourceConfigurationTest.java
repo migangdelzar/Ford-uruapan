@@ -72,8 +72,87 @@ class CatalogDataSourceConfigurationTest {
     }
 
     @Test
+    void ociVaultRequiresSecretOcid() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
+                .withPropertyValues("ford.catalog.datasource.password-secret-ocid=")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("valid OCI Vault secret OCID");
+                });
+    }
+
+    @Test
+    void ociVaultRejectsInvalidSecretOcid() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
+                .withPropertyValues("ford.catalog.datasource.password-secret-ocid=ocid1.vaultsecret.")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("valid OCI Vault secret OCID");
+                });
+    }
+
+    @Test
+    void ociVaultAcceptsValidSecretAndDedicatedCatalogConnection() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(CatalogDataSourceProperties.class).secretsProvider()).isEqualTo("oci-vault");
+                    assertThat(context.getBean(CatalogDataSourceProperties.class).passwordSecretOcid())
+                            .isEqualTo("ocid1.vaultsecret.oc1..opaque_suffix-1");
+                });
+    }
+
+    @Test
+    void ociVaultRequiresDedicatedCatalogReaderUsername() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "synthetic_reader", "")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("ford_catalog_reader");
+                });
+    }
+
+    @Test
+    void ociVaultRejectsFordServiceDatabase() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_service", "ford_catalog_reader", "")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("ford_catalog database");
+                });
+    }
+
+    @Test
+    void ociVaultRejectsOtherDatabase() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/other", "ford_catalog_reader", "")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("ford_catalog database");
+                });
+    }
+
+    @Test
+    void ociVaultRejectsEnvironmentPasswordFallback() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "fallback")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("must not configure an environment password");
+                });
+    }
+
+    private ApplicationContextRunner ociVaultProperties(String url, String username, String password) {
+        return contextRunner.withPropertyValues(
+                "ford.catalog.tools.enabled=true",
+                "ford.catalog.datasource.secrets-provider=oci-vault",
+                "ford.catalog.datasource.password-secret-ocid=ocid1.vaultsecret.oc1..opaque_suffix-1",
+                "ford.catalog.datasource.url=" + url,
+                "ford.catalog.datasource.username=" + username,
+                "ford.catalog.datasource.password=" + password);
+    }
+
+    @Test
     void catalogPasswordUsesOnlyItsDedicatedEnvironmentVariable() throws Exception {
         assertThat(Files.readString(Path.of("src/main/resources/application.yml")))
+                .contains("secrets-provider: ${FORD_SECRETS_PROVIDER:environment}")
+                .contains("password-secret-ocid: ${FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD:}")
                 .contains("password: ${FORD_CATALOG_PASSWORD:}")
                 .doesNotContain("password: ${FORD_DATABASE_PASSWORD:}");
 

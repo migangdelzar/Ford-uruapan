@@ -117,6 +117,8 @@ ford:
     embedding:
       model: ${FORD_CATALOG_EMBEDDING_MODEL:bge-m3}
     datasource:
+      secrets-provider: ${FORD_SECRETS_PROVIDER:environment}
+      password-secret-ocid: ${FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD:}
       url: ${FORD_CATALOG_JDBC_URL:}
       username: ${FORD_CATALOG_USERNAME:}
       password: ${FORD_CATALOG_PASSWORD:}
