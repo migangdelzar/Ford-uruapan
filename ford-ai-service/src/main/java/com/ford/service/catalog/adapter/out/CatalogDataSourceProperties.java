@@ -4,14 +4,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 
 @ConfigurationProperties(prefix = "ford.catalog.datasource")
 public class CatalogDataSourceProperties {
 
-    private static final Set<String> JDBC_IDENTITY_OPTIONS = Set.of(
-            "user", "password", "dbname", "host", "hostaddr", "port");
+    private static final Set<String> SAFE_JDBC_OPTIONS = Set.of(
+            "sslmode", "connecttimeout", "sockettimeout", "tcpkeepalive", "applicationname");
 
     private String url = "";
     private String username = "";
@@ -91,20 +92,45 @@ public class CatalogDataSourceProperties {
             return false;
         }
         var query = jdbcUrl.substring(queryStart + 1);
+        var seen = new HashSet<String>();
         for (var parameter : query.split("[&;]", -1)) {
+            if (parameter.isEmpty()) {
+                return true;
+            }
             var equals = parameter.indexOf('=');
-            var encodedName = equals < 0 ? parameter : parameter.substring(0, equals);
+            if (equals <= 0) {
+                return true;
+            }
             final String name;
             try {
-                name = URLDecoder.decode(encodedName, StandardCharsets.UTF_8).toLowerCase(Locale.ROOT);
+                name = decodeJdbcOption(parameter.substring(0, equals)).toLowerCase(Locale.ROOT);
+                decodeJdbcOption(parameter.substring(equals + 1));
             } catch (IllegalArgumentException malformedEncoding) {
                 return true;
             }
-            if (JDBC_IDENTITY_OPTIONS.contains(name)) {
+            if (name.isBlank() || !SAFE_JDBC_OPTIONS.contains(name) || !seen.add(name)) {
                 return true;
             }
         }
         return false;
+    }
+
+    private static String decodeJdbcOption(String component) {
+        for (int index = 0; index < component.length(); index++) {
+            if (component.charAt(index) == '%') {
+                if (index + 2 >= component.length()
+                        || Character.digit(component.charAt(index + 1), 16) < 0
+                        || Character.digit(component.charAt(index + 2), 16) < 0) {
+                    throw new IllegalArgumentException("Malformed URL encoding");
+                }
+                index += 2;
+            }
+        }
+        var decoded = URLDecoder.decode(component, StandardCharsets.UTF_8);
+        if (decoded.indexOf('\uFFFD') >= 0) {
+            throw new IllegalArgumentException("Malformed UTF-8 encoding");
+        }
+        return decoded;
     }
 
     private static boolean isFordServiceDatabase(String jdbcUrl) {

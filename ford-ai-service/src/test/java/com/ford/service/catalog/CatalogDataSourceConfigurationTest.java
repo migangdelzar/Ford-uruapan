@@ -137,8 +137,33 @@ class CatalogDataSourceConfigurationTest {
     }
 
     @Test
+    void ociVaultRejectsPgPrefixedIdentityAliases() {
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?PGDBNAME=ford_service");
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?PGHOST=other-host");
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?PGPORT=9999");
+    }
+
+    @Test
+    void ociVaultRejectsDriverServiceAndOptions() {
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?service=synthetic-service");
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?options=-c%20role=synthetic");
+    }
+
+    @Test
+    void ociVaultRejectsEncodedAndDuplicateOptionNames() {
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?%50GDBNAME=ford_service");
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?sslmode=require&SSL%4DODE=require");
+    }
+
+    @Test
+    void ociVaultRejectsUnknownAndMalformedOptions() {
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?unknownOption=value");
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?sslmode=%ZZ");
+    }
+
+    @Test
     void ociVaultAllowsSafeSslJdbcOption() {
-        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog?sslmode=require", "ford_catalog_reader", "")
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog?sslmode=require&connectTimeout=5&socketTimeout=10&tcpKeepAlive=true&ApplicationName=catalog", "ford_catalog_reader", "")
                 .withBean(CatalogPasswordResolver.class, () -> new CatalogPasswordResolver(
                         ocid -> new CatalogSecretBundle("BASE64", "cGFzc3dvcmQ=")))
                 .run(context -> assertThat(context).hasNotFailed());
