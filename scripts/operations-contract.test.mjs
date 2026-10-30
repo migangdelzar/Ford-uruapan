@@ -293,7 +293,7 @@ test("live provider preflight can exercise the configured primary Spring AI prov
   const source = await read("ford-ai-service/src/providerPreflight/java/com/ford/service/ai/configuration/LiveProviderPreflightTest.java");
 
   assert.match(source, /PROVIDER_IDS = List\.of\("openai"/);
-  assert.match(source, /case "openai" -> env\("OPENAI_API_KEY"\)/);
+  assert.match(source, /case "openai" -> env\("DEEPSEEK_API_KEY"\)/);
   assert.match(source, /FORD_AI_CLOUD_ENABLED/);
   assert.match(source, /FORD_AI_CLOUD_BASE_URL/);
   assert.match(source, /FORD_AI_CLOUD_MODEL_VERSION/);

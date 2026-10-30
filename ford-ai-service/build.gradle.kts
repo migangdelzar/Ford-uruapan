@@ -125,6 +125,7 @@ val integrationTest = tasks.register<Test>("integrationTest") {
     classpath = sourceSets["integrationTest"].runtimeClasspath
     shouldRunAfter(tasks.test)
     useJUnitPlatform()
+    outputs.upToDateWhen { false }
 }
 
 tasks.register<JavaExec>("importLocalCatalogSnapshot") {
