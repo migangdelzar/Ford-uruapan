@@ -238,16 +238,73 @@ jobs:
                   f"{', '.join(matches) if matches else 'NO_MATCHING_SIGNATURE'}"
               )
           PY
-          collector_details="$(docker ps -a --filter 'label=com.docker.compose.service=otel-collector' --format '{{.Names}} {{.State}} {{.Ports}}')"
-          port_owners="$(docker ps -a --format '{{.Names}} {{.State}} {{.Ports}}' | awk 'index($0, "13133") > 0 { print }')"
-          collector_port_owner_ids="$(docker ps -a --format '{{.ID}} {{.Ports}}' | awk 'index($0, "13133") > 0 { print $1 }')"
-          printf 'Collector containers: %s\n' "${collector_details:-none}"
-          printf 'Host port 13133 owners: %s\n' "${port_owners:-none}"
-          if [[ -n "$collector_port_owner_ids" ]]; then
-            for owner_id in $collector_port_owner_ids; do
-              docker inspect --format 'port owner={{.Name}} project={{index .Config.Labels "com.docker.compose.project"}} workdir={{index .Config.Labels "com.docker.compose.project.working_dir"}} compose={{index .Config.Labels "com.docker.compose.project.config_files"}} bindings={{json .HostConfig.PortBindings}}' "$owner_id"
-            done
-          fi
+          python3 - <<'PY'
+          import json
+          import subprocess
+
+          try:
+              port_result = subprocess.run(
+                  ["docker", "ps", "-aq", "--no-trunc", "--filter", "publish=13133"],
+                  capture_output=True,
+                  text=True,
+                  timeout=10,
+                  check=False,
+              )
+              service_result = subprocess.run(
+                  [
+                      "docker", "ps", "-aq", "--no-trunc", "--filter",
+                      "label=com.docker.compose.service=otel-collector",
+                  ],
+                  capture_output=True,
+                  text=True,
+                  timeout=10,
+                  check=False,
+              )
+              if port_result.returncode != 0 or service_result.returncode != 0:
+                  raise RuntimeError
+
+              port_ids = set(port_result.stdout.split())
+              service_ids = set(service_result.stdout.split())
+              candidate_ids = sorted(port_ids | service_ids)
+              inspected = []
+              if candidate_ids:
+                  inspect_result = subprocess.run(
+                      ["docker", "inspect", *candidate_ids],
+                      capture_output=True,
+                      text=True,
+                      timeout=10,
+                      check=False,
+                  )
+                  if inspect_result.returncode != 0:
+                      raise RuntimeError
+                  inspected = json.loads(inspect_result.stdout)
+
+              states = []
+              for item in inspected:
+                  state = item.get("State", {}).get("Status", "unknown")
+                  if state not in ("running", "created", "exited", "paused", "restarting", "dead"):
+                      state = "unknown"
+                  labels = item.get("Config", {}).get("Labels", {}) or {}
+                  states.append((item.get("Id", "") in port_ids, state,
+                                 labels.get("com.docker.compose.service") == "otel-collector"))
+
+              state_counts = {}
+              for _, state, _ in states:
+                  state_counts[state] = state_counts.get(state, 0) + 1
+              states_summary = ",".join(
+                  f"{state}:{state_counts[state]}" for state in sorted(state_counts)
+              ) or "none"
+              print(
+                  "Sanitized collector metadata: "
+                  f"port_owners={len(port_ids)}; "
+                  f"running_port_owners={sum(is_port and state == 'running' for is_port, state, _ in states)}; "
+                  f"service_label_match={sum(matches for _, _, matches in states)}; "
+                  f"running_label_match={sum(state == 'running' and matches for _, state, matches in states)}; "
+                  f"states={states_summary}"
+              )
+          except Exception:
+              print("Sanitized collector metadata: SCAN_UNAVAILABLE")
+          PY
           collector_states="$(docker ps -a --filter 'label=com.docker.compose.service=otel-collector' --format '{{.State}}')"
           [[ "$collector_states" == 'running' ]] || {
             echo 'Expected exactly one running Compose otel-collector service.' >&2
