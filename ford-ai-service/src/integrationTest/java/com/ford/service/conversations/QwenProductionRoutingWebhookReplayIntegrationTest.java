@@ -48,6 +48,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Bounded opt-in local Qwen replay through normal conversation routing and tool policy. */
+@EnabledIfEnvironmentVariable(named = "FORD_LOCAL_CATALOG_EXPORT_DIR", matches = ".+")
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.modulith.runtime.verification-enabled=false",
