@@ -300,6 +300,10 @@ class OciActionContractTest(unittest.TestCase):
             self.assertIn(f'"{category}"', app_check)
         self.assertIn("Service DB TCP", app_check)
         self.assertIn("Catalog DB TCP", app_check)
+        self.assertLess(
+            app_check.index("Service DB TCP"),
+            app_check.index('["docker", "logs", "--since", "24h", "--tail", "5000", container]'),
+        )
         self.assertIn("FORD_DATABASE_URL", app_check)
         self.assertIn("FORD_CATALOG_JDBC_URL", app_check)
         self.assertNotIn("FORD_DATABASE_PASSWORD", app_check)

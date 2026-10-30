@@ -137,6 +137,81 @@ jobs:
           for slot in ("blue", "green"):
               container = f"ford-service-{slot}"
               try:
+                  env_result = subprocess.run(
+                      [
+                          "docker", "exec", container, "bash", "-c",
+                          'printf "%s\\n%s\\n%s\\n" "${FORD_DATABASE_URL-}" '
+                          '"${FORD_CATALOG_TOOLS_ENABLED-}" "${FORD_CATALOG_JDBC_URL-}"',
+                      ],
+                      capture_output=True,
+                      text=True,
+                      timeout=10,
+                      check=False,
+                  )
+              except Exception:
+                  print(f"Service DB TCP {slot}: PROBE_UNAVAILABLE")
+                  print(f"Catalog DB TCP {slot}: PROBE_UNAVAILABLE")
+                  env_result = None
+
+              if env_result is None or env_result.returncode != 0:
+                  if env_result is not None:
+                      print(f"Service DB TCP {slot}: PROBE_UNAVAILABLE")
+                      print(f"Catalog DB TCP {slot}: PROBE_UNAVAILABLE")
+              else:
+                  env_values = env_result.stdout.splitlines()
+                  if len(env_values) != 3:
+                      print(f"Service DB TCP {slot}: CONFIG_UNAVAILABLE")
+                      print(f"Catalog DB TCP {slot}: CONFIG_UNAVAILABLE")
+                  else:
+                      service_url, catalog_enabled, catalog_url = env_values
+
+                      def probe_jdbc(label, jdbc_url):
+                          try:
+                              if not jdbc_url.startswith("jdbc:"):
+                                  raise ValueError
+                              target = urlsplit(jdbc_url[5:])
+                              host = target.hostname
+                              port = target.port if target.port is not None else 5432
+                              if (
+                                  target.scheme != "postgresql"
+                                  or not host
+                                  or not re.fullmatch(r"[A-Za-z0-9.-]+", host)
+                                  or not 1 <= port <= 65535
+                              ):
+                                  raise ValueError
+                          except ValueError:
+                              print(f"{label} {slot}: CONFIG_UNAVAILABLE")
+                              return
+
+                          try:
+                              result = subprocess.run(
+                                  [
+                                      "docker", "exec", "-e", f"FORD_PREFLIGHT_HOST={host}",
+                                      "-e", f"FORD_PREFLIGHT_PORT={port}", container, "bash", "-c",
+                                      'timeout 4 bash -c "exec 3<>/dev/tcp/$FORD_PREFLIGHT_HOST/$FORD_PREFLIGHT_PORT"',
+                                  ],
+                                  capture_output=True,
+                                  text=True,
+                                  timeout=8,
+                                  check=False,
+                              )
+                              if result.returncode == 0:
+                                  state = "REACHABLE"
+                              elif result.returncode in (1, 124):
+                                  state = "UNREACHABLE"
+                              else:
+                                  state = "PROBE_UNAVAILABLE"
+                          except Exception:
+                              state = "PROBE_UNAVAILABLE"
+                          print(f"{label} {slot}: {state}")
+
+                      probe_jdbc("Service DB TCP", service_url)
+                      if catalog_enabled.lower() == "true":
+                          probe_jdbc("Catalog DB TCP", catalog_url)
+                      else:
+                          print(f"Catalog DB TCP {slot}: NOT_ENABLED")
+
+              try:
                   result = subprocess.run(
                       ["docker", "logs", "--since", "24h", "--tail", "5000", container],
                       capture_output=True,
@@ -162,82 +237,6 @@ jobs:
                   f"Sanitized runtime signatures {slot}: "
                   f"{', '.join(matches) if matches else 'NO_MATCHING_SIGNATURE'}"
               )
-
-              try:
-                  env_result = subprocess.run(
-                      [
-                          "docker", "exec", container, "bash", "-c",
-                          'printf "%s\\n%s\\n%s\\n" "${FORD_DATABASE_URL-}" '
-                          '"${FORD_CATALOG_TOOLS_ENABLED-}" "${FORD_CATALOG_JDBC_URL-}"',
-                      ],
-                      capture_output=True,
-                      text=True,
-                      timeout=10,
-                      check=False,
-                  )
-              except Exception:
-                  print(f"Service DB TCP {slot}: PROBE_UNAVAILABLE")
-                  print(f"Catalog DB TCP {slot}: PROBE_UNAVAILABLE")
-                  continue
-              if env_result.returncode != 0:
-                  print(f"Service DB TCP {slot}: PROBE_UNAVAILABLE")
-                  print(f"Catalog DB TCP {slot}: PROBE_UNAVAILABLE")
-                  continue
-
-              env_values = env_result.stdout.splitlines()
-              if len(env_values) != 3:
-                  print(f"Service DB TCP {slot}: CONFIG_UNAVAILABLE")
-                  print(f"Catalog DB TCP {slot}: CONFIG_UNAVAILABLE")
-                  continue
-
-              service_url, catalog_enabled, catalog_url = env_values
-
-              def probe_jdbc(label, jdbc_url):
-                  try:
-                      if not jdbc_url.startswith("jdbc:"):
-                          raise ValueError
-                      target = urlsplit(jdbc_url[5:])
-                      host = target.hostname
-                      port = target.port if target.port is not None else 5432
-                      if (
-                          target.scheme != "postgresql"
-                          or
-                          not host
-                          or not re.fullmatch(r"[A-Za-z0-9.-]+", host)
-                          or not 1 <= port <= 65535
-                      ):
-                          raise ValueError
-                  except ValueError:
-                      print(f"{label} {slot}: CONFIG_UNAVAILABLE")
-                      return
-
-                  try:
-                      result = subprocess.run(
-                          [
-                              "docker", "exec", "-e", f"FORD_PREFLIGHT_HOST={host}",
-                              "-e", f"FORD_PREFLIGHT_PORT={port}", container, "bash", "-c",
-                              'timeout 4 bash -c "exec 3<>/dev/tcp/$FORD_PREFLIGHT_HOST/$FORD_PREFLIGHT_PORT"',
-                          ],
-                          capture_output=True,
-                          text=True,
-                          timeout=8,
-                          check=False,
-                      )
-                      if result.returncode == 0:
-                          state = "REACHABLE"
-                      elif result.returncode in (1, 124):
-                          state = "UNREACHABLE"
-                      else:
-                          state = "PROBE_UNAVAILABLE"
-                  except Exception:
-                      state = "PROBE_UNAVAILABLE"
-                  print(f"{label} {slot}: {state}")
-
-              probe_jdbc("Service DB TCP", service_url)
-              if catalog_enabled.lower() == "true":
-                  probe_jdbc("Catalog DB TCP", catalog_url)
-              else:
-                  print(f"Catalog DB TCP {slot}: NOT_ENABLED")
           PY
           collector_details="$(docker ps -a --filter 'label=com.docker.compose.service=otel-collector' --format '{{.Names}} {{.State}} {{.Ports}}')"
           port_owners="$(docker ps -a --format '{{.Names}} {{.State}} {{.Ports}}' | awk 'index($0, "13133") > 0 { print }')"
