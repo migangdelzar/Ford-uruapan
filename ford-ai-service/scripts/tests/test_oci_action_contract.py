@@ -322,6 +322,9 @@ class OciActionContractTest(unittest.TestCase):
         self.assertNotIn("Host port 13133 owners:", app_check)
         self.assertNotIn("port owner=", app_check)
         self.assertNotIn("workdir={{", app_check)
+        collector_gate = app_check.split("collector_states=", 1)[1].split("if [[", 1)[0]
+        self.assertIn("label=com.docker.compose.project=ford-service", collector_gate)
+        self.assertIn("label=com.docker.compose.service=otel-collector", collector_gate)
         self.assertIn("# BEGIN sanitized collector metadata", app_check)
         collector_scan = app_check.split("# BEGIN sanitized collector metadata", 1)[1].split(
             "# END sanitized collector metadata", 1

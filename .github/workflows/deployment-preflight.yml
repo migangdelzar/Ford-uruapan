@@ -307,7 +307,7 @@ jobs:
               print("Sanitized collector metadata: SCAN_UNAVAILABLE")
           PY
           # END sanitized collector metadata
-          collector_states="$(docker ps -a --filter 'label=com.docker.compose.service=otel-collector' --format '{{.State}}')"
+          collector_states="$(docker ps -a --filter 'label=com.docker.compose.project=ford-service' --filter 'label=com.docker.compose.service=otel-collector' --format '{{.State}}')"
           [[ "$collector_states" == 'running' ]] || {
             echo 'Expected exactly one running Compose otel-collector service.' >&2
             exit 1
