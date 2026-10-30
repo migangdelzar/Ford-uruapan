@@ -48,7 +48,7 @@ class BlueGreenComposeContractTest(unittest.TestCase):
         self.assertIn("src: app.env.j2", source)
         self.assertIn('dest: "{{ remote_root }}/app/.env"', source)
 
-    def test_service_environment_keeps_deepseek_primary_with_bounded_openrouter_fallback(self):
+    def test_production_keeps_deepseek_primary_and_disables_unverified_fallback(self):
         template = (APP_TEMPLATES / "app.env.j2").read_text()
         production = (REPO_ROOT.parent / "ford-ai-service/src/main/resources/application-prod.yml").read_text()
         example = (REPO_ROOT.parent / "deployment/config/oci.env.example").read_text()
@@ -59,15 +59,14 @@ class BlueGreenComposeContractTest(unittest.TestCase):
         self.assertIn("FORD_AI_CLOUD_BASE_URL={{ ford_ai_cloud_base_url | default('https://api.deepseek.com') }}", template)
         self.assertIn("FORD_AI_CLOUD_MODEL_VERSION={{ ford_ai_cloud_model_version | default('deepseek-flash') }}", template)
         self.assertIn("FORD_AI_PROVIDER_MAX_ATTEMPTS={{ ford_ai_provider_max_attempts | default(2) }}", template)
-        self.assertIn("FORD_AI_FALLBACK_ORDER={{ ford_ai_fallback_order | default('openrouter') }}", template)
         self.assertIn("FORD_AI_OPENROUTER_MODEL={{ ford_ai_openrouter_model | default('xiaomi/mimo-v2.6-flash') }}", template)
         self.assertIn("model: ${FORD_AI_OPENROUTER_MODEL:xiaomi/mimo-v2.6-flash}", production)
         self.assertIn("FORD_AI_OPENROUTER_MODEL=xiaomi/mimo-v2.6-flash", example)
-        self.assertIn("fallback-order: ${FORD_AI_FALLBACK_ORDER:openrouter}", production)
+        self.assertIn("fallback-order: []", production)
+        self.assertNotIn("FORD_AI_FALLBACK_ORDER", production)
         self.assertIn("FORD_AI_OPENROUTER_ENABLED={{ (ford_ai_openrouter_enabled | default(true))", template)
         self.assertIn("FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED={{ (ford_ai_openrouter_tool_calling_verified | default(false))", template)
         self.assertIn("FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED={{ (ford_ai_openrouter_structured_output_verified | default(false))", template)
-        self.assertIn("FORD_AI_FALLBACK_ORDER=openrouter", example)
         self.assertIn("FORD_AI_OPENROUTER_ENABLED=true", example)
         self.assertIn("FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY", template)
 

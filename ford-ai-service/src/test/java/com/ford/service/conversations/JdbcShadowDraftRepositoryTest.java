@@ -8,6 +8,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -50,7 +51,7 @@ class JdbcShadowDraftRepositoryTest {
 
     @Test
     void savesAndListsDraftsScopedByTenantAndConversation() {
-        var created = Instant.now().minusSeconds(60);
+        var created = Instant.parse("2026-10-29T05:08:20.255313408Z");
         repository.save(draft(UUID.randomUUID(), created, created.plusSeconds(604800), "PENDING"));
         repository.save(draft(UUID.randomUUID(), created.plusSeconds(30), created.plusSeconds(604830), "PENDING"));
         repository.save(new ShadowDraft(UUID.randomUUID(), tenantId, UUID.randomUUID(), UUID.randomUUID(),
@@ -59,7 +60,7 @@ class JdbcShadowDraftRepositoryTest {
         var drafts = repository.list(tenantId, conversationId, 50);
 
         assertThat(drafts).hasSize(2);
-        assertThat(drafts.get(0).createdAt()).isEqualTo(created.plusSeconds(30));
+        assertThat(drafts.get(0).createdAt()).isEqualTo(created.plusSeconds(30).truncatedTo(ChronoUnit.MICROS));
         assertThat(drafts).allMatch(draft -> draft.conversationId().equals(conversationId));
     }
 
