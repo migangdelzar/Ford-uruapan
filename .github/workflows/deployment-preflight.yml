@@ -63,32 +63,29 @@ jobs:
           import urllib.error
           import urllib.request
 
-          endpoint = "http://127.0.0.1:8080/actuator/health"
-          response = None
-          try:
-              response = urllib.request.urlopen(endpoint, timeout=8)
-          except urllib.error.HTTPError as error:
-              response = error
-          except Exception as error:
-              print(f"Health endpoint error: {type(error).__name__}")
-              raise SystemExit(1)
+          routed_healthy = False
+          for port in (8080, 18081, 18082):
+              endpoint = f"http://127.0.0.1:{port}/actuator/health"
+              response = None
+              try:
+                  response = urllib.request.urlopen(endpoint, timeout=8)
+              except urllib.error.HTTPError as error:
+                  response = error
+              except Exception as error:
+                  print(f"Health probe port {port} error: {type(error).__name__}")
+                  continue
 
-          code = response.getcode()
-          try:
-              payload = json.loads(response.read())
-          except (ValueError, OSError):
-              payload = {}
-          status = payload.get("status", "UNKNOWN") if isinstance(payload, dict) else "UNKNOWN"
-          components = payload.get("components", {}) if isinstance(payload, dict) else {}
-          component_statuses = ", ".join(
-              f"{name}={value.get('status', 'UNKNOWN')}"
-              for name, value in sorted(components.items())
-              if isinstance(value, dict)
-          ) or "none"
-          print(f"HTTP status: {code}")
-          print(f"Health status: {status}")
-          print(f"Health component statuses: {component_statuses}")
-          raise SystemExit(0 if code == 200 and status == "UP" else 1)
+              code = response.getcode()
+              try:
+                  payload = json.loads(response.read())
+              except (ValueError, OSError):
+                  payload = {}
+              status = payload.get("status", "UNKNOWN") if isinstance(payload, dict) else "UNKNOWN"
+              print(f"Health probe port {port}: HTTP {code}, status={status}")
+              if port == 8080:
+                  routed_healthy = code == 200 and status == "UP"
+
+          raise SystemExit(0 if routed_healthy else 1)
           PY
           then
             health_ok=true
