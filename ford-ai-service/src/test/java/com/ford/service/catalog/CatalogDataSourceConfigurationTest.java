@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import javax.sql.DataSource;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -116,6 +118,39 @@ class CatalogDataSourceConfigurationTest {
                     assertThat(context.getBean(CatalogDataSourceProperties.class).secretsProvider()).isEqualTo("oci-vault");
                     assertThat(context.getBean(CatalogDataSourceProperties.class).passwordSecretOcid())
                             .isEqualTo("ocid1.vaultsecret.oc1.us-phoenix-1.synthetic-secret-1");
+                });
+    }
+
+    @Test
+    void ociVaultRejectsJdbcOptionThatOverridesUser() {
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?user=synthetic-user");
+    }
+
+    @Test
+    void ociVaultRejectsEncodedJdbcOptionThatOverridesPassword() {
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?%70assword=synthetic-password");
+    }
+
+    @Test
+    void ociVaultRejectsDuplicateJdbcOptionThatOverridesDatabase() {
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?sslmode=require&dbname=ford_service&dbname=ford_catalog");
+    }
+
+    @Test
+    void ociVaultAllowsSafeSslJdbcOption() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog?sslmode=require", "ford_catalog_reader", "")
+                .withBean(CatalogPasswordResolver.class, () -> new CatalogPasswordResolver(
+                        ocid -> new CatalogSecretBundle("BASE64", "cGFzc3dvcmQ=")))
+                .run(context -> assertThat(context).hasNotFailed());
+    }
+
+    private void assertOciVaultRejectsJdbcUrl(String url) {
+        ociVaultProperties(url, "ford_catalog_reader", "")
+                .withBean(CatalogPasswordResolver.class, () -> new CatalogPasswordResolver(
+                        ocid -> new CatalogSecretBundle("BASE64", "cGFzc3dvcmQ=")))
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("must not override connection identity");
                 });
     }
 
@@ -284,8 +319,14 @@ class CatalogDataSourceConfigurationTest {
                 .run(context -> {
                     assertThat(context).hasFailed();
                     assertThat(context.getStartupFailure()).hasStackTraceContaining("Unable to retrieve catalog password");
-                    assertThat(context.getStartupFailure().toString()).doesNotContain("vault-secret-text");
+                    assertThat(completeStackTrace(context.getStartupFailure())).doesNotContain("vault-secret-text");
                 });
+    }
+
+    private static String completeStackTrace(Throwable failure) {
+        var output = new StringWriter();
+        failure.printStackTrace(new PrintWriter(output));
+        return output.toString();
     }
 
     @Test

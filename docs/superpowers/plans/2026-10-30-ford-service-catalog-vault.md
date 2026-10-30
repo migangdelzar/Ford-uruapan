@@ -143,7 +143,7 @@
 **Interfaces:**
 - Add input `service-catalog-password-secret-ocid`.
 - Forward it as `OCI_SERVICE_CATALOG_PASSWORD_SECRET_OCID` and Ansible var `ford_catalog_password_secret_ocid`.
-- When catalog tools are enabled, require `FORD_SECRETS_PROVIDER=oci-vault` and an OCID matching `^ocid1[.]vaultsecret[.][A-Za-z0-9._-]+$`; the opaque OCID suffix may contain hyphens or underscores.
+- When catalog tools are enabled, require `FORD_SECRETS_PROVIDER=oci-vault` and an OCID reference matching the action's lexical shape `^ocid1[.]vaultsecret[.][A-Za-z0-9._-]+$`; Java validates the full structural OCI secret OCID.
 - The app env template writes `FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD` only; it never receives or writes a password value.
 
 - [ ] Add action contract assertions for enabled-mode OCID validation, exact action-input forwarding, template rendering of the reference, and absence of a password-value input.

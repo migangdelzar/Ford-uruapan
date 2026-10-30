@@ -2,8 +2,16 @@ package com.ford.service.catalog.adapter.out;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+import java.util.Set;
+
 @ConfigurationProperties(prefix = "ford.catalog.datasource")
 public class CatalogDataSourceProperties {
+
+    private static final Set<String> JDBC_IDENTITY_OPTIONS = Set.of(
+            "user", "password", "dbname", "host", "hostaddr", "port");
 
     private String url = "";
     private String username = "";
@@ -50,6 +58,9 @@ public class CatalogDataSourceProperties {
         if (url == null || !isFordCatalogDatabase(url)) {
             throw new IllegalStateException("OCI Vault mode requires a PostgreSQL URL for the ford_catalog database");
         }
+        if (hasJdbcIdentityOverrides(url)) {
+            throw new IllegalStateException("OCI Vault JDBC URL must not override connection identity or credentials");
+        }
         if (!"ford_catalog_reader".equals(username)) {
             throw new IllegalStateException("OCI Vault mode requires username exactly ford_catalog_reader");
         }
@@ -72,6 +83,28 @@ public class CatalogDataSourceProperties {
         var urlWithoutOptions = normalized.substring(prefix.length()).split("[?;]", 2)[0];
         var pathStart = urlWithoutOptions.indexOf('/');
         return pathStart > 0 && "/ford_catalog".equals(urlWithoutOptions.substring(pathStart));
+    }
+
+    private static boolean hasJdbcIdentityOverrides(String jdbcUrl) {
+        var queryStart = jdbcUrl.indexOf('?');
+        if (queryStart < 0) {
+            return false;
+        }
+        var query = jdbcUrl.substring(queryStart + 1);
+        for (var parameter : query.split("[&;]", -1)) {
+            var equals = parameter.indexOf('=');
+            var encodedName = equals < 0 ? parameter : parameter.substring(0, equals);
+            final String name;
+            try {
+                name = URLDecoder.decode(encodedName, StandardCharsets.UTF_8).toLowerCase(Locale.ROOT);
+            } catch (IllegalArgumentException malformedEncoding) {
+                return true;
+            }
+            if (JDBC_IDENTITY_OPTIONS.contains(name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isFordServiceDatabase(String jdbcUrl) {
