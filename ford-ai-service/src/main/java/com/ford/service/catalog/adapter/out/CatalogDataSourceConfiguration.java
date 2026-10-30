@@ -23,13 +23,18 @@ import javax.sql.DataSource;
 public class CatalogDataSourceConfiguration {
 
     @Bean(name = "catalogDataSource", destroyMethod = "close")
-    DataSource catalogDataSource(CatalogDataSourceProperties properties) {
+    DataSource catalogDataSource(CatalogDataSourceProperties properties,
+                                 ObjectProvider<CatalogPasswordResolver> passwordResolvers) {
         properties.validate();
+        var resolver = passwordResolvers.getIfAvailable();
+        var password = "oci-vault".equals(properties.secretsProvider())
+                ? resolver == null ? "" : resolver.resolve(properties.passwordSecretOcid())
+                : properties.password();
         return DataSourceBuilder.create()
                 .driverClassName(properties.driverClassName())
                 .url(properties.url())
                 .username(properties.username())
-                .password(properties.password())
+                .password(password)
                 .build();
     }
 
