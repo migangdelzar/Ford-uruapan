@@ -55,6 +55,12 @@ def plan_with_group_change(after_description="runtime principal"):
 
 
 class TerraformRuntimeVaultPlanGuardTest(unittest.TestCase):
+    def test_catalog_reader_secret_is_granted_only_to_app(self):
+        secret_name = "ford-prod-catalog-reader-password"
+
+        self.assertIn(secret_name, CONTRACT["secret_names"]["app"])
+        self.assertNotIn(secret_name, CONTRACT["secret_names"]["data"])
+
     def run_guard(self, plan, vault_ocid=VAULT_OCID, compartment_ocid=COMPARTMENT_OCID):
         with tempfile.TemporaryDirectory() as directory:
             plan_path = Path(directory) / "plan.json"
