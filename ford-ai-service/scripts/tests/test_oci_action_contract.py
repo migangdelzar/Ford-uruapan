@@ -298,6 +298,12 @@ class OciActionContractTest(unittest.TestCase):
         self.assertIn("Sanitized runtime signatures", app_check)
         for category in ("DB_NETWORK", "DB_AUTH", "DB_DNS", "DB_SCHEMA", "CATALOG_UNAVAILABLE"):
             self.assertIn(f'"{category}"', app_check)
+        self.assertIn("Service DB TCP", app_check)
+        self.assertIn("Catalog DB TCP", app_check)
+        self.assertIn("FORD_DATABASE_URL", app_check)
+        self.assertIn("FORD_CATALOG_JDBC_URL", app_check)
+        self.assertNotIn("FORD_DATABASE_PASSWORD", app_check)
+        self.assertNotIn("print(host", app_check)
         self.assertNotIn("print(raw_logs", app_check)
         self.assertNotIn("print(completed.stdout", app_check)
         self.assertIn("Service containers:", app_check)
