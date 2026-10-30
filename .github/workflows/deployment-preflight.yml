@@ -233,11 +233,12 @@ jobs:
                   for category, needles in signatures.items()
                   if any(needle in content for needle in needles)
               ]
-              print(
-                  f"Sanitized runtime signatures {slot}: "
-                  f"{', '.join(matches) if matches else 'NO_MATCHING_SIGNATURE'}"
-              )
+          print(
+              f"Sanitized runtime signatures {slot}: "
+              f"{', '.join(matches) if matches else 'NO_MATCHING_SIGNATURE'}"
+          )
           PY
+          # BEGIN sanitized collector metadata
           python3 - <<'PY'
           import json
           import subprocess
@@ -305,6 +306,7 @@ jobs:
           except Exception:
               print("Sanitized collector metadata: SCAN_UNAVAILABLE")
           PY
+          # END sanitized collector metadata
           collector_states="$(docker ps -a --filter 'label=com.docker.compose.service=otel-collector' --format '{{.State}}')"
           [[ "$collector_states" == 'running' ]] || {
             echo 'Expected exactly one running Compose otel-collector service.' >&2

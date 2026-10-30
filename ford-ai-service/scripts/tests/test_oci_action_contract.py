@@ -320,6 +320,29 @@ class OciActionContractTest(unittest.TestCase):
         self.assertNotIn("Host port 13133 owners:", app_check)
         self.assertNotIn("port owner=", app_check)
         self.assertNotIn("workdir={{", app_check)
+        self.assertIn("# BEGIN sanitized collector metadata", app_check)
+        collector_scan = app_check.split("# BEGIN sanitized collector metadata", 1)[1].split(
+            "# END sanitized collector metadata", 1
+        )[0]
+        for allowed_output in (
+            "port_owners=",
+            "running_port_owners=",
+            "service_label_match=",
+            "running_label_match=",
+            "states=",
+        ):
+            self.assertIn(allowed_output, collector_scan)
+        for unsafe_output in (
+            "print(inspect_result.stdout",
+            "print(port_result.stdout",
+            "print(service_result.stdout",
+            'item.get("Name"',
+            'item["Name"]',
+            "workdir",
+            "config_files",
+            "PortBindings",
+        ):
+            self.assertNotIn(unsafe_output, collector_scan)
         self.assertIn("Service containers:", app_check)
         self.assertLess(app_check.index("Service containers:"), app_check.index("exit 1"))
         self.assertIn("for port in (8080, 18081, 18082)", app_check)
