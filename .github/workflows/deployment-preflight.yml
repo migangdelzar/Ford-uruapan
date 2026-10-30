@@ -71,8 +71,7 @@ jobs:
                   response = urllib.request.urlopen(endpoint, timeout=8)
               except urllib.error.HTTPError as error:
                   response = error
-              except Exception as error:
-                  print(f"Health probe port {port} error: {type(error).__name__}")
+              except Exception:
                   continue
 
               code = response.getcode()
@@ -83,7 +82,6 @@ jobs:
               status = payload.get("status", "UNKNOWN") if isinstance(payload, dict) else "UNKNOWN"
               if status not in ("UP", "DOWN"):
                   status = "UNKNOWN"
-              print(f"Health probe port {port}: HTTP {code}, status={status}")
               components = payload.get("components", {}) if isinstance(payload, dict) else {}
               component_statuses = []
               if isinstance(components, dict):
