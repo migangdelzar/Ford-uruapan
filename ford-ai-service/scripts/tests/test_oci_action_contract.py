@@ -289,6 +289,7 @@ class OciActionContractTest(unittest.TestCase):
         self.assertIn("Service containers:", app_check)
         self.assertLess(app_check.index("Service containers:"), app_check.index("exit 1"))
         self.assertIn("for port in (8080, 18081, 18082)", app_check)
+        self.assertIn('for component in ("db", "catalogReadiness")', app_check)
         database_check = workflow.split("- name: Verify PostgreSQL host health on emme-2", 1)[1].split(
             "- name: Summarize read-only preflight", 1
         )[0]

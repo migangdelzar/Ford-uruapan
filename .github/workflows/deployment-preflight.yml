@@ -85,6 +85,24 @@ jobs:
               if port == 8080:
                   routed_healthy = code == 200 and status == "UP"
 
+          for component in ("db", "catalogReadiness"):
+              endpoint = f"http://127.0.0.1:8080/actuator/health/{component}"
+              try:
+                  response = urllib.request.urlopen(endpoint, timeout=8)
+              except urllib.error.HTTPError as error:
+                  response = error
+              except Exception as error:
+                  print(f"Health subprobe {component} error: {type(error).__name__}")
+                  continue
+
+              code = response.getcode()
+              try:
+                  payload = json.loads(response.read())
+              except (ValueError, OSError):
+                  payload = {}
+              status = payload.get("status", "UNKNOWN") if isinstance(payload, dict) else "UNKNOWN"
+              print(f"Health subprobe {component}: HTTP {code}, status={status}")
+
           raise SystemExit(0 if routed_healthy else 1)
           PY
           then
