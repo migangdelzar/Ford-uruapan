@@ -103,6 +103,64 @@ jobs:
           else
             health_ok=false
           fi
+          python3 - <<'PY'
+          import subprocess
+
+          signatures = {
+              "DB_NETWORK": (
+                  "connection refused",
+                  "could not connect to server",
+                  "connect timed out",
+                  "connection timed out",
+                  "no route to host",
+                  "connection reset by peer",
+              ),
+              "DB_AUTH": (
+                  "password authentication failed",
+                  "no pg_hba.conf entry",
+                  "authentication failed for user",
+              ),
+              "DB_DNS": (
+                  "unknownhostexception",
+                  "name or service not known",
+                  "temporary failure in name resolution",
+              ),
+              "DB_SCHEMA": (
+                  "undefinedtable",
+                  "undefined_column",
+              ),
+              "CATALOG_UNAVAILABLE": ("catalog_unavailable",),
+          }
+
+          for slot in ("blue", "green"):
+              container = f"ford-service-{slot}"
+              try:
+                  result = subprocess.run(
+                      ["docker", "logs", "--since", "24h", "--tail", "5000", container],
+                      capture_output=True,
+                      text=True,
+                      timeout=20,
+                      check=False,
+                  )
+              except Exception:
+                  print(f"Sanitized runtime signatures {slot}: SCAN_UNAVAILABLE")
+                  continue
+
+              if result.returncode != 0:
+                  print(f"Sanitized runtime signatures {slot}: SCAN_UNAVAILABLE")
+                  continue
+
+              content = f"{result.stdout}\n{result.stderr}".lower()
+              matches = [
+                  category
+                  for category, needles in signatures.items()
+                  if any(needle in content for needle in needles)
+              ]
+              print(
+                  f"Sanitized runtime signatures {slot}: "
+                  f"{', '.join(matches) if matches else 'NO_MATCHING_SIGNATURE'}"
+              )
+          PY
           collector_details="$(docker ps -a --filter 'label=com.docker.compose.service=otel-collector' --format '{{.Names}} {{.State}} {{.Ports}}')"
           port_owners="$(docker ps -a --format '{{.Names}} {{.State}} {{.Ports}}' | awk 'index($0, "13133") > 0 { print }')"
           collector_port_owner_ids="$(docker ps -a --format '{{.ID}} {{.Ports}}' | awk 'index($0, "13133") > 0 { print $1 }')"
