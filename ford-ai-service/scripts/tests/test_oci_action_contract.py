@@ -283,13 +283,19 @@ class OciActionContractTest(unittest.TestCase):
         app_check = workflow.split("- name: Verify Ford Service and collector host health on emme-1", 1)[1].split(
             "- name: Verify PostgreSQL host health on emme-2", 1
         )[0]
-        self.assertIn("Health probe port", app_check)
-        self.assertIn("status={status}", app_check)
-        self.assertNotIn('payload.get("components"', app_check)
+        self.assertIn("Health components port", app_check)
+        self.assertIn('if status not in ("UP", "DOWN"):', app_check)
+        self.assertIn('components = payload.get("components", {})', app_check)
+        self.assertIn('component.get("status", "UNKNOWN")', app_check)
+        self.assertIn("Health components port", app_check)
+        self.assertNotIn("Health probe port", app_check)
+        self.assertNotIn("/actuator/health/db", app_check)
+        self.assertNotIn("/actuator/health/catalogReadiness", app_check)
+        self.assertNotIn('component.get("details"', app_check)
+        self.assertNotIn('component.get("error"', app_check)
         self.assertIn("Service containers:", app_check)
         self.assertLess(app_check.index("Service containers:"), app_check.index("exit 1"))
         self.assertIn("for port in (8080, 18081, 18082)", app_check)
-        self.assertIn('for component in ("db", "catalogReadiness")', app_check)
         database_check = workflow.split("- name: Verify PostgreSQL host health on emme-2", 1)[1].split(
             "- name: Summarize read-only preflight", 1
         )[0]
