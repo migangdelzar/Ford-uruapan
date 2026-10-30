@@ -12,7 +12,7 @@ const requiredWorkflows = [
 ];
 
 async function read(path) {
-  return readFile(path, "utf8");
+  return (await readFile(path, "utf8")).replace(/\r\n/g, "\n");
 }
 
 test("required workflow contracts exist", async () => {
@@ -71,14 +71,18 @@ test("deployment connectivity preflight is manually runnable from main and stays
   assert.match(source, /Deployment, migration, image pull, and route switch: not run/);
   assert.doesNotMatch(source, /^  push:/m);
   assert.doesNotMatch(source, /PRODUCTION_DEPLOY_ENABLED|oci-blue-green|reusable-deploy/);
-  assert.match(source, /docker ps -a --filter 'label=com\.docker\.compose\.service=otel-collector'/);
+  assert.match(source, /docker ps -a --filter 'label=com\.docker\.compose\.project=ford-service' --filter 'label=com\.docker\.compose\.service=otel-collector'/);
   assert.doesNotMatch(source, /docker inspect --format[^\n]*app-otel-collector-1/);
   assert.match(source, /docker ps -a --format .*sched/i);
   assert.match(source, /docker ps -a --format .*\.Ports/);
-  assert.match(source, /13133.*owners|owners.*13133/i);
-  assert.match(source, /collector_port_owner_ids=/);
-  assert.match(source, /com\.docker\.compose\.project\.config_files/);
-  assert.match(source, /com\.docker\.compose\.project\.working_dir/);
+  const appCheck = source.split("- name: Verify Ford Service and collector host health on emme-1", 2)[1]
+    .split("- name: Verify PostgreSQL host health on emme-2", 1)[0];
+  assert.match(appCheck, /Sanitized collector metadata:/);
+  assert.match(appCheck, /running_port_owners=/);
+  assert.match(appCheck, /service_label_match=/);
+  assert.match(appCheck, /running_label_match=/);
+  assert.match(appCheck, /states=/);
+  assert.doesNotMatch(appCheck, /collector_port_owner_ids=|port owner=|project\.config_files|project\.working_dir/);
   assert.match(source, /label=com\.docker\.compose\.project=ford-mcp/);
   assert.match(source, /Legacy MCP project containers/);
   assert.match(source, /scheduler project=.*service=.*compose=/);

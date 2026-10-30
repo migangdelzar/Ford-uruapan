@@ -1,6 +1,8 @@
+import ast
 import os
 import json
 import subprocess
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -310,6 +312,73 @@ class OciActionContractTest(unittest.TestCase):
         self.assertNotIn("print(host", app_check)
         self.assertNotIn("print(raw_logs", app_check)
         self.assertNotIn("print(completed.stdout", app_check)
+        self.assertIn("Sanitized collector metadata:", app_check)
+        self.assertIn('"publish=13133"', app_check)
+        self.assertIn('"--no-trunc"', app_check)
+        self.assertIn('labels.get("com.docker.compose.service") == "otel-collector"', app_check)
+        self.assertIn('item.get("State", {}).get("Status", "unknown")', app_check)
+        self.assertLess(app_check.index("Sanitized collector metadata:"), app_check.index("collector_states="))
+        self.assertNotIn("Collector containers:", app_check)
+        self.assertNotIn("Host port 13133 owners:", app_check)
+        self.assertNotIn("port owner=", app_check)
+        self.assertNotIn("workdir={{", app_check)
+        collector_gate = app_check.split("collector_states=", 1)[1].split("if [[", 1)[0]
+        self.assertIn("label=com.docker.compose.project=ford-service", collector_gate)
+        self.assertIn("label=com.docker.compose.service=otel-collector", collector_gate)
+        self.assertIn("# BEGIN sanitized collector metadata", app_check)
+        collector_scan = app_check.split("# BEGIN sanitized collector metadata", 1)[1].split(
+            "# END sanitized collector metadata", 1
+        )[0]
+        for allowed_output in (
+            "port_owners=",
+            "running_port_owners=",
+            "service_label_match=",
+            "running_label_match=",
+            "states=",
+        ):
+            self.assertIn(allowed_output, collector_scan)
+        for unsafe_output in (
+            "print(inspect_result.stdout",
+            "print(port_result.stdout",
+            "print(service_result.stdout",
+            'item.get("Name"',
+            'item["Name"]',
+            "workdir",
+            "config_files",
+            "PortBindings",
+        ):
+            self.assertNotIn(unsafe_output, collector_scan)
+        collector_script = collector_scan.split("python3 - <<'PY'\n", 1)[1].split("\n          PY", 1)[0]
+        collector_ast = ast.parse(textwrap.dedent(collector_script))
+        print_calls = [
+            node for node in ast.walk(collector_ast)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "print"
+        ]
+        self.assertEqual(len(print_calls), 2)
+        for print_call in print_calls:
+            self.assertEqual(len(print_call.args), 1)
+            self.assertFalse(print_call.keywords)
+        self.assertIsInstance(print_calls[0].args[0], ast.JoinedStr)
+        formatted_values = [
+            value.value
+            for value in print_calls[0].args[0].values
+            if isinstance(value, ast.FormattedValue)
+        ]
+        expected_expressions = (
+            "len(port_ids)",
+            "sum(is_port and state == 'running' for is_port, state, _ in states)",
+            "sum(matches for _, _, matches in states)",
+            "sum(state == 'running' and matches for _, state, matches in states)",
+            "states_summary",
+        )
+        self.assertEqual(len(formatted_values), len(expected_expressions))
+        for actual, expected in zip(formatted_values, expected_expressions):
+            expected_ast = ast.parse(expected, mode="eval").body
+            self.assertEqual(ast.dump(actual), ast.dump(expected_ast))
+        self.assertIsInstance(print_calls[1].args[0], ast.Constant)
+        self.assertEqual(print_calls[1].args[0].value, "Sanitized collector metadata: SCAN_UNAVAILABLE")
         self.assertIn("Service containers:", app_check)
         self.assertLess(app_check.index("Service containers:"), app_check.index("exit 1"))
         self.assertIn("for port in (8080, 18081, 18082)", app_check)
