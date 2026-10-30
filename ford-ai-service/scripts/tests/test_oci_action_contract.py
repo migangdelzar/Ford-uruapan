@@ -354,18 +354,28 @@ class OciActionContractTest(unittest.TestCase):
             and node.func.id == "print"
         ]
         self.assertEqual(len(print_calls), 2)
-        allowed_output_names = {
-            "_", "is_port", "len", "matches", "port_ids", "state", "states",
-            "states_summary", "sum",
-        }
         for print_call in print_calls:
             self.assertEqual(len(print_call.args), 1)
             self.assertFalse(print_call.keywords)
-            self.assertIsInstance(print_call.args[0], (ast.Constant, ast.JoinedStr))
-            output_names = {
-                node.id for node in ast.walk(print_call.args[0]) if isinstance(node, ast.Name)
-            }
-            self.assertLessEqual(output_names, allowed_output_names)
+        self.assertIsInstance(print_calls[0].args[0], ast.JoinedStr)
+        formatted_values = [
+            value.value
+            for value in print_calls[0].args[0].values
+            if isinstance(value, ast.FormattedValue)
+        ]
+        expected_expressions = (
+            "len(port_ids)",
+            "sum(is_port and state == 'running' for is_port, state, _ in states)",
+            "sum(matches for _, _, matches in states)",
+            "sum(state == 'running' and matches for _, state, matches in states)",
+            "states_summary",
+        )
+        self.assertEqual(len(formatted_values), len(expected_expressions))
+        for actual, expected in zip(formatted_values, expected_expressions):
+            expected_ast = ast.parse(expected, mode="eval").body
+            self.assertEqual(ast.dump(actual), ast.dump(expected_ast))
+        self.assertIsInstance(print_calls[1].args[0], ast.Constant)
+        self.assertEqual(print_calls[1].args[0].value, "Sanitized collector metadata: SCAN_UNAVAILABLE")
         self.assertIn("Service containers:", app_check)
         self.assertLess(app_check.index("Service containers:"), app_check.index("exit 1"))
         self.assertIn("for port in (8080, 18081, 18082)", app_check)
