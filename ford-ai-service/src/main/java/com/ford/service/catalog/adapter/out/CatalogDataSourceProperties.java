@@ -69,9 +69,9 @@ public class CatalogDataSourceProperties {
         if (!normalized.regionMatches(true, 0, prefix, 0, prefix.length())) {
             return false;
         }
-        var databasePart = normalized.substring(prefix.length()).split("[?;]", 2)[0];
-        var slash = databasePart.lastIndexOf('/');
-        return slash >= 0 && "ford_catalog".equals(databasePart.substring(slash + 1));
+        var urlWithoutOptions = normalized.substring(prefix.length()).split("[?;]", 2)[0];
+        var pathStart = urlWithoutOptions.indexOf('/');
+        return pathStart > 0 && "/ford_catalog".equals(urlWithoutOptions.substring(pathStart));
     }
 
     private static boolean isFordServiceDatabase(String jdbcUrl) {

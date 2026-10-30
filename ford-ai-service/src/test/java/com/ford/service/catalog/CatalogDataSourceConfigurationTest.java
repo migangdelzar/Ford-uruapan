@@ -140,6 +140,15 @@ class CatalogDataSourceConfigurationTest {
     }
 
     @Test
+    void ociVaultRejectsNestedDatabasePathEndingInFordCatalog() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/other/ford_catalog", "ford_catalog_reader", "")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("ford_catalog database");
+                });
+    }
+
+    @Test
     void ociVaultRejectsEnvironmentPasswordFallback() {
         ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "fallback")
                 .run(context -> {
