@@ -59,9 +59,8 @@ public class CatalogDataSourceProperties {
     }
 
     private static boolean isValidVaultSecretOcid(String ocid) {
-        String prefix = "ocid1.vaultsecret.";
-        return ocid != null && ocid.startsWith(prefix) && ocid.length() > prefix.length()
-                && ocid.chars().noneMatch(Character::isWhitespace);
+        return ocid != null
+                && ocid.matches("ocid1\\.vaultsecret\\.[A-Za-z0-9]+\\.[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*\\.[A-Za-z0-9_-]+");
     }
 
     private static boolean isFordCatalogDatabase(String jdbcUrl) {

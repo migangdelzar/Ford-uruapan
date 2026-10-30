@@ -92,13 +92,23 @@ class CatalogDataSourceConfigurationTest {
     }
 
     @Test
+    void ociVaultRejectsSecretOcidMissingRealmRegionAndUniqueId() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
+                .withPropertyValues("ford.catalog.datasource.password-secret-ocid=ocid1.vaultsecret.x")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("valid OCI Vault secret OCID");
+                });
+    }
+
+    @Test
     void ociVaultAcceptsValidSecretAndDedicatedCatalogConnection() {
         ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context.getBean(CatalogDataSourceProperties.class).secretsProvider()).isEqualTo("oci-vault");
                     assertThat(context.getBean(CatalogDataSourceProperties.class).passwordSecretOcid())
-                            .isEqualTo("ocid1.vaultsecret.oc1..opaque_suffix-1");
+                            .isEqualTo("ocid1.vaultsecret.oc1.us-phoenix-1.synthetic-secret-1");
                 });
     }
 
@@ -142,7 +152,7 @@ class CatalogDataSourceConfigurationTest {
         return contextRunner.withPropertyValues(
                 "ford.catalog.tools.enabled=true",
                 "ford.catalog.datasource.secrets-provider=oci-vault",
-                "ford.catalog.datasource.password-secret-ocid=ocid1.vaultsecret.oc1..opaque_suffix-1",
+                "ford.catalog.datasource.password-secret-ocid=ocid1.vaultsecret.oc1.us-phoenix-1.synthetic-secret-1",
                 "ford.catalog.datasource.url=" + url,
                 "ford.catalog.datasource.username=" + username,
                 "ford.catalog.datasource.password=" + password);
