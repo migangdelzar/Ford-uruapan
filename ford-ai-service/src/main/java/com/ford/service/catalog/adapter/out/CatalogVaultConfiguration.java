@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
+@ConditionalOnProperty(prefix = "ford.catalog.tools", name = "enabled", havingValue = "true")
 @ConditionalOnProperty(prefix = "ford.catalog.datasource", name = "secrets-provider", havingValue = "oci-vault")
 public class CatalogVaultConfiguration {
     @Bean(destroyMethod = "close")

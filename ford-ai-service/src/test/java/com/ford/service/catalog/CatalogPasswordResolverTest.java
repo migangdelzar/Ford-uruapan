@@ -3,6 +3,7 @@ package com.ford.service.catalog;
 import com.ford.service.catalog.adapter.out.CatalogPasswordResolver;
 import com.ford.service.catalog.adapter.out.CatalogSecretBundle;
 import com.ford.service.catalog.adapter.out.CatalogSecretBundleClient;
+import com.oracle.bmc.model.BmcException;
 import org.junit.jupiter.api.Test;
 
 import java.util.Base64;
@@ -46,7 +47,7 @@ class CatalogPasswordResolverTest {
     }
 
     @Test void sanitizesOciClientFailure() {
-        when(client.getSecretBundle(OCID)).thenThrow(new RuntimeException("response body secret-value"));
+        when(client.getSecretBundle(OCID)).thenThrow(new BmcException(500, "InternalError", "response body secret-value", null));
         var error = assertThrows(IllegalStateException.class, () -> resolver.resolve(OCID));
         assertFalse(error.getMessage().contains("secret-value"));
         assertNull(error.getCause());

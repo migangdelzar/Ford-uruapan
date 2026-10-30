@@ -1,6 +1,6 @@
 package com.ford.service.catalog.adapter.out;
 
-import com.oracle.bmc.auth.InstancePrincipalsAuthenticationDetailsProvider;
+import com.oracle.bmc.model.BmcException;
 import com.oracle.bmc.secrets.SecretsClient;
 import com.oracle.bmc.secrets.model.Base64SecretBundleContentDetails;
 import com.oracle.bmc.secrets.requests.GetSecretBundleRequest;
@@ -12,11 +12,6 @@ public class OciCatalogSecretBundleClient implements CatalogSecretBundleClient {
         this.client = client;
     }
 
-    public static OciCatalogSecretBundleClient create() {
-        return new OciCatalogSecretBundleClient(SecretsClient.builder()
-                .build(InstancePrincipalsAuthenticationDetailsProvider.builder().build()));
-    }
-
     @Override
     public CatalogSecretBundle getSecretBundle(String secretOcid) {
         try {
@@ -26,7 +21,7 @@ public class OciCatalogSecretBundleClient implements CatalogSecretBundleClient {
                 return new CatalogSecretBundle("BASE64", base64.getContent());
             }
             return new CatalogSecretBundle("UNSUPPORTED", null);
-        } catch (RuntimeException ignored) {
+        } catch (BmcException ignored) {
             throw new IllegalStateException("Unable to retrieve catalog secret bundle from OCI Vault");
         }
     }

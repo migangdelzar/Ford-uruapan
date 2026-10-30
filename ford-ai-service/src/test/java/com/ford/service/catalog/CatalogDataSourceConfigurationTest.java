@@ -3,6 +3,9 @@ package com.ford.service.catalog;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ford.service.catalog.adapter.out.CatalogDataSourceConfiguration;
 import com.ford.service.catalog.adapter.out.CatalogDataSourceProperties;
+import com.ford.service.catalog.adapter.out.CatalogPasswordResolver;
+import com.ford.service.catalog.adapter.out.CatalogSecretBundle;
+import com.ford.service.catalog.adapter.out.CatalogVaultConfiguration;
 import com.ford.service.catalog.api.CatalogPort;
 import com.ford.service.catalog.api.CatalogRetrievalPort;
 import org.junit.jupiter.api.Test;
@@ -104,11 +107,36 @@ class CatalogDataSourceConfigurationTest {
     @Test
     void ociVaultAcceptsValidSecretAndDedicatedCatalogConnection() {
         ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
+                .withBean(CatalogPasswordResolver.class, () -> new CatalogPasswordResolver(
+                        ocid -> new CatalogSecretBundle("BASE64", "cGFzc3dvcmQ=")))
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context.getBean(CatalogDataSourceProperties.class).secretsProvider()).isEqualTo("oci-vault");
                     assertThat(context.getBean(CatalogDataSourceProperties.class).passwordSecretOcid())
                             .isEqualTo("ocid1.vaultsecret.oc1.us-phoenix-1.synthetic-secret-1");
+                });
+    }
+
+    @Test
+    void disabledCatalogToolsDoNotConstructOciVaultClient() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(CatalogDataSourceConfiguration.class, CatalogVaultConfiguration.class)
+                .withPropertyValues("ford.catalog.tools.enabled=false",
+                        "ford.catalog.datasource.secrets-provider=oci-vault")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean("catalogSecretsClient");
+                    assertThat(context).doesNotHaveBean("catalogSecretBundleClient");
+                });
+    }
+
+    @Test
+    void ociDatasourceFailsClosedWhenPasswordResolverIsMissing() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("Catalog password resolver is required for OCI Vault mode");
+                    assertThat(context.getStartupFailure().toString()).doesNotContain("ocid1.vaultsecret");
                 });
     }
 

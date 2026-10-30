@@ -27,9 +27,11 @@ public class CatalogDataSourceConfiguration {
                                  ObjectProvider<CatalogPasswordResolver> passwordResolvers) {
         properties.validate();
         var resolver = passwordResolvers.getIfAvailable();
+        if ("oci-vault".equals(properties.secretsProvider()) && resolver == null) {
+            throw new IllegalStateException("Catalog password resolver is required for OCI Vault mode");
+        }
         var password = "oci-vault".equals(properties.secretsProvider())
-                ? resolver == null ? "" : resolver.resolve(properties.passwordSecretOcid())
-                : properties.password();
+                ? resolver.resolve(properties.passwordSecretOcid()) : properties.password();
         return DataSourceBuilder.create()
                 .driverClassName(properties.driverClassName())
                 .url(properties.url())
