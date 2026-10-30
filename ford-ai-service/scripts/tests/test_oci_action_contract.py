@@ -1,6 +1,8 @@
+import ast
 import os
 import json
 import subprocess
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -343,6 +345,27 @@ class OciActionContractTest(unittest.TestCase):
             "PortBindings",
         ):
             self.assertNotIn(unsafe_output, collector_scan)
+        collector_script = collector_scan.split("python3 - <<'PY'\n", 1)[1].split("\n          PY", 1)[0]
+        collector_ast = ast.parse(textwrap.dedent(collector_script))
+        print_calls = [
+            node for node in ast.walk(collector_ast)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "print"
+        ]
+        self.assertEqual(len(print_calls), 2)
+        allowed_output_names = {
+            "_", "is_port", "len", "matches", "port_ids", "state", "states",
+            "states_summary", "sum",
+        }
+        for print_call in print_calls:
+            self.assertEqual(len(print_call.args), 1)
+            self.assertFalse(print_call.keywords)
+            self.assertIsInstance(print_call.args[0], (ast.Constant, ast.JoinedStr))
+            output_names = {
+                node.id for node in ast.walk(print_call.args[0]) if isinstance(node, ast.Name)
+            }
+            self.assertLessEqual(output_names, allowed_output_names)
         self.assertIn("Service containers:", app_check)
         self.assertLess(app_check.index("Service containers:"), app_check.index("exit 1"))
         self.assertIn("for port in (8080, 18081, 18082)", app_check)
