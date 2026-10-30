@@ -56,7 +56,45 @@ jobs:
             -o StrictHostKeyChecking=yes \
             "$SSH_USER@$APP_SSH_HOST" 'bash -se' <<'REMOTE'
           set -euo pipefail
-          python3 -c 'import json, urllib.request; assert json.load(urllib.request.urlopen("http://127.0.0.1:8080/actuator/health", timeout=8))["status"] == "UP"'
+          service_containers="$(docker ps -a --format '{{.Names}} state={{.State}} status={{.Status}} image={{.Image}} ports={{.Ports}}')"
+          printf 'Service containers: %s\n' "${service_containers:-none}"
+          if python3 - <<'PY'
+          import json
+          import urllib.error
+          import urllib.request
+
+          endpoint = "http://127.0.0.1:8080/actuator/health"
+          response = None
+          try:
+              response = urllib.request.urlopen(endpoint, timeout=8)
+          except urllib.error.HTTPError as error:
+              response = error
+          except Exception as error:
+              print(f"Health endpoint error: {type(error).__name__}")
+              raise SystemExit(1)
+
+          code = response.getcode()
+          try:
+              payload = json.loads(response.read())
+          except (ValueError, OSError):
+              payload = {}
+          status = payload.get("status", "UNKNOWN") if isinstance(payload, dict) else "UNKNOWN"
+          components = payload.get("components", {}) if isinstance(payload, dict) else {}
+          component_statuses = ", ".join(
+              f"{name}={value.get('status', 'UNKNOWN')}"
+              for name, value in sorted(components.items())
+              if isinstance(value, dict)
+          ) or "none"
+          print(f"HTTP status: {code}")
+          print(f"Health status: {status}")
+          print(f"Health component statuses: {component_statuses}")
+          raise SystemExit(0 if code == 200 and status == "UP" else 1)
+          PY
+          then
+            health_ok=true
+          else
+            health_ok=false
+          fi
           collector_details="$(docker ps -a --filter 'label=com.docker.compose.service=otel-collector' --format '{{.Names}} {{.State}} {{.Ports}}')"
           port_owners="$(docker ps -a --format '{{.Names}} {{.State}} {{.Ports}}' | awk 'index($0, "13133") > 0 { print }')"
           collector_port_owner_ids="$(docker ps -a --format '{{.ID}} {{.Ports}}' | awk 'index($0, "13133") > 0 { print $1 }')"
@@ -70,6 +108,10 @@ jobs:
           collector_states="$(docker ps -a --filter 'label=com.docker.compose.service=otel-collector' --format '{{.State}}')"
           [[ "$collector_states" == 'running' ]] || {
             echo 'Expected exactly one running Compose otel-collector service.' >&2
+            exit 1
+          }
+          [[ "$health_ok" == true ]] || {
+            echo 'Ford Service health check failed; read-only diagnostics collected.' >&2
             exit 1
           }
           echo 'emme-1 app and collector health passed'

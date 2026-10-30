@@ -280,6 +280,13 @@ class OciActionContractTest(unittest.TestCase):
         self.assertNotIn("chore/platform-secret-management", workflow)
         self.assertIn("environment: deployment-preflight", workflow)
         self.assertIn("/actuator/health", workflow)
+        app_check = workflow.split("- name: Verify Ford Service and collector host health on emme-1", 1)[1].split(
+            "- name: Verify PostgreSQL host health on emme-2", 1
+        )[0]
+        self.assertIn("HTTP status:", app_check)
+        self.assertIn("Health component statuses:", app_check)
+        self.assertIn("Service containers:", app_check)
+        self.assertLess(app_check.index("Service containers:"), app_check.index("exit 1"))
         self.assertNotIn("ford-mcp-mcp-1", workflow)
         self.assertIn("data-postgres-1", workflow)
         self.assertNotIn("docker compose up", workflow)
