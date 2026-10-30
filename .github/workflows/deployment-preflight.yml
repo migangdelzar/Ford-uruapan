@@ -115,6 +115,7 @@ jobs:
           REMOTE
 
       - name: Verify PostgreSQL host health on emme-2
+        if: always()
         shell: bash
         env:
           DATA_SSH_HOST: ${{ vars.DATA_SSH_HOST }}
