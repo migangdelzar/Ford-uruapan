@@ -293,6 +293,13 @@ class OciActionContractTest(unittest.TestCase):
         self.assertNotIn("/actuator/health/catalogReadiness", app_check)
         self.assertNotIn('component.get("details"', app_check)
         self.assertNotIn('component.get("error"', app_check)
+        self.assertIn('["docker", "logs", "--since", "24h", "--tail", "5000", container]', app_check)
+        self.assertIn("capture_output=True", app_check)
+        self.assertIn("Sanitized runtime signatures", app_check)
+        for category in ("DB_NETWORK", "DB_AUTH", "DB_DNS", "DB_SCHEMA", "CATALOG_UNAVAILABLE"):
+            self.assertIn(f'"{category}"', app_check)
+        self.assertNotIn("print(raw_logs", app_check)
+        self.assertNotIn("print(completed.stdout", app_check)
         self.assertIn("Service containers:", app_check)
         self.assertLess(app_check.index("Service containers:"), app_check.index("exit 1"))
         self.assertIn("for port in (8080, 18081, 18082)", app_check)
