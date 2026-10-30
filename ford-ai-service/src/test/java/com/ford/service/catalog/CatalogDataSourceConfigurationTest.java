@@ -3,14 +3,21 @@ package com.ford.service.catalog;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ford.service.catalog.adapter.out.CatalogDataSourceConfiguration;
 import com.ford.service.catalog.adapter.out.CatalogDataSourceProperties;
+import com.ford.service.catalog.adapter.out.CatalogPasswordResolver;
+import com.ford.service.catalog.adapter.out.CatalogSecretBundle;
+import com.ford.service.catalog.adapter.out.CatalogVaultConfiguration;
 import com.ford.service.catalog.api.CatalogPort;
 import com.ford.service.catalog.api.CatalogRetrievalPort;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import javax.sql.DataSource;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -72,8 +79,189 @@ class CatalogDataSourceConfigurationTest {
     }
 
     @Test
+    void ociVaultRequiresSecretOcid() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
+                .withPropertyValues("ford.catalog.datasource.password-secret-ocid=")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("valid OCI Vault secret OCID");
+                });
+    }
+
+    @Test
+    void ociVaultRejectsInvalidSecretOcid() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
+                .withPropertyValues("ford.catalog.datasource.password-secret-ocid=ocid1.vaultsecret.")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("valid OCI Vault secret OCID");
+                });
+    }
+
+    @Test
+    void ociVaultRejectsSecretOcidMissingRealmRegionAndUniqueId() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
+                .withPropertyValues("ford.catalog.datasource.password-secret-ocid=ocid1.vaultsecret.x")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("valid OCI Vault secret OCID");
+                });
+    }
+
+    @Test
+    void ociVaultAcceptsValidSecretAndDedicatedCatalogConnection() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
+                .withBean(CatalogPasswordResolver.class, () -> new CatalogPasswordResolver(
+                        ocid -> new CatalogSecretBundle("BASE64", "cGFzc3dvcmQ=")))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(CatalogDataSourceProperties.class).secretsProvider()).isEqualTo("oci-vault");
+                    assertThat(context.getBean(CatalogDataSourceProperties.class).passwordSecretOcid())
+                            .isEqualTo("ocid1.vaultsecret.oc1.us-phoenix-1.synthetic-secret-1");
+                });
+    }
+
+    @Test
+    void ociVaultRejectsJdbcOptionThatOverridesUser() {
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?user=synthetic-user");
+    }
+
+    @Test
+    void ociVaultRejectsEncodedJdbcOptionThatOverridesPassword() {
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?%70assword=synthetic-password");
+    }
+
+    @Test
+    void ociVaultRejectsDuplicateJdbcOptionThatOverridesDatabase() {
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?sslmode=require&dbname=ford_service&dbname=ford_catalog");
+    }
+
+    @Test
+    void ociVaultRejectsPgPrefixedIdentityAliases() {
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?PGDBNAME=ford_service");
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?PGHOST=other-host");
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?PGPORT=9999");
+    }
+
+    @Test
+    void ociVaultRejectsDriverServiceAndOptions() {
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?service=synthetic-service");
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?options=-c%20role=synthetic");
+    }
+
+    @Test
+    void ociVaultRejectsEncodedAndDuplicateOptionNames() {
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?%50GDBNAME=ford_service");
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?sslmode=require&SSL%4DODE=require");
+    }
+
+    @Test
+    void ociVaultRejectsUnknownAndMalformedOptions() {
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?unknownOption=value");
+        assertOciVaultRejectsJdbcUrl("jdbc:postgresql://localhost:5432/ford_catalog?sslmode=%ZZ");
+    }
+
+    @Test
+    void ociVaultAllowsSafeSslJdbcOption() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog?sslmode=require&connectTimeout=5&socketTimeout=10&tcpKeepAlive=true&ApplicationName=catalog", "ford_catalog_reader", "")
+                .withBean(CatalogPasswordResolver.class, () -> new CatalogPasswordResolver(
+                        ocid -> new CatalogSecretBundle("BASE64", "cGFzc3dvcmQ=")))
+                .run(context -> assertThat(context).hasNotFailed());
+    }
+
+    private void assertOciVaultRejectsJdbcUrl(String url) {
+        ociVaultProperties(url, "ford_catalog_reader", "")
+                .withBean(CatalogPasswordResolver.class, () -> new CatalogPasswordResolver(
+                        ocid -> new CatalogSecretBundle("BASE64", "cGFzc3dvcmQ=")))
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("must not override connection identity");
+                });
+    }
+
+    @Test
+    void disabledCatalogToolsDoNotConstructOciVaultClient() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(CatalogDataSourceConfiguration.class, CatalogVaultConfiguration.class)
+                .withPropertyValues("ford.catalog.tools.enabled=false",
+                        "ford.catalog.datasource.secrets-provider=oci-vault")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean("catalogSecretsClient");
+                    assertThat(context).doesNotHaveBean("catalogSecretBundleClient");
+                });
+    }
+
+    @Test
+    void ociDatasourceFailsClosedWhenPasswordResolverIsMissing() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("Catalog password resolver is required for OCI Vault mode");
+                    assertThat(context.getStartupFailure().toString()).doesNotContain("ocid1.vaultsecret");
+                });
+    }
+
+    @Test
+    void ociVaultRequiresDedicatedCatalogReaderUsername() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "synthetic_reader", "")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("ford_catalog_reader");
+                });
+    }
+
+    @Test
+    void ociVaultRejectsFordServiceDatabase() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_service", "ford_catalog_reader", "")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("ford_catalog database");
+                });
+    }
+
+    @Test
+    void ociVaultRejectsOtherDatabase() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/other", "ford_catalog_reader", "")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("ford_catalog database");
+                });
+    }
+
+    @Test
+    void ociVaultRejectsNestedDatabasePathEndingInFordCatalog() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/other/ford_catalog", "ford_catalog_reader", "")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("ford_catalog database");
+                });
+    }
+
+    @Test
+    void ociVaultRejectsEnvironmentPasswordFallback() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "fallback")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("must not configure an environment password");
+                });
+    }
+
+    private ApplicationContextRunner ociVaultProperties(String url, String username, String password) {
+        return contextRunner.withPropertyValues(
+                "ford.catalog.tools.enabled=true",
+                "ford.catalog.datasource.secrets-provider=oci-vault",
+                "ford.catalog.datasource.password-secret-ocid=ocid1.vaultsecret.oc1.us-phoenix-1.synthetic-secret-1",
+                "ford.catalog.datasource.url=" + url,
+                "ford.catalog.datasource.username=" + username,
+                "ford.catalog.datasource.password=" + password);
+    }
+
+    @Test
     void catalogPasswordUsesOnlyItsDedicatedEnvironmentVariable() throws Exception {
         assertThat(Files.readString(Path.of("src/main/resources/application.yml")))
+                .contains("secrets-provider: ${FORD_SECRETS_PROVIDER:environment}")
+                .contains("password-secret-ocid: ${FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD:}")
                 .contains("password: ${FORD_CATALOG_PASSWORD:}")
                 .doesNotContain("password: ${FORD_DATABASE_PASSWORD:}");
 
@@ -103,6 +291,78 @@ class CatalogDataSourceConfigurationTest {
                     assertThat(context).hasFailed();
                     assertThat(context.getStartupFailure())
                             .hasStackTraceContaining("dedicated read-only catalog JDBC URL and credentials");
+                });
+    }
+
+    @Test
+    void disabledCatalogToolsNeverResolvePasswordOrCreateDatasource() {
+        var resolverCalls = new AtomicInteger();
+        contextRunner.withPropertyValues("ford.catalog.tools.enabled=false")
+                .withBean(CatalogPasswordResolver.class, () -> new CatalogPasswordResolver(
+                        ocid -> {
+                            resolverCalls.incrementAndGet();
+                            return new CatalogSecretBundle("BASE64", "cGFzc3dvcmQ=");
+                        }))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean("catalogDataSource");
+                    assertThat(resolverCalls).hasValue(0);
+                });
+    }
+
+    @Test
+    void ociVaultResolvesConfiguredOcidOnceAndUsesReturnedPasswordForDatasource() {
+        var resolverCalls = new AtomicInteger();
+        var resolvedOcid = new AtomicReference<String>();
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
+                .withBean(CatalogPasswordResolver.class, () -> new CatalogPasswordResolver(ocid -> {
+                    resolverCalls.incrementAndGet();
+                    resolvedOcid.set(ocid);
+                    return new CatalogSecretBundle("BASE64", "c2VjcmV0LWZyb20tdmF1bHQ=");
+                }))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(resolverCalls).hasValue(1);
+                    assertThat(resolvedOcid.get())
+                            .isEqualTo("ocid1.vaultsecret.oc1.us-phoenix-1.synthetic-secret-1");
+                    var dataSource = context.getBean("catalogDataSource", com.zaxxer.hikari.HikariDataSource.class);
+                    assertThat(dataSource.getPassword()).isEqualTo("secret-from-vault");
+                    assertThat(context.getBean(CatalogDataSourceProperties.class).password()).isEmpty();
+                });
+    }
+
+    @Test
+    void vaultResolverFailurePreventsStartupWithoutExposingFailureText() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
+                .withBean(CatalogPasswordResolver.class,
+                        () -> new CatalogPasswordResolver(null) {
+                            @Override
+                            public String resolve(String ocid) {
+                                throw new IllegalStateException("vault-secret-text");
+                            }
+                        })
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("Unable to retrieve catalog password");
+                    assertThat(completeStackTrace(context.getStartupFailure())).doesNotContain("vault-secret-text");
+                });
+    }
+
+    private static String completeStackTrace(Throwable failure) {
+        var output = new StringWriter();
+        failure.printStackTrace(new PrintWriter(output));
+        return output.toString();
+    }
+
+    @Test
+    void blankVaultPasswordPreventsStartupWithoutExposingPassword() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
+                .withBean(CatalogPasswordResolver.class,
+                        () -> new CatalogPasswordResolver(ocid -> new CatalogSecretBundle("BASE64", "ICAg")))
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("empty catalog password");
+                    assertThat(context.getStartupFailure().toString()).doesNotContain("   ");
                 });
     }
 }

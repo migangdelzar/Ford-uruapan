@@ -176,7 +176,7 @@ test("OCI runtime Vault identity is opt-in and scoped to each instance, vault, a
   assert.match(identity, /runtime-vault-policy\.json/);
   assert.equal(policyContract.instances.app, "ford-runtime-app-emme1");
   assert.equal(policyContract.instances.data, "ford-runtime-data-emme2");
-  assert.equal(policyContract.secret_names.app.length, 21);
+  assert.equal(policyContract.secret_names.app.length, 22);
   assert.equal(policyContract.secret_names.data.length, 3);
   assert.match(identity, /ALL \{instance\.id = '\$\{each\.value\.instance_ocid\}'\}/);
   assert.match(identity, /read secret-bundles/);
@@ -189,6 +189,7 @@ test("OCI runtime Vault identity is opt-in and scoped to each instance, vault, a
   assert.ok(policyContract.secret_names.data.includes("ford-prod-cloudflared-tunnel-token"));
   assert.ok(policyContract.secret_names.app.includes("ford-prod-meta-instagram-access-token"));
   assert.ok(policyContract.secret_names.app.includes("ford-prod-ford-customer-memory-hmac-key"));
+  assert.ok(policyContract.secret_names.app.includes("ford-prod-catalog-reader-password"));
   assert.ok(!policyContract.secret_names.data.includes("ford-prod-ford-customer-memory-hmac-key"));
   assert.ok(!JSON.stringify(policyContract).includes("ford-prod-bff-oidc-client-secret"));
   assert.match(instructions, /terraform import/);

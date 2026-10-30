@@ -125,7 +125,7 @@ test("Ford Service pins the backup-verified OCI rollout action", async () => {
 
   assert.match(
     source,
-    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@d391f130a0d820819ee4f38c66d5a2d12d823cad/,
+    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@5937d8bddb4da6570bd2d929c8120a3c6821f3a2/,
   );
   assert.match(source, /host: \$\{\{ vars\.OCI_DEPLOY_HOST \}\}/);
   assert.match(source, /user: \$\{\{ vars\.OCI_DEPLOY_USER \}\}/);
@@ -290,10 +290,11 @@ test("Ford Service configures local catalog tools without a remote MCP connectio
   assert.doesNotMatch(source, /FORD_CATALOG_PARITY_READY|Node-to-Java parity/);
   assert.match(source, /FORD_CATALOG_JDBC_URL/);
   assert.match(source, /FORD_CATALOG_USERNAME/);
-  assert.doesNotMatch(source, /FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD/);
+  assert.match(source, /FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD: \$\{\{ vars\.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD \}\}/);
   assert.match(source, /service-catalog-tools-enabled: \$\{\{ vars\.FORD_CATALOG_TOOLS_ENABLED \|\| 'false' \}\}/);
   assert.match(source, /service-catalog-jdbc-url: \$\{\{ vars\.FORD_CATALOG_JDBC_URL \}\}/);
-  assert.doesNotMatch(source, /service-catalog-password-secret-ocid/);
+  assert.match(source, /service-catalog-password-secret-ocid: \$\{\{ vars\.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD \}\}/);
+  assert.doesNotMatch(source, /^\s*FORD_CATALOG_PASSWORD\s*:/m);
   assert.doesNotMatch(source, /FORD_MCP_ENABLED|FORD_MCP_URL|FORD_MCP_ACCESS_CLIENT_ID/);
   assert.doesNotMatch(action, /service-catalog-tools-enabled:[\s\S]*?parity gates pass/);
   assert.match(action, /service-catalog-tools-enabled:[\s\S]*?read-only datasource and access checks/);
@@ -366,12 +367,14 @@ test("Gitleaks exceptions are limited to reviewed false-positive findings", asyn
 
   assert.deepEqual(exceptions.sort(), [
     "3b14f16ccdf841f087b2e62033c8fbd537ab665b:deployment/observability/langfuse/.env.example:generic-api-key:8",
+    "16e20afab3d0a5486a1e6fcc9e5a2169ed685c84:ford-ai-service/src/test/java/com/ford/service/catalog/CatalogDataSourceConfigurationTest.java:generic-api-key:87",
     "5f26bfaa856bb7d6d796e8f65d224eddde22f638:scripts/observability-contract.test.mjs:generic-api-key:42",
     "6fcf2fd7f6dc221ada19a1c3bdb41882203d9ec9:ford-ai-service/src/integrationTest/java/com/ford/service/identity/JdbcOperatorIdentityRepositoryIntegrationTest.java:generic-api-key:44",
     "6fcf2fd7f6dc221ada19a1c3bdb41882203d9ec9:ford-ai-service/src/integrationTest/java/com/ford/service/identity/JdbcOperatorIdentityRepositoryIntegrationTest.java:generic-api-key:71",
     "7b6c30dffc5f4c6c4c48bb910b7646e93598bb71:docs/superpowers/specs/2026-10-19-catalog-callbacks-full-retrieval-design.md:generic-api-key:12",
     "94b42716a98b008bdf4ba82261d98d18bde4d7bb:ford-ai-service/scripts/tests/test_load_vault_mappings.py:generic-api-key:35",
-    "94c9b0e6dd4946c32f19f7fe0a194950dbe6d78b:ford-ai-service/src/test/java/com/ford/service/ai/InputSecurityPolicyTest.java:generic-api-key:56"
+    "94c9b0e6dd4946c32f19f7fe0a194950dbe6d78b:ford-ai-service/src/test/java/com/ford/service/ai/InputSecurityPolicyTest.java:generic-api-key:56",
+    "da925bc03205e716d91122015cb568daa4e3d8a7:ford-ai-service/src/test/java/com/ford/service/catalog/CatalogDataSourceConfigurationTest.java:generic-api-key:97"
   ].sort());
 });
 

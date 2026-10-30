@@ -25,7 +25,8 @@
       "ford-prod-cloudflare-api-token",
       "ford-prod-typesafe-api-key",
       "ford-prod-grafana-cloud-api-token",
-      "ford-prod-langfuse-secret-key"
+      "ford-prod-langfuse-secret-key",
+      "ford-prod-catalog-reader-password"
     ],
     "data": [
       "ford-prod-postgres-password",

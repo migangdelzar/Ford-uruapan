@@ -206,9 +206,22 @@ class OciActionContractTest(unittest.TestCase):
     def test_release_workflow_pins_the_meta_aware_shared_action_commit(self):
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn(
-            "migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@d391f130a0d820819ee4f38c66d5a2d12d823cad",
+            "migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@5937d8bddb4da6570bd2d929c8120a3c6821f3a2",
             workflow,
         )
+
+    def test_release_workflow_passes_catalog_password_vault_reference_without_enabling_tools(self):
+        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        variable = "FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD"
+
+        self.assertIn(f"{variable}: ${{{{ vars.{variable} }}}}", workflow)
+        self.assertIn(
+            "service-catalog-password-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD }}",
+            workflow,
+        )
+        self.assertIn("FORD_CATALOG_TOOLS_ENABLED: ${{ vars.FORD_CATALOG_TOOLS_ENABLED || 'false' }}", workflow)
+        self.assertIn("service-catalog-tools-enabled: ${{ vars.FORD_CATALOG_TOOLS_ENABLED || 'false' }}", workflow)
+        self.assertNotRegex(workflow, r"(?m)^\s+FORD_CATALOG_PASSWORD:")
 
     def test_service_release_wires_local_catalog_reader_and_removes_remote_mcp_client(self):
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
