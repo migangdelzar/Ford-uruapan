@@ -81,13 +81,7 @@ jobs:
               except (ValueError, OSError):
                   payload = {}
               status = payload.get("status", "UNKNOWN") if isinstance(payload, dict) else "UNKNOWN"
-              components = payload.get("components", {}) if isinstance(payload, dict) else {}
-              component_statuses = ", ".join(
-                  f"{name}={value.get('status', 'UNKNOWN')}"
-                  for name, value in sorted(components.items())
-                  if isinstance(value, dict)
-              ) or "none"
-              print(f"Health probe port {port}: HTTP {code}, status={status}, components={component_statuses}")
+              print(f"Health probe port {port}: HTTP {code}, status={status}")
               if port == 8080:
                   routed_healthy = code == 200 and status == "UP"
 

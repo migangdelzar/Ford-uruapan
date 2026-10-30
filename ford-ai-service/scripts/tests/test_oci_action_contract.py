@@ -284,7 +284,8 @@ class OciActionContractTest(unittest.TestCase):
             "- name: Verify PostgreSQL host health on emme-2", 1
         )[0]
         self.assertIn("Health probe port", app_check)
-        self.assertIn("components=", app_check)
+        self.assertIn("status={status}", app_check)
+        self.assertNotIn('payload.get("components"', app_check)
         self.assertIn("Service containers:", app_check)
         self.assertLess(app_check.index("Service containers:"), app_check.index("exit 1"))
         self.assertIn("for port in (8080, 18081, 18082)", app_check)
