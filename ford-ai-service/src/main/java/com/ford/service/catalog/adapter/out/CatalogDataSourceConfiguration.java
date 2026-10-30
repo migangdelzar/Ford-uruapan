@@ -30,8 +30,17 @@ public class CatalogDataSourceConfiguration {
         if ("oci-vault".equals(properties.secretsProvider()) && resolver == null) {
             throw new IllegalStateException("Catalog password resolver is required for OCI Vault mode");
         }
-        var password = "oci-vault".equals(properties.secretsProvider())
-                ? resolver.resolve(properties.passwordSecretOcid()) : properties.password();
+        var password = properties.password();
+        if ("oci-vault".equals(properties.secretsProvider())) {
+            try {
+                password = resolver.resolve(properties.passwordSecretOcid());
+            } catch (RuntimeException ignored) {
+                throw new IllegalStateException("Unable to retrieve catalog password from OCI Vault");
+            }
+            if (password == null || password.isBlank()) {
+                throw new IllegalStateException("OCI Vault returned an empty catalog password");
+            }
+        }
         return DataSourceBuilder.create()
                 .driverClassName(properties.driverClassName())
                 .url(properties.url())

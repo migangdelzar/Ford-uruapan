@@ -14,6 +14,8 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import javax.sql.DataSource;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -229,6 +231,72 @@ class CatalogDataSourceConfigurationTest {
                     assertThat(context).hasFailed();
                     assertThat(context.getStartupFailure())
                             .hasStackTraceContaining("dedicated read-only catalog JDBC URL and credentials");
+                });
+    }
+
+    @Test
+    void disabledCatalogToolsNeverResolvePasswordOrCreateDatasource() {
+        var resolverCalls = new AtomicInteger();
+        contextRunner.withPropertyValues("ford.catalog.tools.enabled=false")
+                .withBean(CatalogPasswordResolver.class, () -> new CatalogPasswordResolver(
+                        ocid -> {
+                            resolverCalls.incrementAndGet();
+                            return new CatalogSecretBundle("BASE64", "cGFzc3dvcmQ=");
+                        }))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean("catalogDataSource");
+                    assertThat(resolverCalls).hasValue(0);
+                });
+    }
+
+    @Test
+    void ociVaultResolvesConfiguredOcidOnceAndUsesReturnedPasswordForDatasource() {
+        var resolverCalls = new AtomicInteger();
+        var resolvedOcid = new AtomicReference<String>();
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
+                .withBean(CatalogPasswordResolver.class, () -> new CatalogPasswordResolver(ocid -> {
+                    resolverCalls.incrementAndGet();
+                    resolvedOcid.set(ocid);
+                    return new CatalogSecretBundle("BASE64", "c2VjcmV0LWZyb20tdmF1bHQ=");
+                }))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(resolverCalls).hasValue(1);
+                    assertThat(resolvedOcid.get())
+                            .isEqualTo("ocid1.vaultsecret.oc1.us-phoenix-1.synthetic-secret-1");
+                    var dataSource = context.getBean("catalogDataSource", com.zaxxer.hikari.HikariDataSource.class);
+                    assertThat(dataSource.getPassword()).isEqualTo("secret-from-vault");
+                    assertThat(context.getBean(CatalogDataSourceProperties.class).password()).isEmpty();
+                });
+    }
+
+    @Test
+    void vaultResolverFailurePreventsStartupWithoutExposingFailureText() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
+                .withBean(CatalogPasswordResolver.class,
+                        () -> new CatalogPasswordResolver(null) {
+                            @Override
+                            public String resolve(String ocid) {
+                                throw new IllegalStateException("vault-secret-text");
+                            }
+                        })
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("Unable to retrieve catalog password");
+                    assertThat(context.getStartupFailure().toString()).doesNotContain("vault-secret-text");
+                });
+    }
+
+    @Test
+    void blankVaultPasswordPreventsStartupWithoutExposingPassword() {
+        ociVaultProperties("jdbc:postgresql://localhost:5432/ford_catalog", "ford_catalog_reader", "")
+                .withBean(CatalogPasswordResolver.class,
+                        () -> new CatalogPasswordResolver(ocid -> new CatalogSecretBundle("BASE64", "ICAg")))
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).hasStackTraceContaining("empty catalog password");
+                    assertThat(context.getStartupFailure().toString()).doesNotContain("   ");
                 });
     }
 }
