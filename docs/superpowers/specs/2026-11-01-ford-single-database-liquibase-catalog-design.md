@@ -24,13 +24,14 @@ both schemas and loads the selected catalog snapshot as a versioned migration.
 - Ford Service Liquibase is the sole DDL migration owner for both schemas.
   Ford-scraping stops applying its own schema migrations and writes only to the
   existing `ford_catalog` contract.
-- Ford Service replaces all current Ford MCP catalog tool calls with local
-  Service tools backed by a dedicated `ford_catalog_reader` JDBC datasource.
-  Follow the existing local `VehicleTools` pattern; keep
-  `vehicle_snapshot_search` backed by `ford_metadata` and add local tools for
-  scraper catalog data. The scraper remains responsible for crawling and
-  writing; do not remove its crawler or decommission its MCP endpoint until
-  other consumers are checked.
+- Refactor Service's local and Ford MCP vehicle tools into clearly separated
+  capabilities: tenant-specific inventory/pricing reads from `ford_metadata`,
+  and Ford model/spec/offer/promotion reads from `ford_catalog` through a
+  dedicated `ford_catalog_reader` JDBC datasource. Rename or replace the
+  confusing `vehicle_snapshot_search` tool as needed; do not merge scraper
+  offers with dealer inventory or tenant-specific prices. The scraper remains
+  responsible for crawling and writing; do not remove its crawler or
+  decommission its MCP endpoint until other consumers are checked.
 - The same Service database user runs Liquibase and the Service. This user will
   gain catalog DDL/DML privileges. `ford_catalog_reader` remains a separate
   read-only identity for catalog retrieval; it cannot read capture/provenance
@@ -65,11 +66,12 @@ both schemas and loads the selected catalog snapshot as a versioned migration.
 - This checkout's Service Liquibase changelog creates current tables with
   unqualified names. The actual current schema and `search_path` must be
   inventoried before moving Service tables.
-- This checkout's current Service catalog tools are remote Ford MCP callbacks;
-  there is no direct `ford_catalog` JDBC adapter yet. It also has a local
-  `VehicleTools.vehicle_snapshot_search` backed by `JdbcVehicleCatalogRepository`
-  and Service-owned tables. Preserve that tool and pattern; add local tools for
-  scraper catalog data using the reader identity.
+- This checkout has remote Ford MCP callbacks for catalog tools and a local
+  `VehicleTools.vehicle_snapshot_search` backed by
+  `JdbcVehicleCatalogRepository` and Service-owned tables. Refactor them into
+  separate, clearly named inventory and catalog capabilities; preserve the
+  distinct data semantics, not the confusing old tool name. Catalog reads use
+  the reader identity.
 - Ford-scraping's scheduler defaults to `0 12 1 * *` in
   `America/Mexico_City`. Its monthly sync crawls `/Todos/`, `/Seminuevos/`,
   `/Promociones/`, and `/Financiamiento/`, then ingests promotion/offer and
@@ -155,11 +157,12 @@ not cascade-drop objects. Drop `public` only after a no-cascade drop succeeds.
 After cutover, configure both Service datasources to the same `ford` database:
 the primary datasource uses `ford_metadata`; the catalog datasource uses
 `ford_catalog` and username `ford_catalog_reader`. Replace the current remote
-Ford MCP catalog tool callbacks with local JDBC-backed Service tools while
-preserving their tool names and contracts. Keep the existing local
-`vehicle_snapshot_search` and its Service-owned `ford_metadata` repository.
-Add separate catalog tools for `ford_catalog` using only
-`ford_catalog_reader`. Keep the scraper crawler and its write path. Preserve
+Ford MCP catalog tool callbacks with local JDBC-backed Service tools. Refactor
+the local tool surface into clearly named tenant inventory/pricing tools backed
+by `ford_metadata` and Ford model/spec/offer/promotion tools backed by
+`ford_catalog` using only `ford_catalog_reader`; rename or replace
+`vehicle_snapshot_search` as needed. Keep inventory and scraped offer prices
+semantically distinct. Keep the scraper crawler and its write path. Preserve
 the monthly schedule `0 12 1 * *` in `America/Mexico_City` and verify the
 monthly sync still crawls `/Promociones/` and `/Financiamiento/`, ingests offers,
 and retains validity/expiry behavior. Do not decommission the scraper MCP
@@ -234,6 +237,7 @@ the candidate is production-validated.
 - Existing protected Service/Web release gates remain intact; catalog tools
   turn on only after all checks pass.
 - Service no longer depends on Ford MCP for the current catalog tool set; its
-  local tools use `ford_catalog_reader` and preserve the approved tool contract.
+  local catalog tools use `ford_catalog_reader`; tenant inventory tools remain
+  backed by `ford_metadata` with distinct semantics.
 - Candidate coverage/price gaps remain documented; no production-readiness
   claim is made.
