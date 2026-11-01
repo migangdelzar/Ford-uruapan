@@ -24,6 +24,10 @@ both schemas and loads the selected catalog snapshot as a versioned migration.
 - Ford Service Liquibase is the sole DDL migration owner for both schemas.
   Ford-scraping stops applying its own schema migrations and writes only to the
   existing `ford_catalog` contract.
+- Ford Service replaces all current Ford MCP catalog tool calls with local
+  Service tools backed by a dedicated `ford_catalog_reader` JDBC datasource.
+  The scraper remains responsible for crawling and writing; do not remove its
+  crawler or decommission its MCP endpoint until other consumers are checked.
 - The same Service database user runs Liquibase and the Service. This user will
   gain catalog DDL/DML privileges. `ford_catalog_reader` remains a separate
   read-only identity for catalog retrieval; it cannot read capture/provenance
@@ -58,6 +62,10 @@ both schemas and loads the selected catalog snapshot as a versioned migration.
 - This checkout's Service Liquibase changelog creates current tables with
   unqualified names. The actual current schema and `search_path` must be
   inventoried before moving Service tables.
+- This checkout's current Service catalog tools are remote Ford MCP callbacks;
+  there is no direct `ford_catalog` JDBC adapter yet. Local Service tools must
+  preserve the existing Ford tool names and behavior while using the reader
+  identity.
 - Ford-scraping currently uses a custom Node migration runner over
   `db/migrations/*.sql`; it is not using Liquibase. The scraper migration runner
   and DDL must be retired or migrated only after Liquibase parity is proven.
@@ -138,9 +146,13 @@ not cascade-drop objects. Drop `public` only after a no-cascade drop succeeds.
 
 After cutover, configure both Service datasources to the same `ford` database:
 the primary datasource uses `ford_metadata`; the catalog datasource uses
-`ford_catalog` and username `ford_catalog_reader`. Keep migration and runtime
-privileges separate at the schema level where possible, while acknowledging
-that the user-selected shared Service identity retains catalog write access.
+`ford_catalog` and username `ford_catalog_reader`. Replace the current remote
+Ford MCP catalog tool callbacks with local JDBC-backed Service tools while
+preserving their tool names and contracts. Keep the scraper crawler and its
+write path. Do not decommission the scraper MCP endpoint until its other
+consumers are checked. The user-selected shared primary/Liquibase identity
+retains catalog write access; the read adapter must use only the reader
+identity.
 
 ### 4. Deploy and verify
 
@@ -149,7 +161,8 @@ Deploy through existing protected workflows; bypass no gate and create no
 `emme-test` environment. Keep catalog tools disabled during database and
 application cutover. Verify health, datasource database/schema identity,
 Liquibase changelog status, catalog reader SELECT access, denied reader writes,
-denied capture access, and unchanged Service metadata. Enable tools only after
+denied capture access, that Service has no Ford MCP dependency for these tools,
+and unchanged Service metadata. Enable tools only after
 synthetic exact-model, trim, offer/promotion, citation, price, and no-match
 checks pass.
 
@@ -206,5 +219,7 @@ the candidate is production-validated.
   capture reads are denied to that role.
 - Existing protected Service/Web release gates remain intact; catalog tools
   turn on only after all checks pass.
+- Service no longer depends on Ford MCP for the current catalog tool set; its
+  local tools use `ford_catalog_reader` and preserve the approved tool contract.
 - Candidate coverage/price gaps remain documented; no production-readiness
   claim is made.
