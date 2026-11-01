@@ -15,7 +15,7 @@
 - Remove `public` only after inventory and extension checks pass; never use `CASCADE`.
 - Bot/Meta sessions, leads, and user requirements remain in `ford_metadata`; canonical Ford models/specs/prices/offers/promotions remain in `ford_catalog`.
 - Ford Service Liquibase is the only DDL migration owner; Ford-scraping writes data and does not run its SQL migrations after cutover.
-- Use the current Service database user for Liquibase as explicitly selected; this user gains catalog DDL/DML rights. `ford_catalog_reader` stays read-only and cannot see capture/provenance relations.
+- Use the current Service database user for Liquibase as explicitly selected; this user gains catalog DDL/DML rights. `ford_catalog_reader` stays read-only and cannot see capture/provenance relations. The approved source currently grants it SELECT on `ford_read.document_provenance_v1`; Liquibase must remove that grant and tests must prove denial.
 - Every environment, including production, receives the approved candidate snapshot. Its known coverage and price gaps must be stated; do not claim production validation.
 - Applied Liquibase changesets are immutable. Every refreshed snapshot gets a new SHA-identified changeset.
 - No full database restore over the target. Back up outside PostgreSQL and prove restore before writes.
@@ -43,7 +43,7 @@
 - [ ] Create an external checksum-verified source dump and manifest. Do not use the different `b0b45e6e...` archive as a substitute. Record the new SHA and counts for review before generating migration SQL.
 - [ ] Restore the dump into a disposable local PostgreSQL database and prove the archive restores. Drop only that uniquely named disposable database after the restore test passes.
 
-**Verification:** Source identity and counts are known, fresh archive SHA matches its manifest, disposable restore succeeds, and the candidate limitations remain documented. No emme or production database changes occur.
+**Verification:** Source identity and counts are known, archive SHA is `a1fe738999b3d1148d70d8cb89b4b8e998bfcdc3f7f6304570f06e8c74c1106d`, all 12 table row counts/content hashes match its manifest, disposable restore succeeded, and candidate limitations remain documented. User approved this exact SHA before migration SQL generation. No emme or production database changes occur.
 
 ## Task 2: Characterize schema ownership and define tests
 
@@ -67,15 +67,16 @@
 - Create: `ford-ai-service/src/main/resources/db/changelog/catalog/db.changelog-catalog.yaml`
 - Modify: `ford-ai-service/src/main/resources/db/changelog/db.changelog-master.yaml`
 - Modify: `ford-ai-service/src/main/resources/application.yml`
+- Create: `ford-ai-service/src/main/resources/db/bootstrap/001-ford-metadata-liquibase-history.sql` — create `ford_metadata` and safely move existing Liquibase history/lock tables before Liquibase initialization.
 - Modify: deployment DB bootstrap/runtime templates that set the DB name and Liquibase schema
 - Modify: schema ownership integration tests from Task 2
 
-**Interfaces:** Runtime JDBC connects to database `ford` with `currentSchema=ford_metadata`. Liquibase tracking tables are in `ford_metadata`. Bootstrap creates the empty `ford_metadata` schema before Liquibase initialization so Liquibase can create its own tracking tables there. The catalog changelog creates and manages `ford_catalog`.
+**Interfaces:** Runtime JDBC connects to database `ford` with `currentSchema=ford_metadata`. A pre-Liquibase SQL initializer runs on every startup, idempotently creates `ford_metadata`, and relocates existing `DATABASECHANGELOG` plus `DATABASECHANGELOGLOCK` from the one verified current schema. It must stop if either table exists in multiple schemas or its location is ambiguous. Liquibase then uses `ford_metadata`; the catalog changelog creates and manages `ford_catalog`.
 
-- [ ] Extend the integration test first: apply the master changelog twice and assert Service tables are created once in `ford_metadata`, Liquibase history/lock tables are there, and existing row values survive a schema move.
+- [ ] Extend the integration test first: seed representative applied changelog rows and the lock table in the current schema; run the pre-Liquibase initializer; apply the master changelog twice; assert history rows/checksums are unchanged, no prior changeset reruns, and Service rows survive schema moves.
 - [ ] Run the focused integration test and verify expected failure against the current unqualified changelog.
 - [ ] Add a bootstrap that idempotently creates only `ford_metadata` before Liquibase starts. Configure `spring.liquibase.liquibase-schema=ford_metadata`, `spring.liquibase.default-schema=ford_metadata`, and JDBC `currentSchema=ford_metadata`; keep the database name exactly `ford`.
-- [ ] Add forward-only Liquibase changesets that move chat/lead/requirement relations to `ford_metadata` and canonical Ford model/spec/price relations to `ford_catalog`. Use explicit object names; fail on unclassified relations or if price data cannot be distinguished from user-entered budget/requirements.
+- [ ] Add forward-only Liquibase changesets that move chat/lead/requirement relations to `ford_metadata` and reviewed canonical Ford model/spec/price/offer/promotion relations to `ford_catalog`. Preserve legacy catalog values with source provenance/history; the approved snapshot wins current-value conflicts. Use explicit object names; fail on unclassified relations or if a price cannot be distinguished from a user-entered budget/requirement.
 - [ ] Register the catalog changelog in the master changelog and set explicit schema names on every catalog changeset. Do not modify checksums or contents of already-applied changesets.
 - [ ] Run `./gradlew integrationTest --tests '*FordSchemaOwnershipIntegrationTest'`; expected: both fresh install and upgrade paths pass.
 
@@ -92,7 +93,7 @@
 - [ ] Extend the PostgreSQL integration test to assert every approved catalog table, view, FK, index, and extension exists in `ford_catalog`, while private capture/provenance relations remain in that schema but are not selectable by `ford_catalog_reader`.
 - [ ] Run the focused integration test and verify the missing catalog objects/grants fail before implementation.
 - [ ] Port the reviewed scraper DDL into explicit Liquibase changesets, preserving data types, indexes, uniqueness, foreign keys, vector dimensions, and view definitions. Install required extensions in an approved schema only after confirming extension relocation support.
-- [ ] Grant `ford_catalog_reader` schema usage and SELECT only on the approved read relations. Explicitly revoke its write privileges and SELECT on private capture/provenance relations. Do not grant it `ford_metadata` access.
+- [ ] Grant `ford_catalog_reader` schema usage and SELECT only on the approved read relations. Explicitly revoke its write privileges and SELECT on private capture/provenance relations, including `ford_catalog.document_provenance_v1` migrated from `ford_read.document_provenance_v1`. Do not grant it `ford_metadata` access.
 - [ ] Verify current Service DB user can run Liquibase and write catalog data as approved; record that this increases runtime application write capability.
 - [ ] Verify the pre-existing `ford_catalog_reader` role exists in each database cluster. If absent, stop for approved DBA role provisioning; application Liquibase must not create cluster roles.
 - [ ] Run disposable PostgreSQL integration tests for repeat migration, ownership, view definitions, and all reader privilege allow/deny probes.

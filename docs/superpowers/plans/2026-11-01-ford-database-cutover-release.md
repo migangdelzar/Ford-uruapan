@@ -47,9 +47,9 @@
 
 ## Task 3: Migrate one test environment first
 
-- [ ] Create or restore database `ford` from the verified backup without deleting the source during migration. Apply Liquibase changesets and verify chat/lead/requirement rows in `ford_metadata` and canonical catalog rows in `ford_catalog` with no competing model/price source.
+- [ ] Migrate into database `ford` from the verified backup without destructive overwrite. If only `ford_service` exists, rename it to `ford` only after backup/restore proof and a no-session/target-name preflight; if both `ford_service` and `ford` exist, stop for an explicit merge plan. Apply Liquibase changesets and verify chat/lead/requirement rows in `ford_metadata` and canonical catalog rows in `ford_catalog`; preserve old conflicting catalog values as history while the approved snapshot supplies current values.
 - [ ] Relocate supported extensions and validate dependencies. Attempt `DROP SCHEMA public` without `CASCADE`; if it fails, stop and inspect rather than force it.
-- [ ] Verify only the two application schemas remain, Liquibase history is in `ford_metadata`, scraper writes target `ford_catalog`, and reader SELECT/write-denial probes pass.
+- [ ] Verify only the two application schemas remain, Liquibase history is in `ford_metadata`, scraper writes target `ford_catalog`, and reader SELECT/write-denial probes pass, including denial on the source candidate's `document_provenance_v1` relation.
 - [ ] Configure emme Service and scraper connection URLs to database `ford`, with schema-specific identities. Keep tools false and run health checks.
 - [ ] After acceptance, retire the old `ford_service` database as authorized; keep the external backup only.
 

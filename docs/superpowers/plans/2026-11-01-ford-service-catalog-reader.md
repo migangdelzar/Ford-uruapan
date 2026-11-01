@@ -12,6 +12,7 @@
 
 - Both datasources connect to the single database `ford`; primary datasource schema is `ford_metadata`, catalog datasource schema is `ford_catalog`.
 - Catalog datasource username is exactly `ford_catalog_reader`; it must not read private capture/provenance tables or write.
+- The approved source currently grants the reader SELECT on `ford_read.document_provenance_v1`; the target must revoke that privilege and prove the read is denied.
 - Bot/Meta sessions, leads, and captured user requirements stay in `ford_metadata`.
 - Canonical Ford models/specs/prices/offers/promotions come from `ford_catalog`.
 - User-entered budget and model interests are requirements in `ford_metadata`, not catalog facts.

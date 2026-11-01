@@ -44,6 +44,10 @@ both schemas and loads the selected catalog snapshot as a versioned migration.
 - The selected local catalog candidate is test-quality data with known coverage
   and historical-price gaps. The user explicitly approved loading that snapshot
   into production. This approval does not make the data production-validated.
+- For duplicate canonical catalog facts, the approved scraper snapshot wins as
+  the current value. Existing Service catalog rows must be preserved with
+  provenance/history; do not discard conflicts or expose them as current values
+  without the approved source precedence.
 - Never edit an applied Liquibase changeset. Each catalog snapshot is immutable,
   identified by its source SHA-256, and added as a new versioned migration.
 - Keep catalog tools disabled until schema, data, role grants, Service health,
@@ -52,10 +56,12 @@ both schemas and loads the selected catalog snapshot as a versioned migration.
 
 ## Current context and blockers
 
-- The previous exact source dump had SHA-256
-  `5cd8cdbe3d14fc93b3e1ab251b449d425cf47e21b65accdc31542ed3ad6157a9`, but its
-  temporary file is no longer present. The user approved generating a fresh
-  dump; the new source identity and counts must be captured before migration.
+- The user approved the fresh candidate source and its immutable archive:
+  `ford_catalog_candidate_20261025`, PostgreSQL 16.15, archive SHA-256
+  `a1fe738999b3d1148d70d8cb89b4b8e998bfcdc3f7f6304570f06e8c74c1106d`.
+  The archive has 16 table/view relations and 10,983 base-table rows; all 12
+  table row counts and canonical JSONL SHA-256 hashes match a successful
+  disposable restore. The manifest and temporary archive are outside Git.
 - A different candidate archive with SHA-256 beginning `b0b45e6e` exists in a
   separate, dirty Ford-scraping checkout. Do not substitute it without review.
 - The local Colima `testbox` profile is stopped. Startup failed because its disk
@@ -70,7 +76,9 @@ both schemas and loads the selected catalog snapshot as a versioned migration.
   inventoried before moving tables. Classify existing vehicle/model/price
   relations by semantics: canonical Ford catalog facts belong in
   `ford_catalog`; chat, lead, and user-requirement facts belong in
-  `ford_metadata`.
+  `ford_metadata`. Existing Liquibase history and lock tables must be preserved
+  and moved to `ford_metadata` before Service starts with the new Liquibase
+  schema setting; otherwise previously applied changesets could run again.
 - This checkout has remote Ford MCP callbacks for catalog tools and a local
   `VehicleTools.vehicle_snapshot_search` backed by
   `JdbcVehicleCatalogRepository` and Service-owned tables. Refactor/replace this
@@ -95,10 +103,14 @@ PostgreSQL application database: ford
                  capture/provenance relations
 ```
 
-The database bootstrap must make `ford_metadata` available before Liquibase
-creates its tracking tables there. Liquibase then owns application DDL and
-creates/manages `ford_catalog`. This bootstrap is idempotent and creates no
-tables or catalog data. The `public` schema is removed only after all its
+The pre-Liquibase bootstrap must make `ford_metadata` available and, on an
+existing database, move the already-applied `DATABASECHANGELOG` and
+`DATABASECHANGELOGLOCK` tables from the verified current schema into
+`ford_metadata` before Liquibase starts there. It must preserve all history,
+fail on duplicate or unexpected tracking tables, and be idempotent. On a fresh
+database it creates the schema and lets Liquibase create its tracking tables.
+The bootstrap creates no application tables or catalog data. Liquibase then
+owns application DDL and creates/manages `ford_catalog`. The `public` schema is removed only after all its
 objects and extension dependencies are accounted for. PostgreSQL system schemas
 remain.
 
@@ -141,7 +153,10 @@ active catalog readable. Retain the previous state in the verified external
 backup; do not retain an extra application database or schema in the accepted
 final layout.
 
-Each subsequent catalog refresh adds a new immutable snapshot changeset. It
+When legacy Service catalog values conflict with the approved snapshot, retain
+the legacy values as historical/provenance data while the snapshot supplies the
+current canonical value. Validate row counts and history before retiring the
+legacy catalog write path. Each subsequent catalog refresh adds a new immutable snapshot changeset. It
 must not edit or checksum-clear a previously applied Liquibase changeset. The
 snapshot changeset replaces catalog-owned state only; it never truncates or
 rewrites `ford_metadata`.
