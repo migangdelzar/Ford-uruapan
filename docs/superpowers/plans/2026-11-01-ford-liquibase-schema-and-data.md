@@ -4,7 +4,7 @@
 
 **Goal:** Make Ford Service Liquibase the single DDL owner for the `ford` database and load a verified Ford-scraping catalog snapshot into `ford_catalog` through immutable Liquibase changesets.
 
-**Architecture:** Keep Service-owned records in `ford_metadata` and scraper-owned records in `ford_catalog`. Liquibase changelogs in Ford Service create/manage both application schemas and load catalog snapshot SQL; Ford-scraping stops running its own DDL migrations only after schema parity and writer tests pass.
+**Architecture:** Keep chat/Meta sessions, leads, and user requirements in `ford_metadata`; keep canonical Ford models/specs/prices/offers/promotions in `ford_catalog`. Liquibase changelogs in Ford Service create/manage both schemas and load catalog data; Ford-scraping stops running DDL only after schema parity and writer tests pass.
 
 **Tech Stack:** Java/Spring Boot, Liquibase YAML/SQL, PostgreSQL 16 + pgvector, Python 3 `unittest`, Node.js 22+, TypeScript, Vitest, Docker/Colima.
 
@@ -13,7 +13,7 @@
 - Application database name is `ford` in every environment.
 - The only application schemas are `ford_metadata` and `ford_catalog`; PostgreSQL system schemas remain.
 - Remove `public` only after inventory and extension checks pass; never use `CASCADE`.
-- Service records remain in `ford_metadata`; scraper records remain in `ford_catalog`.
+- Bot/Meta sessions, leads, and user requirements remain in `ford_metadata`; canonical Ford models/specs/prices/offers/promotions remain in `ford_catalog`.
 - Ford Service Liquibase is the only DDL migration owner; Ford-scraping writes data and does not run its SQL migrations after cutover.
 - Use the current Service database user for Liquibase as explicitly selected; this user gains catalog DDL/DML rights. `ford_catalog_reader` stays read-only and cannot see capture/provenance relations.
 - Every environment, including production, receives the approved candidate snapshot. Its known coverage and price gaps must be stated; do not claim production validation.
@@ -75,11 +75,11 @@
 - [ ] Extend the integration test first: apply the master changelog twice and assert Service tables are created once in `ford_metadata`, Liquibase history/lock tables are there, and existing row values survive a schema move.
 - [ ] Run the focused integration test and verify expected failure against the current unqualified changelog.
 - [ ] Add a bootstrap that idempotently creates only `ford_metadata` before Liquibase starts. Configure `spring.liquibase.liquibase-schema=ford_metadata`, `spring.liquibase.default-schema=ford_metadata`, and JDBC `currentSchema=ford_metadata`; keep the database name exactly `ford`.
-- [ ] Add a forward-only Liquibase changeset to move existing Service-owned relations from the currently verified schema to `ford_metadata`. Use explicit object names and fail if an unexpected relation would be moved.
+- [ ] Add forward-only Liquibase changesets that move chat/lead/requirement relations to `ford_metadata` and canonical Ford model/spec/price relations to `ford_catalog`. Use explicit object names; fail on unclassified relations or if price data cannot be distinguished from user-entered budget/requirements.
 - [ ] Register the catalog changelog in the master changelog and set explicit schema names on every catalog changeset. Do not modify checksums or contents of already-applied changesets.
 - [ ] Run `./gradlew integrationTest --tests '*FordSchemaOwnershipIntegrationTest'`; expected: both fresh install and upgrade paths pass.
 
-**Verification:** New and upgraded disposable databases place Service tables and Liquibase metadata in `ford_metadata`; `ford_catalog` is the only catalog application schema; Service records remain unchanged.
+**Verification:** New and upgraded disposable databases place chat/lead/requirement tables and Liquibase metadata in `ford_metadata`; canonical Ford catalog relations live only in `ford_catalog`; user records remain unchanged.
 
 ## Task 4: Port scraper DDL and grants into Liquibase
 

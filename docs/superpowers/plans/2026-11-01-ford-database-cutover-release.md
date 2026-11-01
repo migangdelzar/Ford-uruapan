@@ -4,7 +4,7 @@
 
 **Goal:** Move every environment to one `ford` application database with `ford_metadata` and `ford_catalog`, verify it, then release Service and Web through existing protected gates.
 
-**Architecture:** Back up and prove restore before each target write. Build/migrate database `ford`, move existing Service rows to `ford_metadata`, let Liquibase create/load `ford_catalog`, validate reader/writer ACLs, and only then switch Service and scraper connections. Remove `public` only after a no-cascade dependency audit. Keep only an external backup for rollback; retire `ford_service` after the new database is accepted.
+**Architecture:** Back up and prove restore before each target write. Build/migrate database `ford`; keep chat/lead/user requirements in `ford_metadata` and canonical Ford models/specs/prices/offers/promotions in `ford_catalog`. Validate reader/writer ACLs before switching Service and scraper connections. Remove `public` only after a no-cascade dependency audit. Keep only an external backup for rollback; retire `ford_service` after acceptance.
 
 **Tech Stack:** PostgreSQL/pg_dump/pg_restore, Liquibase, GitHub Actions, OCI Vault, existing OCI blue/green deployment actions, Python/shell preflight tests.
 
@@ -47,7 +47,7 @@
 
 ## Task 3: Migrate one test environment first
 
-- [ ] Create or restore database `ford` from the verified backup without deleting the source during migration. Apply Liquibase changesets and verify `ford_metadata` Service rows and `ford_catalog` snapshot rows.
+- [ ] Create or restore database `ford` from the verified backup without deleting the source during migration. Apply Liquibase changesets and verify chat/lead/requirement rows in `ford_metadata` and canonical catalog rows in `ford_catalog` with no competing model/price source.
 - [ ] Relocate supported extensions and validate dependencies. Attempt `DROP SCHEMA public` without `CASCADE`; if it fails, stop and inspect rather than force it.
 - [ ] Verify only the two application schemas remain, Liquibase history is in `ford_metadata`, scraper writes target `ford_catalog`, and reader SELECT/write-denial probes pass.
 - [ ] Configure emme Service and scraper connection URLs to database `ford`, with schema-specific identities. Keep tools false and run health checks.
