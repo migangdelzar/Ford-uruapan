@@ -26,8 +26,11 @@ both schemas and loads the selected catalog snapshot as a versioned migration.
   existing `ford_catalog` contract.
 - Ford Service replaces all current Ford MCP catalog tool calls with local
   Service tools backed by a dedicated `ford_catalog_reader` JDBC datasource.
-  The scraper remains responsible for crawling and writing; do not remove its
-  crawler or decommission its MCP endpoint until other consumers are checked.
+  Follow the existing local `VehicleTools` pattern; keep
+  `vehicle_snapshot_search` backed by `ford_metadata` and add local tools for
+  scraper catalog data. The scraper remains responsible for crawling and
+  writing; do not remove its crawler or decommission its MCP endpoint until
+  other consumers are checked.
 - The same Service database user runs Liquibase and the Service. This user will
   gain catalog DDL/DML privileges. `ford_catalog_reader` remains a separate
   read-only identity for catalog retrieval; it cannot read capture/provenance
@@ -63,9 +66,14 @@ both schemas and loads the selected catalog snapshot as a versioned migration.
   unqualified names. The actual current schema and `search_path` must be
   inventoried before moving Service tables.
 - This checkout's current Service catalog tools are remote Ford MCP callbacks;
-  there is no direct `ford_catalog` JDBC adapter yet. Local Service tools must
-  preserve the existing Ford tool names and behavior while using the reader
-  identity.
+  there is no direct `ford_catalog` JDBC adapter yet. It also has a local
+  `VehicleTools.vehicle_snapshot_search` backed by `JdbcVehicleCatalogRepository`
+  and Service-owned tables. Preserve that tool and pattern; add local tools for
+  scraper catalog data using the reader identity.
+- Ford-scraping's scheduler defaults to `0 12 1 * *` in
+  `America/Mexico_City`. Its monthly sync crawls `/Todos/`, `/Seminuevos/`,
+  `/Promociones/`, and `/Financiamiento/`, then ingests promotion/offer and
+  financing data. Preserve and regression-test that schedule and ingestion.
 - Ford-scraping currently uses a custom Node migration runner over
   `db/migrations/*.sql`; it is not using Liquibase. The scraper migration runner
   and DDL must be retired or migrated only after Liquibase parity is proven.
@@ -148,11 +156,16 @@ After cutover, configure both Service datasources to the same `ford` database:
 the primary datasource uses `ford_metadata`; the catalog datasource uses
 `ford_catalog` and username `ford_catalog_reader`. Replace the current remote
 Ford MCP catalog tool callbacks with local JDBC-backed Service tools while
-preserving their tool names and contracts. Keep the scraper crawler and its
-write path. Do not decommission the scraper MCP endpoint until its other
-consumers are checked. The user-selected shared primary/Liquibase identity
-retains catalog write access; the read adapter must use only the reader
-identity.
+preserving their tool names and contracts. Keep the existing local
+`vehicle_snapshot_search` and its Service-owned `ford_metadata` repository.
+Add separate catalog tools for `ford_catalog` using only
+`ford_catalog_reader`. Keep the scraper crawler and its write path. Preserve
+the monthly schedule `0 12 1 * *` in `America/Mexico_City` and verify the
+monthly sync still crawls `/Promociones/` and `/Financiamiento/`, ingests offers,
+and retains validity/expiry behavior. Do not decommission the scraper MCP
+endpoint until its other consumers are checked. The user-selected shared
+primary/Liquibase identity retains catalog write access; the read adapter must
+use only the reader identity.
 
 ### 4. Deploy and verify
 
@@ -162,7 +175,8 @@ Deploy through existing protected workflows; bypass no gate and create no
 application cutover. Verify health, datasource database/schema identity,
 Liquibase changelog status, catalog reader SELECT access, denied reader writes,
 denied capture access, that Service has no Ford MCP dependency for these tools,
-and unchanged Service metadata. Enable tools only after
+and unchanged Service metadata. Verify monthly promotion/financing sync remains
+active before catalog tools are enabled. Enable tools only after
 synthetic exact-model, trim, offer/promotion, citation, price, and no-match
 checks pass.
 
