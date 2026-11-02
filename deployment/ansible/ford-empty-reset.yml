@@ -1,0 +1,281 @@
+---
+- name: Rotate Ford data directories to a verified empty baseline
+  hosts: data
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  vars:
+    ford_empty_reset_approved: false
+    ford_empty_expected_database: ford
+  tasks:
+    - name: Require exact emme-2 target and explicit reset approval
+      ansible.builtin.assert:
+        that:
+          - inventory_hostname == 'emme-2'
+          - "'data' in group_names"
+          - ford_empty_reset_approved | default(false) | bool
+          - ford_empty_reset_approval_id is match('^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$')
+          - ford_empty_reset_backup_manifest_sha256 is match('^[a-f0-9]{64}$')
+          - ford_empty_expected_database == 'ford'
+        fail_msg: "Empty reset requires emme-2, the data group, explicit approval, database ford, and a manifest SHA-256."
+
+    - name: Inspect bind-mount parent and exact data directories without following symlinks
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - "{{ data_volume_mount }}"
+        - "{{ data_volume_mount }}/postgres"
+        - "{{ data_volume_mount }}/redis"
+      register: ford_reset_paths
+
+    - name: Resolve configured bind-mount path
+      ansible.builtin.command:
+        argv:
+          - realpath
+          - -e
+          - "{{ data_volume_mount }}"
+      register: ford_reset_mount_realpath
+      changed_when: false
+
+    - name: Require safe existing bind directories and unused archive names
+      ansible.builtin.assert:
+        that:
+          - data_volume_mount is match('^/[^ ]+$')
+          - data_volume_mount != '/'
+          - ford_reset_mount_realpath.stdout == data_volume_mount
+          - ford_reset_paths.results[0].stat.isdir
+          - not ford_reset_paths.results[0].stat.islnk
+          - ford_reset_paths.results[1].stat.isdir
+          - not ford_reset_paths.results[1].stat.islnk
+          - ford_reset_paths.results[2].stat.isdir
+          - not ford_reset_paths.results[2].stat.islnk
+          - not (ford_reset_paths.results[1].stat.path | regex_search('/$'))
+          - not (ford_reset_paths.results[2].stat.path | regex_search('/$'))
+        fail_msg: "Expected real PostgreSQL/Redis bind directories under the configured data mount."
+
+    - name: Inspect reset-control and Compose paths without following symlinks
+      ansible.builtin.stat:
+        path: "{{ item.path }}"
+        follow: false
+      loop:
+        - { path: "{{ remote_root }}", kind: directory }
+        - { path: "{{ remote_root }}/data", kind: directory }
+        - { path: "{{ remote_root }}/data/compose.yml", kind: file }
+        - { path: "{{ remote_root }}/data/.env", kind: file }
+        - { path: "{{ remote_root }}/backup/archive", kind: directory }
+      register: ford_reset_control_paths
+
+    - name: Require regular reset-control and Compose paths
+      ansible.builtin.assert:
+        that:
+          - (item.item.kind == 'directory' and item.stat.isdir) or (item.item.kind == 'file' and item.stat.isreg)
+          - not item.stat.islnk
+        fail_msg: "Reset control, data Compose, or backup archive path is missing or a symlink."
+      loop: "{{ ford_reset_control_paths.results }}"
+
+    - name: Resolve reset-control parents to reject symlinked ancestors
+      ansible.builtin.command:
+        argv:
+          - realpath
+          - -e
+          - "{{ item }}"
+      loop:
+        - "{{ remote_root }}"
+        - "{{ remote_root }}/data"
+        - "{{ remote_root }}/backup/archive"
+      register: ford_reset_control_realpaths
+      changed_when: false
+
+    - name: Require canonical reset-control paths
+      ansible.builtin.assert:
+        that:
+          - item.stdout == item.item
+        fail_msg: "Reset control or backup path resolves through a symlink or differs from its configured path."
+      loop: "{{ ford_reset_control_realpaths.results }}"
+
+    - name: Check reset state does not already exist
+      ansible.builtin.stat:
+        path: "{{ remote_root }}/data/empty-reset-state.json"
+        follow: false
+      register: ford_reset_state
+
+    - name: Refuse reset when an earlier reset state exists
+      ansible.builtin.assert:
+        that:
+          - not ford_reset_state.stat.exists
+          - not ford_reset_state.stat.islnk
+        fail_msg: "An empty-reset state already exists; reconcile it before another reset."
+
+    - name: Find candidate backup manifests by exact approved digest
+      ansible.builtin.find:
+        paths: "{{ remote_root }}/backup/archive"
+        patterns: "manifest_*.json"
+        file_type: file
+        recurse: false
+        get_checksum: true
+        checksum_algorithm: sha256
+      register: ford_reset_manifests
+
+    - name: Select the uniquely approved backup manifest
+      ansible.builtin.set_fact:
+        ford_reset_approved_manifests: "{{ ford_reset_manifests.files | selectattr('checksum', 'equalto', ford_empty_reset_backup_manifest_sha256) | list }}"
+
+    - name: Require one exact backup manifest
+      ansible.builtin.assert:
+        that:
+          - ford_reset_approved_manifests | length == 1
+        fail_msg: "The supplied backup manifest digest must identify exactly one archived manifest."
+
+    - name: Read the approved backup manifest
+      ansible.builtin.slurp:
+        src: "{{ ford_reset_approved_manifests[0].path }}"
+      register: ford_reset_manifest_raw
+
+    - name: Parse the approved backup manifest
+      ansible.builtin.set_fact:
+        ford_reset_manifest: "{{ ford_reset_manifest_raw.content | b64decode | from_json }}"
+
+    - name: Require a legacy production backup manifest and verify both artifacts
+      ansible.builtin.assert:
+        that:
+          - (ford_reset_manifest.database | default('ford_service')) == 'ford_service'
+          - ford_reset_manifest.created_at is match('^[0-9]{8}T[0-9]{6}Z$')
+          - ford_reset_manifest.postgres is match('^[A-Za-z0-9._-]+\.dump\.gz$')
+        fail_msg: "Reset backup must be a verified ford_service manifest with a timestamped PostgreSQL archive."
+
+    - name: Verify exact manifest and PostgreSQL/Redis checksums
+      ansible.builtin.script:
+        cmd: >-
+          {{ playbook_dir }}/roles/catalog_sync/files/verify_backup.py
+          {{ remote_root }}/backup/archive
+          {{ ford_reset_manifest.created_at[:8] }}
+          ford_service
+          {{ ford_reset_manifest.postgres }}
+      changed_when: false
+
+    - name: Ensure deterministic archive destinations are unused
+      ansible.builtin.stat:
+        path: "{{ data_volume_mount }}/{{ item }}-pre-reset-{{ ford_empty_reset_approval_id }}"
+        follow: false
+      loop: [postgres, redis]
+      register: ford_reset_archive_paths
+
+    - name: Refuse to overwrite prior data directories
+      ansible.builtin.assert:
+        that:
+          - not item.stat.exists
+          - not item.stat.islnk
+        fail_msg: "A reset archive destination already exists; refusing to overwrite data."
+      loop: "{{ ford_reset_archive_paths.results }}"
+
+    - name: Record exact rollback paths before stopping services
+      ansible.builtin.copy:
+        dest: "{{ remote_root }}/data/empty-reset-state.json"
+        owner: root
+        group: root
+        mode: "0600"
+        content: >-
+          {{ {
+            'status': 'resetting',
+            'host': inventory_hostname,
+            'approval_id': ford_empty_reset_approval_id,
+            'backup_manifest_sha256': ford_empty_reset_backup_manifest_sha256,
+            'database': ford_empty_expected_database,
+            'data_mount': data_volume_mount,
+            'old_postgres_path': data_volume_mount ~ '/postgres-pre-reset-' ~ ford_empty_reset_approval_id,
+            'old_redis_path': data_volume_mount ~ '/redis-pre-reset-' ~ ford_empty_reset_approval_id,
+            'active_postgres_path': data_volume_mount ~ '/postgres',
+            'active_redis_path': data_volume_mount ~ '/redis'
+          } | to_nice_json }}
+
+    - name: Stop only PostgreSQL and Redis in the Ford data Compose project
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - --project-name
+          - data
+          - --env-file
+          - "{{ remote_root }}/data/.env"
+          - -f
+          - "{{ remote_root }}/data/compose.yml"
+          - stop
+          - postgres
+          - redis
+      changed_when: true
+
+    - name: Rotate PostgreSQL data directory to the exact approved archive name
+      ansible.builtin.command:
+        argv:
+          - mv
+          - --no-clobber
+          - --no-target-directory
+          - --
+          - "{{ data_volume_mount }}/postgres"
+          - "{{ data_volume_mount }}/postgres-pre-reset-{{ ford_empty_reset_approval_id }}"
+      changed_when: true
+
+    - name: Verify PostgreSQL rotation completed without overwriting an archive
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - "{{ data_volume_mount }}/postgres"
+        - "{{ data_volume_mount }}/postgres-pre-reset-{{ ford_empty_reset_approval_id }}"
+      register: ford_postgres_rotation
+
+    - name: Require PostgreSQL source gone and exact archive present
+      ansible.builtin.assert:
+        that:
+          - not ford_postgres_rotation.results[0].stat.exists
+          - ford_postgres_rotation.results[1].stat.isdir
+          - not ford_postgres_rotation.results[1].stat.islnk
+        fail_msg: "PostgreSQL directory rotation did not complete exactly; stop for manual recovery."
+
+    - name: Rotate Redis data directory to the exact approved archive name
+      ansible.builtin.command:
+        argv:
+          - mv
+          - --no-clobber
+          - --no-target-directory
+          - --
+          - "{{ data_volume_mount }}/redis"
+          - "{{ data_volume_mount }}/redis-pre-reset-{{ ford_empty_reset_approval_id }}"
+      changed_when: true
+
+    - name: Verify Redis rotation completed without overwriting an archive
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - "{{ data_volume_mount }}/redis"
+        - "{{ data_volume_mount }}/redis-pre-reset-{{ ford_empty_reset_approval_id }}"
+      register: ford_redis_rotation
+
+    - name: Require Redis source gone and exact archive present
+      ansible.builtin.assert:
+        that:
+          - not ford_redis_rotation.results[0].stat.exists
+          - ford_redis_rotation.results[1].stat.isdir
+          - not ford_redis_rotation.results[1].stat.islnk
+        fail_msg: "Redis directory rotation did not complete exactly; stop for manual recovery."
+
+    - name: Create fresh empty PostgreSQL and Redis directories
+      ansible.builtin.file:
+        path: "{{ data_volume_mount }}/{{ item.name }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "0750"
+      loop:
+        - { name: postgres, owner: "999", group: "999" }
+        - { name: redis, owner: "999", group: "999" }
+
+    - name: Mark reset state ready for guarded rollback
+      ansible.builtin.copy:
+        dest: "{{ remote_root }}/data/empty-reset-state.json"
+        owner: root
+        group: root
+        mode: "0600"
+        content: "{{ (ford_reset_manifest | combine({'status': 'reset', 'host': inventory_hostname, 'approval_id': ford_empty_reset_approval_id, 'backup_manifest_sha256': ford_empty_reset_backup_manifest_sha256, 'database': ford_empty_expected_database, 'data_mount': data_volume_mount, 'old_postgres_path': data_volume_mount ~ '/postgres-pre-reset-' ~ ford_empty_reset_approval_id, 'old_redis_path': data_volume_mount ~ '/redis-pre-reset-' ~ ford_empty_reset_approval_id, 'active_postgres_path': data_volume_mount ~ '/postgres', 'active_redis_path': data_volume_mount ~ '/redis'}) | to_nice_json }}"

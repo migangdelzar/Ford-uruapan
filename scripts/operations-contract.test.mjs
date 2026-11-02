@@ -546,6 +546,57 @@ test("Ansible propagates the human handoff feature flag", async () => {
   }
 });
 
+test("data deployment rejects mutable image tags without printing image values", async () => {
+  const remotePath = path.resolve("ford-ai-service/.mise/lib/remote.sh");
+  const appTask = path.resolve("ford-ai-service/.mise/tasks/app/deploy");
+  const command = `source "$1"; require_immutable_data_images`;
+  const invalid = execFileSync.bind(null, "bash", ["-c", command, "bash", remotePath]);
+  assert.throws(
+    () => invalid({
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        FORD_POSTGRES_IMAGE: "pgvector/pgvector:pg16",
+        FORD_REDIS_IMAGE: "redis:7-alpine"
+      }
+    }),
+    error => {
+      assert.equal(error.status, 1);
+      assert.match(error.stderr, /immutable:FORD_POSTGRES_IMAGE/);
+      assert.match(error.stderr, /immutable:FORD_REDIS_IMAGE/);
+      assert.doesNotMatch(error.stderr, /pgvector\/pgvector|redis:7-alpine/);
+      return true;
+    }
+  );
+  assert.throws(
+    () => execFileSync("bash", [appTask], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        FORD_RUNTIME_ENV: "production",
+        EMME_APP_IMAGE: "ghcr.io/example/ford-service:mutable-tag",
+        MISE_PROJECT_ROOT: path.resolve("ford-ai-service"),
+        FORD_DEPLOY_CONFIG_FILE: path.resolve("missing-deployment-config.env")
+      }
+    }),
+    error => {
+      assert.equal(error.status, 2);
+      assert.match(error.stderr, /immutable GHCR image digest/);
+      assert.doesNotMatch(error.stderr, /Missing .*deployment config/);
+      return true;
+    }
+  );
+  const accepted = execFileSync("bash", ["-c", command, "bash", remotePath], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      FORD_POSTGRES_IMAGE: `pgvector/pgvector@sha256:${"a".repeat(64)}`,
+      FORD_REDIS_IMAGE: `redis@sha256:${"b".repeat(64)}`
+    }
+  });
+  assert.equal(accepted, "");
+});
+
 test("Ansible accepts the source catalog configuration names", async () => {
   const example = await read("deployment/config/oci.env.example");
   const appEnv = await read("deployment/ansible/roles/app/templates/app.env.j2");
@@ -580,6 +631,66 @@ test("Ford catalog keeps combined vehicle and financing search in app allowlists
     "get_catalog_status",
   ]) {
     assert.match(application, new RegExp(tool), `${tool} must stay in the read-only catalog allowlist`);
+  }
+});
+
+test("empty replacement and rollback paths fail closed and avoid MCP", async () => {
+  const reset = await read("deployment/ansible/ford-empty-reset.yml");
+  const rollback = await read("deployment/ansible/ford-empty-rollback.yml");
+  const site = await read("deployment/ansible/site.yml");
+  const deployData = await read("ford-ai-service/.mise/tasks/deploy/data");
+  const deployAll = await read("ford-ai-service/.mise/tasks/deploy/all");
+  const dataCompose = await read("deployment/ansible/roles/data/templates/compose.yml.j2");
+  const dataEnv = await read("deployment/ansible/roles/data/templates/data.env.j2");
+  const remote = await read("ford-ai-service/.mise/lib/remote.sh");
+  const appDeploy = await read("ford-ai-service/.mise/tasks/app/deploy");
+  const resetWrapper = await read("ford-ai-service/.mise/tasks/deploy/empty-reset");
+  const rollbackWrapper = await read("ford-ai-service/.mise/tasks/deploy/empty-rollback");
+
+  for (const playbook of [reset, rollback]) {
+    assert.match(playbook, /^- name:/m);
+    assert.match(playbook, /hosts: data/);
+    assert.match(playbook, /emme-2/);
+    assert.doesNotMatch(playbook, /docker volume prune|compose down -v|rm -rf|\*\//i);
+    assert.doesNotMatch(playbook, /hosts: all/);
+  }
+  assert.match(reset, /ford_empty_reset_approved \| default\(false\)/);
+  assert.match(reset, /FORD_EMPTY_RESET_APPROVAL_ID|ford_empty_reset_approval_id/);
+  assert.match(reset, /FORD_EMPTY_RESET_BACKUP_MANIFEST_SHA256|ford_empty_reset_backup_manifest_sha256/);
+  assert.match(reset, /verify_backup\.py/);
+  assert.match(reset, /ford_empty_reset_backup_manifest_sha256/);
+  assert.match(reset, /--no-clobber/);
+  assert.match(reset, /realpath/);
+  assert.match(reset, /ford_service.*ford|ford.*ford_service/s);
+  assert.match(reset, /mv/);
+  assert.match(rollback, /ford_empty_rollback_approved \| default\(false\)/);
+  assert.match(rollback, /empty-reset-state\.json/);
+  assert.match(rollback, /--no-clobber/);
+  assert.match(rollback, /realpath/);
+  assert.match(rollback, /mode: ['"]?0600/);
+  assert.match(reset, /--project-name\s+- data/);
+  assert.match(rollback, /--project-name\s+- data/);
+  assert.match(site, /tags: \[ai_runtime\]/);
+  assert.match(deployData, /--tags common,data,ai_runtime,verify/);
+  assert.match(deployData, /require_immutable_data_images/);
+  assert.match(deployAll, /deploy:data/);
+  assert.doesNotMatch(deployAll, /catalog-sync|scheduler/);
+  assert.doesNotMatch(deployAll, /empty-reset|empty-rollback/);
+  assert.doesNotMatch(deployAll, /mcp-blue-green|ford-mcp/);
+  assert.match(dataCompose, /image: \$\{POSTGRES_IMAGE:\?[^}]+\}/);
+  assert.match(dataCompose, /image: \$\{REDIS_IMAGE:\?[^}]+\}/);
+  assert.match(dataEnv, /^POSTGRES_IMAGE=.*FORD_POSTGRES_IMAGE/m);
+  assert.match(dataEnv, /^REDIS_IMAGE=.*FORD_REDIS_IMAGE/m);
+  assert.match(remote, /FORD_POSTGRES_IMAGE/);
+  assert.match(remote, /FORD_REDIS_IMAGE/);
+  assert.match(remote, /sha256:\[a-f0-9\]\{64\}/);
+  assert.match(appDeploy, /sha256:\[a-f0-9\]\{64\}/);
+  for (const wrapper of [resetWrapper, rollbackWrapper]) {
+    assert.match(wrapper, /FORD_RUNTIME_ENV.*production/);
+    assert.match(wrapper, /FORD_EMPTY_RESET_APPROVAL_ID/);
+    assert.match(wrapper, /FORD_EMPTY_RESET_BACKUP_MANIFEST_SHA256/);
+    assert.match(wrapper, /--limit data/);
+    assert.doesNotMatch(wrapper, /\$@/);
   }
 });
 

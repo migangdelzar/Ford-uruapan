@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Deploy data services then the application"
+#MISE description="Deploy PostgreSQL/Redis/Ollama, then the application; never reset data or start catalog writers"
 set -euo pipefail
 if [[ "${FORD_RUNTIME_ENV:-}" != "production" ]]; then
   echo "Select the prod mise environment before running the remote deployment." >&2

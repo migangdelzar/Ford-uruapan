@@ -59,6 +59,8 @@ test("grouped mise task files exist and are executable", async () => {
     "setup/host",
     "setup/docker",
     "setup/env",
+    "deploy/empty-reset",
+    "deploy/empty-rollback",
     "doctor"
   ];
 
@@ -66,6 +68,25 @@ test("grouped mise task files exist and are executable", async () => {
     const path = `${serviceRoot}/.mise/tasks/${task}`;
     await assertExecutable(path);
     assert.match(await read(path), /MISE_PROJECT_ROOT/);
+  }
+});
+
+test("empty reset and rollback tasks require prod approval inputs and exact data scope", async () => {
+  for (const [task, playbook, approval] of [
+    ["deploy/empty-reset", "ford-empty-reset.yml", "ford_empty_reset_approved=true"],
+    ["deploy/empty-rollback", "ford-empty-rollback.yml", "ford_empty_rollback_approved=true"]
+  ]) {
+    const path = `${serviceRoot}/.mise/tasks/${task}`;
+    const source = await read(path);
+    await assertExecutable(path);
+    assert.match(source, /FORD_RUNTIME_ENV.*production/);
+    assert.match(source, /FORD_EMPTY_RESET_APPROVAL_ID/);
+    assert.match(source, /FORD_EMPTY_RESET_BACKUP_MANIFEST_SHA256/);
+    assert.match(source, /\[\[ \$# == 0 \]\]/);
+    assert.match(source, /--limit data/);
+    assert.match(source, new RegExp(playbook.replaceAll(".", "\\.")));
+    assert.match(source, new RegExp(approval));
+    assert.doesNotMatch(source, /\$@/);
   }
 });
 

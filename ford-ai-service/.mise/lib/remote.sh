@@ -142,6 +142,17 @@ require_deploy_config() {
   fi
 }
 
+require_immutable_data_images() {
+  local missing=() name
+  for name in FORD_POSTGRES_IMAGE FORD_REDIS_IMAGE; do
+    [[ "${!name:-}" =~ ^[A-Za-z0-9][A-Za-z0-9./:_-]*@sha256:[a-f0-9]{64}$ ]] || missing+=("immutable:$name")
+  done
+  if (( ${#missing[@]} > 0 )); then
+    printf 'Missing or invalid immutable data image configuration: %s\n' "${missing[*]}" >&2
+    return 1
+  fi
+}
+
 set_deploy_secret() {
   local config_file="$(deploy_config_file)" name="$1" value="$2" temp value_file
   [[ "$name" =~ ^[A-Z0-9_]+$ ]] || {

@@ -1,0 +1,273 @@
+---
+- name: Restore Ford data directories from the recorded empty reset
+  hosts: data
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  vars:
+    ford_empty_rollback_approved: false
+  tasks:
+    - name: Require exact emme-2 target and explicit rollback approval
+      ansible.builtin.assert:
+        that:
+          - inventory_hostname == 'emme-2'
+          - "'data' in group_names"
+          - ford_empty_rollback_approved | default(false) | bool
+          - ford_empty_reset_approval_id is match('^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$')
+          - ford_empty_reset_backup_manifest_sha256 is match('^[a-f0-9]{64}$')
+        fail_msg: "Rollback requires emme-2, explicit approval, and the original approval ID and backup manifest digest."
+
+    - name: Read the protected reset state record
+      ansible.builtin.stat:
+        path: "{{ remote_root }}/data/empty-reset-state.json"
+        follow: false
+      register: ford_rollback_state_stat
+
+    - name: Require a regular protected reset state record
+      ansible.builtin.assert:
+        that:
+          - ford_rollback_state_stat.stat.exists
+          - ford_rollback_state_stat.stat.isreg
+          - not ford_rollback_state_stat.stat.islnk
+          - ford_rollback_state_stat.stat.mode == '0600'
+        fail_msg: "Missing or unsafe reset state record; refusing rollback."
+
+    - name: Read and decode the reset state record
+      ansible.builtin.slurp:
+        src: "{{ remote_root }}/data/empty-reset-state.json"
+      register: ford_rollback_state_raw
+
+    - name: Parse reset state
+      ansible.builtin.set_fact:
+        ford_rollback_state: "{{ ford_rollback_state_raw.content | b64decode | from_json }}"
+
+    - name: Verify recorded approval, target, digest, and exact paths
+      ansible.builtin.assert:
+        that:
+          - ford_rollback_state.host == inventory_hostname
+          - ford_rollback_state.approval_id == ford_empty_reset_approval_id
+          - ford_rollback_state.backup_manifest_sha256 == ford_empty_reset_backup_manifest_sha256
+          - ford_rollback_state.data_mount == data_volume_mount
+          - ford_rollback_state.active_postgres_path == data_volume_mount ~ '/postgres'
+          - ford_rollback_state.active_redis_path == data_volume_mount ~ '/redis'
+          - ford_rollback_state.old_postgres_path == data_volume_mount ~ '/postgres-pre-reset-' ~ ford_empty_reset_approval_id
+          - ford_rollback_state.old_redis_path == data_volume_mount ~ '/redis-pre-reset-' ~ ford_empty_reset_approval_id
+          - ford_rollback_state.status in ['resetting', 'reset']
+        fail_msg: "Reset state differs from this target, approval, digest, or exact bind-directory contract."
+
+    - name: Resolve configured bind-mount path
+      ansible.builtin.command:
+        argv:
+          - realpath
+          - -e
+          - "{{ data_volume_mount }}"
+      register: ford_rollback_mount_realpath
+      changed_when: false
+
+    - name: Require the recorded bind-mount path to remain canonical
+      ansible.builtin.assert:
+        that:
+          - data_volume_mount != '/'
+          - ford_rollback_mount_realpath.stdout == data_volume_mount
+        fail_msg: "Configured data mount is not the recorded canonical path."
+
+    - name: Inspect rollback state and Compose paths without following symlinks
+      ansible.builtin.stat:
+        path: "{{ item.path }}"
+        follow: false
+      loop:
+        - { path: "{{ remote_root }}", kind: directory }
+        - { path: "{{ remote_root }}/data", kind: directory }
+        - { path: "{{ remote_root }}/data/compose.yml", kind: file }
+        - { path: "{{ remote_root }}/data/.env", kind: file }
+      register: ford_rollback_control_paths
+
+    - name: Require regular rollback state and Compose paths
+      ansible.builtin.assert:
+        that:
+          - (item.item.kind == 'directory' and item.stat.isdir) or (item.item.kind == 'file' and item.stat.isreg)
+          - not item.stat.islnk
+        fail_msg: "Rollback control or Compose path is missing or a symlink."
+      loop: "{{ ford_rollback_control_paths.results }}"
+
+    - name: Resolve rollback control paths to reject symlinked ancestors
+      ansible.builtin.command:
+        argv:
+          - realpath
+          - -e
+          - "{{ item }}"
+      loop:
+        - "{{ remote_root }}"
+        - "{{ remote_root }}/data"
+      register: ford_rollback_control_realpaths
+      changed_when: false
+
+    - name: Require canonical rollback control paths
+      ansible.builtin.assert:
+        that:
+          - item.stdout == item.item
+        fail_msg: "Rollback control path resolves through a symlink or differs from its configured path."
+      loop: "{{ ford_rollback_control_realpaths.results }}"
+
+    - name: Inspect archived original directories without following symlinks
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - "{{ ford_rollback_state.old_postgres_path }}"
+        - "{{ ford_rollback_state.old_redis_path }}"
+      register: ford_rollback_old_paths
+
+    - name: Inspect active PostgreSQL and Redis directories
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - "{{ ford_rollback_state.active_postgres_path }}"
+        - "{{ ford_rollback_state.active_redis_path }}"
+      register: ford_rollback_active_paths
+
+    - name: Require both originals to be recoverable, including an interrupted reset
+      ansible.builtin.assert:
+        that:
+          - ford_rollback_old_paths.results[0].stat.isdir or (ford_rollback_state.status == 'resetting' and ford_rollback_active_paths.results[0].stat.isdir)
+          - not ford_rollback_old_paths.results[0].stat.islnk
+          - ford_rollback_old_paths.results[1].stat.isdir or (ford_rollback_state.status == 'resetting' and ford_rollback_active_paths.results[1].stat.isdir)
+          - not ford_rollback_old_paths.results[1].stat.islnk
+          - not ford_rollback_active_paths.results[0].stat.islnk | default(false)
+          - not ford_rollback_active_paths.results[1].stat.islnk | default(false)
+          - not ford_rollback_active_paths.results[0].stat.exists or ford_rollback_active_paths.results[0].stat.isdir
+          - not ford_rollback_active_paths.results[1].stat.exists or ford_rollback_active_paths.results[1].stat.isdir
+        fail_msg: "One or both exact pre-reset data directories are unavailable; stop and use separately approved recovery."
+
+    - name: Inspect preserved-empty directory destinations
+      ansible.builtin.stat:
+        path: "{{ data_volume_mount }}/{{ item }}-empty-{{ ford_empty_reset_approval_id }}"
+        follow: false
+      loop: [postgres, redis]
+      register: ford_rollback_empty_destinations
+
+    - name: Require safe active paths and unused empty-directory archive names
+      ansible.builtin.assert:
+        that:
+          - not item.stat.exists
+          - not item.stat.islnk
+        fail_msg: "An empty-directory archive destination already exists; refusing rollback."
+      loop: "{{ ford_rollback_empty_destinations.results }}"
+
+    - name: Refuse active data symlinks
+      ansible.builtin.assert:
+        that:
+          - not item.stat.islnk | default(false)
+        fail_msg: "Active data paths must not be symlinks."
+      loop: "{{ ford_rollback_active_paths.results }}"
+
+    - name: Stop only PostgreSQL and Redis in the Ford data Compose project
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - --project-name
+          - data
+          - --env-file
+          - "{{ remote_root }}/data/.env"
+          - -f
+          - "{{ remote_root }}/data/compose.yml"
+          - stop
+          - postgres
+          - redis
+      changed_when: true
+
+    - name: Preserve fresh PostgreSQL directory without deleting it
+      ansible.builtin.command:
+        argv:
+          - mv
+          - --no-clobber
+          - --no-target-directory
+          - --
+          - "{{ ford_rollback_state.active_postgres_path }}"
+          - "{{ data_volume_mount }}/postgres-empty-{{ ford_empty_reset_approval_id }}"
+      when: ford_rollback_old_paths.results[0].stat.isdir and ford_rollback_active_paths.results[0].stat.exists
+      changed_when: true
+
+    - name: Preserve fresh Redis directory without deleting it
+      ansible.builtin.command:
+        argv:
+          - mv
+          - --no-clobber
+          - --no-target-directory
+          - --
+          - "{{ ford_rollback_state.active_redis_path }}"
+          - "{{ data_volume_mount }}/redis-empty-{{ ford_empty_reset_approval_id }}"
+      when: ford_rollback_old_paths.results[1].stat.isdir and ford_rollback_active_paths.results[1].stat.exists
+      changed_when: true
+
+    - name: Verify fresh directories were preserved before restoring originals
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - "{{ ford_rollback_state.active_postgres_path }}"
+        - "{{ data_volume_mount }}/postgres-empty-{{ ford_empty_reset_approval_id }}"
+        - "{{ ford_rollback_state.active_redis_path }}"
+        - "{{ data_volume_mount }}/redis-empty-{{ ford_empty_reset_approval_id }}"
+      register: ford_rollback_preserve_results
+
+    - name: Require active paths clear and replacement data preserved
+      ansible.builtin.assert:
+        that:
+          - not ford_rollback_preserve_results.results[0].stat.exists or not ford_rollback_old_paths.results[0].stat.isdir
+          - ford_rollback_preserve_results.results[1].stat.isdir or not ford_rollback_old_paths.results[0].stat.isdir or not ford_rollback_active_paths.results[0].stat.exists
+          - not ford_rollback_preserve_results.results[2].stat.exists or not ford_rollback_old_paths.results[1].stat.isdir
+          - ford_rollback_preserve_results.results[3].stat.isdir or not ford_rollback_old_paths.results[1].stat.isdir or not ford_rollback_active_paths.results[1].stat.exists
+        fail_msg: "Replacement directories were not moved aside exactly; refusing to move originals."
+
+    - name: Restore exact original PostgreSQL directory
+      ansible.builtin.command:
+        argv:
+          - mv
+          - --no-clobber
+          - --no-target-directory
+          - --
+          - "{{ ford_rollback_state.old_postgres_path }}"
+          - "{{ ford_rollback_state.active_postgres_path }}"
+      when: ford_rollback_old_paths.results[0].stat.isdir
+      changed_when: true
+
+    - name: Restore exact original Redis directory
+      ansible.builtin.command:
+        argv:
+          - mv
+          - --no-clobber
+          - --no-target-directory
+          - --
+          - "{{ ford_rollback_state.old_redis_path }}"
+          - "{{ ford_rollback_state.active_redis_path }}"
+      when: ford_rollback_old_paths.results[1].stat.isdir
+      changed_when: true
+
+    - name: Verify original PostgreSQL and Redis directories restored
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - "{{ ford_rollback_state.active_postgres_path }}"
+        - "{{ ford_rollback_state.active_redis_path }}"
+      register: ford_rollback_restored_paths
+
+    - name: Require both original directories active
+      ansible.builtin.assert:
+        that:
+          - ford_rollback_restored_paths.results[0].stat.isdir
+          - not ford_rollback_restored_paths.results[0].stat.islnk
+          - ford_rollback_restored_paths.results[1].stat.isdir
+          - not ford_rollback_restored_paths.results[1].stat.islnk
+        fail_msg: "Original data directories did not return to their exact active paths."
+
+    - name: Mark state rolled back without deleting the audit record
+      ansible.builtin.copy:
+        dest: "{{ remote_root }}/data/empty-reset-state.json"
+        owner: root
+        group: root
+        mode: "0600"
+        content: "{{ ford_rollback_state | combine({'status': 'rolled_back'}) | to_nice_json }}"
