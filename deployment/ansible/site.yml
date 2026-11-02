@@ -13,6 +13,13 @@
   roles:
     - data
 
+- name: Configure private Ollama runtime
+  hosts: data
+  become: false
+  tags: [ai_runtime]
+  roles:
+    - ai_runtime
+
 - name: Configure OCI database backups
   hosts: data
   become: true

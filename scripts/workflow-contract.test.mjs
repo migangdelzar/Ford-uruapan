@@ -551,6 +551,7 @@ test("production scheduler runs privately on the data network", async () => {
   const source = await read(
     "deployment/ansible/roles/scraper_scheduler/templates/compose.yml.j2",
   );
+  const release = await read("deployment/ansible/roles/scraper_scheduler/tasks/release.yml");
 
   assert.match(source, /scheduler:/);
   assert.match(
@@ -564,6 +565,8 @@ test("production scheduler runs privately on the data network", async () => {
   assert.match(source, /SYNC_SCHEDULE: "0 12 1 \* \*"/);
   assert.match(source, /SYNC_TIMEZONE: America\/Mexico_City/);
   assert.match(source, /DATABASE_URL: postgres:\/\/ford:[^\n]*@postgres:5432\/ford\?/);
+  assert.match(release, /scheduler_enabled \| default\(false\)/);
+  assert.match(release, /scheduler_ingestion_approved \| default\(false\)/);
 });
 
 test("catalog sync connects to the ford database", async () => {

@@ -2,10 +2,12 @@
 - name: Validate scheduler release request
   ansible.builtin.assert:
     that:
+      - scheduler_enabled | default(false) | bool
+      - scheduler_ingestion_approved | default(false) | bool
       - scheduler_operation | default('deploy') in ['deploy', 'rollback']
       - scheduler_operation | default('deploy') == 'rollback' or scheduler_image is match('^ghcr[.]io/[A-Za-z0-9._/-]+@sha256:[a-f0-9]{64}$')
       - (remote_root ~ '/mcp/.env') is file
-    fail_msg: "Scraper scheduler release requires an immutable image and the provisioned data-host environment."
+    fail_msg: "Scraper scheduler release requires scheduler_enabled=true, scheduler_ingestion_approved=true, an immutable image, and the provisioned data-host environment."
 
 - name: Read prior scheduler release state
   ansible.builtin.stat:

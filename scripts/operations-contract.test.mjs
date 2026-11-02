@@ -157,6 +157,37 @@ test("app deployment validates runtime database credentials before rendering wit
   assert.match(assertion, /no_log:\s*true/);
 });
 
+test("Ollama runtime is isolated, private, and model pulls require approval", async () => {
+  const compose = await read("deployment/ansible/roles/ai_runtime/templates/compose.yml.j2");
+  const tasks = await read("deployment/ansible/roles/ai_runtime/tasks/main.yml");
+
+  assert.match(compose, /ollama\/ollama@sha256:b86366bb528bbf7f1424435d165028497a5b69bf6ddb4fa5a87102e2b79f44fb/);
+  assert.match(compose, /qllama\/bge-m3:q8_0/);
+  assert.match(compose, /ford-ollama-models/);
+  assert.match(compose, /healthcheck:/);
+  assert.match(compose, /data_default/);
+  assert.doesNotMatch(compose, /ollama-data|cloudflared|tunnel|mcp|ports:|scraper|catalog/i);
+  assert.match(tasks, /ollama_model_pull_approved\s*\|\s*default\(false\)/);
+  assert.match(tasks, /ollama-model-pull/);
+  assert.doesNotMatch(tasks, /ollama-model-pull[\s\S]*?up[^\n]*ollama-model-pull/);
+});
+
+test("scheduler release stays paused unless both explicit approvals are true", async () => {
+  const release = await read("deployment/ansible/roles/scraper_scheduler/tasks/release.yml");
+  const schedulerCompose = await read("deployment/ansible/roles/scraper_scheduler/templates/compose.yml.j2");
+  const site = await read("deployment/ansible/site.yml");
+
+  assert.match(release, /scheduler_enabled\s*\|\s*default\(false\)/);
+  assert.match(release, /scheduler_ingestion_approved\s*\|\s*default\(false\)/);
+  const gate = release.slice(0, release.indexOf("Read prior scheduler release state"));
+  assert.match(gate, /scheduler_enabled[\s\S]*scheduler_ingestion_approved/);
+  assert.ok(gate.indexOf("scheduler_enabled") < release.indexOf("Pull the immutable scheduler image"));
+  assert.ok(gate.indexOf("scheduler_enabled") < release.indexOf("Migrate the catalog"));
+  assert.ok(gate.indexOf("scheduler_enabled") < release.indexOf("Start and health-check the scheduler candidate"));
+  assert.match(schedulerCompose, /@postgres:5432\/ford\?/);
+  assert.doesNotMatch(site, /scraper_scheduler|catalog_sync|catalog-sync/);
+});
+
 test("OCI backup identity is declarative and reproducible", async () => {
   const storage = await read("deployment/terraform/storage.tf");
   const variables = await read("deployment/terraform/variables.tf");
