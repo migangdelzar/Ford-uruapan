@@ -65,7 +65,21 @@ These results are local-only fixture evidence for gate 0. They do not validate p
 - Docker target was explicitly `colima-testbox`. Before tests, `docker --context colima-testbox ps --format '{{.Names}} {{.Image}} {{.Status}}'` returned `ford-service-local-catalog-postgres-1 pgvector/pgvector:pg16 Up 10 hours`. This existing source container/database was not entered, changed, or reused.
 - **Local/ephemeral XML evidence only — not durable evidence and not production-gate evidence.** Unit command, run first from `ford-ai-service`: `./gradlew test --tests 'com.ford.service.ai.adapter.in.tool.CatalogToolConfigurationTest' --tests 'com.ford.service.ai.adapter.in.tool.FordCatalogToolsTest' --tests 'com.ford.service.ai.CatalogToolsTest' --tests 'com.ford.service.ai.CatalogToolArchitectureTest'`. Result: `BUILD SUCCESSFUL`; verified XML totals: 50 tests, 0 skipped, 0 failures, 0 errors (2 configuration, 3 FordCatalogTools, 43 CatalogTools, 2 architecture tests). XML files: `ford-ai-service/build/test-results/test/TEST-com.ford.service.ai.adapter.in.tool.CatalogToolConfigurationTest.xml`, `ford-ai-service/build/test-results/test/TEST-com.ford.service.ai.adapter.in.tool.FordCatalogToolsTest.xml`, `ford-ai-service/build/test-results/test/TEST-com.ford.service.ai.CatalogToolsTest.xml`, and `ford-ai-service/build/test-results/test/TEST-com.ford.service.ai.CatalogToolArchitectureTest.xml`.
 - **Local/ephemeral XML evidence only — not durable evidence and not production-gate evidence.** Integration command, run only after unit success from `ford-ai-service`: `DOCKER_HOST=unix:///Users/miguelangeldelgadillozarate/.colima/testbox/docker.sock ./gradlew integrationTest --tests 'com.ford.service.catalog.JdbcFordCatalogReaderIntegrationTest'`. Result: `BUILD SUCCESSFUL`; verified XML totals: 13 tests, 0 skipped, 0 failures, 0 errors. XML: `ford-ai-service/build/test-results/integrationTest/TEST-com.ford.service.catalog.JdbcFordCatalogReaderIntegrationTest.xml`. Its system output includes `Resolved dockerHost=unix:///Users/miguelangeldelgadillozarate/.colima/testbox/docker.sock` and `Container pgvector/pgvector:pg16 is starting: 1b1a825a3b8d1d08868afa5a6f37de9ba39bd77a49b843ebdfa5aa8197ea06d6` (JDBC port 33349).
-- Fresh read-only Docker listing after the integration run showed only `ford-service-local-catalog-postgres-1` running. `docker --context colima-testbox ps -a` showed that source container (`6cc721cf9715`) and two pre-existing unrelated exited compose containers; Testcontainers PostgreSQL and Ryuk were absent. Thus the disposable test database and reaper were cleaned up; the source container remained running.
+- **Recorded post-test Docker listing from 2026-11-02 (historical evidence; not a claim about a current live listing).** `docker --context colima-testbox ps --format '{{.Names}} {{.Image}} {{.Status}}'` returned:
+
+  ```text
+  ford-service-local-catalog-postgres-1 pgvector/pgvector:pg16 Up 10 hours
+  ```
+
+  `docker --context colima-testbox ps -a --format '{{.ID}} {{.Names}} {{.Image}} {{.Status}}'` returned:
+
+  ```text
+  6cc721cf9715 ford-service-local-catalog-postgres-1 pgvector/pgvector:pg16 Up 10 hours
+  b8fe0eb3043e ford-service-local-redis-1 redis:7-alpine Exited (255) 3 days ago
+  70043e2a1e27 ford-service-local-postgres-1 pgvector/pg16 Exited (255) 3 days ago
+  ```
+
+  The two exited Compose containers predated the test. Disposable Testcontainers PostgreSQL and Ryuk were absent; the existing source container stayed running. This is local-only, ephemeral fixture evidence, not durable or production-gate evidence.
 - No test or implementation files changed. The production-tools-off default remains; local fixture results do not change any readiness gate.
 
 ### Stop conditions
