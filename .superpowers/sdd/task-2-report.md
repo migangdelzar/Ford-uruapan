@@ -48,5 +48,5 @@ Output was empty. Stopped `colima native` only after that empty listing. Did not
 - `ford-ai-service/src/integrationTest/java/com/ford/service/database/SchemaIntegrationTest.java` — added reader privilege contract assertions.
 - `.superpowers/sdd/task-2-report.md` — this report.
 - Test commit: `c4041c2` (`test: enforce catalog reader privilege boundaries`).
-- Report commit: pending; SHA will be added after this file is committed.
+- Report artifact introduced in commit: `d885477` (`docs: report catalog reader verification`).
 - Existing unrelated untracked planning documents were left untouched.
