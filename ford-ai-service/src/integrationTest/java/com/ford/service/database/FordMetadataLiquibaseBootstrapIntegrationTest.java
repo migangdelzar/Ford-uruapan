@@ -29,8 +29,9 @@ class FordMetadataLiquibaseBootstrapIntegrationTest {
         jdbc.sql("drop table if exists ford_metadata.databasechangelog").update();
         jdbc.sql("drop table if exists ford_metadata.databasechangeloglock").update();
         jdbc.sql("drop schema if exists ford_metadata").update();
-        jdbc.sql("drop table if exists unexpected_history.databasechangelog").update();
-        jdbc.sql("drop schema if exists unexpected_history").update();
+        jdbc.sql("drop table if exists ford.databasechangelog").update();
+        jdbc.sql("drop table if exists ford.databasechangeloglock").update();
+        jdbc.sql("drop schema if exists ford").update();
         bootstrap = new FordMetadataLiquibaseBootstrap(dataSource);
     }
 
@@ -65,15 +66,33 @@ class FordMetadataLiquibaseBootstrapIntegrationTest {
     }
 
     @Test
-    void refusesToMergeTrackingTablesFoundInDifferentSchemas() {
-        jdbc.sql("create table public.databasechangelog (id text)").update();
-        jdbc.sql("create table public.databasechangeloglock (id integer)").update();
-        jdbc.sql("create schema unexpected_history").update();
-        jdbc.sql("create table unexpected_history.databasechangelog (id text)").update();
+    void refusesToMergeHistoriesSplitBetweenFordAndPublicWithoutMovingRows() {
+        jdbc.sql("create schema ford").update();
+        jdbc.sql("create table public.databasechangelog (id text, author text, filename text, md5sum text)").update();
+        jdbc.sql("create table public.databasechangeloglock (id integer primary key, locked boolean, lockgranted timestamp, lockedby text)").update();
+        jdbc.sql("create table ford.databasechangelog (id text, author text, filename text, md5sum text)").update();
+        jdbc.sql("create table ford.databasechangeloglock (id integer primary key, locked boolean, lockgranted timestamp, lockedby text)").update();
+        jdbc.sql("insert into public.databasechangelog values ('public-001', 'test', 'public.yaml', '8:public')").update();
+        jdbc.sql("insert into public.databasechangeloglock values (1, false, null, 'public-lock')").update();
+        jdbc.sql("insert into ford.databasechangelog values ('ford-001', 'test', 'ford.yaml', '8:ford')").update();
+        jdbc.sql("insert into ford.databasechangeloglock values (1, false, null, 'ford-lock')").update();
 
         assertThatThrownBy(bootstrap::initialize)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("ambiguous");
+
+        assertThat(tableExists("public", "databasechangelog")).isTrue();
+        assertThat(tableExists("public", "databasechangeloglock")).isTrue();
+        assertThat(tableExists("ford", "databasechangelog")).isTrue();
+        assertThat(tableExists("ford", "databasechangeloglock")).isTrue();
+        assertThat(jdbc.sql("select md5sum from public.databasechangelog where id = 'public-001'")
+                .query(String.class).single()).isEqualTo("8:public");
+        assertThat(jdbc.sql("select md5sum from ford.databasechangelog where id = 'ford-001'")
+                .query(String.class).single()).isEqualTo("8:ford");
+        assertThat(jdbc.sql("select lockedby from public.databasechangeloglock where id = 1")
+                .query(String.class).single()).isEqualTo("public-lock");
+        assertThat(jdbc.sql("select lockedby from ford.databasechangeloglock where id = 1")
+                .query(String.class).single()).isEqualTo("ford-lock");
     }
 
     private boolean tableExists(String schema, String table) {
