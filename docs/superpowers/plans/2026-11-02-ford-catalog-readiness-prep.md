@@ -24,6 +24,7 @@
 
 - Modify `docs/superpowers/specs/2026-11-01-ford-single-database-liquibase-catalog-design.md` to keep `public` present and empty rather than remove it.
 - Modify `docs/superpowers/plans/2026-11-01-ford-database-cutover-release.md` and `docs/superpowers/plans/2026-11-01-ford-liquibase-schema-and-data.md` to remove conflicting `public`-removal instructions while preserving their other content.
+- Modify `docs/superpowers/specs/2026-11-02-ford-catalog-readiness-prep-design.md` with fresh archive-restore evidence.
 - Modify `docs/operations/production-rollout-readiness.md` to distinguish workspace checks from external blockers, including Docker/source-owner/DBA/backup limits.
 - Modify `ford-ai-service/src/integrationTest/java/com/ford/service/database/FordMetadataLiquibaseBootstrapIntegrationTest.java` to represent simultaneous `ford` and `public` Liquibase histories.
 - Modify `ford-ai-service/src/integrationTest/java/com/ford/service/database/FordMetadataSchemaCutoverIntegrationTest.java` to represent duplicate operational tables in `ford` and `public` and assert fail-closed behavior without row movement.
@@ -37,16 +38,16 @@
 - Modify: `docs/superpowers/plans/2026-11-01-ford-liquibase-schema-and-data.md`
 - Modify: `docs/operations/production-rollout-readiness.md`
 
-- [ ] Update the design spec's references at the opening decisions, migration design, stop conditions, and acceptance section so they say `public` stays present and empty; preserve the rule against `CASCADE`.
-- [ ] Update the cutover release plan's line-14 global constraint, line-51 migration step, and lines 56/75 verification criteria so they no longer instruct dropping `public` or expect it absent. Add a top-level note that production writes require the verified-restore gates in `docs/operations/production-rollout-readiness.md`.
-- [ ] Add this note below the cutover release plan's title so older steps cannot be mistaken for live authorization:
+- [x] Update the design spec's references at the opening decisions, migration design, stop conditions, and acceptance section so they say `public` stays present and empty; preserve the rule against `CASCADE`.
+- [x] Update the cutover release plan's global constraint, migration step, and verification criteria so they no longer instruct dropping `public` or expect it absent. Add a top-level note that production writes require the verified-restore gates in `docs/operations/production-rollout-readiness.md`.
+- [x] Add this note below the cutover release plan's title so older steps cannot be mistaken for live authorization:
 
 ```markdown
 > **Readiness gate:** This plan is subordinate to `docs/operations/production-rollout-readiness.md`. Do not perform a production write until the full backup/restore, source-integrity, migration-rehearsal, and protected-release gates pass.
 ```
-- [ ] Update the Liquibase data plan's line-15 public-schema constraint to require present-but-empty, not schema removal.
-- [ ] Add a concise readiness update stating that this plan is workspace-only, the approved manifest hashes match exporter constants but the reported source export mismatch was not reproduced, Docker is unavailable, and source-owner/DBA/restore gates remain open. Do not change hashes or mark these gates passed.
-- [ ] Search the touched docs for conflicting target language:
+- [x] Update the Liquibase data plan's public-schema constraint to require present-but-empty, not schema removal.
+- [x] Add a concise readiness update stating that the approved archive SHA matches but the fresh isolated archive restore still fails two expected content hashes; record actual/expected hashes without changing them. The default `emme` Docker context was unavailable; authorized local `testbox` ran the disposable restore and tests. Source-owner/DBA/live-restore gates remain open.
+- [x] Search the touched docs for conflicting target language:
 
 ```bash
 rg -n -i 'drop( the)? `?public|public (is )?absent|public must be removed|remove(d)? `?public' \
@@ -57,7 +58,7 @@ rg -n -i 'drop( the)? `?public|public (is )?absent|public must be removed|remove
 
 Expected: inspect each match; positive instructions to remove/drop `public` or expect it absent are eliminated. Negated safety rules such as "never drop `public`" are valid matches.
 
-- [ ] Do not commit the four documentation files in this task as whole files: they already contain prior uncommitted design/readiness work. Leave them uncommitted unless exact task-only hunks can be staged and `git diff --cached` proves no prior changes are included. Never commit unrelated pre-existing work to satisfy this plan.
+- [x] Do not commit the four documentation files in this task as whole files: they already contain prior uncommitted design/readiness work. Leave them uncommitted unless exact task-only hunks can be staged and `git diff --cached` proves no prior changes are included. Never commit unrelated pre-existing work to satisfy this plan.
 
 ```bash
 git diff -- docs/superpowers/specs/2026-11-01-ford-single-database-liquibase-catalog-design.md \
@@ -71,8 +72,8 @@ git diff -- docs/superpowers/specs/2026-11-01-ford-single-database-liquibase-cat
 **Files:**
 - Modify: `ford-ai-service/src/integrationTest/java/com/ford/service/database/FordMetadataLiquibaseBootstrapIntegrationTest.java`
 
-- [ ] Extend `setUp()` in `FordMetadataLiquibaseBootstrapIntegrationTest` to remove only any stale named `ford.databasechangelog` and `ford.databasechangeloglock` tables and then `drop schema if exists ford` without `CASCADE`.
-- [ ] Replace `refusesToMergeTrackingTablesFoundInDifferentSchemas()` with the following production-shaped fixture. Include the required imports only if absent:
+- [x] Extend `setUp()` in `FordMetadataLiquibaseBootstrapIntegrationTest` to remove only any stale named `ford.databasechangelog` and `ford.databasechangeloglock` tables and then `drop schema if exists ford` without `CASCADE`.
+- [x] Replace `refusesToMergeTrackingTablesFoundInDifferentSchemas()` with the following production-shaped fixture. Include the required imports only if absent:
 
 ```java
 @Test
@@ -106,7 +107,7 @@ void refusesToMergeHistoriesSplitBetweenFordAndPublicWithoutMovingRows() {
 }
 ```
 
-- [ ] Run the focused test before and after the fixture edit:
+- [x] Run the focused test before and after the fixture edit:
 
 ```bash
 cd ford-ai-service
@@ -115,7 +116,7 @@ cd ford-ai-service
 
 Expected: PASS when the local Testcontainers PostgreSQL starts. If Docker is unavailable, report the infrastructure block; do not start/recreate a Colima disk or substitute a shared database.
 
-- [ ] Commit only `FordMetadataLiquibaseBootstrapIntegrationTest.java` after the focused test is verified:
+- [x] Commit only `FordMetadataLiquibaseBootstrapIntegrationTest.java` after the focused test is verified:
 
 ```bash
 git add ford-ai-service/src/integrationTest/java/com/ford/service/database/FordMetadataLiquibaseBootstrapIntegrationTest.java
@@ -127,7 +128,7 @@ git commit -m "test: cover split Ford Liquibase histories"
 **Files:**
 - Modify: `ford-ai-service/src/integrationTest/java/com/ford/service/database/FordMetadataSchemaCutoverIntegrationTest.java`
 
-- [ ] Add this test method to `FordMetadataSchemaCutoverIntegrationTest`; include `ford.ai_execution` cleanup in `seedLegacySchemas()` before dropping `ford` without `CASCADE`:
+- [x] Add this test method to `FordMetadataSchemaCutoverIntegrationTest`; include `ford.ai_execution` cleanup in `seedLegacySchemas()` before dropping `ford` without `CASCADE`:
 
 ```java
 @Test
@@ -152,8 +153,8 @@ void refusesDuplicateOperationalTableInFordAndPublicWithoutMovingRows() {
 }
 ```
 
-- [ ] In `seedLegacySchemas()`, first execute `drop table if exists ford.ai_execution`, then `drop schema if exists ford` with no cascade, before seeding its existing `ford_metadata`, `ford_graph`, and `public` fixtures.
-- [ ] Run the focused integration test:
+- [x] In `seedLegacySchemas()`, first execute `drop table if exists ford.ai_execution`, then `drop schema if exists ford` with no cascade, before seeding its existing `ford_metadata`, `ford_graph`, and `public` fixtures.
+- [x] Run the focused integration test:
 
 ```bash
 cd ford-ai-service
@@ -162,7 +163,7 @@ cd ford-ai-service
 
 Expected: PASS when local Testcontainers PostgreSQL is available. A failure before the test body due to unavailable Docker is a blocked verification, not a code pass.
 
-- [ ] Commit only `FordMetadataSchemaCutoverIntegrationTest.java` after the focused test is verified:
+- [x] Commit only `FordMetadataSchemaCutoverIntegrationTest.java` after the focused test is verified:
 
 ```bash
 git add ford-ai-service/src/integrationTest/java/com/ford/service/database/FordMetadataSchemaCutoverIntegrationTest.java
@@ -175,7 +176,7 @@ git commit -m "test: cover ambiguous Ford schema cutover"
 - Read: all files changed in Tasks 1–3
 - Modify: `docs/operations/production-rollout-readiness.md` only if fresh local results change the evidence
 
-- [ ] Run fast unit tests:
+- [x] Run fast unit tests:
 
 ```bash
 cd ford-ai-service
@@ -184,7 +185,7 @@ cd ford-ai-service
 
 Expected: zero failed tests.
 
-- [ ] Run catalog exporter unit tests:
+- [x] Run catalog exporter unit tests:
 
 ```bash
 cd ford-ai-service
@@ -193,8 +194,8 @@ python3 -m unittest scripts.tests.test_export_liquibase_snapshot -v
 
 Expected: zero failed tests. This does not prove the approved source database matches the manifest.
 
-- [ ] Run both focused integration commands from Tasks 2 and 3 only if Docker is already available. Do not touch production/shared-test databases or change Colima state to make them run.
-- [ ] Run `git diff --check` and inspect the exact diff. Confirm no archive/hash, changeset, deployment configuration, feature-flag, unrelated dirty file, or external-state change was introduced.
-- [ ] Leave source integrity, full production inventory, row-authority decision, backup/restore, least-privilege role, migration rehearsal, protected approvals, immutable artifact, deploy, and enablement gates marked open until fresh external evidence is supplied.
+- [x] Run both focused integration commands from Tasks 2 and 3 and the complete integration suite using the already-running local `testbox` context authorized by the user. Do not touch production/shared-test databases or change Colima state.
+- [x] Run `git diff --check` and inspect the exact diff. Confirm no archive/hash, changeset, deployment configuration, feature-flag, unrelated dirty file, or external-state change was introduced.
+- [x] Leave source integrity, full production inventory, row-authority decision, backup/restore, least-privilege role, migration rehearsal, protected approvals, immutable artifact, deploy, and enablement gates marked open until fresh external evidence is supplied.
 
 **Verification:** Local-only checks are freshly recorded; unavailable integration/restore gates remain blocked; production/shared environments remain unchanged.
