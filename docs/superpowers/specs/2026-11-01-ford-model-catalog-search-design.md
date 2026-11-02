@@ -27,6 +27,10 @@ the approved scraper snapshot, and existing cutover gates.
   Qualify its vector types and operator classes with `ford_catalog`; grant the
   catalog reader only the catalog schema usage and approved catalog table reads.
   Keep metadata table access denied.
+- Relocate the relocatable `pg_trgm` extension into `ford_catalog` as well. The
+  catalog reader can then resolve any future catalog trigram query without
+  metadata-schema access. Do not add pg_trgm ranking to the current hybrid
+  search; the current code has no pg_trgm calls or trigram indexes.
 - Combine vector and Spanish keyword ranks with reciprocal-rank fusion (RRF)
   inside one parameterized PostgreSQL query. Query embedding generation is a
   separate model call, not a second database query.
@@ -157,12 +161,15 @@ for a single hybrid request, not force every tool operation into one query.
 ## Schema placement and public-schema invariant
 
 - Use `ford_metadata` for app-owned data and Liquibase history; use
-  `ford_catalog` for catalog relations and the pgvector extension objects.
+  `ford_catalog` for catalog relations plus pgvector and pg_trgm extension
+  objects.
 - Add extension-schema setup before the first metadata vector changeset so
   clean installs create `ford_catalog.vector` and its operator classes before
   use. For an existing install, verify pgvector is relocatable and owned by the
   migration principal before moving the extension with
-  `ALTER EXTENSION ... SET SCHEMA`; do not uninstall/reinstall or cascade.
+  `ALTER EXTENSION ... SET SCHEMA`; likewise install/relocate pg_trgm into
+  `ford_catalog`. Do not uninstall/reinstall or cascade. Keep pg_trgm out of
+  query ranking until a separate retrieval design validates its benefit.
 - Qualify vector columns, casts, operators, and operator classes. Configure JDBC
   search paths with only the required `ford_metadata` and/or `ford_catalog`
   schemas; do not append `public` as a fallback.
@@ -171,9 +178,9 @@ for a single hybrid request, not force every tool operation into one query.
   `USAGE` on `ford_metadata`, and no capture, provenance, manifest, or write
   privileges.
 - Audit all object classes in `public` before migration. Move only explicitly
-  reviewed app objects, relocate pgvector as above, and fail the migration if
-  any unclassified user object remains. Do not drop `public`, use `CASCADE`, or
-  change approved archive contents.
+  reviewed app objects, relocate pgvector and pg_trgm as above, and fail the
+  migration if any unclassified user object remains. Do not drop `public`, use
+  `CASCADE`, or change approved archive contents.
 - Verify after migration that `public` contains no application-owned tables,
   views, sequences, types, functions, operators, indexes, or extensions, and
   that all Liquibase history is in `ford_metadata`.
