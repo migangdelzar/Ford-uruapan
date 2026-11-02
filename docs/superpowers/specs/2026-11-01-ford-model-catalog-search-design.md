@@ -84,20 +84,25 @@ model data or rewrite the approved source snapshot as part of this design.
    dimension and finite values.
 2. Generate one `bge-m3` query vector outside PostgreSQL.
 3. Run one parameterized SQL statement. Its CTEs:
-   - select a bounded semantic candidate set from ready, compatible documents;
-   - select a bounded Spanish full-text candidate set;
+    - select each model's best ready, compatible semantic document, then bound
+      the semantic candidate set by distinct models;
+    - select each model's best Spanish full-text document, then bound that
+      candidate set by distinct models;
    - apply model and model-year scope without requiring a trim link;
    - apply exact price/color/trim constraints against structured relations;
    - assign deterministic ranks and compute RRF scores;
-   - compute each model's score from its best supporting document (so models
-     with more chunks do not win just by having more rows), retaining that
-     document and citation; and
+    - apply RRF to model ranks, not raw scores or chunk counts, so models with
+      more chunks do not crowd out other models; retain the best semantic and
+      keyword evidence documents and citations, deduplicating when they are the
+      same document; and
    - return only matching model-year/trim facts and source references.
-4. Return model-level results with the best supporting document/citation and
-   exact matching trim facts. The SQL statement may emit one row per matching
-   trim; the adapter groups rows into the model-level result in memory without
-   another database roundtrip. A model with no matching structured trim remains
-   a model result only when the user's filters do not require such a trim.
+4. Return model-level results with the best semantic and keyword evidence
+   documents/citations (deduplicated when both channels select the same
+   document) and exact matching trim facts. The SQL statement may emit one row
+   per evidence-document/trim pair; the adapter groups rows into the model-level
+   result in memory without another database roundtrip. A model with no matching
+   structured trim remains a model result only when the user's filters do not
+   require such a trim.
 5. Return no unsupported exact fact. Missing price/color/spec data remains
    unknown, not an inferred value. No availability claim is allowed without a
    trusted stock feed.
