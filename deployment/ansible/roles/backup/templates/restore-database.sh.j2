@@ -1,29 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-approval_id="${1:-}"
-archive_name="${2:-}"
-database_name="${3:-}"
-[[ -n "${FORD_RESTORE_APPROVAL_ID:-}" && "$approval_id" == "$FORD_RESTORE_APPROVAL_ID" ]] || {
-  echo "A matching explicit FORD_RESTORE_APPROVAL_ID is required." >&2; exit 2;
-}
-[[ "$approval_id" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$ ]] || {
-  echo "Approval ID format is invalid." >&2; exit 2;
-}
-[[ "${FORD_RESTORE_TARGET:-}" == "emme-2" ]] || {
-  echo "FORD_RESTORE_TARGET must be exactly emme-2." >&2; exit 2;
-}
-[[ "$archive_name" =~ ^[A-Za-z0-9._-]+\.dump\.gz$ ]] || {
-  echo "A PostgreSQL archive name is required." >&2; exit 2;
-}
-[[ "$database_name" == "ford_service" || "$database_name" == "ford" ]] || {
-  echo "Production rollback database must be ford_service or ford." >&2; exit 2;
-}
-
-archive="{{ remote_root }}/backup/archive/$archive_name"
-[[ -s "$archive" ]] || { echo "Backup not found: $archive_name" >&2; exit 1; }
-compose_file="{{ remote_root }}/data/compose.yml"
-env_file="{{ remote_root }}/data/.env"
-echo "Production rollback approved: target=emme-2 database=$database_name archive=$archive_name approval=$approval_id"
-gzip -dc "$archive" | docker compose --env-file "$env_file" -f "$compose_file" \
-  exec -T postgres pg_restore -U ford -d "$database_name" --clean --if-exists --no-owner
+echo 'Remote in-place restore is disabled. Use the separately approved, guarded exact-directory rollback playbook from Task 6/9.' >&2
+exit 2

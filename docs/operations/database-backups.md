@@ -82,12 +82,12 @@ requires a `rehearsal-` container labeled `ford.rehearsal=isolated` plus a
 production Compose. Historical manifests without `database` are interpreted as
 legacy `ford_service`; they cannot verify as `ford`.
 
-Production rollback is a separate, release-only operation. `mise run
-backup:restore` requires the exact `FORD_RESTORE_APPROVAL_ID` both in the
-environment and as its first argument, `FORD_RESTORE_TARGET=emme-2`, an archive
-name, and exactly `ford_service` or `ford` as the selected database. It retains
-the production Compose restore operation. Do not run it without a separately
-reviewed release procedure and fresh per-target approval.
+In-place remote restore is disabled: `mise run backup:restore` fails closed, and
+the remote `restore-database.sh` helper is inert. Neither can execute a
+`pg_restore --clean` or a production Compose restore. Production rollback for
+the replacement is only the separately approved, guarded exact-directory
+rollback playbook documented in Task 6/9, with fresh target-specific release
+authorization. Do not use an in-place database restore as the rollback path.
 
 ## GitHub Actions controls
 

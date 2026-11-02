@@ -89,46 +89,36 @@ class VerifyBackupTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "timestamp"):
             verify_backup(self.archive, "20261102")
 
-    def test_restore_template_requires_production_approval_and_compose_rollback(self):
+    def test_production_restore_and_remote_helper_are_inert(self):
+        root = Path(__file__).resolve().parents[5]
         template = (VERIFIER.parents[2] / "backup/templates/restore-database.sh.j2").read_text()
-        self.assertIn('FORD_RESTORE_APPROVAL_ID', template)
-        self.assertIn('FORD_RESTORE_TARGET', template)
-        self.assertIn('"emme-2"', template)
-        self.assertIn('docker compose', template)
-        self.assertIn('"ford_service"', template)
-        self.assertIn('"ford"', template)
+        wrapper_path = root / "ford-ai-service/.mise/tasks/backup/restore"
+        wrapper = wrapper_path.read_text()
 
-    def test_restore_wrapper_is_explicit_approval_gated(self):
-        wrapper = (VERIFIER.parents[5] / "ford-ai-service/.mise/tasks/backup/restore").read_text()
-        self.assertIn('FORD_RESTORE_APPROVAL_ID', wrapper)
-        self.assertIn('FORD_RESTORE_TARGET', wrapper)
-        self.assertIn('ansible data', wrapper)
+        self.assertNotRegex(template, re.compile(r"pg_restore.*--clean", re.DOTALL))
+        self.assertNotIn("docker compose", template.lower())
+        self.assertNotIn("pg_restore", template)
+        self.assertIn("disabled", template.lower())
+        helper_path = self.archive / "restore-database.sh"
+        helper_path.write_text(template)
+        helper_path.chmod(0o755)
+        helper_result = subprocess.run([str(helper_path)], capture_output=True, text=True)
+        self.assertNotEqual(helper_result.returncode, 0)
+        self.assertIn("disabled", helper_result.stderr.lower())
+        self.assertNotIn("ansible ", wrapper.lower())
+        self.assertNotIn("ssh ", wrapper.lower())
+        result = subprocess.run([str(wrapper_path)], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("disabled", result.stderr.lower())
 
-    def test_production_restore_refuses_missing_and_mismatched_gates(self):
-        template = (VERIFIER.parents[2] / "backup/templates/restore-database.sh.j2").read_text()
-        script = template.replace('{{ remote_root }}', self.temp.name)
-        script_path = self.archive / "restore.sh"
-        script_path.write_text(script)
-        script_path.chmod(0o755)
-        args = ["approval-123", "postgres.dump.gz", "ford"]
-        base_env = dict(os.environ, FORD_RESTORE_APPROVAL_ID="approval-123", FORD_RESTORE_TARGET="emme-2")
-        cases = [
-            ({"FORD_RESTORE_APPROVAL_ID": ""}, "approval"),
-            ({"FORD_RESTORE_APPROVAL_ID": "another-id"}, "approval"),
-            ({"FORD_RESTORE_TARGET": "other-host"}, "target"),
-            ({}, "archive"),
-            ({}, "database"),
-        ]
-        for overrides, _message in cases:
-            env = dict(base_env)
-            env.update(overrides)
-            invocation = args[:]
-            if _message == "archive":
-                invocation[1] = ""
-            if _message == "database":
-                invocation[2] = "production"
-            result = subprocess.run([str(script_path), *invocation], env=env, capture_output=True, text=True)
-            self.assertNotEqual(result.returncode, 0)
+    def test_rehearsal_route_cannot_invoke_production_or_remote_restore(self):
+        root = Path(__file__).resolve().parents[5]
+        script = (root / "scripts/backup/restore-rehearsal.sh").read_text().lower()
+        wrapper = (root / "ford-ai-service/.mise/tasks/backup/restore-isolated").read_text().lower()
+        route = script + "\n" + wrapper
+        self.assertNotIn("docker compose", route)
+        self.assertNotIn("ansible ", route)
+        self.assertNotRegex(route, re.compile(r"(?m)^\s*ssh\s"))
 
     def test_isolated_restore_requires_local_guardrails(self):
         root = Path(__file__).resolve().parents[5]

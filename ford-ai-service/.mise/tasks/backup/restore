@@ -1,28 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Approval-gated production database rollback (release use only)"
+#MISE description="Disabled: use the guarded exact-directory rollback playbook"
 set -euo pipefail
-cd "$MISE_PROJECT_ROOT"
-source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
-load_deploy_config
-require_deploy_config
-approval_arg="${1:-}"
-archive="${2:-}"
-database="${3:-}"
-[[ -n "${FORD_RESTORE_APPROVAL_ID:-}" && "$approval_arg" == "$FORD_RESTORE_APPROVAL_ID" ]] || {
-  echo 'Pass the exact FORD_RESTORE_APPROVAL_ID as argument 1.' >&2; exit 2;
-}
-[[ "$approval_arg" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$ ]] || {
-  echo 'Approval ID format is invalid.' >&2; exit 2;
-}
-[[ "${FORD_RESTORE_TARGET:-}" == "emme-2" ]] || {
-  echo 'FORD_RESTORE_TARGET must be explicitly set to emme-2.' >&2; exit 2;
-}
-[[ "$archive" =~ ^[A-Za-z0-9._-]+\.dump\.gz$ ]] || { echo 'A valid archive name is required.' >&2; exit 2; }
-[[ "$database" == ford_service || "$database" == ford ]] || {
-  echo 'Select exactly ford_service or ford.' >&2; exit 2;
-}
-render_deploy_inventory
-ANSIBLE_CONFIG="$(deploy_repo_root)/deployment/ansible/ansible.cfg" \
-  ansible data -b \
-  -i "$(deploy_inventory_file)" -m shell \
-  -a "FORD_RESTORE_APPROVAL_ID='$FORD_RESTORE_APPROVAL_ID' FORD_RESTORE_TARGET='$FORD_RESTORE_TARGET' ${EMME_REMOTE_ROOT}/backup/restore-database.sh '$approval_arg' '$archive' '$database'"
+echo 'In-place backup:restore is disabled. Use the separately approved, guarded exact-directory rollback playbook from Task 6/9; do not restore in place.' >&2
+exit 2
