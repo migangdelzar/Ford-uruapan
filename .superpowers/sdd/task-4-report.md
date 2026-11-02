@@ -18,4 +18,4 @@
 
 ## Commit
 
-`9994fc4` (`feat(deployment): isolate Ollama and pause scraper`)
+`7b70837` (`feat(deployment): isolate Ollama and pause scraper`)
