@@ -15,7 +15,7 @@ spring:
 ford:
   catalog:
     tools:
-      enabled: ${FORD_CATALOG_TOOLS_ENABLED:false}
+      enabled: ${FORD_LEGACY_CATALOG_TOOLS_ENABLED:false}
   customer-memory:
     enabled: ${FORD_CUSTOMER_MEMORY_ENABLED:false}
     hmac-key: ${FORD_CUSTOMER_MEMORY_HMAC_KEY:}

@@ -28,4 +28,13 @@ class CatalogToolArchitectureTest {
         assertThat(yaml).contains("FORD_CATALOG_TOOLS_ENABLED:false");
         assertThat(configuration).contains("CatalogTools");
     }
+
+    @Test
+    void productionProfileKeepsLegacyCatalogSwitchSeparateFromReaderSwitch() throws Exception {
+        var productionYaml = Files.readString(Path.of("src/main/resources/application-prod.yml"));
+
+        assertThat(productionYaml)
+                .contains("enabled: ${FORD_LEGACY_CATALOG_TOOLS_ENABLED:false}")
+                .doesNotContain("enabled: ${FORD_CATALOG_TOOLS_ENABLED:false}");
+    }
 }
