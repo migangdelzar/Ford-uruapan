@@ -92,6 +92,18 @@ class SchemaIntegrationTest {
             assertThat(viewExists(connection, "ford_catalog", "catalog_status_v1")).isTrue();
             assertThat(viewExists(connection, "ford_catalog", "document_provenance_v1")).isTrue();
             assertThat(viewExists(connection, "ford_catalog", "promotions_v3")).isTrue();
+            assertThat(scalar(dataSource, "select count(*) from ford_catalog.catalog_documents_v1"))
+                    .as("empty catalog metadata baseline").isZero();
+            try (var status = connection.createStatement().executeQuery(
+                    "select * from ford_catalog.catalog_status_v1")) {
+                assertThat(status.next()).isTrue();
+                for (var countColumn : java.util.List.of("model_count", "active_model_year_count", "variant_count",
+                        "page_count", "document_count", "embedded_document_count", "pending_embedding_count")) {
+                    assertThat(status.getLong(countColumn)).as(countColumn).isZero();
+                }
+                assertThat(status.getTimestamp("latest_page_crawl_at")).isNull();
+                assertThat(status.next()).isFalse();
+            }
             assertThat(columnFormat(connection, "catalog_documents_v1", "embedding"))
                     .isEqualTo("vector(1024)");
             assertThat(columnFormat(connection, "catalog_documents_v1", "search_vector"))

@@ -52,14 +52,14 @@ class FordEmptyDatabaseBootstrapIntegrationTest {
             assertThat(liquibaseTrackingRelations(connection)).containsExactly(
                     "ford_metadata.databasechangelog", "ford_metadata.databasechangeloglock");
 
-            for (var table : ordinaryTables(connection)) {
+            for (var table : businessTables(connection)) {
                 if (table.schema().equals("ford_metadata")
                         && List.of("databasechangelog", "databasechangeloglock").contains(table.name())) {
                     continue;
                 }
                 assertThat(rowCount(connection, table)).as("rows in %s.%s", table.schema(), table.name()).isZero();
             }
-            for (var view : views(connection, "ford_catalog")) {
+            for (var view : viewLikeRelations(connection, "ford_catalog")) {
                 if (view.name().equals("catalog_status_v1")) {
                     assertCatalogStatusIsEmpty(connection);
                 } else {
@@ -154,11 +154,11 @@ class FordEmptyDatabaseBootstrapIntegrationTest {
         }
     }
 
-    private static List<Relation> ordinaryTables(Connection connection) throws SQLException {
+    private static List<Relation> businessTables(Connection connection) throws SQLException {
         try (var statement = connection.createStatement(); var result = statement.executeQuery("""
                 select n.nspname, c.relname from pg_class c
                 join pg_namespace n on n.oid = c.relnamespace
-                where c.relkind = 'r' and n.nspname not in ('pg_catalog', 'information_schema')
+                where c.relkind in ('r', 'p') and n.nspname not in ('pg_catalog', 'information_schema')
                   and n.nspname not like 'pg\\_%' escape '\\'
                 order by n.nspname, c.relname
                 """)) {
@@ -168,10 +168,12 @@ class FordEmptyDatabaseBootstrapIntegrationTest {
         }
     }
 
-    private static List<Relation> views(Connection connection, String schema) throws SQLException {
+    private static List<Relation> viewLikeRelations(Connection connection, String schema) throws SQLException {
         try (var statement = connection.prepareStatement("""
-                select table_schema, table_name from information_schema.views
-                where table_schema = ? order by table_name
+                select n.nspname, c.relname from pg_class c
+                join pg_namespace n on n.oid = c.relnamespace
+                where n.nspname = ? and c.relkind in ('v', 'm')
+                order by c.relname
                 """)) {
             statement.setString(1, schema);
             try (var result = statement.executeQuery()) {
