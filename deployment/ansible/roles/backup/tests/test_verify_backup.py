@@ -132,6 +132,36 @@ class VerifyBackupTest(unittest.TestCase):
         self.assertNotRegex(source.lower(), re.compile(r"(?m)^\s*ssh\s"))
         self.assertTrue(wrapper.exists())
 
+    def test_rehearsal_rejects_unapproved_unix_socket_paths(self):
+        root = Path(__file__).resolve().parents[5]
+        script = root / "scripts/backup/restore-rehearsal.sh"
+        with tempfile.TemporaryDirectory() as directory:
+            socket_path = Path(directory) / "forwarded-docker.sock"
+            import socket
+
+            server = socket.socket(socket.AF_UNIX)
+            try:
+                server.bind(str(socket_path))
+                env = {
+                    **os.environ,
+                    "DOCKER_HOST": f"unix://{socket_path}",
+                    "DOCKER_CONTEXT": "",
+                }
+                result = subprocess.run(
+                    [
+                        str(script), directory, "ford_service_20261102T120000Z.dump.gz",
+                        "rehearsal-db", "rehearsal_target", "ford_service",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                )
+            finally:
+                server.close()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("approved local Docker socket", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

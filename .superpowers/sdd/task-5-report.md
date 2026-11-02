@@ -74,3 +74,20 @@
 ### Commit
 
 - Final Task 5 safety implementation commit: `9ace015` (`Disable in-place production database restore`). Report evidence is committed separately.
+
+## Final socket-locality review correction — 2026-11-02
+
+### Root cause and fix
+
+- Review found that requiring `DOCKER_HOST=unix://...` plus an existing socket did not establish that the Docker daemon was local; an arbitrary forwarded Unix socket passed those checks.
+- `scripts/backup/restore-rehearsal.sh` now resolves the socket path and accepts only canonical paths for Colima `native`, Docker Desktop (`~/.docker/run/docker.sock`), or `/var/run/docker.sock`. It rejects emme/testbox paths and SSH sessions. Other Unix sockets fail closed.
+- Added a regression test creating an arbitrary Unix socket and asserting rejection before archive access or Docker commands.
+
+### Verification
+
+- TDD RED — the new test failed before the guard because the script proceeded past the arbitrary socket and failed later on the missing archive.
+- TDD GREEN — `python3 -m unittest deployment.ansible.roles.backup.tests.test_verify_backup.VerifyBackupTest.test_rehearsal_rejects_unapproved_unix_socket_paths -v`: passed.
+- `python3 -m unittest discover deployment/ansible/roles/backup/tests -v`: **11 tests passed**.
+- `bash -n scripts/backup/restore-rehearsal.sh ford-ai-service/.mise/tasks/backup/restore-isolated`: passed.
+- `git diff --check`: passed.
+- The Colima native socket was not running at this review point, so this correction did not run another restore or contact any daemon. Prior synthetic restore proof remains recorded above.

@@ -18,9 +18,21 @@ source_db="$5"
 unset DOCKER_CONTEXT
 socket_path="${DOCKER_HOST#unix://}"
 [[ -S "$socket_path" ]] || { echo "DOCKER_HOST must point to an existing Unix socket." >&2; exit 2; }
+socket_realpath="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$socket_path")"
+approved_local_socket=0
+for candidate in \
+  "$HOME/.colima/native/docker.sock" \
+  "$HOME/.docker/run/docker.sock" \
+  "/var/run/docker.sock"; do
+  candidate_realpath="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$candidate")"
+  if [[ "$socket_realpath" == "$candidate_realpath" ]]; then
+    approved_local_socket=1
+    break
+  fi
+done
 local_host="$(hostname)"
-[[ "$DOCKER_HOST" != *emme* && "$local_host" != *emme* && -z "${SSH_CONNECTION:-}" && -z "${SSH_CLIENT:-}" ]] || {
-  echo "Remote/emme SSH sessions are forbidden for rehearsal." >&2; exit 2;
+[[ "$approved_local_socket" == 1 && "$DOCKER_HOST" != *emme* && "$socket_realpath" != *testbox* && "$socket_realpath" != *emme* && "$local_host" != *emme* && "$local_host" != *testbox* && -z "${SSH_CONNECTION:-}" && -z "${SSH_CLIENT:-}" ]] || {
+  echo "Rehearsal requires an approved local Docker socket; remote, emme, and testbox endpoints are forbidden." >&2; exit 2;
 }
 [[ "$container" =~ ^rehearsal-[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || {
   echo "Container name must use the rehearsal- prefix." >&2; exit 2;
