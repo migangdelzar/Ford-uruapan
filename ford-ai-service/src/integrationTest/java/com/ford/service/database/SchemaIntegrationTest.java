@@ -110,11 +110,33 @@ class SchemaIntegrationTest {
                     .isEqualTo("tsvector");
             assertThat(privilege(connection, "ford_catalog_reader", "ford_catalog.vehicle_search_v1", "SELECT")).isTrue();
             assertThat(privilege(connection, "ford_catalog_reader", "ford_catalog.catalog_documents_v1", "SELECT")).isTrue();
+            var readableRelations = java.util.List.of(
+                    "vehicle_search_v1", "vehicle_variants_v2", "vehicle_facts_v2", "comparison_facts_v2",
+                    "offers_v2", "catalog_documents_v1", "catalog_pages_v1", "catalog_status_v1", "promotions_v3");
+            for (var relation : readableRelations) {
+                assertThat(privilege(connection, "ford_catalog_reader", "ford_catalog." + relation, "SELECT"))
+                        .as("reader SELECT on explicit approved relation %s", relation).isTrue();
+                try (var reader = java.sql.DriverManager.getConnection(
+                        POSTGRES.getJdbcUrl() + "&currentSchema=ford_catalog", "ford_catalog_reader", "integration-test-only");
+                     var statement = reader.createStatement()) {
+                    statement.executeQuery("select * from ford_catalog." + relation + " limit 0").close();
+                }
+                for (var writePrivilege : java.util.List.of("INSERT", "UPDATE", "DELETE", "TRUNCATE")) {
+                    assertThat(privilege(connection, "ford_catalog_reader", "ford_catalog." + relation, writePrivilege))
+                            .as("reader %s denied on %s", writePrivilege, relation).isFalse();
+                }
+            }
+            assertThat(readerRoleFlags(connection)).containsExactly(true, false, false, false, false, false);
+            assertThat(scalar(dataSource, "select count(*) from pg_auth_members m join pg_roles r on r.oid = m.member where r.rolname = 'ford_catalog_reader'"))
+                    .as("reader has no role memberships").isZero();
             assertThat(privilege(connection, "ford_catalog_reader", "ford_catalog.retrieval_document_manifest", "SELECT")).isFalse();
             assertThat(privilege(connection, "ford_catalog_reader", "ford_catalog.price_import_journal", "SELECT")).isFalse();
             assertThat(privilege(connection, "ford_catalog_reader", "ford_catalog.reviewed_fact_manifest", "SELECT")).isFalse();
             assertThat(privilege(connection, "ford_catalog_reader", "ford_catalog.document_provenance_v1", "SELECT")).isFalse();
-            assertThat(privilege(connection, "ford_catalog_reader", "ford_catalog.vehicle_search_v1", "INSERT")).isFalse();
+            for (var relation : java.util.List.of("vehicle_images_v1", "vehicle_facts_v1", "page_links_v1")) {
+                assertThat(privilege(connection, "ford_catalog_reader", "ford_catalog." + relation, "SELECT"))
+                        .as("reader cannot access unapproved base table %s", relation).isFalse();
+            }
             assertThat(schemaPrivilege(connection, "ford_catalog_reader", "ford_metadata", "USAGE")).isFalse();
         }
 
@@ -334,6 +356,19 @@ class SchemaIntegrationTest {
             try (var result = statement.executeQuery()) {
                 result.next();
                 return result.getBoolean(1);
+            }
+        }
+    }
+
+    private static java.util.List<Boolean> readerRoleFlags(Connection connection) throws Exception {
+        try (var statement = connection.prepareStatement("""
+                select rolcanlogin, rolsuper, rolcreaterole, rolcreatedb, rolreplication, rolbypassrls
+                from pg_roles where rolname = 'ford_catalog_reader'
+                """)) {
+            try (var result = statement.executeQuery()) {
+                result.next();
+                return java.util.List.of(result.getBoolean(1), result.getBoolean(2), result.getBoolean(3),
+                        result.getBoolean(4), result.getBoolean(5), result.getBoolean(6));
             }
         }
     }
