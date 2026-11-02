@@ -24,7 +24,7 @@ class CatalogToolConfigurationTest {
     void catalogToolsAppearOnlyWhenEnabledWithBothReadAdapters() {
         contextRunner
                 .withUserConfiguration(ReaderConfiguration.class)
-                .withPropertyValues("ford.catalog.datasource.tools-enabled=true")
+                .withPropertyValues("ford.catalog.reader.tools-enabled=true")
                 .run(context -> assertThat(context).hasSingleBean(FordCatalogTools.class));
     }
 

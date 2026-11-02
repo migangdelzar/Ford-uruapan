@@ -39,9 +39,9 @@ public class ConversationResetInventoryService {
         counts.put("conversation_review_item", count("select count(*) from conversation_review_item where tenant_id = :tenant", tenantId));
         counts.put("conversation_turn_lease", count("select count(*) from conversation_turn_lease where tenant_id = :tenant", tenantId));
         counts.put("inbound_debounce", count("select count(*) from inbound_debounce where tenant_id = :tenant", tenantId));
-        counts.put("graph_thread", jdbc.sql("select count(*) from ford_graph.lg4jthread where thread_name like :prefix")
+        counts.put("graph_thread", jdbc.sql("select count(*) from ford_metadata.lg4jthread where thread_name like :prefix")
                 .param("prefix", tenantId + ":%").query(Long.class).single());
-        counts.put("graph_checkpoint", jdbc.sql("select count(*) from ford_graph.lg4jcheckpoint cp join ford_graph.lg4jthread t on t.thread_id = cp.thread_id where t.thread_name like :prefix")
+        counts.put("graph_checkpoint", jdbc.sql("select count(*) from ford_metadata.lg4jcheckpoint cp join ford_metadata.lg4jthread t on t.thread_id = cp.thread_id where t.thread_name like :prefix")
                 .param("prefix", tenantId + ":%").query(Long.class).single());
         counts.put("channel_message", count("select count(*) from channel_message where tenant_id = :tenant", tenantId));
         counts.put("outbox_event", count("select count(*) from outbox_event where tenant_id = :tenant and aggregate_type = 'conversation' and aggregate_id in (select id from conversation where tenant_id = :tenant)", tenantId));

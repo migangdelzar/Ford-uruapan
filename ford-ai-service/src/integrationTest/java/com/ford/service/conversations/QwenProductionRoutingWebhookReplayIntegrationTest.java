@@ -14,6 +14,7 @@ import com.ford.service.outbox.OutboxPublisher;
 import com.ford.service.channels.application.port.out.ChannelDeliveryPort;
 import liquibase.integration.spring.SpringLiquibase;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
@@ -111,6 +112,8 @@ class QwenProductionRoutingWebhookReplayIntegrationTest {
                 CATALOG_POSTGRES.getJdbcUrl(), CATALOG_POSTGRES.getUsername(), CATALOG_POSTGRES.getPassword());
         var exportDirectory = Path.of(System.getenv().getOrDefault("FORD_LOCAL_CATALOG_EXPORT_DIR",
                 "build/reports/local-qwen/source-export"));
+        Assumptions.assumeTrue(Files.isRegularFile(exportDirectory.resolve("manifest.json")),
+                "approved local catalog export manifest is required for Qwen replay integration");
         LocalCatalogSnapshotLoader.validateApprovedSnapshot(exportDirectory);
         SNAPSHOT = LocalCatalogSnapshotLoader.load(exportDirectory, catalogDataSource);
     }

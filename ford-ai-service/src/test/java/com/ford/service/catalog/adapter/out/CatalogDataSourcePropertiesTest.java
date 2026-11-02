@@ -10,7 +10,7 @@ class CatalogDataSourcePropertiesTest {
 
     @Test
     void isDisabledByDefaultAndNeedsNoCatalogSecret() {
-        var properties = new CatalogDataSourceProperties();
+        var properties = new FordCatalogReaderProperties();
 
         assertThat(properties.toolsEnabled()).isFalse();
         assertThatCode(properties::validate).doesNotThrowAnyException();
@@ -18,7 +18,7 @@ class CatalogDataSourcePropertiesTest {
 
     @Test
     void buildsOnlyTheFordCatalogReaderUrl() {
-        var properties = new CatalogDataSourceProperties();
+        var properties = new FordCatalogReaderProperties();
         properties.setHost("db.internal");
 
         assertThat(properties.jdbcUrl()).isEqualTo(
@@ -28,7 +28,7 @@ class CatalogDataSourcePropertiesTest {
 
     @Test
     void refusesToEnableCatalogWithoutVaultSecretOcid() {
-        var properties = new CatalogDataSourceProperties();
+        var properties = new FordCatalogReaderProperties();
         properties.setToolsEnabled(true);
 
         assertThatThrownBy(properties::validate)
@@ -38,7 +38,7 @@ class CatalogDataSourcePropertiesTest {
 
     @Test
     void refusesWriterOrAdminUsername() {
-        var properties = new CatalogDataSourceProperties();
+        var properties = new FordCatalogReaderProperties();
         properties.setToolsEnabled(true);
         properties.setSecretOcid("ocid1.vaultsecret.example");
         properties.setUsername("ford_catalog_admin");
@@ -50,7 +50,7 @@ class CatalogDataSourcePropertiesTest {
 
     @Test
     void refusesToStartEnabledDatasourceWithoutResolvedPassword() {
-        var properties = new CatalogDataSourceProperties();
+        var properties = new FordCatalogReaderProperties();
         properties.setToolsEnabled(true);
         properties.setSecretOcid("ocid1.vaultsecret.example");
 

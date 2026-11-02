@@ -13,7 +13,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Component
-@ConditionalOnBean(name = "catalogJdbcClient")
+@ConditionalOnBean(name = "fordCatalogJdbcClient")
 @NamedInterface
 public final class JdbcFordCatalogReader {
 
@@ -34,7 +34,7 @@ public final class JdbcFordCatalogReader {
             """;
     private final JdbcClient jdbc;
 
-    public JdbcFordCatalogReader(@org.springframework.beans.factory.annotation.Qualifier("catalogJdbcClient")
+    public JdbcFordCatalogReader(@org.springframework.beans.factory.annotation.Qualifier("fordCatalogJdbcClient")
                                  JdbcClient jdbc) {
         this.jdbc = jdbc;
     }

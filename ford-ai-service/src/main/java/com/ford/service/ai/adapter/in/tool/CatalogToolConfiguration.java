@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Configuration;
 public class CatalogToolConfiguration {
 
     @Bean
-    @ConditionalOnProperty(prefix = "ford.catalog.datasource", name = "tools-enabled", havingValue = "true")
+    @ConditionalOnProperty(prefix = "ford.catalog.reader", name = "tools-enabled", havingValue = "true")
     FordCatalogTools fordCatalogTools(JdbcFordCatalogReader catalogReader,
                                       JdbcFordCatalogKnowledgeReader knowledgeReader) {
         return new FordCatalogTools(catalogReader, knowledgeReader);

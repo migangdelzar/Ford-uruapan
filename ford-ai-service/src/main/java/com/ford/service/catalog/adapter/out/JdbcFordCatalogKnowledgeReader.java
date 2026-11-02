@@ -16,7 +16,7 @@ import java.util.ArrayList;
 import java.util.UUID;
 
 @Component
-@ConditionalOnBean(name = {"catalogJdbcClient", "catalogQueryEmbeddingModel"})
+@ConditionalOnBean(name = {"fordCatalogJdbcClient", "catalogQueryEmbeddingModel"})
 @NamedInterface
 public final class JdbcFordCatalogKnowledgeReader {
 
@@ -44,7 +44,7 @@ public final class JdbcFordCatalogKnowledgeReader {
     private final CatalogQueryEmbeddingModel embeddingModel;
 
     public JdbcFordCatalogKnowledgeReader(
-            @org.springframework.beans.factory.annotation.Qualifier("catalogJdbcClient") JdbcClient jdbc,
+            @org.springframework.beans.factory.annotation.Qualifier("fordCatalogJdbcClient") JdbcClient jdbc,
             @org.springframework.beans.factory.annotation.Qualifier("catalogQueryEmbeddingModel")
             CatalogQueryEmbeddingModel embeddingModel) {
         this.jdbc = jdbc;
