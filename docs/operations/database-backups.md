@@ -75,10 +75,19 @@ performs these steps:
 
 The bucket lifecycle policy controls remote retention. The local seven-day
 cleanup and remote bucket retention are separate controls. A successful upload
-is not a restore test. The rehearsal restore utility requires explicit isolated
-container and database names, rejects both production database names, and uses
-`docker exec` rather than the production Compose service. Production rollback is
-separate and release-gated; do not use rehearsal tooling for production rollback.
+is not a restore test. `mise run backup:restore-isolated` uses only a local
+Docker Unix socket, validates source manifest identity and both checksums, and
+requires a `rehearsal-` container labeled `ford.rehearsal=isolated` plus a
+`rehearsal_` target database. It does not use Ansible, SSH, inventory, or
+production Compose. Historical manifests without `database` are interpreted as
+legacy `ford_service`; they cannot verify as `ford`.
+
+Production rollback is a separate, release-only operation. `mise run
+backup:restore` requires the exact `FORD_RESTORE_APPROVAL_ID` both in the
+environment and as its first argument, `FORD_RESTORE_TARGET=emme-2`, an archive
+name, and exactly `ford_service` or `ford` as the selected database. It retains
+the production Compose restore operation. Do not run it without a separately
+reviewed release procedure and fresh per-target approval.
 
 ## GitHub Actions controls
 

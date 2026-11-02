@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Restore a verified backup into a local isolated rehearsal database"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT/.."
+[[ $# == 5 ]] || {
+  echo 'Usage: mise run backup:restore-isolated -- <archive-dir> <postgres-archive> <container> <rehearsal_database> <source-db>' >&2
+  exit 2
+}
+exec "$MISE_PROJECT_ROOT/../scripts/backup/restore-rehearsal.sh" "$@"

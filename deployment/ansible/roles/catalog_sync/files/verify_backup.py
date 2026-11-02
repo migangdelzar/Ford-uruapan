@@ -8,6 +8,7 @@ import stat
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 
 def sha256(path: Path) -> str:
@@ -19,13 +20,22 @@ def sha256(path: Path) -> str:
 
 
 def verify_backup(
-    archive: Path, utc_day: str, expected_database: str = "ford_service"
+    archive: Path, utc_day: str, expected_database: str = "ford_service",
+    expected_archive: Optional[str] = None,
 ) -> dict[str, str]:
     if expected_database not in {"ford_service", "ford"}:
         raise ValueError("expected database must be ford_service or ford")
     if not re.fullmatch(r"[0-9]{8}", utc_day):
         raise ValueError("expected UTC date must be YYYYMMDD")
-    manifests = sorted(archive.glob(f"manifest_{utc_day}T*.json"))
+    if expected_archive is not None:
+        archive_match = re.fullmatch(
+            r"[A-Za-z0-9._-]+_([0-9]{8}T[0-9]{6}Z)\.dump\.gz", expected_archive
+        )
+        if not archive_match or archive_match.group(1)[:8] != utc_day:
+            raise ValueError("requested PostgreSQL archive name is invalid")
+        manifests = [archive / f"manifest_{archive_match.group(1)}.json"]
+    else:
+        manifests = sorted(archive.glob(f"manifest_{utc_day}T*.json"))
     if not manifests:
         raise ValueError("same-day backup manifest is missing")
 
@@ -33,7 +43,11 @@ def verify_backup(
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(manifest, dict):
         raise ValueError("backup manifest is malformed")
-    database = manifest.get("database")
+    if expected_archive is not None and manifest.get("postgres") != expected_archive:
+        raise ValueError("manifest PostgreSQL archive does not match requested archive")
+    # Manifests written before database identity was introduced are legacy
+    # ford_service backups. Never infer the replacement database from absence.
+    database = manifest.get("database", "ford_service")
     if database not in {"ford_service", "ford"}:
         raise ValueError("backup manifest database is missing or invalid")
     if database != expected_database:
@@ -75,11 +89,14 @@ def verify_backup(
 
 
 def main() -> int:
-    if len(sys.argv) != 3:
-        print("usage: verify_backup.py ARCHIVE_DIR UTC_YYYYMMDD", file=sys.stderr)
+    if len(sys.argv) not in {3, 4, 5}:
+        print("usage: verify_backup.py ARCHIVE_DIR UTC_YYYYMMDD [EXPECTED_DATABASE [EXPECTED_ARCHIVE]]", file=sys.stderr)
         return 2
     try:
-        result = verify_backup(Path(sys.argv[1]), sys.argv[2])
+        result = verify_backup(
+            Path(sys.argv[1]), sys.argv[2], sys.argv[3] if len(sys.argv) >= 4 else "ford_service",
+            sys.argv[4] if len(sys.argv) == 5 else None,
+        )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"backup verification failed: {error}", file=sys.stderr)
         return 1
