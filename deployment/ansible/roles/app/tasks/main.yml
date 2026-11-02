@@ -4,6 +4,15 @@
     that: [app_image is defined, app_image | length > 0]
     fail_msg: "Pass app_image from the deployment task."
 
+- name: Require runtime database credentials
+  ansible.builtin.assert:
+    that:
+      - lookup('ansible.builtin.env', 'FORD_DATABASE_USERNAME') | default('', true) | trim | length > 0
+      - lookup('ansible.builtin.env', 'FORD_DATABASE_USERNAME') | trim != 'ford'
+      - lookup('ansible.builtin.env', 'FORD_SECRETS_PROVIDER') | default('environment', true) == 'oci-vault' or lookup('ansible.builtin.env', 'FORD_DATABASE_PASSWORD') | default('', true) | length > 0
+    fail_msg: "Runtime database credentials are not configured correctly."
+  no_log: true
+
 - name: Detect the Docker data directory
   ansible.builtin.command:
     cmd: "docker info --format '{% raw %}{{.DockerRootDir}}{% endraw %}'"

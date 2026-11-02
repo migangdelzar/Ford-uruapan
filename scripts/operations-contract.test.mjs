@@ -134,8 +134,27 @@ test("new data and Service deployments target the ford database without bootstra
   assert.match(appEnv, /^FORD_DATABASE_PASSWORD=\{\{ lookup\('ansible\.builtin\.env', 'FORD_DATABASE_PASSWORD'\) \}\}$/m);
   assert.doesNotMatch(appEnv, /^FORD_DATABASE_USERNAME=ford$/m);
   assert.doesNotMatch(appEnv, /FORD_DATABASE_PASSWORD=.*POSTGRES_PASSWORD/);
+  assert.match(appEnv, /^FORD_CATALOG_TOOLS_ENABLED=false$/m);
+  assert.match(appEnv, /^FORD_LEGACY_CATALOG_TOOLS_ENABLED=false$/m);
   assert.match(application, /tools-enabled: \$\{FORD_CATALOG_TOOLS_ENABLED:false\}/);
   assert.match(application, /enabled: \$\{FORD_LEGACY_CATALOG_TOOLS_ENABLED:false\}/);
+});
+
+test("app deployment validates runtime database credentials before rendering without logging them", async () => {
+  const appRole = await read("deployment/ansible/roles/app/tasks/main.yml");
+  const validation = appRole.indexOf("Require runtime database credentials");
+  const rendering = appRole.indexOf("Render application environment");
+
+  assert.notEqual(validation, -1, "credential assertion must be present");
+  assert.ok(validation < rendering, "credential assertion must run before template rendering");
+  const assertion = appRole.slice(validation, rendering);
+  assert.match(assertion, /FORD_DATABASE_USERNAME/);
+  assert.match(assertion, /FORD_DATABASE_PASSWORD/);
+  assert.match(assertion, /oci-vault/);
+  assert.match(assertion, /ford/);
+  assert.match(assertion, /fail_msg:/);
+  assert.doesNotMatch(assertion, /no_log:\s*false|debug:|FORD_DATABASE_(?:USERNAME|PASSWORD)\s*\}\}/);
+  assert.match(assertion, /no_log:\s*true/);
 });
 
 test("OCI backup identity is declarative and reproducible", async () => {
