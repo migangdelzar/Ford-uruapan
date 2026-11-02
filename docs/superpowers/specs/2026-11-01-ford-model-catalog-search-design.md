@@ -19,6 +19,14 @@ the approved scraper snapshot, and existing cutover gates.
   and vector. A logical model catalog can have multiple such documents.
 - Use the currently approved embedding contract: `bge-m3`, 1,024 dimensions.
   Do not combine catalog vectors with conversation-memory vectors.
+- Keep all application-owned objects out of PostgreSQL's `public` schema,
+  including Liquibase history, catalog and metadata tables, indexes, and the
+  pgvector extension. Keep the built-in `public` schema present but empty; do
+  not drop it.
+- Install or relocate the relocatable pgvector extension into `ford_catalog`.
+  Qualify its vector types and operator classes with `ford_catalog`; grant the
+  catalog reader only the catalog schema usage and approved catalog table reads.
+  Keep metadata table access denied.
 - Combine vector and Spanish keyword ranks with reciprocal-rank fusion (RRF)
   inside one parameterized PostgreSQL query. Query embedding generation is a
   separate model call, not a second database query.
@@ -55,17 +63,20 @@ semantic vector as a substitute for SQL predicates.
 
 Before implementing any schema or import changes, inspect the approved snapshot
 to prove that its model/document/year/variant identifiers provide stable,
-unambiguous relationships. If they do not, stop and resolve identity mapping
-with the source owner. Do not infer model identity from fuzzy text matching.
+unambiguous relationships. The disposable restore audit found 30 stable model
+IDs, with exact model-year joins for model documents and exact offer/model/year
+joins for offer-only documents. Recheck identities against the approved archive
+before loading it. If any mapping is ambiguous, stop and resolve it with the
+source owner. Do not infer model identity from fuzzy text matching.
 
-The current catalog document contract has nullable `model_id`, `model_year_id`,
-and `variant_id` fields, as well as content, citation, embedding, and
-keyword-search fields. The source model-year/variant relations do not yet prove
-that every document can be joined to one stable model identity. Validate this
-first. If the mapping is missing, add a minimal explicit identity mapping owned
-by the catalog; do not rely on nullable model IDs or fuzzy text matching. Prefer
-the existing contract where it is sufficient. Do not create competing canonical
-model data or rewrite the approved source snapshot as part of this design.
+The catalog document contract permits nullable `model_id`, `model_year_id`, and
+`variant_id` fields. A read-only audit on the independently restored candidate
+found stable joins for its 1,882 documents, including the 2 offer-only documents
+resolved through exact offer IDs and exact model/year equality. The approved
+archive hash mismatch still blocks treating the candidate as approved or loading
+its rows. Keep exact identity joins; fail closed on any missing or ambiguous
+mapping. Do not create competing canonical model data or rewrite the approved
+source snapshot as part of this design.
 
 ## Current blockers
 
@@ -125,8 +136,10 @@ for a single hybrid request, not force every tool operation into one query.
   index for the generated `tsvector`, and B-tree indexes for model/year/variant
   joins and frequently used exact predicates.
 - Keep operator resolution and extension ownership explicit. Do not drop
-  `public`, use `CASCADE`, or move extensions without the existing object and
-  dependency review.
+  `public` or use `CASCADE`. Moving pgvector into `ford_catalog` is approved only
+  after auditing extension relocatability, ownership, dependencies, and any
+  existing public-schema objects; fail closed if the review finds anything not
+  explicitly classified for relocation.
 
 ## Compatibility and migration safety
 
@@ -140,6 +153,30 @@ for a single hybrid request, not force every tool operation into one query.
   provenance relations.
 - Keep the catalog feature flag disabled until data, grants, health, and the
   pre-existing release gates pass.
+
+## Schema placement and public-schema invariant
+
+- Use `ford_metadata` for app-owned data and Liquibase history; use
+  `ford_catalog` for catalog relations and the pgvector extension objects.
+- Add extension-schema setup before the first metadata vector changeset so
+  clean installs create `ford_catalog.vector` and its operator classes before
+  use. For an existing install, verify pgvector is relocatable and owned by the
+  migration principal before moving the extension with
+  `ALTER EXTENSION ... SET SCHEMA`; do not uninstall/reinstall or cascade.
+- Qualify vector columns, casts, operators, and operator classes. Configure JDBC
+  search paths with only the required `ford_metadata` and/or `ford_catalog`
+  schemas; do not append `public` as a fallback.
+- Preserve the `ford_catalog_reader` boundary: it receives `USAGE` on
+  `ford_catalog` and `SELECT` only on approved catalog read relations. It gets no
+  `USAGE` on `ford_metadata`, and no capture, provenance, manifest, or write
+  privileges.
+- Audit all object classes in `public` before migration. Move only explicitly
+  reviewed app objects, relocate pgvector as above, and fail the migration if
+  any unclassified user object remains. Do not drop `public`, use `CASCADE`, or
+  change approved archive contents.
+- Verify after migration that `public` contains no application-owned tables,
+  views, sequences, types, functions, operators, indexes, or extensions, and
+  that all Liquibase history is in `ford_metadata`.
 
 ## Verification requirements
 
@@ -158,6 +195,9 @@ for a single hybrid request, not force every tool operation into one query.
 - Keyword-only, semantic-only, and overlapping matches fuse deterministically
   with no duplicate model result and citations retained.
 - The hybrid path executes exactly one catalog SQL statement.
+- The pgvector extension, types, operators, and operator classes resolve from
+  `ford_catalog`; app data and Liquibase history resolve from `ford_metadata`;
+  `public` has no application-owned objects.
 - The read-only role can retrieve approved catalog results and remains denied
   metadata, capture/provenance access, and writes.
 - Query plans use intended indexes at representative candidate scale, or an
