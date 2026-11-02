@@ -36,6 +36,8 @@ class FordMetadataSchemaCutoverIntegrationTest {
         jdbc.sql("drop table if exists ford_metadata.lg4jcheckpoint").update();
         jdbc.sql("drop view if exists ford_graph.unclassified_view").update();
         jdbc.sql("drop table if exists ford_graph.lg4jcheckpoint").update();
+        jdbc.sql("drop table if exists ford.ai_execution").update();
+        jdbc.sql("drop schema if exists ford").update();
         jdbc.sql("drop schema if exists ford_metadata").update();
         jdbc.sql("drop schema if exists ford_graph").update();
         jdbc.sql("drop table if exists public.conversation").update();
@@ -86,6 +88,27 @@ class FordMetadataSchemaCutoverIntegrationTest {
         assertThat(tableExists("public", "conversation")).isTrue();
         assertThat(tableExists("ford_metadata", "conversation")).isFalse();
         assertThat(schemaExists("ford_graph")).isTrue();
+    }
+
+    @Test
+    void refusesDuplicateOperationalTableInFordAndPublicWithoutMovingRows() {
+        jdbc.sql("create schema ford").update();
+        jdbc.sql("create table ford.ai_execution (id integer primary key, marker text not null)").update();
+        jdbc.sql("create table public.ai_execution (id integer primary key, marker text not null)").update();
+        jdbc.sql("insert into ford.ai_execution values (1, 'ford-copy')").update();
+        jdbc.sql("insert into public.ai_execution values (1, 'public-copy')").update();
+
+        assertThatThrownBy(this::applyCutover)
+                .hasStackTraceContaining("Relation ai_execution exists in an unreviewed schema");
+
+        assertThat(tableExists("ford", "ai_execution")).isTrue();
+        assertThat(tableExists("public", "ai_execution")).isTrue();
+        assertThat(tableExists("ford_metadata", "ai_execution")).isFalse();
+        assertThat(jdbc.sql("select marker from ford.ai_execution where id = 1")
+                .query(String.class).single()).isEqualTo("ford-copy");
+        assertThat(jdbc.sql("select marker from public.ai_execution where id = 1")
+                .query(String.class).single()).isEqualTo("public-copy");
+        assertThat(schemaExists("public")).isTrue();
     }
 
     private void applyCutover() throws Exception {
