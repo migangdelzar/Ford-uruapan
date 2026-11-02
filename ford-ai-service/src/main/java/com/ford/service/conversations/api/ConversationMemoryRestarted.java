@@ -7,5 +7,11 @@ import java.util.UUID;
 
 @NamedInterface
 public record ConversationMemoryRestarted(UUID tenantId, UUID conversationId,
-                                          long conversationVersion, Instant contextStartedAt) {
+                                          long conversationVersion, Instant contextStartedAt,
+                                          String actorId, ConversationMemoryRestartRequest.RestartReason reason) {
+    public ConversationMemoryRestarted(UUID tenantId, UUID conversationId,
+                                       long conversationVersion, Instant contextStartedAt) {
+        this(tenantId, conversationId, conversationVersion, contextStartedAt, "legacy",
+                ConversationMemoryRestartRequest.RestartReason.LEGACY_CLIENT_UNSPECIFIED);
+    }
 }

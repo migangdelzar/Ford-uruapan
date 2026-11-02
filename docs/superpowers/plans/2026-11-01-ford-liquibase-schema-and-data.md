@@ -12,8 +12,8 @@
 
 - Application database name is `ford` in every environment.
 - The only application schemas are `ford_metadata` and `ford_catalog`; PostgreSQL system schemas remain.
-- Remove `public` only after inventory and extension checks pass; never use `CASCADE`.
-- Bot/Meta sessions, leads, and user requirements remain in `ford_metadata`; canonical Ford models/specs/prices/offers/promotions remain in `ford_catalog`.
+- Keep built-in `public` present and empty of application/extension objects; never drop it or use `CASCADE`.
+- Bot/Meta sessions, leads, user requirements, and tenant-scoped knowledge documents/embeddings remain in `ford_metadata`; canonical Ford models/specs/prices/offers/promotions and source-owned Ford catalog documents/embeddings remain in `ford_catalog`.
 - Ford Service Liquibase is the only DDL migration owner; Ford-scraping writes data and does not run its SQL migrations after cutover.
 - Use the current Service database user for Liquibase as explicitly selected; this user gains catalog DDL/DML rights. `ford_catalog_reader` stays read-only and cannot see capture/provenance relations. The approved source currently grants it SELECT on `ford_read.document_provenance_v1`; Liquibase must remove that grant and tests must prove denial.
 - Every environment, including production, receives the approved candidate snapshot. Its known coverage and price gaps must be stated; do not claim production validation.
@@ -67,6 +67,7 @@
 - Create: `ford-ai-service/src/main/resources/db/changelog/catalog/db.changelog-catalog.yaml`
 - Modify: `ford-ai-service/src/main/resources/db/changelog/db.changelog-master.yaml`
 - Modify: `ford-ai-service/src/main/resources/application.yml`
+- Create: `ford-ai-service/src/main/java/com/ford/service/database/FordMetadataLiquibaseBootstrap.java` and `FordLiquibaseConfiguration.java` — bootstrap the metadata schema/history before Spring Liquibase.
 - Create: `ford-ai-service/src/main/resources/db/bootstrap/001-ford-metadata-liquibase-history.sql` — create `ford_metadata` and safely move existing Liquibase history/lock tables before Liquibase initialization.
 - Modify: deployment DB bootstrap/runtime templates that set the DB name and Liquibase schema
 - Modify: schema ownership integration tests from Task 2
@@ -76,7 +77,9 @@
 - [ ] Extend the integration test first: seed representative applied changelog rows and the lock table in the current schema; run the pre-Liquibase initializer; apply the master changelog twice; assert history rows/checksums are unchanged, no prior changeset reruns, and Service rows survive schema moves.
 - [ ] Run the focused integration test and verify expected failure against the current unqualified changelog.
 - [ ] Add a bootstrap that idempotently creates only `ford_metadata` before Liquibase starts. Configure `spring.liquibase.liquibase-schema=ford_metadata`, `spring.liquibase.default-schema=ford_metadata`, and JDBC `currentSchema=ford_metadata`; keep the database name exactly `ford`.
-- [ ] Add forward-only Liquibase changesets that move chat/lead/requirement relations to `ford_metadata` and reviewed canonical Ford model/spec/price/offer/promotion relations to `ford_catalog`. Preserve legacy catalog values with source provenance/history; the approved snapshot wins current-value conflicts. Use explicit object names; fail on unclassified relations or if a price cannot be distinguished from a user-entered budget/requirement.
+- [ ] Add forward-only Liquibase changesets that move chat/lead/requirement and tenant-scoped knowledge/document/embedding relations to `ford_metadata`; move only reviewed source-owned canonical Ford model/spec/price/offer/promotion/catalog-document/embedding relations to `ford_catalog`. Preserve legacy catalog values with source provenance/history; the approved snapshot wins current-value conflicts. No trusted stock feed exists, so do not expose `vehicle_unit` as stock truth; route availability questions to human handoff. Use explicit object names; fail on unclassified relations or if a price cannot be distinguished from a user-entered budget/requirement.
+- [x] Add the pre-Liquibase bootstrap and PostgreSQL tests for fresh schema creation, idempotence, exact history/lock relocation with row preservation, and ambiguous-location rejection.
+- [x] Configure the service database default as `ford`, JDBC `currentSchema=ford_metadata`, and Liquibase metadata/default schema as `ford_metadata`.
 - [ ] Register the catalog changelog in the master changelog and set explicit schema names on every catalog changeset. Do not modify checksums or contents of already-applied changesets.
 - [ ] Run `./gradlew integrationTest --tests '*FordSchemaOwnershipIntegrationTest'`; expected: both fresh install and upgrade paths pass.
 
@@ -90,7 +93,7 @@
 - Modify: `ford-ai-service/src/integrationTest/java/com/ford/service/database/FordSchemaOwnershipIntegrationTest.java`
 - Read: all 21 checked-in Ford-scraping SQL migrations and the verified live source inventory
 
-- [ ] Extend the PostgreSQL integration test to assert every approved catalog table, view, FK, index, and extension exists in `ford_catalog`, while private capture/provenance relations remain in that schema but are not selectable by `ford_catalog_reader`.
+- [ ] Extend the PostgreSQL integration test to assert every approved catalog table, view, FK, index, extension, 1,024-dimensional `bge-m3` document embedding, and keyword search vector exists in `ford_catalog`, while private capture/provenance relations remain in that schema but are not selectable by `ford_catalog_reader`.
 - [ ] Run the focused integration test and verify the missing catalog objects/grants fail before implementation.
 - [ ] Port the reviewed scraper DDL into explicit Liquibase changesets, preserving data types, indexes, uniqueness, foreign keys, vector dimensions, and view definitions. Install required extensions in an approved schema only after confirming extension relocation support.
 - [ ] Grant `ford_catalog_reader` schema usage and SELECT only on the approved read relations. Explicitly revoke its write privileges and SELECT on private capture/provenance relations, including `ford_catalog.document_provenance_v1` migrated from `ford_read.document_provenance_v1`. Do not grant it `ford_metadata` access.
@@ -120,9 +123,9 @@ python3 scripts/catalog/export-liquibase-snapshot.py \
 
 The command emits an immutable SQL data file and manifest. The Liquibase changeset includes the exact source SHA and an explicit `sqlFile` reference; it stages, validates, and atomically publishes only catalog-owned data.
 
-- [ ] Write Python unit tests for wrong database identity, wrong source SHA, missing/extra object, count mismatch, unstable row order, SQL escaping, vector/JSONB literals, and deterministic output.
+- [ ] Write Python unit tests for wrong database identity, wrong source SHA, missing/extra object, count mismatch, unstable row order, SQL escaping, JSONB literals, 1,024-dimensional `bge-m3` vector literals, `tsvector` serialization, and deterministic output.
 - [ ] Run `python3 -m unittest scripts.tests.test_export_liquibase_snapshot -v`; expected: failures identify the missing exporter.
-- [ ] Implement read-only source introspection and deterministic INSERT generation with explicit columns, foreign-key order, safely quoted literals, and the full catalog inventory. Never include credentials in artifacts or logs.
+- [ ] Implement read-only source introspection and deterministic INSERT generation with explicit columns, foreign-key order, safely quoted literals, and the full catalog inventory. Validate all catalog-document embeddings are `bge-m3`/1,024 dimensions and preserve `search_vector`. Never include credentials in artifacts or logs.
 - [ ] Run `python3 -m unittest scripts.tests.test_export_liquibase_snapshot -v`; expected: all unit cases pass and repeated export from the same source yields identical SQL and hashes.
 - [ ] Add a PostgreSQL integration test applying the snapshot changeset twice, verifying exact row counts/content hashes, failed-load rollback, and unchanged `ford_metadata` rows.
 - [ ] Generate SQL only from the newly verified source archive/DB identity. Add it as a new immutable migration; never edit a previously applied data changeset.

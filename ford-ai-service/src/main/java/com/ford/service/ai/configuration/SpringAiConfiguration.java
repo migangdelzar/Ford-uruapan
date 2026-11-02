@@ -2,7 +2,7 @@ package com.ford.service.ai.configuration;
 
 import com.ford.service.ai.adapter.in.tool.FinanceEstimateTool;
 import com.ford.service.ai.adapter.in.tool.KnowledgeTools;
-import com.ford.service.ai.adapter.in.tool.VehicleTools;
+import com.ford.service.ai.adapter.in.tool.CatalogTools;
 import com.ford.service.ai.adapter.in.tool.FordCatalogTools;
 import com.ford.service.ai.adapter.out.springai.SpringAiChatCompletionAdapter;
 import com.ford.service.ai.adapter.out.rules.RulesConversationDecisionAdapter;
@@ -32,22 +32,27 @@ import com.ford.service.observability.AiObservationService;
 import com.ford.service.observability.DefaultAiObservationService;
 import io.micrometer.observation.ObservationRegistry;
 import io.micrometer.core.instrument.MeterRegistry;
-import com.ford.service.catalog.application.VehicleCatalog;
+import com.ford.service.catalog.api.CatalogPort;
+import com.ford.service.catalog.api.CatalogQueryEmbedder;
+import com.ford.service.catalog.api.CatalogRetrievalPort;
+import com.ford.service.catalog.adapter.out.ClasspathModelPopularityIndex;
+import com.ford.service.catalog.application.ModelPopularityIndex;
+import com.ford.service.catalog.application.ModelPopularityEnricher;
 import com.ford.service.finance.application.FinanceOperations;
 import com.ford.service.finance.application.port.out.FinanceTermsRepository;
 import com.ford.service.knowledge.application.KnowledgeRetrieval;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
-import org.springframework.ai.mcp.customizer.McpClientCustomizer;
-import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.retry.RetryUtils;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.ResponseErrorHandler;
@@ -71,10 +76,9 @@ import java.util.List;
 
 /** Composition root marker for Spring AI adapters and read-only tool wiring. */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({ClassificationProperties.class, TypeSafeProperties.class, McpProperties.class,
-        OllamaAccessProperties.class})
+@EnableConfigurationProperties({ClassificationProperties.class, TypeSafeProperties.class, CatalogToolProperties.class,
+        OllamaAccessProperties.class, CatalogEmbeddingProperties.class})
 public class SpringAiConfiguration {
-
     private static final Logger log = LoggerFactory.getLogger(SpringAiConfiguration.class);
 
     @Bean
@@ -103,12 +107,6 @@ public class SpringAiConfiguration {
     }
 
     @Bean
-    McpClientCustomizer<HttpClientStreamableHttpTransport.Builder> fordMcpClientAuthorizationCustomizer(
-            McpProperties properties) {
-        return new FordMcpClientAuthorizationCustomizer(properties);
-    }
-
-    @Bean
     @org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean(OllamaApi.class)
     @org.springframework.boot.autoconfigure.condition.ConditionalOnBean(
             org.springframework.ai.model.ollama.autoconfigure.OllamaConnectionDetails.class)
@@ -128,6 +126,14 @@ public class SpringAiConfiguration {
                 .responseErrorHandler(responseErrorHandlerProvider.getIfAvailable(
                         () -> RetryUtils.DEFAULT_RESPONSE_ERROR_HANDLER))
                 .build();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ford.catalog.tools", name = "enabled", havingValue = "true")
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnBean(OllamaApi.class)
+    CatalogQueryEmbedder catalogQueryEmbedder(OllamaApi ollamaApi, CatalogEmbeddingProperties properties) {
+        return new com.ford.service.ai.adapter.out.springai.OllamaCatalogQueryEmbedder(
+                ollamaApi, properties.model());
     }
 
     @Bean
@@ -170,6 +176,11 @@ public class SpringAiConfiguration {
     }
 
     @Bean
+    com.ford.service.ai.application.EvidenceGroundedResponsePolicy evidenceGroundedResponsePolicy() {
+        return new com.ford.service.ai.application.EvidenceGroundedResponsePolicy();
+    }
+
+    @Bean
     AssistantScopePolicy assistantScopePolicy(IntentRouter intentRouter, ToolAuthorizationPolicy toolPolicy) {
         return new AssistantScopePolicy(intentRouter, toolPolicy.availableReadOnlyToolNames());
     }
@@ -185,19 +196,27 @@ public class SpringAiConfiguration {
     }
 
     @Bean
-    ToolAuthorizationPolicy toolAuthorizationPolicy(ObjectProvider<VehicleCatalog> catalog,
-                                                    ObjectProvider<FinanceOperations> finance,
+    ModelPopularityIndex modelPopularityIndex() {
+        return new ClasspathModelPopularityIndex();
+    }
+
+    @Bean
+    ModelPopularityEnricher modelPopularityEnricher(ModelPopularityIndex index) {
+        return new ModelPopularityEnricher(index);
+    }
+
+    @Bean
+    ToolAuthorizationPolicy toolAuthorizationPolicy(ObjectProvider<FinanceOperations> finance,
                                                     ObjectProvider<FinanceTermsRepository> terms,
                                                      ObjectProvider<KnowledgeRetrieval> knowledge,
-                                                     ObjectProvider<FordCatalogTools> catalogTools,
-                                                    ObjectProvider<SyncMcpToolCallbackProvider> mcpProviders,
-                                                    McpProperties mcpProperties,
-                                                    ObjectProvider<MeterRegistry> meterRegistries) {
+                                                     ObjectProvider<CatalogPort> catalogPortProvider,
+                                                      ObjectProvider<CatalogRetrievalPort> catalogRetrievalPortProvider,
+                                                      ObjectProvider<FordCatalogTools> fordCatalogToolsProvider,
+                                                       CatalogToolProperties catalogToolProperties,
+                                                       ModelPopularityEnricher popularityEnricher,
+                                                       ObjectProvider<MeterRegistry> meterRegistries,
+                                                       ProviderRetryDelay retryDelay) {
         var toolObjects = new ArrayList<Object>();
-        var vehicleCatalog = catalog.getIfAvailable();
-        if (vehicleCatalog != null && !mcpProperties.requiredForVolatileInformation()) {
-            toolObjects.add(new VehicleTools(vehicleCatalog));
-        }
         var financeOperations = finance.getIfAvailable();
         var financeTerms = terms.getIfAvailable();
         if (financeOperations != null && financeTerms != null) {
@@ -207,35 +226,41 @@ public class SpringAiConfiguration {
         if (knowledgeRetrieval != null) {
             toolObjects.add(new KnowledgeTools(knowledgeRetrieval));
         }
-        var localCatalogTools = catalogTools.getIfAvailable();
-        if (localCatalogTools != null) {
-            toolObjects.add(localCatalogTools);
+        var localCatalogToolNames = new java.util.HashSet<String>();
+        if (catalogToolProperties.enabled()) {
+            var catalogPort = catalogPortProvider.getIfAvailable();
+            var retrievalPort = catalogRetrievalPortProvider.getIfAvailable();
+            if (catalogPort != null && retrievalPort != null) {
+                var localTools = new CatalogTools(catalogPort, retrievalPort, popularityEnricher);
+                toolObjects.add(localTools);
+                localCatalogToolNames.addAll(java.util.Set.of("search_vehicles", "search_vehicle_and_offers",
+                        "search_offers", "get_vehicle", "list_promotions", "get_page_links",
+                        "get_vehicle_provenance", "get_catalog_status", "compare_vehicles", "compare_trims",
+                        "compare_model_years", "get_variant_comparisons"));
+            } else {
+                log.info("Legacy Ford catalog tools unavailable; dedicated catalog reader remains independent");
+            }
+        }
+        var fordCatalogTools = fordCatalogToolsProvider.getIfAvailable();
+        if (fordCatalogTools != null) {
+            toolObjects.add(fordCatalogTools);
         }
         var callbacks = new ArrayList<ToolCallback>();
         if (!toolObjects.isEmpty()) {
             callbacks.addAll(List.of(ToolCallbacks.from(toolObjects.toArray())));
         }
-        if (mcpProperties.enabled()) {
-            try {
-                var mcpProvider = mcpProviders.getIfAvailable();
-                if (mcpProvider != null) {
-                    callbacks.addAll(List.of(mcpProvider.getToolCallbacks()).stream()
-                            .filter(callback -> mcpProperties.readOnlyToolNames()
-                                    .contains(callback.getToolDefinition().name().toLowerCase(java.util.Locale.ROOT)))
-                            .toList());
-                }
-            }
-            catch (RuntimeException exception) {
-                log.warn("Ford MCP tools unavailable; continuing without volatile MCP tools: exceptionType={}",
-                        exception.getClass().getSimpleName());
-            }
-        }
+        callbacks.removeIf(callback -> {
+            var name = callback.getToolDefinition().name().toLowerCase(java.util.Locale.ROOT);
+            return localCatalogToolNames.contains(name)
+                    && !catalogToolProperties.readOnlyToolNames().contains(name);
+        });
         if (callbacks.isEmpty()) {
             return new ToolAuthorizationPolicy();
         }
         var meterRegistry = meterRegistries.getIfAvailable();
         var observedCallbacks = callbacks.stream()
-                .map(callback -> new com.ford.service.ai.adapter.out.springai.ObservedToolCallback(callback, meterRegistry))
+                .map(callback -> new com.ford.service.ai.adapter.out.springai.ObservedToolCallback(
+                        callback, meterRegistry, retryDelay))
                 .map(ToolCallback.class::cast)
                 .toList();
         log.info("AI read-only tools registered: count={} names={}", observedCallbacks.size(),
@@ -265,7 +290,11 @@ public class SpringAiConfiguration {
                                          ObjectProvider<TypeSafeClient> typeSafeClients,
                                          ObjectProvider<TypeSafeProperties> typeSafeProperties,
                                          ObjectProvider<ObjectMapper> objectMappers,
-                                         ObjectProvider<com.ford.service.ai.application.McpFactResponseRenderer> factResponseRenderers) {
+                                          ObjectProvider<com.ford.service.ai.application.CatalogFactResponseRenderer> factResponseRenderers,
+                                          ObjectProvider<com.ford.service.ai.adapter.out.springai.KnowledgeRagAdvisorFactory> knowledgeRagAdvisorFactories,
+                                              ObjectProvider<com.ford.service.ai.application.EvidenceGroundedResponsePolicy> evidenceGroundedPolicies,
+                                              ObjectProvider<com.ford.service.observability.AiProviderCallObserver> providerCallObservers,
+                                              ObjectProvider<com.ford.service.ai.application.CatalogNameIndexService> catalogNameIndexes) {
         var providers = new ArrayList<ProviderChatCompletionPort>();
         var objectMapper = objectMappers.getIfAvailable(
                 () -> new ObjectMapper().findAndRegisterModules());
@@ -273,6 +302,11 @@ public class SpringAiConfiguration {
                 () -> new DefaultAiObservationService(ObservationRegistry.NOOP));
         var systemPromptService = systemPromptServices.getIfAvailable();
         var factResponseRenderer = factResponseRenderers.getIfAvailable();
+        var knowledgeRagAdvisorFactory = knowledgeRagAdvisorFactories.getIfAvailable();
+        var evidenceGroundedPolicy = evidenceGroundedPolicies.getIfAvailable();
+        var providerCallObserver = providerCallObservers.getIfAvailable(
+                () -> com.ford.service.observability.AiProviderCallObserver.NOOP);
+        var catalogNameIndex = catalogNameIndexes.getIfAvailable();
         var typeSafeClient = typeSafeClients.getIfAvailable();
         var typeSafeConfigured = usableTypeSafeConfiguration(typeSafeClient, typeSafeProperties.getIfAvailable(),
                 classificationProperties);
@@ -283,7 +317,8 @@ public class SpringAiConfiguration {
                             typeSafeConfigured ? typeSafeClient : null, scopePolicy),
                     properties.cloudChatProvider(), toolPolicy, decisionPolicy, systemPromptService,
                     new com.ford.service.ai.application.AssistantResponseQualityPolicy(), objectMapper,
-                    observations, factResponseRenderer));
+                     observations, factResponseRenderer, true, knowledgeRagAdvisorFactory, evidenceGroundedPolicy,
+                      properties.responseVerificationEnabled(), providerCallObserver, catalogNameIndex));
         }
         var springAiObservationRegistry = observationRegistries.getIfAvailable(() -> ObservationRegistry.NOOP);
         for (var providerId : chatProviders.eligibleFallbackIds().stream()
@@ -296,7 +331,8 @@ public class SpringAiConfiguration {
                             typeSafeConfigured ? typeSafeClient : null, scopePolicy),
                     providerId, toolPolicy, decisionPolicy, systemPromptService,
                     new com.ford.service.ai.application.AssistantResponseQualityPolicy(), objectMapper,
-                    observations, factResponseRenderer, false));
+                      observations, factResponseRenderer, false, knowledgeRagAdvisorFactory, evidenceGroundedPolicy,
+                        properties.responseVerificationEnabled(), providerCallObserver, catalogNameIndex));
         }
         var ollama = localModel.getIfAvailable();
         if (properties.localEnabled() && ollama != null) {
@@ -305,7 +341,8 @@ public class SpringAiConfiguration {
                             typeSafeConfigured ? typeSafeClient : null, scopePolicy),
                     properties.localChatProvider(), toolPolicy, decisionPolicy, systemPromptService,
                     new com.ford.service.ai.application.AssistantResponseQualityPolicy(), objectMapper,
-                    observations, factResponseRenderer));
+                      observations, factResponseRenderer, true, knowledgeRagAdvisorFactory, evidenceGroundedPolicy,
+                        properties.responseVerificationEnabled(), providerCallObserver, catalogNameIndex));
         }
         return providers.isEmpty()
                 ? new UnavailableChatCompletionPort()
@@ -375,6 +412,16 @@ public class SpringAiConfiguration {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "ford.catalog.tools", name = "enabled", havingValue = "true")
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnBean(CatalogPort.class)
+    com.ford.service.ai.application.DeterministicCatalogAnswerService deterministicCatalogAnswerService(
+            CatalogPort catalog,
+            com.ford.service.ai.application.CatalogFactResponseRenderer renderer,
+            ObjectMapper objectMapper) {
+        return new com.ford.service.ai.application.DeterministicCatalogAnswerService(catalog, renderer, objectMapper);
+    }
+
+    @Bean
     AssistantService assistantService(AssistantOrchestrator orchestrator,
                                       ModelProviderPolicy providerPolicy,
                                       ObjectProvider<HumanHandoffPolicy> handoffPolicy,
@@ -383,12 +430,15 @@ public class SpringAiConfiguration {
                                       DecisionPolicy decisionPolicy,
                                       AssistantScopePolicy scopePolicy,
                                       LeadQualificationPolicy leadQualificationPolicy,
-                                      ClassificationProperties classificationProperties,
-                                      InputSecurityPolicy inputSecurityPolicy,
-                                      com.ford.service.ai.application.AssistantPersona assistantPersona) {
+                                       ClassificationProperties classificationProperties,
+                                       InputSecurityPolicy inputSecurityPolicy,
+                                       com.ford.service.ai.application.AssistantPersona assistantPersona,
+                                       ObjectProvider<com.ford.service.ai.application.DeterministicCatalogAnswerService>
+                                               deterministicCatalogAnswer) {
         return new SpringAiAssistantService(orchestrator,
                 handoffPolicy.getIfAvailable(() -> new HumanHandoffPolicy(true)), providerPolicy,
                 properties.logProviderErrors(), decisionService, decisionPolicy, scopePolicy,
-                leadQualificationPolicy, inputSecurityPolicy, assistantPersona);
+                leadQualificationPolicy, inputSecurityPolicy, assistantPersona,
+                deterministicCatalogAnswer.getIfAvailable(), properties.responseRepeatCheckEnabled());
     }
 }

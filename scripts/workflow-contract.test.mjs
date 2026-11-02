@@ -19,16 +19,312 @@ test("required workflow contracts exist", async () => {
   for (const path of requiredWorkflows) {
     await assert.doesNotReject(() => read(path), path);
   }
+  await assert.doesNotReject(() => read(".github/workflows/monthly-catalog-sync.yml"));
+  await assert.doesNotReject(() => read(".github/workflows/deploy-dev.yml"));
 });
 
-test("CI verifies every branch while publishing containers only from main", async () => {
+test("CI verifies every branch and publishes images only from immutable SemVer tags", async () => {
   const source = await read(".github/workflows/ci.yml");
   const release = await read(".github/workflows/release.yml");
 
   assert.match(source, /^  push:\s*$/m);
-  assert.match(source, /publish:.*github\.ref == 'refs\/heads\/main'/s);
-  assert.match(release, /PRODUCTION_DEPLOY_ENABLED/);
-  assert.match(release, /branches: \[main\]/);
+  assert.match(source, /name: Container gates \(no publication\)/);
+  assert.match(source, /publish: false/);
+  assert.match(source, /name: Container gates and version publication/);
+  assert.match(source, /github\.ref_type == 'tag'/);
+  assert.match(source, /startsWith\(github\.ref, 'refs\/tags\/v'\)/);
+  assert.match(release, /version:/);
+  assert.match(release, /vars\.PRODUCTION_DEPLOY_ENABLED/);
+});
+
+test("CI runs the operational Python contract suite", async () => {
+  const source = await read(".github/workflows/ci.yml");
+
+  assert.match(source, /name: Release coordinator tests/);
+  assert.match(
+    source,
+    /python3 -m unittest discover -s ford-ai-service\/scripts\/tests -p 'test_\*\.py' -v/,
+  );
+});
+
+test("local and Actions catalog sync flows use the same protected backup gate", async () => {
+  const local = await read("ford-ai-service/.mise/tasks/deploy/catalog-sync");
+  const workflow = await read(".github/workflows/monthly-catalog-sync.yml");
+  const playbook = await read("deployment/ansible/catalog-sync.yml");
+  const readme = await read("ford-ai-service/README.md");
+
+  assert.match(local, /catalog-sync\.yml/);
+  assert.match(local, /render_backup_inventory/);
+  assert.match(workflow, /deployment\/ansible\/catalog-sync\.yml/);
+  assert.match(workflow, /vars\.FORD_CATALOG_SYNC_ENABLED == 'true'/);
+  assert.match(playbook, /role: catalog_sync/);
+  assert.match(readme, /mise run deploy:catalog-sync/);
+  assert.match(readme, /deployment-preflight/);
+});
+
+test("deployment connectivity preflight is manually runnable from main and stays read-only", async () => {
+  const source = await read(".github/workflows/deployment-preflight.yml");
+
+  assert.match(source, /^  workflow_dispatch:\s*$/m);
+  assert.match(source, /\[\[ "\$\{GITHUB_REF\}" == "refs\/heads\/main" \]\]/);
+  assert.match(source, /environment: deployment-preflight/);
+  assert.match(source, /Deployment, migration, image pull, and route switch: not run/);
+  assert.doesNotMatch(source, /^  push:/m);
+  assert.doesNotMatch(source, /PRODUCTION_DEPLOY_ENABLED|oci-blue-green|reusable-deploy/);
+  assert.match(source, /docker ps -a --filter 'label=com\.docker\.compose\.service=otel-collector'/);
+  assert.doesNotMatch(source, /docker inspect --format[^\n]*app-otel-collector-1/);
+  assert.match(source, /docker ps -a --format .*sched/i);
+  assert.match(source, /docker ps -a --format .*\.Ports/);
+  assert.match(source, /13133.*owners|owners.*13133/i);
+  assert.match(source, /collector_port_owner_ids=/);
+  assert.match(source, /com\.docker\.compose\.project\.config_files/);
+  assert.match(source, /com\.docker\.compose\.project\.working_dir/);
+  assert.match(source, /label=com\.docker\.compose\.project=ford-mcp/);
+  assert.match(source, /Legacy MCP project containers/);
+  assert.match(source, /scheduler project=.*service=.*compose=/);
+  assert.doesNotMatch(source, /docker (?:compose .*down|stop|rm)/);
+  assert.doesNotMatch(source, /docker inspect .*\.Config\.Env|docker exec .*printenv/);
+  assert.doesNotMatch(source, /\/opt\/ford-uruapan\/mcp\/(?:\.env|scheduler\.env)/);
+});
+
+test("development deployment boots the local Compose stack behind a health gate", async () => {
+  const source = await read(".github/workflows/deploy-dev.yml");
+
+  assert.match(source, /^name:/m);
+  assert.match(source, /^  workflow_dispatch:\s*$/m);
+  assert.match(source, /^permissions:/m);
+  assert.match(source, /^concurrency:/m);
+  assert.match(source, /environment: development/);
+  assert.match(source, /docker compose config --quiet/);
+  assert.match(source, /docker compose up --build -d postgres redis ford-service/);
+  assert.match(source, /actuator\/health/);
+  assert.match(source, /FORD_AI_LOCAL_ENABLED=false/);
+  assert.match(source, /FORD_AI_CLOUD_ENABLED=false/);
+  assert.match(source, /docker compose down -v/);
+  assert.doesNotMatch(source, /PRODUCTION_DEPLOY_ENABLED|oci-blue-green|reusable-deploy|secrets\.OCI_/);
+});
+
+test("local and Actions development flows start the same Compose services", async () => {
+  const workflow = await read(".github/workflows/deploy-dev.yml");
+  const fullStart = await read("ford-ai-service/.mise/tasks/full/start");
+  const compose = await read("ford-ai-service/docker-compose.yml");
+
+  assert.match(compose, /^  ford-service:$/m);
+  assert.match(compose, /\$\{FORD_SERVICE_PORT:-18080\}:8080/);
+  assert.match(fullStart, /ford_compose/);
+  assert.match(workflow, /ford-service/);
+  assert.match(workflow, /http:\/\/localhost:18080\/actuator\/health/);
+});
+
+test("Ford Service pins the backup-verified OCI rollout action", async () => {
+  const source = await read(".github/workflows/release.yml");
+
+  assert.match(
+    source,
+    /migangdelzar\/Ford-oci-deployment-action\/.github\/actions\/oci-blue-green@d391f130a0d820819ee4f38c66d5a2d12d823cad/,
+  );
+  assert.match(source, /host: \$\{\{ vars\.OCI_DEPLOY_HOST \}\}/);
+  assert.match(source, /user: \$\{\{ vars\.OCI_DEPLOY_USER \}\}/);
+  assert.match(source, /backup-host: \$\{\{ vars\.OCI_DATA_DEPLOY_HOST \}\}/);
+  assert.match(source, /backup-user: \$\{\{ vars\.OCI_DATA_DEPLOY_USER \}\}/);
+  assert.match(source, /backup-ssh-private-key: \$\{\{ secrets\.OCI_DATA_SSH_PRIVATE_KEY \}\}/);
+  assert.match(source, /remote-root: \/opt\/ford-uruapan/);
+  assert.doesNotMatch(source, /secrets\.OCI_(?:DATA_)?DEPLOY_(?:HOST|USER)/);
+});
+
+test("catalog-enabled Service release verifies the reader role before deployment", async () => {
+  const source = await read(".github/workflows/release.yml");
+  const readerCheck = source.indexOf("name: Verify catalog reader permissions before deployment");
+  const deployAction = source.indexOf("Run the shared OCI blue-green deployment action");
+
+  assert.ok(readerCheck >= 0, "catalog-enabled release must verify the database reader");
+  assert.ok(readerCheck < deployAction, "reader verification must run before deploying the Service");
+  const checkBlock = source.slice(readerCheck, deployAction);
+  assert.match(checkBlock, /FORD_CATALOG_TOOLS_ENABLED == 'true'/);
+  assert.match(checkBlock, /ford_catalog_reader/);
+  assert.match(checkBlock, /ford_read\.vehicle_search_v1/);
+  assert.match(checkBlock, /'INSERT'/);
+  assert.match(checkBlock, /'ford'/);
+  assert.match(checkBlock, /OCI_DATA_SSH_PRIVATE_KEY/);
+  assert.match(checkBlock, /CROSS JOIN LATERAL unnest\(reader_role\.rolconfig\)/);
+  assert.doesNotMatch(checkBlock, /'default_transaction_read_only=on' = ANY\(/);
+  assert.doesNotMatch(checkBlock, /POSTGRES_PASSWORD=.*\$\{/);
+});
+
+test("Ford Service passes its Pages upstream override explicitly to the OCI action", async () => {
+  const source = await read(".github/workflows/release.yml");
+
+  assert.match(source, /ui-upstream-url: \$\{\{ vars\.FORD_WEB_UI_UPSTREAM_URL \}\}/);
+});
+
+test("Ford Service supplies the data private IP required by app deployment", async () => {
+  const source = await read(".github/workflows/release.yml");
+
+  assert.match(source, /data-private-ip: \$\{\{ vars\.OCI_DATA_PRIVATE_IP \}\}/);
+  assert.match(source, /grafana-cloud-otlp-endpoint: \$\{\{ vars\.GRAFANA_CLOUD_OTLP_ENDPOINT \}\}/);
+  assert.match(source, /grafana-cloud-instance-id: \$\{\{ vars\.GRAFANA_CLOUD_INSTANCE_ID \}\}/);
+  assert.match(source, /grafana-cloud-api-token-secret-ocid: \$\{\{ vars\.FORD_VAULT_SECRET_OCID_GRAFANA_CLOUD_API_TOKEN \}\}/);
+  assert.match(source, /langfuse-otlp-endpoint: \$\{\{ vars\.LANGFUSE_OTLP_ENDPOINT \}\}/);
+  assert.match(source, /langfuse-public-key: \$\{\{ vars\.LANGFUSE_PUBLIC_KEY \}\}/);
+  assert.match(source, /langfuse-secret-key-secret-ocid: \$\{\{ vars\.FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY \}\}/);
+  assert.match(
+    source,
+    /name: Check out Service observability configuration\n\s+uses: actions\/checkout@v7\n\s+with:\n\s+ref: main/,
+  );
+  for (const input of [
+    "grafana-cloud-otlp-endpoint:",
+    "grafana-cloud-instance-id:",
+    "grafana-cloud-api-token-secret-ocid:",
+    "langfuse-otlp-endpoint:",
+    "langfuse-public-key:",
+    "langfuse-secret-key-secret-ocid:",
+  ]) {
+    assert.equal(source.split(input).length - 1, 1, `${input} must be unique`);
+  }
+});
+
+test("Ford Service rejects observability endpoint placeholders before deployment", async () => {
+  const source = await read(".github/workflows/release.yml");
+
+  assert.match(
+    source,
+    /for endpoint in GRAFANA_CLOUD_OTLP_ENDPOINT LANGFUSE_OTLP_ENDPOINT; do[\s\S]*\[\[ "\$\{!endpoint\}" =~ \^https:\/\//,
+  );
+  assert.match(source, /configure \$\{endpoint\} as an HTTPS endpoint URL/);
+});
+
+test("Ford Service passes a validated production operator email to the OCI action", async () => {
+  const source = await read(".github/workflows/release.yml");
+
+  assert.match(source, /FORD_OPERATOR_USERNAME: \$\{\{ vars\.FORD_OPERATOR_USERNAME \}\}/);
+  assert.match(source, /operator-username: \$\{\{ vars\.FORD_OPERATOR_USERNAME \}\}/);
+  assert.match(source, /FORD_OPERATOR_USERNAME" =~ \^\[\^@\[:space:\]\]\+@/);
+  assert.match(source, /configure FORD_OPERATOR_USERNAME as the production operator login email/);
+});
+
+test("database backup actions inspect the deployed archive directory", async () => {
+  const source = await read(".github/workflows/database-backup.yml");
+
+  assert.match(source, /\/opt\/ford-uruapan\/backup\/archive/);
+  assert.doesNotMatch(source, /\/opt\/ford\/backup\/archive/);
+});
+
+test("requested releases fail instead of reporting a skipped production deployment", async () => {
+  const source = await read(".github/workflows/release.yml");
+
+  assert.match(source, /Run Ford Service releases from main/);
+  assert.match(source, /^  production-readiness:\s*$/m);
+  assert.match(source, /PRODUCTION_DEPLOY_ENABLED: \$\{\{ vars\.PRODUCTION_DEPLOY_ENABLED \}\}/);
+  assert.match(source, /RUNTIME_VAULT_READY: \$\{\{ vars\.RUNTIME_VAULT_READY \}\}/);
+  assert.match(source, /needs\.production-readiness\.result == 'success'/);
+  assert.match(source, /actions\/runs\/\$\{coordinator_run_id\}\/attempts\/\$\{coordinator_attempt\}\/jobs/);
+  assert.match(source, /Approve and deploy selected releases in order/);
+  assert.doesNotMatch(source, /needs\.deploy\.result == 'skipped'/);
+});
+
+test("production service deployment passes Vault secret references to Ansible", async () => {
+  const source = await read(".github/workflows/release.yml");
+  const requiredReferences = [
+    "FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD",
+    "FORD_VAULT_SECRET_OCID_SPRING_DATA_REDIS_PASSWORD",
+    "FORD_VAULT_SECRET_OCID_FORD_OPERATOR_PASSWORD",
+    "FORD_VAULT_SECRET_OCID_FORD_SECURITY_JWK_PRIVATE_KEY",
+    "FORD_VAULT_SECRET_OCID_FORD_RESEND_API_KEY",
+    "FORD_VAULT_SECRET_OCID_FORD_META_APP_SECRET",
+    "FORD_VAULT_SECRET_OCID_FORD_META_VERIFY_TOKEN",
+    "FORD_VAULT_SECRET_OCID_FORD_META_WHATSAPP_ACCESS_TOKEN",
+    "FORD_VAULT_SECRET_OCID_FORD_META_MESSENGER_ACCESS_TOKEN",
+    "FORD_VAULT_SECRET_OCID_FORD_META_INSTAGRAM_ACCESS_TOKEN",
+    "FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY",
+    "FORD_VAULT_SECRET_OCID_OPENAI_API_KEY",
+    "FORD_VAULT_SECRET_OCID_GRAFANA_CLOUD_API_TOKEN",
+    "FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY",
+  ];
+
+  assert.match(source, /secrets-provider: \$\{\{ vars\.FORD_SECRETS_PROVIDER \}\}/);
+  assert.match(source, /FORD_SECRETS_PROVIDER: \$\{\{ vars\.FORD_SECRETS_PROVIDER \}\}/);
+  for (const name of requiredReferences) {
+    assert.ok(
+      source.includes(name + ": ${{ vars." + name + " }}"),
+      `${name} is passed to Ansible`,
+    );
+  }
+});
+
+test("production release keeps DeepSeek primary and supports a capability-gated OpenRouter Vault fallback", async () => {
+  const workflow = await read(".github/workflows/release.yml");
+  const template = await read("deployment/ansible/roles/app/templates/app.env.j2");
+
+  assert.match(workflow, /FORD_VAULT_SECRET_OCID_OPENAI_API_KEY: \$\{\{ vars\.FORD_VAULT_SECRET_OCID_OPENAI_API_KEY \}\}/);
+  assert.match(workflow, /FORD_VAULT_SECRET_OCID_OPENAI_API_KEY; do/);
+  assert.match(workflow, /FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY: \$\{\{ vars\.FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY \}\}/);
+  assert.match(template, /FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY=/);
+  assert.doesNotMatch(workflow, /FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY; do/,
+    "OpenRouter remains optional until its secret is provisioned");
+  assert.match(workflow, /FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED: \$\{\{ vars\.FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED \}\}/);
+  assert.match(workflow, /FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED: \$\{\{ vars\.FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED \}\}/);
+  assert.match(template, /FORD_AI_CLOUD_BASE_URL=.*https:\/\/api\.deepseek\.com/);
+  assert.match(template, /FORD_AI_CLOUD_MODEL_VERSION=.*deepseek-flash/);
+  assert.match(template, /FORD_AI_CLOUD_ENABLED=.*true/);
+  assert.match(template, /FORD_AI_LOCAL_ENABLED=.*false/);
+  assert.match(template, /FORD_AI_FALLBACK_ORDER=.*default\('openrouter'\)/);
+  assert.match(template, /FORD_AI_OPENROUTER_ENABLED=.*default\(true\)/);
+  for (const name of [
+    "FORD_VAULT_SECRET_OCID_GROQ_API_KEY",
+    "FORD_VAULT_SECRET_OCID_GEMINI_API_KEY",
+    "FORD_VAULT_SECRET_OCID_CLOUDFLARE_API_TOKEN",
+  ]) {
+    assert.doesNotMatch(template, new RegExp(name), `${name} must not be loaded by the production app`);
+  }
+});
+
+test("Ford Service configures local catalog tools without a remote MCP connection", async () => {
+  const source = await read(".github/workflows/release.yml");
+  const action = await read(".github/actions/oci-blue-green/action.yml");
+
+  assert.match(source, /FORD_CATALOG_TOOLS_ENABLED: \$\{\{ vars\.FORD_CATALOG_TOOLS_ENABLED \|\| 'false' \}\}/);
+  assert.doesNotMatch(source, /FORD_CATALOG_PARITY_READY|Node-to-Java parity/);
+  assert.match(source, /FORD_CATALOG_JDBC_URL/);
+  assert.match(source, /FORD_CATALOG_USERNAME/);
+  assert.doesNotMatch(source, /FORD_VAULT_SECRET_OCID_FORD_CATALOG_PASSWORD/);
+  assert.match(source, /service-catalog-tools-enabled: \$\{\{ vars\.FORD_CATALOG_TOOLS_ENABLED \|\| 'false' \}\}/);
+  assert.match(source, /service-catalog-jdbc-url: \$\{\{ vars\.FORD_CATALOG_JDBC_URL \}\}/);
+  assert.doesNotMatch(source, /service-catalog-password-secret-ocid/);
+  assert.doesNotMatch(source, /FORD_MCP_ENABLED|FORD_MCP_URL|FORD_MCP_ACCESS_CLIENT_ID/);
+  assert.doesNotMatch(action, /service-catalog-tools-enabled:[\s\S]*?parity gates pass/);
+  assert.match(action, /service-catalog-tools-enabled:[\s\S]*?read-only datasource and access checks/);
+});
+
+test("Ford Service accepts coordinator releases only from the installed App and keeps direct approval", async () => {
+  const source = await read(".github/workflows/release.yml");
+
+  assert.match(source, /ford-release-coordinator\[bot\]/);
+  assert.match(source, /RELEASE_ACTOR.*ford-release-coordinator\[bot\]/);
+  assert.match(source, /\^\[0-9\]\+-\[0-9\]\+\$/);
+  assert.match(source, /approval:[\s\S]*?environment: manual-release-approval/);
+  assert.match(source, /needs\.verify\.outputs\.coordinator_dispatch == 'true' \|\| needs\.approval\.result == 'success'/);
+  assert.match(source, /registry-username: \$\{\{ github\.repository_owner \}\}/);
+});
+
+test("Ford Service matches the workflow path returned by the GitHub Actions runs API", async () => {
+  const source = await read(".github/workflows/release.yml");
+
+  assert.match(source, /\.path == "\.github\/workflows\/release-all\.yml"/);
+  assert.match(source, /Coordinator request does not identify an active release-all run on main/);
+  assert.match(source, /Coordinator release job is not active; approval may not have been granted/);
+});
+
+test("release-all reports missing cross-repository dispatch credentials clearly", async () => {
+  const source = await read(".github/workflows/release-all.yml");
+
+  assert.match(source, /name: Validate release coordinator credentials/);
+  assert.match(source, /RELEASE_COORDINATOR_APP_ID: \$\{\{ secrets\.RELEASE_COORDINATOR_APP_ID \}\}/);
+  assert.match(source, /RELEASE_COORDINATOR_APP_PRIVATE_KEY: \$\{\{ secrets\.RELEASE_COORDINATOR_APP_PRIVATE_KEY \}\}/);
+  assert.match(source, /Release coordinator App credentials are not configured/);
+  assert.match(source, /name: Require coordinator dispatch from main/);
+  assert.doesNotMatch(source, /release:\n\s+name: Dispatch and track selected releases\n\s+if:/);
+  assert.match(source, /environment: release-all-approval/);
+  assert.match(source, /Dispatch selected releases sequentially and stop on failure/);
 });
 
 test("reusable workflows expose the shared contract", async () => {
@@ -58,7 +354,7 @@ test("security workflow contains secret, filesystem, and SARIF gates", async () 
   assert.match(source, /actions\/upload-artifact@v7/);
 });
 
-test("Gitleaks exceptions are limited to reviewed historical fixture findings", async () => {
+test("Gitleaks exceptions are limited to reviewed false-positive findings", async () => {
   const exceptions = (await read(".gitleaksignore"))
     .split(/\r?\n/)
     .map(line => line.trim())
@@ -69,6 +365,7 @@ test("Gitleaks exceptions are limited to reviewed historical fixture findings", 
     "5f26bfaa856bb7d6d796e8f65d224eddde22f638:scripts/observability-contract.test.mjs:generic-api-key:42",
     "6fcf2fd7f6dc221ada19a1c3bdb41882203d9ec9:ford-ai-service/src/integrationTest/java/com/ford/service/identity/JdbcOperatorIdentityRepositoryIntegrationTest.java:generic-api-key:44",
     "6fcf2fd7f6dc221ada19a1c3bdb41882203d9ec9:ford-ai-service/src/integrationTest/java/com/ford/service/identity/JdbcOperatorIdentityRepositoryIntegrationTest.java:generic-api-key:71",
+    "7b6c30dffc5f4c6c4c48bb910b7646e93598bb71:docs/superpowers/specs/2026-10-19-catalog-callbacks-full-retrieval-design.md:generic-api-key:12",
     "94b42716a98b008bdf4ba82261d98d18bde4d7bb:ford-ai-service/scripts/tests/test_load_vault_mappings.py:generic-api-key:35",
     "94c9b0e6dd4946c32f19f7fe0a194950dbe6d78b:ford-ai-service/src/test/java/com/ford/service/ai/InputSecurityPolicyTest.java:generic-api-key:56"
   ].sort());
@@ -84,22 +381,62 @@ test("container workflow contains image, SBOM, and provenance gates", async () =
   assert.match(source, /id-token: write/);
 });
 
+test("container attestation permission is granted by both caller and reusable workflow", async () => {
+  const caller = await read(".github/workflows/ci.yml");
+  const reusable = await read(".github/workflows/reusable-container.yml");
+
+  assert.match(caller, /attestations: write/);
+  assert.match(reusable, /attestations: write/);
+});
+
+test("container provenance attests the digest returned by the registry push", async () => {
+  const source = await read(".github/workflows/reusable-container.yml");
+
+  assert.match(source, /subject-digest: \$\{\{ steps\.publish\.outputs\.digest \}\}/);
+});
+
+test("published container provenance is verified against the reusable workflow signer", async () => {
+  const source = await read(".github/workflows/reusable-container.yml");
+  const attest = source.indexOf("- name: Attest published image");
+  const verify = source.indexOf("- name: Verify published image provenance");
+
+  assert.ok(attest >= 0, "published images must have an attestation");
+  assert.ok(verify > attest, "verification must follow attestation creation");
+  assert.match(source, /- name: Verify published image provenance\n\s+if: inputs\.publish/);
+  assert.match(source, /gh attestation verify "oci:\/\/\$\{IMAGE\}"/);
+  assert.match(source, /--repo "\$\{GITHUB_REPOSITORY\}"/);
+  assert.match(
+    source,
+    /--signer-workflow "\$\{GITHUB_REPOSITORY\}\/\.github\/workflows\/reusable-container\.yml"/,
+  );
+  assert.match(source, /IMAGE: \$\{\{ steps\.image\.outputs\.image \}\}/);
+  assert.match(source, /GH_TOKEN: \$\{\{ github\.token \}\}/);
+});
+
 test("container tags and provenance subjects use a lowercase GHCR repository", async () => {
   const source = await read(".github/workflows/reusable-container.yml");
   assert.match(source, /id: image-repository/);
   assert.match(source, /echo "name=ghcr\.io\/\$\{REPOSITORY,,\}"/);
-  assert.match(source, /tags: \$\{\{ steps\.image-repository\.outputs\.name \}\}:sha-\$\{\{ github\.sha \}\}/);
+  assert.match(source, /tags: \$\{\{ steps\.tags\.outputs\.tags \}\}/);
   assert.match(source, /subject-name: \$\{\{ steps\.image-repository\.outputs\.name \}\}/);
   assert.doesNotMatch(source, /ghcr\.io\/\$\{\{ github\.repository \}\}/);
 });
 
-test("branch container verification uses native AMD64 while published images target OCI ARM64", async () => {
+test("service health smoke runs natively before target ARM64 image publication", async () => {
   const source = await read(".github/workflows/reusable-container.yml");
+  const smokeBuild = source.indexOf("- name: Build native smoke image");
+  const healthSmoke = source.indexOf("- name: Smoke test Spring service health endpoint");
+  const runtimeSmoke = source.indexOf("- name: Smoke test Java runtime");
+  const publishBuild = source.indexOf("- name: Build target image for publication");
+  const scan = source.indexOf("- name: Scan image");
+  const publish = source.indexOf("- name: Publish scanned image");
 
-  assert.match(
-    source,
-    /platforms:\s*\$\{\{ inputs\.publish && 'linux\/arm64' \|\| 'linux\/amd64' \}\}/,
-  );
+  assert.ok(smokeBuild >= 0 && healthSmoke > smokeBuild);
+  assert.ok(runtimeSmoke > healthSmoke && publishBuild > runtimeSmoke);
+  assert.ok(scan > publishBuild && publish > scan);
+  assert.match(source, /id: smoke-build/);
+  assert.match(source, /platforms: linux\/amd64/);
+  assert.match(source, /platforms: linux\/arm64/);
   assert.match(source, /cache-from:\s*type=gha/);
   assert.match(source, /cache-to:\s*type=gha[^\n]*mode=max/);
   assert.match(source, /actuator\/health/);
@@ -107,17 +444,34 @@ test("branch container verification uses native AMD64 while published images tar
   assert.match(source, /--name ford-service-redis --network ford-service-smoke redis:7-alpine/);
   assert.match(source, /FORD_REDIS_HOST=ford-service-redis/);
   assert.match(source, /curlimages\/curl/);
+  assert.match(source, /push: false/);
+  assert.match(source, /input: \/tmp\/ford-service-arm64\.tar/);
+  assert.match(source, /image: \$\{\{ steps\.tags\.outputs\.sha_tag \}\}/);
 });
 
-test("published image is pulled locally before container smoke tests", async () => {
+test("container build, smoke tests, and vulnerability scan pass before GHCR publication", async () => {
   const source = await read(".github/workflows/reusable-container.yml");
-  const pull = source.indexOf("- name: Pull published image for scanning");
+  const smokeBuild = source.indexOf("- name: Build native smoke image");
   const healthSmoke = source.indexOf("- name: Smoke test Spring service health endpoint");
   const runtimeSmoke = source.indexOf("- name: Smoke test Java runtime");
+  const targetBuild = source.indexOf("- name: Build target image for publication");
+  const scan = source.indexOf("- name: Scan image");
+  const sbom = source.indexOf("- name: Generate SBOM");
+  const login = source.indexOf("- name: Log in to GHCR after build, smoke tests, and scan pass");
+  const publish = source.indexOf("- name: Publish scanned image");
 
-  assert.ok(pull >= 0 && healthSmoke >= 0 && runtimeSmoke >= 0);
-  assert.ok(pull < healthSmoke, "published image must exist in Docker before its health smoke");
-  assert.ok(pull < runtimeSmoke, "published image must exist in Docker before its runtime smoke");
+  assert.ok(smokeBuild >= 0 && healthSmoke >= 0 && runtimeSmoke >= 0 && targetBuild >= 0 && scan >= 0);
+  assert.ok(sbom >= 0 && login >= 0 && publish >= 0);
+  assert.ok(smokeBuild < healthSmoke, "native image must build before its health smoke");
+  assert.ok(healthSmoke < runtimeSmoke, "health smoke must pass before runtime smoke");
+  assert.ok(runtimeSmoke < targetBuild, "native smokes must pass before target image build");
+  assert.ok(targetBuild < scan, "target image must build before vulnerability scanning");
+  assert.ok(scan < sbom, "the target image must pass its scan before SBOM generation");
+  assert.ok(sbom < login, "scan and SBOM must pass before registry login");
+  assert.ok(login < publish, "registry login must precede image publication");
+  assert.match(source, /load: true/);
+  assert.match(source, /push: false/);
+  assert.match(source, /docker push "\$\{SHA_TAG\}"/);
   assert.match(
     source,
     /if: >-\n\s+always\(\) && github\.event_name != 'pull_request' &&\s+\(github\.event\.repository\.visibility == 'public' \|\| vars\.CODE_SCANNING_ENABLED == 'true'\) &&\s+hashFiles\('trivy-image\.sarif'\) != ''/s,
@@ -127,6 +481,10 @@ test("published image is pulled locally before container smoke tests", async () 
 test("service image runs as a non-root user", async () => {
   const dockerfile = await read("ford-ai-service/Dockerfile");
   assert.match(dockerfile, /^USER 10001:10001$/m);
+  assert.match(
+    dockerfile,
+    /^LABEL org\.opencontainers\.image\.source=https:\/\/github\.com\/migangdelzar\/Ford-uruapan$/m,
+  );
 });
 
 test("container compiles Java on the native builder and retains target runtime", async () => {
@@ -163,47 +521,35 @@ test("observability workflow points to files in the checked-in deployment tree",
   assert.doesNotMatch(source, /ford-ai-service\/deployment\/observability/);
 });
 
-test("MCP containers run the protected HTTP command instead of the scheduler default", async () => {
-  const composeFiles = [
-    "deployment/ansible/roles/mcp/templates/compose.yml.j2",
-    "deployment/ansible/roles/mcp/templates/blue-green-compose.yml.j2",
-  ];
-
-  for (const path of composeFiles) {
-    const source = await read(path);
-    assert.match(
-      source,
-      /command:\s*\["node", "dist\/src\/cli\.js", "mcp-http"\]/,
-      `${path} must explicitly start mcp-http`,
-    );
-  }
+test("deployment action omits MCP runtime while preflight only inventories it", async () => {
+  const action = await read(".github/actions/oci-blue-green/action.yml");
+  const deploy = await read(".github/actions/oci-blue-green/deploy.sh");
+  const workflow = await read(".github/workflows/deployment-preflight.yml");
+  assert.doesNotMatch(action, /ford-mcp|mcp-private-ip/i);
+  assert.doesNotMatch(deploy, /ford-mcp|mcp-blue-green|mcp_operation|mcp_image/i);
+  assert.match(workflow, /label=com\.docker\.compose\.project=ford-mcp/);
+  assert.doesNotMatch(workflow, /docker (?:compose .*down|stop|rm)/);
 });
 
-test("scraper migrations use the candidate image and the service Compose environment", async () => {
-  const compose = await read(
-    "deployment/ansible/roles/mcp/templates/compose.yml.j2",
+test("monthly sync uses the protected backup-gated Ansible playbook", async () => {
+  const sync = await read(".github/workflows/monthly-catalog-sync.yml");
+  const task = await read("ford-ai-service/.mise/tasks/deploy/catalog-sync");
+  const playbook = await read("deployment/ansible/catalog-sync.yml");
+  assert.match(sync, /deployment\/ansible\/catalog-sync\.yml/);
+  assert.match(sync, /Verify backup and run the one-shot sync with Ansible/);
+  assert.match(task, /catalog-sync\.yml/);
+  assert.match(task, /deployment\/ansible\/catalog-sync\.yml/);
+  assert.match(playbook, /hosts: data/);
+  assert.match(playbook, /hosts: data/);
+  assert.match(
+    await read("deployment/ansible/roles/catalog_sync/tasks/main.yml"),
+    /Verify the newest same-day backup manifest and both artifact hashes/,
   );
-  const override = await read(
-    "deployment/ansible/roles/mcp/templates/migration-compose.yml.j2",
-  );
-  const tasks = await read("deployment/ansible/roles/mcp/tasks/blue-green.yml");
-  const migrationStart = tasks.indexOf(
-    "Run catalog migrations once from the immutable candidate image",
-  );
-  const migrationEnd = tasks.indexOf("\n- name:", migrationStart + 1);
-  const migration = tasks.slice(migrationStart, migrationEnd);
-
-  assert.match(compose, /DATABASE_URL: postgres:\/\/ford:\$\{POSTGRES_PASSWORD/);
-  assert.match(compose, /FORD_BASE_URL: https:\/\/www\.forduruapan\.mx/);
-  assert.match(override, /image: \{\{ mcp_candidate_image \}\}/);
-  assert.match(migration, /-f "\{\{ remote_root \}\}\/mcp\/migration-compose\.yml"/);
-  assert.match(migration, /run --rm --no-deps mcp node dist\/src\/cli\.js migrate/);
-  assert.match(migration, /no_log: true/);
 });
 
 test("production scheduler runs privately on the data network", async () => {
   const source = await read(
-    "deployment/ansible/roles/mcp/templates/blue-green-compose.yml.j2",
+    "deployment/ansible/roles/scraper_scheduler/templates/compose.yml.j2",
   );
 
   assert.match(source, /scheduler:/);
@@ -212,7 +558,7 @@ test("production scheduler runs privately on the data network", async () => {
     /command:\s*\["node", "dist\/src\/cli\.js", "scheduler"\]/,
   );
   assert.match(source, /networks:\s*\[data_default\]/);
-  const scheduler = source.split("\n  scheduler:")[1]?.split("\n  mcp-proxy:")[0];
+  const scheduler = source.split("\n  scheduler:")[1]?.split("\nnetworks:")[0];
   assert.ok(scheduler, "scheduler service definition must be present");
   assert.doesNotMatch(scheduler, /ports:/);
   assert.match(source, /SYNC_SCHEDULE: "0 12 1 \* \*"/);

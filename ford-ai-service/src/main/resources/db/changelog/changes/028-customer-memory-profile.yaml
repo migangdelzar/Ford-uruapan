@@ -1,0 +1,102 @@
+databaseChangeLog:
+  - changeSet:
+      id: 028-customer-memory-profile-identity
+      author: ford-service
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              create table customer_memory_identity (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  channel varchar(30) not null,
+                  facts_forget_before timestamptz,
+                  created_at timestamptz not null,
+                  unique (id, tenant_id, channel)
+              );
+
+              create table customer_memory_identity_fingerprint (
+                  customer_identity_id uuid not null,
+                  tenant_id uuid not null,
+                  channel varchar(30) not null,
+                  key_version integer not null check (key_version > 0),
+                  participant_fingerprint char(64) not null,
+                  created_at timestamptz not null,
+                  primary key (tenant_id, channel, key_version, participant_fingerprint),
+                  foreign key (customer_identity_id, tenant_id, channel)
+                      references customer_memory_identity(id, tenant_id, channel) on delete cascade
+              );
+
+              create table customer_memory_identity_conversation (
+                  tenant_id uuid not null,
+                  channel varchar(30) not null,
+                  customer_identity_id uuid not null,
+                  conversation_id uuid primary key references conversation(id) on delete cascade,
+                  linked_at timestamptz not null,
+                  foreign key (customer_identity_id, tenant_id, channel)
+                      references customer_memory_identity(id, tenant_id, channel) on delete cascade
+              );
+
+              create index idx_customer_memory_identity_link
+                  on customer_memory_identity_conversation(tenant_id, channel, customer_identity_id);
+              create index idx_customer_memory_identity_fingerprint_owner
+                  on customer_memory_identity_fingerprint(customer_identity_id);
+              create index idx_customer_memory_conversation_owner
+                  on customer_memory_identity_conversation(customer_identity_id, conversation_id);
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              drop table if exists customer_memory_identity_conversation;
+              drop table if exists customer_memory_identity_fingerprint;
+              drop table if exists customer_memory_identity;
+  - changeSet:
+      id: 028-customer-memory-profile-facts
+      author: ford-service
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              create table customer_memory_fact (
+                  customer_identity_id uuid not null references customer_memory_identity(id) on delete cascade,
+                  fact_type varchar(40) not null check (fact_type in (
+                      'VEHICLE_MODEL', 'VEHICLE_TRIM', 'SHOPPING_BUDGET', 'PURCHASE_TIMEFRAME', 'PROMOTION_DECLINE')),
+                  subject_key varchar(120) not null,
+                  fact_value varchar(160) not null,
+                  state varchar(20) not null check (state in ('ACTIVE', 'DECLINED')),
+                  source_conversation_id uuid not null,
+                  source_receipt_id uuid not null,
+                  source_received_at timestamptz not null,
+                  source_version integer not null,
+                  stated_at timestamptz not null,
+                  updated_at timestamptz not null,
+                  expires_at timestamptz,
+                  version bigint not null default 0,
+                  primary key (customer_identity_id, fact_type, subject_key),
+                  unique (customer_identity_id, source_receipt_id, fact_type, subject_key),
+                  check ((state = 'DECLINED' and expires_at is null) or (state = 'ACTIVE' and expires_at is not null))
+              );
+
+              create index idx_customer_memory_fact_active
+                  on customer_memory_fact(customer_identity_id, expires_at)
+                  where state = 'ACTIVE';
+
+              create table customer_memory_fact_event (
+                  id uuid primary key,
+                  customer_identity_id uuid not null references customer_memory_identity(id) on delete cascade,
+                  fact_type varchar(40) not null,
+                  subject_key varchar(120) not null,
+                  prior_state varchar(20),
+                  new_state varchar(20) not null,
+                  source_receipt_id uuid not null,
+                   source_type varchar(30) not null,
+                   occurred_at timestamptz not null,
+                   actor_id varchar(200),
+                  unique (customer_identity_id, source_receipt_id, fact_type, subject_key, source_type)
+              );
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              drop table if exists customer_memory_fact_event;
+              drop table if exists customer_memory_fact;

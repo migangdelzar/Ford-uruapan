@@ -12,7 +12,7 @@ fi
 
 if [[ -n "$(ford_compose ps -q ford-service 2>/dev/null)" ]]; then
   echo "Stop the ford-service container before resetting the database." >&2
-  echo "Run: mise run docker:down" >&2
+  echo "Run: mise run container:down" >&2
   exit 1
 fi
 

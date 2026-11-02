@@ -14,16 +14,21 @@ both schemas and loads the selected catalog snapshot as a versioned migration.
 - The only application schemas are `ford_metadata` and `ford_catalog`.
   PostgreSQL system schemas (`pg_catalog`, `information_schema`, and internal
   schemas) are not application schemas and remain present.
-- Remove the built-in `public` schema after verifying it contains no required
-  objects and relocating required extensions. Never use `DROP ... CASCADE`.
+- Keep the built-in `public` schema present and empty of application and
+  extension objects. Never drop `public` or use `DROP ... CASCADE`.
 - `ford_metadata` holds Ford Web/Service operational data: bot and Meta chat
-  sessions, lead/customer records, and captured user requirements such as intent,
-  warmth, budget, model interests, and notes. Liquibase tracking tables also
-  live here.
+  sessions, lead/customer records, captured user requirements such as intent,
+  warmth, budget, model interests, and notes, and tenant-scoped approved
+  knowledge documents/embeddings. Liquibase tracking tables also live here.
 - `ford_catalog` holds Ford-scraping catalog tables, catalog read relations,
   views, and private capture/provenance relations. Canonical Ford models, specs,
-  prices, offers, and promotions belong here. User-specific interest in a model
-  or budget remains in `ford_metadata`; it is not canonical catalog data.
+  prices, offers, promotions, and source-owned Ford catalog documents/embeddings
+  belong here. Those catalog documents support deterministic SQL filters plus
+  keyword and semantic search. Existing tenant-scoped `knowledge_document`,
+  `knowledge_chunk`, and `public.vector_store` content remains in
+  `ford_metadata`; do not mix it with source-owned Ford catalog documents.
+  User-specific interest in a model or budget remains in
+  `ford_metadata`; it is not canonical catalog data.
 - Ford Service Liquibase is the sole DDL migration owner for both schemas.
   Ford-scraping stops applying its own schema migrations and writes only to the
   existing `ford_catalog` contract.
@@ -31,9 +36,16 @@ both schemas and loads the selected catalog snapshot as a versioned migration.
   capabilities: user/session/lead-requirement data stays in `ford_metadata`,
   while Ford model/spec/price/offer/promotion reads come from `ford_catalog`
   through a dedicated `ford_catalog_reader` JDBC datasource. Rename or replace
-  the confusing `vehicle_snapshot_search` tool as needed. The scraper remains
+  the confusing `vehicle_snapshot_search` tool as needed. Exact facts such as
+  price and color use deterministic SQL; qualitative use-case questions such as
+  family/work fit use keyword plus semantic vector search over catalog
+  documents, combined with rank fusion. Service conversation-memory embeddings
+  stay separate from Ford catalog embeddings. The scraper remains
   responsible for crawling and writing; do not remove its crawler or
   decommission its MCP endpoint until other consumers are checked.
+- No trusted stock feed exists yet. Do not answer availability/stock questions
+  from stale Service rows; route them to the human advisor through the existing
+  handoff flow.
 - The same Service database user runs Liquibase and the Service. This user will
   gain catalog DDL/DML privileges. `ford_catalog_reader` remains a separate
   read-only identity for catalog retrieval; it cannot read capture/provenance
@@ -62,6 +74,8 @@ both schemas and loads the selected catalog snapshot as a versioned migration.
   The archive has 16 table/view relations and 10,983 base-table rows; all 12
   table row counts and canonical JSONL SHA-256 hashes match a successful
   disposable restore. The manifest and temporary archive are outside Git.
+  All 1,882 catalog documents have ready `bge-m3` embeddings with 1,024
+  dimensions and a precomputed `search_vector`.
 - A different candidate archive with SHA-256 beginning `b0b45e6e` exists in a
   separate, dirty Ford-scraping checkout. Do not substitute it without review.
 - The local Colima `testbox` profile is stopped. Startup failed because its disk
@@ -110,9 +124,9 @@ existing database, move the already-applied `DATABASECHANGELOG` and
 fail on duplicate or unexpected tracking tables, and be idempotent. On a fresh
 database it creates the schema and lets Liquibase create its tracking tables.
 The bootstrap creates no application tables or catalog data. Liquibase then
-owns application DDL and creates/manages `ford_catalog`. The `public` schema is removed only after all its
-objects and extension dependencies are accounted for. PostgreSQL system schemas
-remain.
+owns application DDL and creates/manages `ford_catalog`. The built-in `public`
+schema remains present but empty of application and extension objects after all
+supported objects are reviewed and relocated. PostgreSQL system schemas remain.
 
 The final accepted database has no application tables outside the two named
 schemas. Temporary staging objects may exist during a migration but must be
@@ -174,10 +188,10 @@ Do not duplicate canonical catalog tables as competing sources of truth. Stop
 if existing price records cannot be classified as canonical Ford prices versus
 user-entered budget/requirements.
 
-Before removing `public`, prove it contains no required non-extension objects,
-move or recreate supported extensions in `ford_catalog`, and verify all
-dependent views/indexes. If an extension cannot be safely relocated, stop; do
-not cascade-drop objects. Drop `public` only after a no-cascade drop succeeds.
+Keep `public` present and empty. Prove it contains no remaining application or
+extension objects; move supported extensions into `ford_catalog` and verify all
+dependent views/indexes. If an object cannot be safely relocated or removed
+without `CASCADE`, stop and require owner review. Never drop `public`.
 
 After cutover, configure both Service datasources to the same `ford` database:
 the primary datasource uses `ford_metadata`; the catalog datasource uses
@@ -209,6 +223,15 @@ active before catalog tools are enabled. Enable tools only after
 synthetic exact-model, trim, offer/promotion, citation, price, and no-match
 checks pass.
 
+Catalog queries use parameterized deterministic SQL for structured facts
+(including price, color, model, and year) and keyword/vector retrieval over
+`catalog_documents_v1` for qualitative intent (for example family use or work
+use). Merge keyword and semantic rankings with the existing reciprocal-rank
+fusion pattern; retain source URLs for citations. The catalog query embedder
+must be compatible with the approved `bge-m3` 1,024-dimensional vectors and
+must not change Service conversation-memory embeddings. Until a trusted stock
+feed exists, availability questions use human handoff and make no stock claim.
+
 Production receives the approved candidate snapshot despite its known data
 limitations. Report these limitations in the release record and do not claim
 the candidate is production-validated.
@@ -238,7 +261,7 @@ the candidate is production-validated.
 - The Liquibase DDL/data changeset differs from the approved migration
   inventory, or a snapshot changes an already-applied changeset.
 - `public` contains unknown objects, extensions cannot be safely relocated, or
-  `DROP SCHEMA public` would require `CASCADE`.
+  it cannot be made empty without `CASCADE`.
 - Reader can write or read private capture/provenance relations; Service data is
   exposed to the catalog tool identity; or the shared app DB user's increased
   catalog write scope has not been reviewed as an accepted risk.
@@ -250,8 +273,9 @@ the candidate is production-validated.
 ## Acceptance
 
 - Each environment has one application database named `ford` and exactly two
-  application schemas: `ford_metadata` and `ford_catalog`; `public` is absent
-  and PostgreSQL system schemas remain.
+  application schemas: `ford_metadata` and `ford_catalog`; built-in `public`
+  remains present and contains no application or extension objects, and
+  PostgreSQL system schemas remain.
 - Liquibase is the only schema-migration owner. Ford-scraping no longer applies
   its custom DDL migrations and writes only to its `ford_catalog` contract.
 - Chat, lead, and user-requirement records remain in `ford_metadata`; canonical
@@ -266,5 +290,9 @@ the candidate is production-validated.
 - Service no longer depends on Ford MCP for the current catalog tool set; its
   local catalog tools use `ford_catalog_reader`; chat, lead, and user
   requirement data remains backed by `ford_metadata`.
+- Catalog search combines exact SQL facts with keyword and semantic retrieval
+  over catalog documents; query embeddings match the stored `bge-m3` 1,024-
+  dimensional vectors. Stock availability stays with human advisor handoff
+  until a trusted stock feed exists.
 - Candidate coverage/price gaps remain documented; no production-readiness
   claim is made.

@@ -5,55 +5,39 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "ford.catalog.datasource")
 public class CatalogDataSourceProperties {
 
-    private boolean toolsEnabled;
-    private String host = "localhost";
-    private int port = 5432;
-    private String username = "ford_catalog_reader";
+    private String url = "";
+    private String username = "";
     private String password = "";
-    private String secretOcid = "";
-    private String embeddingModel = "bge-m3:latest";
+    private String driverClassName = "org.postgresql.Driver";
 
-    public void validate() {
-        if (!toolsEnabled) {
-            return;
-        }
-        if (host == null || host.isBlank()) {
-            throw new IllegalArgumentException("Ford catalog database host is required when catalog is enabled");
-        }
-        if (port < 1 || port > 65535) {
-            throw new IllegalArgumentException("Ford catalog database port must be between 1 and 65535");
-        }
-        if (!"ford_catalog_reader".equals(username)) {
-            throw new IllegalArgumentException("Ford catalog datasource username must be ford_catalog_reader");
-        }
-        if (secretOcid == null || secretOcid.isBlank()) {
-            throw new IllegalArgumentException("Ford catalog database secret OCID is required when catalog is enabled");
-        }
-        if (password == null || password.isBlank()) {
-            throw new IllegalArgumentException("Ford catalog database password must be resolved before enabling catalog tools");
-        }
-        if (embeddingModel == null || !embeddingModel.toLowerCase(java.util.Locale.ROOT).contains("bge-m3")) {
-            throw new IllegalArgumentException("Ford catalog query embedding model must be BGE-M3 compatible");
-        }
-    }
-
-    public String jdbcUrl() {
-        return "jdbc:postgresql://" + host + ":" + port
-                + "/ford?currentSchema=ford_catalog&connectTimeout=5&socketTimeout=30&tcpKeepAlive=true";
-    }
-
-    public boolean toolsEnabled() { return toolsEnabled; }
-    public void setToolsEnabled(boolean toolsEnabled) { this.toolsEnabled = toolsEnabled; }
-    public String host() { return host; }
-    public void setHost(String host) { this.host = host; }
-    public int port() { return port; }
-    public void setPort(int port) { this.port = port; }
+    public String url() { return url; }
+    public void setUrl(String url) { this.url = url; }
     public String username() { return username; }
     public void setUsername(String username) { this.username = username; }
     public String password() { return password; }
     public void setPassword(String password) { this.password = password; }
-    public String secretOcid() { return secretOcid; }
-    public void setSecretOcid(String secretOcid) { this.secretOcid = secretOcid; }
-    public String embeddingModel() { return embeddingModel; }
-    public void setEmbeddingModel(String embeddingModel) { this.embeddingModel = embeddingModel; }
+    public String driverClassName() { return driverClassName; }
+    public void setDriverClassName(String driverClassName) { this.driverClassName = driverClassName; }
+
+    void validate() {
+        if (url == null || url.isBlank() || username == null || username.isBlank()
+                || password == null || password.isBlank()) {
+            throw new IllegalStateException(
+                    "Local Ford catalog tools require a dedicated read-only catalog JDBC URL and credentials");
+        }
+        if (isFordServiceDatabase(url)) {
+            throw new IllegalStateException("Synthetic catalog datasource must not use the ford_service database");
+        }
+    }
+
+    private static boolean isFordServiceDatabase(String jdbcUrl) {
+        var normalized = jdbcUrl.strip();
+        if (!normalized.regionMatches(true, 0, "jdbc:postgresql:", 0, "jdbc:postgresql:".length())) {
+            return false;
+        }
+        var databasePart = normalized.substring("jdbc:postgresql:".length()).split("[?;]", 2)[0];
+        var slash = databasePart.lastIndexOf('/');
+        var databaseName = slash >= 0 ? databasePart.substring(slash + 1) : databasePart;
+        return "ford_service".equalsIgnoreCase(databaseName);
+    }
 }

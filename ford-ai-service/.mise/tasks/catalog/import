@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#MISE description="Import the approved local catalog snapshot"
+
+set -euo pipefail
+
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ensure_local_env
+
+read_local_env_value() {
+  local key="$1" current value
+  current="${!key:-}"
+  if [[ -n "$current" ]]; then
+    return
+  fi
+  value="$(local_env_value "$key")"
+  export "$key=$value"
+}
+
+read_local_env_value FORD_CATALOG_ADMIN_USERNAME
+read_local_env_value FORD_CATALOG_ADMIN_PASSWORD
+read_local_env_value FORD_CATALOG_USERNAME
+read_local_env_value FORD_CATALOG_PASSWORD
+export FORD_CATALOG_ADMIN_JDBC_URL="${FORD_CATALOG_ADMIN_JDBC_URL:-jdbc:postgresql://localhost:${FORD_CATALOG_PORT:-55433}/ford_catalog}"
+export FORD_LOCAL_CATALOG_EXPORT_DIR="${FORD_LOCAL_CATALOG_EXPORT_DIR:-$MISE_PROJECT_ROOT/build/reports/local-qwen/source-export}"
+
+./gradlew importLocalCatalogSnapshot --no-daemon

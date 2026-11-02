@@ -2,16 +2,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Readiness gate:** This plan is subordinate to `docs/operations/production-rollout-readiness.md`. Do not perform a production write until the full backup/restore, source-integrity, migration-rehearsal, and protected-release gates pass.
+
 **Goal:** Move every environment to one `ford` application database with `ford_metadata` and `ford_catalog`, verify it, then release Service and Web through existing protected gates.
 
-**Architecture:** Back up and prove restore before each target write. Build/migrate database `ford`; keep chat/lead/user requirements in `ford_metadata` and canonical Ford models/specs/prices/offers/promotions in `ford_catalog`. Validate reader/writer ACLs before switching Service and scraper connections. Remove `public` only after a no-cascade dependency audit. Keep only an external backup for rollback; retire `ford_service` after acceptance.
+**Architecture:** Back up and prove restore before each target write. Build/migrate database `ford`; keep chat/lead/user requirements in `ford_metadata` and canonical Ford models/specs/prices/offers/promotions in `ford_catalog`. Validate reader/writer ACLs before switching Service and scraper connections. Keep built-in `public` present and empty after a no-cascade dependency audit. Keep only an external backup for rollback; retire `ford_service` after acceptance.
 
 **Tech Stack:** PostgreSQL/pg_dump/pg_restore, Liquibase, GitHub Actions, OCI Vault, existing OCI blue/green deployment actions, Python/shell preflight tests.
 
 ## Global Constraints
 
 - Final application database name is `ford`; final application schemas are exactly `ford_metadata` and `ford_catalog`.
-- PostgreSQL system schemas remain; `public` must be empty and removed only after full dependency/extension review, without `CASCADE`.
+- PostgreSQL system schemas remain; built-in `public` stays present and empty of application/extension objects. Never use `DROP ... CASCADE` or drop `public`.
 - No `ford_service` database remains after acceptance. Keep a verified external backup and restore proof, not a second post-cutover DB.
 - Production receives the approved candidate snapshot with known gaps; do not call it production-validated.
 - Liquibase is the only DDL owner; Service/current database user runs it and gains catalog write access; reader remains SELECT-only.
@@ -48,12 +50,12 @@
 ## Task 3: Migrate one test environment first
 
 - [ ] Migrate into database `ford` from the verified backup without destructive overwrite. If only `ford_service` exists, rename it to `ford` only after backup/restore proof and a no-session/target-name preflight; if both `ford_service` and `ford` exist, stop for an explicit merge plan. Apply Liquibase changesets and verify chat/lead/requirement rows in `ford_metadata` and canonical catalog rows in `ford_catalog`; preserve old conflicting catalog values as history while the approved snapshot supplies current values.
-- [ ] Relocate supported extensions and validate dependencies. Attempt `DROP SCHEMA public` without `CASCADE`; if it fails, stop and inspect rather than force it.
+- [ ] Relocate supported extensions and validate dependencies. Keep `public` present and empty; if any object cannot be safely relocated or removed without `CASCADE`, stop and inspect rather than force it.
 - [ ] Verify only the two application schemas remain, Liquibase history is in `ford_metadata`, scraper writes target `ford_catalog`, and reader SELECT/write-denial probes pass, including denial on the source candidate's `document_provenance_v1` relation.
 - [ ] Configure emme Service and scraper connection URLs to database `ford`, with schema-specific identities. Keep tools false and run health checks.
 - [ ] After acceptance, retire the old `ford_service` database as authorized; keep the external backup only.
 
-**Verification:** Service data counts match backup; catalog matches manifest; app health is good; no reader write/private access; no public schema.
+**Verification:** Service data counts match backup; catalog matches manifest; app health is good; no reader write/private access; built-in `public` remains present and empty.
 
 ## Task 4: Release Service and Web through existing approvals
 
@@ -72,7 +74,7 @@
 - [ ] Keep catalog tools disabled until production Service health, reader permissions, and synthetic checks pass.
 - [ ] Retire each old `ford_service` database only after that environment's acceptance; retain external backup through the approved rollback window.
 
-**Verification:** Every environment reports one app DB `ford`, two app schemas, `public` absent, correct data counts, reader-only tool access, and a verified rollback backup.
+**Verification:** Every environment reports one app DB `ford`, two app schemas, built-in `public` present and empty, correct data counts, reader-only tool access, and a verified rollback backup.
 
 ## Stop Conditions
 

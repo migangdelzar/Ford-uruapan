@@ -23,6 +23,8 @@ import org.springframework.core.task.SyncTaskExecutor;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.time.Duration;
 import org.springframework.core.task.TaskExecutor;
@@ -214,12 +216,14 @@ class InboundContentResolutionServiceTest {
         var retrieval = mock(MetaMediaRetrievalPort.class);
         var interpreter = mock(InboundMediaInterpretationPort.class);
         var closed = new AtomicBoolean();
+        var interpretationStarted = new CountDownLatch(1);
         when(retrieval.retrieve(any(), anyString(), anyLong())).thenReturn(
                 new RetrievedMedia(new ByteArrayResource(new byte[]{1}), "image/jpeg", 1,
                         () -> closed.set(true)));
         when(interpreter.interpret(anyString(), any(), any(), anyString(), anyString())).thenAnswer(invocation -> {
+            interpretationStarted.countDown();
             try {
-                Thread.sleep(5_000);
+                new CountDownLatch(1).await();
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             }
@@ -229,6 +233,12 @@ class InboundContentResolutionServiceTest {
             var thread = new Thread(task, "test-media-interpreter");
             thread.setDaemon(true);
             thread.start();
+            try {
+                assertThat(interpretationStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Timed out waiting for media interpretation to start", exception);
+            }
         };
         var service = new InboundContentResolutionService(properties,
                 new DefaultModelProviderPolicy(capableProviders()), retrieval, interpreter, asynchronousExecutor);

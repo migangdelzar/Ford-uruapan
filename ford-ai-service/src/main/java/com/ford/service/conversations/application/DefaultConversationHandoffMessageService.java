@@ -10,7 +10,7 @@ import java.util.UUID;
 public class DefaultConversationHandoffMessageService implements ConversationHandoffMessagePort {
 
     private static final String TAKEOVER_MESSAGE =
-            "Hola, ya tomé tu conversación. Te responderé por aquí en cuanto pueda.";
+            "Hola, he tomado su conversación. Puede escribirme por aquí.";
 
     private final OperatorConversationCommandRepository commands;
 

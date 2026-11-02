@@ -121,7 +121,7 @@ operational logs, Tempo for trace inspection, and Prometheus for service health
 and alerting.
 
 Prometheus loads `deployment/observability/prometheus/alerts.yml` for Collector,
-read-only MCP tool, and model provider failures. These rules evaluate locally;
+read-only catalog tool, and model provider failures. These rules evaluate locally;
 they do not configure notification delivery or Grafana Cloud alert policies.
 Cloud alert provisioning still requires a Grafana URL and a service account
 with alert rule write permissions; the existing OTLP ingestion token is not

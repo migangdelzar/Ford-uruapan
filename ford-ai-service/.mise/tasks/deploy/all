@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 #MISE description="Deploy data services then the application"
 set -euo pipefail
+if [[ "${FORD_RUNTIME_ENV:-}" != "production" ]]; then
+  echo "Select the prod mise environment before running the remote deployment." >&2
+  exit 2
+fi
 cd "$MISE_PROJECT_ROOT"
-mise run deploy:config
-mise run deploy:bootstrap
-mise run deploy:data
-mise run deploy:app
+mise -E prod run deploy:config
+mise -E prod run deploy:bootstrap
+mise -E prod run deploy:data
+mise -E prod run app:deploy

@@ -6,7 +6,7 @@ import java.util.function.Function;
 public final class HumanHandoffPolicy {
 
     public static final String BOT_FALLBACK =
-            "No pude generar una respuesta en este momento. Intenta de nuevo en unos segundos.";
+            "No pude generar una respuesta en este momento. Intente de nuevo en unos segundos.";
     private final boolean enabled;
     private final Function<UUID, Boolean> runtimeEnabled;
 

@@ -56,7 +56,7 @@ class WhatsAppAdapterContractTest {
         assertThat(messages.get(0).kind()).isEqualTo(InboundMessageKind.LOCATION);
         assertThat(messages.get(0).text()).contains("19.4", "-102.0");
         assertThat(messages.get(1).kind()).isEqualTo(InboundMessageKind.INTERACTIVE);
-        assertThat(messages.get(1).text()).contains("offers", "Promociones");
+        assertThat(messages.get(1).text()).isEqualTo("Opción elegida: Promociones (offers)");
     }
 
     @Test

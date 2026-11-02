@@ -1,0 +1,53 @@
+{
+  "market": "Ford Mexico",
+  "scopeStatus": "UNVERIFIED",
+  "scopeBasis": "Explicit official-source manifest required; snapshot row counts alone do not prove market completeness.",
+  "domains": [
+    {
+      "name": "model_year_trim_identity",
+      "required": true,
+      "sourceEvidenceRequired": true,
+      "unknownPolicy": "UNKNOWN"
+    },
+    {
+      "name": "package_identity",
+      "required": true,
+      "sourceEvidenceRequired": true,
+      "unknownPolicy": "UNKNOWN"
+    },
+    {
+      "name": "technical_specifications",
+      "required": true,
+      "sourceEvidenceRequired": true,
+      "sourceUrlAndObservedAtRequired": true,
+      "unknownPolicy": "UNKNOWN"
+    },
+    {
+      "name": "published_price",
+      "required": true,
+      "sourceEvidenceRequired": true,
+      "sourceUrlAndObservedAtRequired": true,
+      "unknownPolicy": "UNKNOWN"
+    },
+    {
+      "name": "finance_products",
+      "required": true,
+      "sourceEvidenceRequired": true,
+      "validityDatesRequiredWhenPublished": true,
+      "unknownPolicy": "UNKNOWN"
+    },
+    {
+      "name": "promotions",
+      "required": true,
+      "sourceEvidenceRequired": true,
+      "validityDatesRequiredWhenPublished": true,
+      "unknownPolicy": "UNKNOWN"
+    },
+    {
+      "name": "physical_dealer_inventory",
+      "required": false,
+      "separateSourceDomain": true,
+      "unknownPolicy": "UNKNOWN"
+    }
+  ]
+}

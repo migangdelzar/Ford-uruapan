@@ -1,0 +1,31 @@
+databaseChangeLog:
+  - changeSet:
+      id: 027-conversation-shadow-draft
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              create table conversation_shadow_draft (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  conversation_id uuid not null,
+                  receipt_id uuid not null,
+                  inbound_provider_message_id varchar(240) not null,
+                  draft_text text not null,
+                  review_status varchar(16) not null default 'PENDING',
+                  review_note varchar(500) not null default '',
+                  reviewed_by uuid,
+                  reviewed_at timestamp with time zone,
+                  created_at timestamp with time zone not null,
+                  expires_at timestamp with time zone not null,
+                  constraint conversation_shadow_draft_status_check
+                      check (review_status in ('PENDING', 'ACCEPTED', 'REJECTED')),
+                  constraint conversation_shadow_draft_inbound_unique
+                      unique (tenant_id, conversation_id, inbound_provider_message_id)
+              );
+              create index conversation_shadow_draft_review_idx
+                  on conversation_shadow_draft (tenant_id, conversation_id, created_at desc);
+      rollback:
+        - sql:
+            sql: |
+              drop table if exists conversation_shadow_draft;

@@ -187,6 +187,44 @@ mise run deploy:bootstrap
 mise run deploy:all
 ```
 
+For the monthly Ford catalog refresh, both operator paths invoke the same
+backup-verified Ansible playbook on emme-2. The local task is useful for an
+operator-run refresh from a configured workstation; it does not build, publish,
+migrate, or change the promoted scraper image:
+
+```bash
+mise run deploy:catalog-sync
+```
+
+The production schedule runs monthly from the protected
+`.github/workflows/monthly-catalog-sync.yml` workflow. Use its manual dispatch
+for a production run, with the `deployment-preflight` environment approval and
+the same emme-2 backup gate. Keep `FORD_CATALOG_SYNC_ENABLED` false until that
+first protected manual run has succeeded and the old scraper scheduler has
+been retired through the protected scheduler release flow. Do not run local
+and scheduled syncs concurrently; Actions concurrency and the database
+advisory lock coordinate workflow/database runs, while the local task remains
+operator-controlled.
+
+To release the MÍA catalog cutover, dispatch the coordinated protected release
+for Ford Service, Ford-scraping, and Ford-web together, using the versions
+published by their CI workflows:
+
+```bash
+mise run deploy:release-all -- <service-version> <scraping-version> <web-version>
+```
+
+For example, versions use `vMAJOR.MINOR.PATCH`. This operator task requires all
+three versions, a clean local `main` matching GitHub `main`, and a valid `gh`
+login. It only dispatches `.github/workflows/release-all.yml`; GitHub Actions
+performs the release preflight, immutable image provenance checks, protected
+approvals, production readiness and ordered deployment. Catalog parity must be
+complete before the production workflow allows the Spring AI catalog tools to
+be enabled. The Ford-scraping release removes the obsolete Node MCP runtime
+while retaining the catalog writer and scheduler deployment. Follow all three
+workflow runs and complete their production smoke and rollback checks before
+considering the coordinated release complete.
+
 `mise run deploy:secrets` is the single secret-entry task. It generates
 missing database and operator credentials, then securely prompts for missing
 Meta, Grafana Cloud, and Langfuse credentials without echoing them. The task

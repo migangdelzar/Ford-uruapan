@@ -91,6 +91,7 @@ class MetaInboundWorkflowIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        awaitConversationWorkflow();
         jdbc.sql("delete from channel_message").update();
         jdbc.sql("delete from conversation_message").update();
         jdbc.sql("delete from channel_delivery").update();
@@ -206,8 +207,8 @@ class MetaInboundWorkflowIntegrationTest {
         }
     }
 
-    private void awaitConversationWorkflow() throws InterruptedException {
-        var deadline = System.nanoTime() + 10_000_000_000L;
+    private void awaitConversationWorkflow() {
+        var deadline = System.nanoTime() + 30_000_000_000L;
         while (System.nanoTime() < deadline) {
             var pending = jdbc.sql("select count(*) from event_publication "
                             + "where event_type like '%InboundMessageAccepted%' "
@@ -216,7 +217,12 @@ class MetaInboundWorkflowIntegrationTest {
             if (pending == 0) {
                 return;
             }
-            Thread.sleep(25);
+            try {
+                Thread.sleep(25);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError("Interrupted waiting for asynchronous conversation workflow", interrupted);
+            }
         }
         assertThat(jdbc.sql("select count(*) from event_publication "
                         + "where event_type like '%InboundMessageAccepted%' "

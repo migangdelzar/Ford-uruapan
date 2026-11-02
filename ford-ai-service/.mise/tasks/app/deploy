@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+#MISE description="Deploy Ford Service to the selected dev or prod environment"
+set -euo pipefail
+case "${FORD_RUNTIME_ENV:-}" in
+  development)
+    exec mise -E dev run container:up "$@"
+    ;;
+  production)
+    ;;
+  *)
+    echo "Select the dev or prod mise environment before deploying Ford Service." >&2
+    exit 2
+    ;;
+esac
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/remote.sh"
+load_deploy_config
+require_deploy_config
+render_deploy_inventory
+
+ensure_deploy_state_dir
+image="${EMME_APP_IMAGE:-ford-service:deployment}"
+if [[ "${1:-}" == ghcr.io/* ]]; then
+  image="$1"
+  shift
+fi
+if [[ "$image" == ghcr.io/* && ! "$image" =~ ^ghcr\.io/[A-Za-z0-9._/-]+(@sha256:[a-f0-9]{64}|:[A-Za-z0-9._-]+)$ ]]; then
+  echo "Invalid GHCR image reference." >&2
+  exit 2
+fi
+if [[ "$image" == ghcr.io/* ]]; then
+  ansible_command "$(deploy_repo_root)/deployment/ansible/site.yml" \
+    --tags common,app,verify --limit app \
+    -e "app_image=$image" \
+    "$@"
+else
+  local_docker_available=0
+  local_image_ready=0
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    local_docker_available=1
+  fi
+
+  if (( local_docker_available == 1 )) && docker buildx version >/dev/null 2>&1; then
+    docker buildx build --platform linux/arm64 --load -t "$image" "$MISE_PROJECT_ROOT"
+    local_image_ready=1
+  elif (( local_docker_available == 1 )); then
+    docker_architecture="$(docker info --format '{{.Architecture}}')"
+    case "$docker_architecture" in
+      aarch64|arm64)
+        docker build --platform linux/arm64 -t "$image" "$MISE_PROJECT_ROOT"
+        local_image_ready=1
+        ;;
+      *)
+        echo "Local Docker is available but not ARM64 ($docker_architecture); using the emme-1 remote ARM64 build."
+        ;;
+    esac
+  fi
+
+  app_image_preloaded=false
+  app_image_archive=""
+  if (( local_image_ready == 1 )); then
+    app_image_archive="$(deploy_state_dir)/app-image.tar"
+    umask 077
+    docker save --output "$app_image_archive" "$image"
+  else
+    require_command ssh
+    require_command tar
+    echo "Building the ARM64 application image directly on emme-1."
+    app_image_preloaded=true
+    remote_build_dir="/tmp/ford-service-build-$$"
+    COPYFILE_DISABLE=1 tar \
+    --exclude=.git \
+    --exclude=.gradle \
+    --exclude=build \
+    --exclude=bin \
+    --exclude=.mise \
+    --exclude=.tgrep \
+    --exclude=.env \
+    --exclude='.env.*' \
+    --exclude=.docker-build-cache \
+    --exclude=secrets \
+    -czf - \
+    -C "$MISE_PROJECT_ROOT" . | ssh \
+    -o BatchMode=yes \
+    -o ConnectTimeout=10 \
+    -o StrictHostKeyChecking=accept-new \
+    -i "${EMME_1_SSH_KEY:-${OCI_SSH_PRIVATE_KEY}}" \
+    "${OCI_SSH_USER}@${EMME_1_SSH_HOST}" \
+      "set -euo pipefail; cleanup() { rm -rf '$remote_build_dir'; }; trap cleanup EXIT; mkdir -p '$remote_build_dir'; gzip -d | tar -xf - -C '$remote_build_dir'; docker build --platform linux/arm64 -t '$image' '$remote_build_dir'"
+  fi
+  ansible_args=(
+    "$(deploy_repo_root)/deployment/ansible/site.yml"
+    --tags common,app,verify
+    --limit app
+    -e "app_image=$image"
+  )
+  if [[ "$app_image_preloaded" == true ]]; then
+    ansible_args+=(-e "app_image_preloaded=true")
+  else
+    ansible_args+=(-e "app_image_archive=$app_image_archive")
+  fi
+  ansible_command "${ansible_args[@]}" "$@"
+fi

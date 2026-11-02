@@ -20,7 +20,11 @@ public final class CustomerHandoffOfferPolicy {
                 "listo para", "lista para", "necesito", "deseo", "dispuesto a", "dispuesta a");
         var appointment = (message.contains("prueba de manejo") || message.contains("cita"))
                 && hasAny(message, "quiero", "quisiera", "me interesa", "me gustaría", "agendar", "reservar");
-        return purchase || appointment || hasUnresolvedOfferQuestion(answer);
+        var availabilityQuestion = hasAny(message,
+                "disponible", "disponibilidad", "existencia", "inventario", "stock")
+                && (currentUserMessage.contains("?")
+                || hasAny(message, "confirmar", "consultar", "saber si", "hay", "tienen", "cuentan"));
+        return purchase || appointment || availabilityQuestion || hasUnresolvedOfferQuestion(answer);
     }
 
     public boolean shouldOffer(String currentUserMessage, String answer) {

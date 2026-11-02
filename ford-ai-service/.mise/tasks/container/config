@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Validate the local container configuration"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ford_compose_config_check

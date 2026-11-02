@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 /** Opt-in, real-provider smoke checks. Inputs and tool results are synthetic. */
 class LiveProviderPreflightTest {
 
-    private static final List<String> PROVIDER_IDS = List.of("cloudflare", "groq", "gemini", "openrouter");
+    private static final List<String> PROVIDER_IDS = List.of("openai", "cloudflare", "groq", "gemini", "openrouter");
 
     @TestFactory
     Stream<DynamicTest> enabledProvidersConvertTheAppSchemaAndCallAReadOnlyTool() {
@@ -34,11 +34,16 @@ class LiveProviderPreflightTest {
         }
 
         var providerFilter = env("FORD_AI_PREFLIGHT_PROVIDER_IDS");
-        var order = csv(blank(providerFilter) ? System.getenv().getOrDefault("FORD_AI_FALLBACK_ORDER",
-                "cloudflare,groq,gemini,openrouter") : providerFilter);
+        var fallbackOrder = System.getenv().getOrDefault("FORD_AI_FALLBACK_ORDER",
+                "cloudflare,groq,gemini,openrouter");
+        var defaultOrder = (Boolean.parseBoolean(env("FORD_AI_CLOUD_ENABLED")) ? "openai," : "") + fallbackOrder;
+        var order = csv(blank(providerFilter) ? defaultOrder : providerFilter);
         var orderedEnabled = new ArrayList<ProviderConfig>();
         for (var id : order) {
-            if (PROVIDER_IDS.contains(id) && Boolean.parseBoolean(env("FORD_AI_" + id.toUpperCase() + "_ENABLED"))) {
+            var enabled = id.equals("openai")
+                    ? Boolean.parseBoolean(env("FORD_AI_CLOUD_ENABLED"))
+                    : Boolean.parseBoolean(env("FORD_AI_" + id.toUpperCase() + "_ENABLED"));
+            if (PROVIDER_IDS.contains(id) && enabled) {
                 orderedEnabled.add(config(id));
             }
         }
@@ -98,13 +103,14 @@ class LiveProviderPreflightTest {
 
     private static ProviderConfig config(String id) {
         var prefix = "FORD_AI_" + id.toUpperCase();
-        var model = env(prefix + "_MODEL");
+        var model = id.equals("openai") ? env("FORD_AI_CLOUD_MODEL_VERSION") : env(prefix + "_MODEL");
         var overrideModel = env("FORD_AI_PREFLIGHT_MODEL_" + id.toUpperCase());
         if (!blank(overrideModel)) {
             model = overrideModel;
         }
         if (blank(model)) {
             model = switch (id) {
+                case "openai" -> "deepseek-flash";
                 case "cloudflare" -> "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
                 case "groq" -> "openai/gpt-oss-20b";
                 case "gemini" -> "gemini-3.8-flash";
@@ -112,9 +118,10 @@ class LiveProviderPreflightTest {
                 default -> throw new IllegalArgumentException("Unknown provider");
             };
         }
-        var baseUrl = env(prefix + "_BASE_URL");
+        var baseUrl = id.equals("openai") ? env("FORD_AI_CLOUD_BASE_URL") : env(prefix + "_BASE_URL");
         if (blank(baseUrl)) {
             baseUrl = switch (id) {
+                case "openai" -> "https://api.deepseek.com";
                 case "cloudflare" -> "https://api.cloudflare.com/client/v4/accounts/"
                         + env("CLOUDFLARE_ACCOUNT_ID") + "/ai/v1";
                 case "groq" -> "https://api.groq.com/openai/v1";
@@ -124,6 +131,7 @@ class LiveProviderPreflightTest {
             };
         }
         var apiKey = switch (id) {
+            case "openai" -> env("DEEPSEEK_API_KEY");
             case "cloudflare" -> env("CLOUDFLARE_API_TOKEN");
             case "groq" -> env("GROQ_API_KEY");
             case "gemini" -> env("GEMINI_API_KEY");

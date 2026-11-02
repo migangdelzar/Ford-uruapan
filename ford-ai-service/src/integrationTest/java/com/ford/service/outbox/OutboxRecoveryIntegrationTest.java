@@ -82,6 +82,35 @@ class OutboxRecoveryIntegrationTest {
     }
 
     @Test
+    void publisherDeliversStableEventOnlyOnceAndPersistsPermanentFailureForOperatorAction() {
+        var tenantId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var duplicateKey = "conversation:" + conversationId + ":reply-1";
+        var delivered = event(tenantId, conversationId, duplicateKey, Instant.now().minusSeconds(1));
+        var publisher = new OutboxPublisher(store, ignored -> NotificationResult.delivered("wamid.synthetic-1"), 3);
+
+        publisher.publish(delivered);
+        publisher.publish(event(tenantId, conversationId, duplicateKey, Instant.now().minusSeconds(1)));
+        assertThat(publisher.deliverOne(Instant.now())).isTrue();
+        assertThat(publisher.deliverOne(Instant.now())).isFalse();
+        assertThat(jdbc.sql("select count(*) from outbox_event where tenant_id=:tenant and idempotency_key=:key")
+                .param("tenant", tenantId).param("key", duplicateKey).query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("select status, provider_delivery_id from outbox_event where id=:id")
+                .param("id", delivered.id()).query((rs, row) -> rs.getString(1) + ":" + rs.getString(2)).single())
+                .isEqualTo("DELIVERED:wamid.synthetic-1");
+
+        var rejected = event(tenantId, UUID.randomUUID(), "conversation:" + UUID.randomUUID() + ":reply-2",
+                Instant.now().minusSeconds(1));
+        publisher.publish(rejected);
+        var permanentFailurePublisher = new OutboxPublisher(store,
+                ignored -> NotificationResult.permanentFailure("synthetic customer window closed"), 3);
+        assertThat(permanentFailurePublisher.deliverOne(Instant.now())).isTrue();
+        assertThat(jdbc.sql("select status, last_error_category from outbox_event where id=:id")
+                .param("id", rejected.id()).query((rs, row) -> rs.getString(1) + ":" + rs.getString(2)).single())
+                .isEqualTo("DEAD_LETTER:permanent");
+    }
+
+    @Test
     void staleWorkerCannotOverwriteAReclaimedLease() {
         var now = Instant.parse("2026-09-19T15:00:00Z");
         var event = event(UUID.randomUUID(), UUID.randomUUID(), "race:" + UUID.randomUUID(), now.minusSeconds(1));

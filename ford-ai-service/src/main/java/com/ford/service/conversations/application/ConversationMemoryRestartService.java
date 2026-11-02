@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ford.service.conversations.api.ConversationMemoryRestartReceipt;
 import com.ford.service.conversations.api.ConversationMemoryRestarted;
+import com.ford.service.conversations.api.ConversationMemoryRestartRequest;
 import com.ford.service.conversations.application.port.out.ConversationMemoryKeyRepository;
 import com.ford.service.conversations.application.port.out.ConversationTurnLeasePort;
 import com.ford.service.conversations.application.port.out.IdempotencyRepository;
@@ -53,11 +54,21 @@ public class ConversationMemoryRestartService {
 
     @Transactional
     public ConversationMemoryRestartReceipt restart(AuthenticatedOperator operator, UUID tenantId,
-                                                    UUID conversationId, long expectedVersion,
-                                                    String idempotencyKey) {
+                                                     UUID conversationId, long expectedVersion,
+                                                     String idempotencyKey) {
+        return restart(operator, tenantId, conversationId, expectedVersion, idempotencyKey,
+                ConversationMemoryRestartRequest.RestartReason.LEGACY_CLIENT_UNSPECIFIED);
+    }
+
+    @Transactional
+    public ConversationMemoryRestartReceipt restart(AuthenticatedOperator operator, UUID tenantId,
+                                                     UUID conversationId, long expectedVersion,
+                                                     String idempotencyKey,
+                                                     ConversationMemoryRestartRequest.RestartReason reason) {
         requireOperator(operator, tenantId, idempotencyKey);
+        if (reason == null) reason = ConversationMemoryRestartRequest.RestartReason.LEGACY_CLIENT_UNSPECIFIED;
         var normalizedKey = idempotencyKey.trim();
-        var hash = requestHash(conversationId, expectedVersion);
+        var hash = requestHash(conversationId, expectedVersion, reason);
         var previous = idempotency.find(tenantId, operator.subject(), OPERATION, normalizedKey);
         if (previous.isPresent()) {
             return replayOrReject(previous.get(), hash);
@@ -92,7 +103,12 @@ public class ConversationMemoryRestartService {
             var receipt = new ConversationMemoryRestartReceipt(conversationId, expectedVersion + 1, resetAt);
             complete(tenantId, operator.subject(), normalizedKey, hash, receipt);
             events.publishEvent(new ConversationMemoryRestarted(tenantId, conversationId,
-                    receipt.conversationVersion(), resetAt));
+                    receipt.conversationVersion(), resetAt, operator.subject(), reason));
+            if (reason == ConversationMemoryRestartRequest.RestartReason.LEGACY_CLIENT_UNSPECIFIED) {
+                org.slf4j.LoggerFactory.getLogger(ConversationMemoryRestartService.class)
+                        .info("Conversation memory restart reason omitted: conversationId={} actorId={}",
+                                conversationId, operator.subject());
+            }
             return receipt;
         } finally {
             leases.release(tenantId, conversationId, leaseOwner);
@@ -134,10 +150,11 @@ public class ConversationMemoryRestartService {
         }
     }
 
-    private static String requestHash(UUID conversationId, long expectedVersion) {
+    private static String requestHash(UUID conversationId, long expectedVersion,
+                                      ConversationMemoryRestartRequest.RestartReason reason) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest((conversationId + "|" + expectedVersion).getBytes(StandardCharsets.UTF_8)));
+                    .digest((conversationId + "|" + expectedVersion + "|" + reason.name()).getBytes(StandardCharsets.UTF_8)));
         } catch (java.security.NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is unavailable", exception);
         }

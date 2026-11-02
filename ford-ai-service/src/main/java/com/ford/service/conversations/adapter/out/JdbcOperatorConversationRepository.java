@@ -42,8 +42,11 @@ public class JdbcOperatorConversationRepository implements OperatorConversationR
                        m.id as latest_id, m.provider_message_id as latest_provider_message_id,
                        m.direction as latest_direction, m.content as latest_content,
                        m.received_at as latest_received_at, m.sender_type as latest_sender_type,
-                       m.sender_id as latest_sender_id, m.sender_display_name as latest_sender_display_name
+                        m.sender_id as latest_sender_id, m.sender_display_name as latest_sender_display_name,
+                        coalesce(b.enabled, false) as binding_enabled
                 from conversation c
+                left join channel_binding b on b.tenant_id = c.tenant_id and b.channel = c.channel
+                    and b.provider_account_id = c.provider_account_id
                 left join lateral (
                     select m.id, m.provider_message_id, m.direction, m.content, m.received_at,
                            m.sender_type, m.sender_id,
@@ -130,8 +133,11 @@ public class JdbcOperatorConversationRepository implements OperatorConversationR
                        m.id as latest_id, m.provider_message_id as latest_provider_message_id,
                        m.direction as latest_direction, m.content as latest_content,
                        m.received_at as latest_received_at, m.sender_type as latest_sender_type,
-                       m.sender_id as latest_sender_id, m.sender_display_name as latest_sender_display_name
+                        m.sender_id as latest_sender_id, m.sender_display_name as latest_sender_display_name,
+                        coalesce(b.enabled, false) as binding_enabled
                 from conversation c
+                left join channel_binding b on b.tenant_id = c.tenant_id and b.channel = c.channel
+                    and b.provider_account_id = c.provider_account_id
                 left join lateral (
                     select id from lead
                     where conversation_id = c.id and tenant_id = c.tenant_id
@@ -230,7 +236,7 @@ public class JdbcOperatorConversationRepository implements OperatorConversationR
                 null,
                 rs.getObject("lead_id", UUID.class),
                 latest,
-                rs.getTimestamp("updated_at").toInstant());
+                rs.getTimestamp("updated_at").toInstant(), !rs.getBoolean("binding_enabled"));
     }
 
     private static ParticipantView messageSender(SenderType senderType, String participantId,

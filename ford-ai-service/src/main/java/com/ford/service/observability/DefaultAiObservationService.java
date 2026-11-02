@@ -16,9 +16,11 @@ public class DefaultAiObservationService implements AiObservationService {
 
     private static final Set<String> ALLOWED_KEYS = Set.of(
             "channel", "provider", "model", "tool", "outcome", "lead_band", "operation",
-            "failure_category", "confidence_band", "evidence_status", "quality_outcome");
+            "failure_category", "confidence_band", "evidence_status", "quality_outcome",
+            "attempt_stage", "attempt");
     private static final Set<String> ALLOWED_OPERATIONS = Set.of(
-            "ford.ai.conversation", "ford.ai.model", "ford.ai.provider.attempt", "ford.ai.answer.assessment",
+            "ford.ai.conversation", "ford.ai.model", "ford.ai.provider.attempt", "ford.ai.answer.attempt",
+            "ford.ai.answer.assessment",
             "ford.conversation.inbound", "ford.conversation.memory_projection",
             "ford.outbox.publish", "ford.outbox.delivery");
 
@@ -112,11 +114,19 @@ public class DefaultAiObservationService implements AiObservationService {
         }
         if (key.equals("evidence_status")) {
             return Set.of("not_required", "read_only_tool_returned", "read_only_tool_returned_empty",
-                    "read_only_tool_failed", "required_tool_not_called")
+                    "read_only_tool_failed", "knowledge_documents_returned", "required_tool_not_called")
                     .contains(normalized) ? normalized : "other";
         }
         if (key.equals("quality_outcome")) {
-            return Set.of("accepted", "withheld", "rejected").contains(normalized) ? normalized : "other";
+            return Set.of("accepted", "withheld", "rejected", "pending", "clarification", "fallback")
+                    .contains(normalized) ? normalized : "other";
+        }
+        if (key.equals("attempt_stage")) {
+            return Set.of("initial", "required_tool_retry", "quality_repair", "final_generation_retry")
+                    .contains(normalized) ? normalized : "other";
+        }
+        if (key.equals("attempt")) {
+            return Set.of("1", "2", "3", "4").contains(normalized) ? normalized : "other";
         }
         if (key.equals("failure_category")) {
             return Set.of("rate_limited", "provider_unavailable", "network", "authentication",

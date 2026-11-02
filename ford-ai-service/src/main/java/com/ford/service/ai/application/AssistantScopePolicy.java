@@ -54,32 +54,58 @@ public class AssistantScopePolicy {
     }
 
     public boolean allows(String userText, ConversationDecision decision, String memoryContext) {
+        return evaluate(userText, decision, memoryContext).status() == ScopeDecision.Status.ALLOWED;
+    }
+
+    public ScopeDecision evaluate(String userText, ConversationDecision decision) {
+        return evaluate(userText, decision, null);
+    }
+
+    public ScopeDecision evaluate(String userText, ConversationDecision decision, String memoryContext) {
+        var reason = reason(userText, decision, memoryContext);
+        return new ScopeDecision("allowed".equals(reason) ? ScopeDecision.Status.ALLOWED
+                : ScopeDecision.Status.DENIED, reason);
+    }
+
+    /** Returns a content-free decision code for safe diagnostics. */
+    public String reason(String userText, ConversationDecision decision, String memoryContext) {
         if (userText == null || userText.isBlank()) {
-            return false;
+            return "blank_input";
         }
         var normalized = normalize(userText);
         var routedIntent = intentRouter.route(userText);
-        if ((decision != null && decision.intent() == ConversationIntent.OUT_OF_SCOPE)
-                || routedIntent == Intent.OUT_OF_SCOPE) {
-            return false;
+        if (decision != null && decision.intent() == ConversationIntent.OUT_OF_SCOPE) {
+            return "classifier_out_of_scope";
+        }
+        if (routedIntent == Intent.OUT_OF_SCOPE) {
+            return "rules_out_of_scope";
         }
         if (containsAny(normalized, CLEARLY_UNRELATED_TERMS)) {
-            return false;
+            return "clearly_unrelated_request";
         }
         if (SUPPORTED_FORD_INTENTS.contains(routedIntent)) {
-            return true;
+            return "allowed";
         }
-        if (routedIntent == Intent.SERVICE_SUPPORT
-                && availableReadOnlyTools.contains("approved_knowledge_search")) {
-            return true;
+        if (routedIntent == Intent.SERVICE_SUPPORT) {
+            return availableReadOnlyTools.contains("approved_knowledge_search")
+                    ? "allowed" : "service_knowledge_tool_unavailable";
+        }
+        if (routedIntent == Intent.GENERAL && intentRouter.isBuyerDiscoveryRequest(normalized)) {
+            return "allowed";
         }
         if (decision != null && SUPPORTED_FORD_INTENTS.contains(decision.toLegacyIntent())) {
-            return isFordContextualFollowUp(normalized, memoryContext);
+            return isFordContextualFollowUp(normalized, memoryContext)
+                    ? "allowed" : "classified_intent_not_contextual_followup";
         }
         if (routedIntent != Intent.GENERAL) {
-            return false;
+            return "unsupported_routed_intent";
         }
-        return isGreeting(normalized) || isFordContextualFollowUp(normalized, memoryContext);
+        if (isGreeting(normalized) || isFordContextualFollowUp(normalized, memoryContext)) {
+            return "allowed";
+        }
+        return hasFordContext(memoryContext)
+                ? "allowed"
+                : "general_without_ford_context";
     }
 
     public String scopeResponse() {
@@ -104,7 +130,9 @@ public class AssistantScopePolicy {
     private static boolean hasFordContext(String memoryContext) {
         return memoryContext != null && !memoryContext.isBlank()
                 && containsAny(memoryContext.toLowerCase(Locale.ROOT),
-                List.of("ford", "ranger", "lobo", "raptor", "bronco", "maverick", "territory", "explorer", "vehículo", "vehiculo"));
+                List.of("ford", "ranger", "lobo", "raptor", "bronco", "maverick", "territory", "explorer",
+                        "vehículo", "vehiculo", "camioneta", "suv", "crossover", "pickup", "pick-up",
+                        "auto", "carro"));
     }
 
     private static boolean isFordContextualFollowUp(String normalized, String memoryContext) {

@@ -1,5 +1,3 @@
-🚘 *{{vehicle}}*
-
-No pude confirmar el precio publicado. Ventas puede validar la cotización.
+No pude confirmar un precio publicado exacto para {{vehicle}} en el catálogo consultado.
 
 {{price_link}}

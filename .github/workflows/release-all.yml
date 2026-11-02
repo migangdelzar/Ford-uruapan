@@ -1,0 +1,206 @@
+name: Release selected Ford repositories
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Validate selected release readiness without credentials, or dispatch releases.
+        type: choice
+        required: true
+        default: validate
+        options: [validate, release]
+      ford_service:
+        description: Release Ford Service
+        type: boolean
+        required: true
+        default: false
+      ford_scraping:
+        description: Release Ford catalog scraper/scheduler
+        type: boolean
+        required: true
+        default: false
+      ford_web:
+        description: Release Ford Web
+        type: boolean
+        required: true
+        default: false
+      service_version:
+        description: Ford Service version in vMAJOR.MINOR.PATCH form.
+        type: string
+        required: false
+      scraping_version:
+        description: Ford-scraping version in vMAJOR.MINOR.PATCH form.
+        type: string
+        required: false
+      web_version:
+        description: Ford-web version in vMAJOR.MINOR.PATCH form.
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ford-release-all
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Verify selected release identities
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Require coordinator dispatch from main
+        shell: bash
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [[ "${RELEASE_REF}" == 'refs/heads/main' ]] || {
+            echo 'Run release-all from main.' >&2
+            exit 1
+          }
+
+      - name: Check out coordinator source
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Validate selected repositories and versions
+        working-directory: ford-ai-service
+        env:
+          FORD_SERVICE: ${{ inputs.ford_service }}
+          FORD_SCRAPING: ${{ inputs.ford_scraping }}
+          FORD_WEB: ${{ inputs.ford_web }}
+          SERVICE_VERSION: ${{ inputs.service_version }}
+          SCRAPING_VERSION: ${{ inputs.scraping_version }}
+          WEB_VERSION: ${{ inputs.web_version }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "${FORD_SERVICE}" == "true" ]]; then args+=(--service); fi
+          if [[ "${FORD_SCRAPING}" == "true" ]]; then args+=(--scraping); fi
+          if [[ "${FORD_WEB}" == "true" ]]; then args+=(--web); fi
+          args+=(--service-version "${SERVICE_VERSION}")
+          args+=(--scraping-version "${SCRAPING_VERSION}")
+          args+=(--web-version "${WEB_VERSION}")
+          python3 scripts/release_all.py --validate-only "${args[@]}"
+
+      - name: Validate release coordinator credentials
+        if: inputs.operation == 'release'
+        shell: bash
+        env:
+          RELEASE_COORDINATOR_APP_ID: ${{ secrets.RELEASE_COORDINATOR_APP_ID }}
+          RELEASE_COORDINATOR_APP_PRIVATE_KEY: ${{ secrets.RELEASE_COORDINATOR_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          [[ -n "$RELEASE_COORDINATOR_APP_ID" && -n "$RELEASE_COORDINATOR_APP_PRIVATE_KEY" ]] || {
+            echo 'Release coordinator App credentials are not configured.' >&2
+            exit 1
+          }
+
+      - name: Create read-only release metadata token
+        if: inputs.operation == 'release'
+        id: read-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_COORDINATOR_APP_ID }}
+          private-key: ${{ secrets.RELEASE_COORDINATOR_APP_PRIVATE_KEY }}
+          owner: migangdelzar
+          repositories: |
+            Ford-uruapan
+            Ford-scraping
+            Ford-web
+          permission-actions: read
+          permission-contents: read
+
+      - name: Run read-only selected release preflight
+        if: inputs.operation == 'validate' || inputs.operation == 'release'
+        working-directory: ford-ai-service
+        env:
+          GITHUB_TOKEN: ${{ steps.read-token.outputs.token || github.token }}
+          FORD_SERVICE: ${{ inputs.ford_service }}
+          FORD_SCRAPING: ${{ inputs.ford_scraping }}
+          FORD_WEB: ${{ inputs.ford_web }}
+          SERVICE_VERSION: ${{ inputs.service_version }}
+          SCRAPING_VERSION: ${{ inputs.scraping_version }}
+          WEB_VERSION: ${{ inputs.web_version }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "${FORD_SERVICE}" == "true" ]]; then args+=(--service); fi
+          if [[ "${FORD_SCRAPING}" == "true" ]]; then args+=(--scraping); fi
+          if [[ "${FORD_WEB}" == "true" ]]; then args+=(--web); fi
+          args+=(--service-version "${SERVICE_VERSION}")
+          args+=(--scraping-version "${SCRAPING_VERSION}")
+          args+=(--web-version "${WEB_VERSION}")
+          python3 scripts/release_all.py --preflight-only "${args[@]}"
+
+
+  release:
+    name: Approve and deploy selected releases in order
+    if: inputs.operation == 'release' && needs.preflight.result == 'success'
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    environment: release-all-approval
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out approved coordinator source from main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Create narrowly scoped GitHub App token
+        if: inputs.operation == 'release'
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_COORDINATOR_APP_ID }}
+          private-key: ${{ secrets.RELEASE_COORDINATOR_APP_PRIVATE_KEY }}
+          owner: migangdelzar
+          repositories: |
+            Ford-uruapan
+            Ford-scraping
+            Ford-web
+          permission-actions: write
+          permission-contents: read
+
+      - name: Dispatch selected releases sequentially and stop on failure
+        if: inputs.operation == 'release'
+        working-directory: ford-ai-service
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          FORD_SERVICE: ${{ inputs.ford_service }}
+          FORD_SCRAPING: ${{ inputs.ford_scraping }}
+          FORD_WEB: ${{ inputs.ford_web }}
+          SERVICE_VERSION: ${{ inputs.service_version }}
+          SCRAPING_VERSION: ${{ inputs.scraping_version }}
+          WEB_VERSION: ${{ inputs.web_version }}
+          MANIFEST_PATH: ${{ runner.temp }}/release-manifest.json
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "${FORD_SERVICE}" == "true" ]]; then args+=(--service); fi
+          if [[ "${FORD_SCRAPING}" == "true" ]]; then args+=(--scraping); fi
+          if [[ "${FORD_WEB}" == "true" ]]; then args+=(--web); fi
+          args+=(--service-version "${SERVICE_VERSION}")
+          args+=(--scraping-version "${SCRAPING_VERSION}")
+          args+=(--web-version "${WEB_VERSION}")
+          args+=(--manifest-path "${MANIFEST_PATH}")
+          python3 scripts/release_all.py "${args[@]}"
+
+      - name: Upload release manifest
+        if: always() && inputs.operation == 'release'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-manifest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-manifest.json
+          if-no-files-found: error

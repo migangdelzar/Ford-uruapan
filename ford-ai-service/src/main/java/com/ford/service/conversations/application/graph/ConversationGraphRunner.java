@@ -16,19 +16,15 @@ public final class ConversationGraphRunner {
 
     private final CompiledGraph<ConversationGraphState> graph;
     private final BaseCheckpointSaver checkpointSaver;
-
     public ConversationGraphRunner(ConversationTurnProcessor processor) {
-        try {
-            this.graph = ConversationGraphConfiguration.create(processor).compile();
-            this.checkpointSaver = null;
-        } catch (Exception failure) {
-            throw new IllegalStateException("Could not compile conversation graph", failure);
-        }
+        this(processor, null);
     }
 
     public ConversationGraphRunner(ConversationTurnProcessor processor, BaseCheckpointSaver checkpointSaver) {
         try {
-            this.graph = ConversationGraphConfiguration.compile(processor, checkpointSaver);
+            this.graph = checkpointSaver == null
+                    ? ConversationGraphConfiguration.create(processor).compile()
+                    : ConversationGraphConfiguration.compile(processor, checkpointSaver);
             this.checkpointSaver = checkpointSaver;
         } catch (Exception failure) {
             throw new IllegalStateException("Could not compile conversation graph", failure);
@@ -62,12 +58,12 @@ public final class ConversationGraphRunner {
         } catch (ConversationGraphExecutionException failure) {
             log.error("Conversation graph failed: conversationId={} receiptId={} exceptionType={} durationMs={}",
                     reference.conversationId(), reference.receiptId(), failure.getClass().getSimpleName(),
-                    elapsedMs(started), failure);
+                    elapsedMs(started));
             throw failure;
         } catch (RuntimeException failure) {
             log.error("Conversation graph failed: conversationId={} receiptId={} exceptionType={} durationMs={}",
                     reference.conversationId(), reference.receiptId(), failure.getClass().getSimpleName(),
-                    elapsedMs(started), failure);
+                    elapsedMs(started));
             throw new ConversationGraphExecutionException(failure);
         }
         var result = new ConversationGraphResult(finalState.reference(), finalState.route(), finalState.terminal());

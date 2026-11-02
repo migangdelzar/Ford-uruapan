@@ -30,6 +30,13 @@ class ConversationMemoryRecallPolicyTest {
     }
 
     @Test
+    void recallsContextDependentReferencesForGroundedMemoryResolution() {
+        assertThat(policy.shouldRecall("la otra versión", context)).isTrue();
+        assertThat(policy.shouldRecall("esa opción quizá sea más práctica", context)).isTrue();
+        assertThat(policy.shouldRecall("¿Qué promociones tienen?", context)).isFalse();
+    }
+
+    @Test
     void capsRecallResults() {
         assertThat(policy.limit(10)).isEqualTo(3);
         assertThat(policy.limit(2)).isEqualTo(2);

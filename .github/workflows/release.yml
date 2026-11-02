@@ -1,20 +1,25 @@
 name: Ford Service Release
+run-name: ${{ format('Ford Service Release [{0}] {1} {2}', inputs.release_request_id || 'manual', inputs.version || 'rollback', inputs.source_sha || 'recorded') }}
 
 on:
-  workflow_run:
-    workflows: [Ford Service CI]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       operation:
-        description: Deploy a verified main artifact or roll back to the recorded prior digest.
+        description: Deploy a versioned release or roll back to the recorded prior digest.
         required: true
         type: choice
         options: [deploy, rollback]
         default: deploy
+      version:
+        description: Immutable annotated vMAJOR.MINOR.PATCH tag (deploy only).
+        required: false
+        type: string
       source_sha:
-        description: Full source SHA with a successful Ford Service CI run (deploy only).
+        description: Full commit SHA targeted by the version tag (deploy only).
+        required: false
+        type: string
+      release_request_id:
+        description: Coordinator correlation ID used to track release-all requests.
         required: false
         type: string
 
@@ -26,13 +31,192 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  verify:
+    name: Verify versioned source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      operation: ${{ steps.source.outputs.operation }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      version: ${{ steps.source.outputs.version }}
+      coordinator_dispatch: ${{ steps.source.outputs.coordinator_dispatch }}
+    steps:
+      - name: Check out release tooling from main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Resolve and verify the release tag and source SHA
+        id: source
+        env:
+          RELEASE_REF: ${{ github.ref }}
+          REQUESTED_OPERATION: ${{ inputs.operation }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+          RELEASE_REQUEST_ID: ${{ inputs.release_request_id }}
+          RELEASE_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "${RELEASE_REF}" == 'refs/heads/main' ]] || {
+            echo 'Run Ford Service releases from main.' >&2
+            exit 1
+          }
+          coordinator_dispatch=false
+          if [[ -n "${RELEASE_REQUEST_ID}" ]]; then
+            [[ "${RELEASE_ACTOR}" == 'ford-release-coordinator[bot]' && "${RELEASE_REQUEST_ID}" =~ ^[0-9]+-[0-9]+$ ]] || {
+              echo 'Coordinator release request is not authorized.' >&2
+              exit 1
+            }
+            coordinator_run_id="${RELEASE_REQUEST_ID%-*}"
+            coordinator_attempt="${RELEASE_REQUEST_ID##*-}"
+            coordinator_run="$(gh api "repos/migangdelzar/Ford-uruapan/actions/runs/${coordinator_run_id}")"
+            jq -e --arg attempt "${coordinator_attempt}" \
+              '.path == ".github/workflows/release-all.yml" and
+               .event == "workflow_dispatch" and .head_branch == "main" and
+               .status == "in_progress" and (.run_attempt | tostring) == $attempt' \
+              <<<"${coordinator_run}" >/dev/null || {
+              echo 'Coordinator request does not identify an active release-all run on main.' >&2
+              exit 1
+            }
+            coordinator_jobs="$(gh api "repos/migangdelzar/Ford-uruapan/actions/runs/${coordinator_run_id}/attempts/${coordinator_attempt}/jobs?per_page=100")"
+            jq -e '.jobs | any(.name == "Approve and deploy selected releases in order" and .status == "in_progress")' \
+              <<<"${coordinator_jobs}" >/dev/null || {
+              echo 'Coordinator release job is not active; approval may not have been granted.' >&2
+              exit 1
+            }
+            coordinator_dispatch=true
+          fi
+          echo "coordinator_dispatch=${coordinator_dispatch}" >> "$GITHUB_OUTPUT"
+          operation="${REQUESTED_OPERATION}"
+          if [[ "${operation}" == 'rollback' ]]; then
+            echo 'operation=rollback' >> "$GITHUB_OUTPUT"
+            echo 'source_sha=recorded-rollback' >> "$GITHUB_OUTPUT"
+            echo 'version=' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          VERSION="${INPUT_VERSION}"
+          SOURCE_SHA="${INPUT_SOURCE_SHA}"
+          [[ "${VERSION}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+            echo 'A canonical vMAJOR.MINOR.PATCH version is required.' >&2
+            exit 1
+          }
+          [[ "${SOURCE_SHA}" =~ ^[a-f0-9]{40}$ ]] || {
+            echo 'A full source SHA is required.' >&2
+            exit 1
+          }
+          git fetch --no-tags origin "refs/tags/${VERSION}:refs/tags/${VERSION}"
+          [[ "$(git cat-file -t "refs/tags/${VERSION}")" == tag ]] || {
+            echo 'Release version must be an annotated tag.' >&2
+            exit 1
+          }
+          [[ "$(git rev-parse "refs/tags/${VERSION}^{commit}")" == "${SOURCE_SHA}" ]] || {
+            echo 'Release tag target does not match the selected source SHA.' >&2
+            exit 1
+          }
+          git merge-base --is-ancestor "${SOURCE_SHA}" refs/remotes/origin/main || {
+            echo 'Release tag target is not reachable from main.' >&2
+            exit 1
+          }
+          runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${SOURCE_SHA}&event=push&status=success&per_page=100" --jq "[.workflow_runs[] | select(.head_branch == \"${VERSION}\")] | length")"
+          [[ "${runs}" -gt 0 ]] || {
+            echo 'No successful Ford Service CI run exists for this version tag and source SHA.' >&2
+            exit 1
+          }
+          echo 'operation=deploy' >> "$GITHUB_OUTPUT"
+          echo "source_sha=${SOURCE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+  image:
+    name: Resolve and verify the tagged GHCR digest
+    needs: verify
+    if: needs.verify.result == 'success' && needs.verify.outputs.operation == 'deploy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      digest: ${{ steps.image.outputs.digest }}
+    steps:
+      - name: Check out release tooling from main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+      - name: Normalize GHCR image name
+        id: repository
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Resolve and verify version image digest
+        id: image
+        env:
+          IMAGE_REPOSITORY: ${{ steps.repository.outputs.name }}
+          SOURCE_SHA: ${{ needs.verify.outputs.source_sha }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tagged_image="${IMAGE_REPOSITORY}:${VERSION}"
+          docker pull "${tagged_image}" >/dev/null
+          digest_reference="$(docker image inspect --format '{{index .RepoDigests 0}}' "${tagged_image}")"
+          [[ "${digest_reference}" =~ ^ghcr\.io/[A-Za-z0-9._/-]+@sha256:[a-f0-9]{64}$ ]] || {
+            echo 'Published image did not resolve to an immutable digest.' >&2
+            exit 1
+          }
+          digest="${digest_reference##*@}"
+          gh attestation verify "oci://${digest_reference}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --source-ref "refs/tags/${VERSION}" \
+            --source-digest "${SOURCE_SHA}" \
+            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/reusable-container.yml"
+          echo "image=${digest_reference}" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+  production-readiness:
+    name: Require production release readiness
+    needs: [verify, image]
+    if: >-
+      always() && needs.verify.result == 'success' &&
+      (needs.verify.outputs.operation == 'rollback' || needs.image.result == 'success')
+    runs-on: ubuntu-24.04
+    env:
+      PRODUCTION_DEPLOY_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+      RUNTIME_VAULT_READY: ${{ vars.RUNTIME_VAULT_READY }}
+    steps:
+      - name: Fail clearly when a production gate is not ready
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PRODUCTION_DEPLOY_ENABLED" == 'true' ]] || {
+            echo 'Production release blocked: set PRODUCTION_DEPLOY_ENABLED=true after production readiness review.' >&2
+            exit 1
+          }
+          [[ "$RUNTIME_VAULT_READY" == 'true' ]] || {
+            echo 'Production release blocked: verify runtime OCI Vault consumers, then set RUNTIME_VAULT_READY=true.' >&2
+            exit 1
+          }
+
   deploy:
     name: Deploy Ford Service on the existing OCI VM
+    needs: [verify, image, production-readiness, approval]
     if: >-
-      vars.PRODUCTION_DEPLOY_ENABLED == 'true' && vars.RUNTIME_VAULT_READY == 'true' &&
-      ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') ||
-       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+      always() && needs.verify.result == 'success' &&
+      (needs.verify.outputs.operation == 'rollback' || needs.image.result == 'success') &&
+      needs.production-readiness.result == 'success' &&
+      (needs.verify.outputs.coordinator_dispatch == 'true' || needs.approval.result == 'success') &&
+      vars.PRODUCTION_DEPLOY_ENABLED == 'true' && vars.RUNTIME_VAULT_READY == 'true'
     environment: production
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -41,70 +225,302 @@ jobs:
       contents: read
       packages: read
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      FORD_SECRETS_PROVIDER: ${{ vars.FORD_SECRETS_PROVIDER }}
+      FORD_CUSTOMER_MEMORY_ENABLED: ${{ vars.FORD_CUSTOMER_MEMORY_ENABLED || 'false' }}
+      FORD_CUSTOMER_MEMORY_READY: ${{ vars.FORD_CUSTOMER_MEMORY_READY || 'false' }}
+      FORD_CUSTOMER_MEMORY_HMAC_KEY_VERSION: ${{ vars.FORD_CUSTOMER_MEMORY_HMAC_KEY_VERSION || '1' }}
+      FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY }}
+      FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD }}
+      FORD_VAULT_SECRET_OCID_SPRING_DATA_REDIS_PASSWORD: ${{ vars.FORD_VAULT_SECRET_OCID_SPRING_DATA_REDIS_PASSWORD }}
+      FORD_VAULT_SECRET_OCID_FORD_OPERATOR_PASSWORD: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_OPERATOR_PASSWORD }}
+      FORD_VAULT_SECRET_OCID_FORD_SECURITY_JWK_PRIVATE_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_SECURITY_JWK_PRIVATE_KEY }}
+      FORD_VAULT_SECRET_OCID_FORD_RESEND_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_RESEND_API_KEY }}
+      FORD_VAULT_SECRET_OCID_FORD_META_APP_SECRET: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_APP_SECRET }}
+      FORD_VAULT_SECRET_OCID_FORD_META_VERIFY_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_VERIFY_TOKEN }}
+      FORD_VAULT_SECRET_OCID_FORD_META_WHATSAPP_ACCESS_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_WHATSAPP_ACCESS_TOKEN }}
+      FORD_META_DELIVERY_ENABLED: ${{ vars.FORD_META_DELIVERY_ENABLED }}
+      FORD_OUTBOX_ENABLED: ${{ vars.FORD_OUTBOX_ENABLED }}
+      FORD_META_WHATSAPP_DELIVERY_ENDPOINT: ${{ vars.FORD_META_WHATSAPP_DELIVERY_ENDPOINT }}
+      FORD_META_PHONE_NUMBER_ID: ${{ vars.FORD_META_PHONE_NUMBER_ID }}
+      FORD_VAULT_SECRET_OCID_FORD_META_MESSENGER_ACCESS_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_MESSENGER_ACCESS_TOKEN }}
+      FORD_VAULT_SECRET_OCID_FORD_META_INSTAGRAM_ACCESS_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_INSTAGRAM_ACCESS_TOKEN }}
+      FORD_CATALOG_TOOLS_ENABLED: ${{ vars.FORD_CATALOG_TOOLS_ENABLED || 'false' }}
+      FORD_CATALOG_JDBC_URL: ${{ vars.FORD_CATALOG_JDBC_URL }}
+      FORD_CATALOG_USERNAME: ${{ vars.FORD_CATALOG_USERNAME }}
+      FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_TYPESAFE_API_KEY }}
+      FORD_VAULT_SECRET_OCID_OPENAI_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_OPENAI_API_KEY }}
+      FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY }}
+      FORD_AI_FALLBACK_ORDER: ${{ vars.FORD_AI_FALLBACK_ORDER }}
+      FORD_AI_OPENROUTER_ENABLED: ${{ vars.FORD_AI_OPENROUTER_ENABLED }}
+      FORD_AI_OPENROUTER_MODEL: ${{ vars.FORD_AI_OPENROUTER_MODEL }}
+      FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED: ${{ vars.FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED }}
+      FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED: ${{ vars.FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED }}
+      FORD_VAULT_SECRET_OCID_GRAFANA_CLOUD_API_TOKEN: ${{ vars.FORD_VAULT_SECRET_OCID_GRAFANA_CLOUD_API_TOKEN }}
+      FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY: ${{ vars.FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY }}
+      GRAFANA_CLOUD_OTLP_ENDPOINT: ${{ vars.GRAFANA_CLOUD_OTLP_ENDPOINT }}
+      GRAFANA_CLOUD_INSTANCE_ID: ${{ vars.GRAFANA_CLOUD_INSTANCE_ID }}
+      FORD_OPERATOR_USERNAME: ${{ vars.FORD_OPERATOR_USERNAME }}
+      LANGFUSE_OTLP_ENDPOINT: ${{ vars.LANGFUSE_OTLP_ENDPOINT }}
+      LANGFUSE_PUBLIC_KEY: ${{ vars.LANGFUSE_PUBLIC_KEY }}
     steps:
-      - name: Check out the protected release tooling from main
+      - name: Validate protected runtime Vault configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$FORD_SECRETS_PROVIDER" == 'oci-vault' ]] || {
+            echo 'Production deployment blocked: configure FORD_SECRETS_PROVIDER=oci-vault in the production environment.' >&2
+            exit 1
+          }
+          [[ "$FORD_CUSTOMER_MEMORY_ENABLED" == 'true' || "$FORD_CUSTOMER_MEMORY_ENABLED" == 'false' ]] || {
+            echo 'FORD_CUSTOMER_MEMORY_ENABLED must be true or false.' >&2
+            exit 1
+          }
+          [[ "$FORD_CUSTOMER_MEMORY_READY" == 'true' || "$FORD_CUSTOMER_MEMORY_READY" == 'false' ]] || {
+            echo 'FORD_CUSTOMER_MEMORY_READY must be true or false.' >&2
+            exit 1
+          }
+          if [[ "$FORD_CUSTOMER_MEMORY_ENABLED" == 'true' ]]; then
+            [[ "$FORD_CUSTOMER_MEMORY_READY" == 'true' ]] || {
+              echo 'Production customer memory blocked: complete its protected Vault, migration, backup, and identity-audit gates first.' >&2
+              exit 1
+            }
+            [[ "$FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY" =~ ^ocid1[.]vaultsecret[.][A-Za-z0-9.]+$ ]] || {
+              echo 'Production customer memory requires its HMAC key Vault secret OCID.' >&2
+              exit 1
+            }
+            [[ "$FORD_CUSTOMER_MEMORY_HMAC_KEY_VERSION" =~ ^[1-9][0-9]*$ ]] || {
+              echo 'Production customer memory requires a positive HMAC key version.' >&2
+              exit 1
+            }
+          fi
+          [[ "$FORD_OPERATOR_USERNAME" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || {
+            echo 'Production deployment blocked: configure FORD_OPERATOR_USERNAME as the production operator login email.' >&2
+            exit 1
+          }
+          for mapping in \
+            FORD_VAULT_SECRET_OCID_FORD_DATABASE_PASSWORD \
+            FORD_VAULT_SECRET_OCID_FORD_OPERATOR_PASSWORD \
+            FORD_VAULT_SECRET_OCID_FORD_SECURITY_JWK_PRIVATE_KEY \
+            FORD_VAULT_SECRET_OCID_OPENAI_API_KEY; do
+            [[ -n "${!mapping}" ]] || {
+              echo "Production deployment blocked: configure ${mapping} as a Vault secret OCID variable." >&2
+              exit 1
+            }
+          done
+          [[ "$FORD_VAULT_SECRET_OCID_OPENAI_API_KEY" =~ ^ocid1[.]vaultsecret[.][A-Za-z0-9.]+$ ]] || {
+            echo 'Production DeepSeek chat requires FORD_VAULT_SECRET_OCID_OPENAI_API_KEY to reference an OCI Vault secret.' >&2
+            exit 1
+          }
+          if [[ -n "$FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY" \
+            && ! "$FORD_VAULT_SECRET_OCID_OPENROUTER_API_KEY" =~ ^ocid1[.]vaultsecret[.][A-Za-z0-9.]+$ ]]; then
+            echo 'OpenRouter fallback Vault reference must be a valid secret OCID when configured.' >&2
+            exit 1
+          fi
+          [[ "$FORD_CATALOG_TOOLS_ENABLED" == 'true' || "$FORD_CATALOG_TOOLS_ENABLED" == 'false' ]] || {
+            echo 'FORD_CATALOG_TOOLS_ENABLED must be true or false.' >&2
+            exit 1
+          }
+          if [[ "$FORD_CATALOG_TOOLS_ENABLED" == 'true' ]]; then
+            [[ "$FORD_CATALOG_JDBC_URL" =~ ^jdbc:postgresql://[^/]+/[^?]+([?].*)?$ \
+              && "$FORD_CATALOG_USERNAME" == 'ford_catalog_reader' ]] || {
+              echo 'Enabled local catalog tools require a PostgreSQL URL and ford_catalog_reader username.' >&2
+              exit 1
+            }
+          fi
+          [[ "$FORD_META_DELIVERY_ENABLED" == 'true' && "$FORD_OUTBOX_ENABLED" == 'true' ]] || {
+            echo 'Production deployment requires Meta delivery and the durable outbox to be enabled.' >&2
+            exit 1
+          }
+          [[ "$FORD_META_PHONE_NUMBER_ID" =~ ^[0-9]+$ \
+            && "$FORD_META_WHATSAPP_DELIVERY_ENDPOINT" =~ ^https://graph\.facebook\.com/v[0-9]+(\.[0-9]+)?/([0-9]+)/messages$ \
+            && "${BASH_REMATCH[2]}" == "$FORD_META_PHONE_NUMBER_ID" ]] || {
+            echo 'Production deployment requires the official Graph messages endpoint and matching WhatsApp phone number ID.' >&2
+            exit 1
+          }
+          for mapping in \
+            FORD_VAULT_SECRET_OCID_FORD_META_APP_SECRET \
+            FORD_VAULT_SECRET_OCID_FORD_META_VERIFY_TOKEN \
+            FORD_VAULT_SECRET_OCID_FORD_META_WHATSAPP_ACCESS_TOKEN; do
+            [[ "${!mapping}" =~ ^ocid1[.]vaultsecret[.][A-Za-z0-9.]+$ ]] || {
+              echo "Production deployment blocked: configure ${mapping} as a Vault secret OCID variable." >&2
+              exit 1
+            }
+          done
+          for endpoint in GRAFANA_CLOUD_OTLP_ENDPOINT LANGFUSE_OTLP_ENDPOINT; do
+            [[ "${!endpoint}" =~ ^https://[^[:space:]]+/[^[:space:]]*$ ]] || {
+              echo "Production deployment blocked: configure ${endpoint} as an HTTPS endpoint URL." >&2
+              exit 1
+            }
+          done
+          for setting in \
+            GRAFANA_CLOUD_OTLP_ENDPOINT \
+            GRAFANA_CLOUD_INSTANCE_ID \
+            FORD_VAULT_SECRET_OCID_GRAFANA_CLOUD_API_TOKEN \
+            LANGFUSE_OTLP_ENDPOINT \
+            LANGFUSE_PUBLIC_KEY \
+            FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY; do
+            [[ -n "${!setting}" ]] || {
+              echo "Production deployment blocked: configure ${setting} in the production environment." >&2
+              exit 1
+            }
+          done
+      - name: Check out Service observability configuration
         uses: actions/checkout@v7
         with:
           ref: main
-
-      - name: Resolve and verify the release source SHA
-        id: source
+          sparse-checkout: deployment/observability/otel-collector/grafana-cloud-config.yaml
+          sparse-checkout-cone-mode: false
+      - name: Verify catalog reader permissions before deployment
+        if: vars.FORD_CATALOG_TOOLS_ENABLED == 'true'
+        shell: bash
         env:
-          WORKFLOW_EVENT: ${{ github.event_name }}
-          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
-          REQUESTED_SHA: ${{ inputs.source_sha }}
-          REQUESTED_OPERATION: ${{ inputs.operation }}
+          DATA_SSH_HOST: ${{ vars.OCI_DATA_DEPLOY_HOST }}
+          DATA_SSH_USER: ${{ vars.OCI_DATA_DEPLOY_USER }}
+          DATA_SSH_PRIVATE_KEY: ${{ secrets.OCI_DATA_SSH_PRIVATE_KEY }}
+          DATA_SSH_KNOWN_HOSTS: ${{ secrets.OCI_SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          operation="${REQUESTED_OPERATION:-deploy}"
-          if [[ "${WORKFLOW_EVENT}" == "workflow_run" ]]; then
-            operation=deploy
-            source_sha="${WORKFLOW_RUN_SHA}"
-          elif [[ "${operation}" == "deploy" ]]; then
-            source_sha="${REQUESTED_SHA}"
-            [[ "${source_sha}" =~ ^[a-f0-9]{40}$ ]] || { echo "A full source SHA is required for deploy." >&2; exit 1; }
-            successful_runs="$(gh run list --workflow 'Ford Service CI' --branch main --commit "${source_sha}" --status success --json databaseId --jq 'length')"
-            [[ "${successful_runs}" -gt 0 ]] || { echo "No successful Ford Service CI run exists for this main SHA." >&2; exit 1; }
-          else
-            source_sha=recorded-rollback
-          fi
-          if [[ "${operation}" == "deploy" ]]; then
-            [[ "${source_sha}" =~ ^[a-f0-9]{40}$ ]] || { echo "Release source SHA is invalid." >&2; exit 1; }
-          fi
-          echo "operation=${operation}" >> "$GITHUB_OUTPUT"
-          echo "source_sha=${source_sha}" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve the verified source to its published GHCR digest
-        id: image
-        if: steps.source.outputs.operation == 'deploy'
-        env:
-          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
-        run: |
-          set -euo pipefail
-          image="ghcr.io/${GITHUB_REPOSITORY,,}"
-          printf '%s' "${GH_TOKEN}" | docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin >/dev/null
-          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
-          tagged_image="${image}:sha-${SOURCE_SHA}"
-          docker pull "${tagged_image}" >/dev/null
-          immutable_image="$(docker image inspect --format '{{index .RepoDigests 0}}' "${tagged_image}")"
-          [[ "${immutable_image}" =~ ^ghcr\.io/[A-Za-z0-9._/-]+@sha256:[a-f0-9]{64}$ ]] || { echo "Published image did not resolve to an immutable digest." >&2; exit 1; }
-          echo "image=${immutable_image}" >> "$GITHUB_OUTPUT"
-
+          key="$RUNNER_TEMP/catalog-reader-data-key"
+          known_hosts="$RUNNER_TEMP/catalog-reader-known-hosts"
+          install -m 0600 /dev/null "$key"
+          printf '%s\n' "$DATA_SSH_PRIVATE_KEY" > "$key"
+          printf '%s\n' "$DATA_SSH_KNOWN_HOSTS" > "$known_hosts"
+          chmod 0600 "$known_hosts"
+          reader_check="$(ssh -i "$key" \
+            -o BatchMode=yes -o ConnectTimeout=15 \
+            -o UserKnownHostsFile="$known_hosts" \
+            -o StrictHostKeyChecking=yes \
+            "$DATA_SSH_USER@$DATA_SSH_HOST" \
+            'docker exec -i -u postgres data-postgres-1 psql -X -q -A -t -F "|" -v ON_ERROR_STOP=1 -U postgres -d ford_service' <<'SQL'
+          SELECT
+            has_database_privilege('ford_catalog_reader', 'ford_service', 'CONNECT'),
+            has_schema_privilege('ford_catalog_reader', 'ford_read', 'USAGE'),
+            has_table_privilege('ford_catalog_reader', 'ford_read.vehicle_search_v1', 'SELECT'),
+            has_table_privilege('ford_catalog_reader', 'ford_read.vehicle_search_v1', 'INSERT'),
+            has_table_privilege('ford_catalog_reader', 'ford_read.vehicle_search_v1', 'UPDATE'),
+            has_table_privilege('ford_catalog_reader', 'ford_read.vehicle_search_v1', 'DELETE'),
+            has_table_privilege('ford_catalog_reader', 'ford_read.vehicle_search_v1', 'TRUNCATE'),
+            has_schema_privilege('ford_catalog_reader', 'ford', 'USAGE'),
+            NOT EXISTS (
+              SELECT 1 FROM pg_auth_members
+              WHERE member = (SELECT oid FROM pg_roles WHERE rolname = 'ford_catalog_reader')
+            ),
+            EXISTS (
+              SELECT 1
+              FROM pg_roles AS reader_role
+              CROSS JOIN LATERAL unnest(reader_role.rolconfig) AS settings(setting)
+              WHERE reader_role.rolname = 'ford_catalog_reader'
+                AND settings.setting = 'default_transaction_read_only=on'
+            );
+          SET ROLE ford_catalog_reader;
+          SELECT count(*) FROM ford_read.vehicle_search_v1;
+          RESET ROLE;
+          SQL
+          )"
+          permissions="${reader_check%%$'\n'*}"
+          row_count="${reader_check#*$'\n'}"
+          [[ "$permissions" == 't|t|t|f|f|f|f|f|t|t' && "$row_count" =~ ^[0-9]+$ ]] || {
+            echo 'Catalog reader verification failed: SELECT must pass and writes/base-schema access must be denied.' >&2
+            exit 1
+          }
       - name: Run the shared OCI blue-green deployment action
-        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@f8112024deea512ffebe8a7b49df531a29dad027
+        uses: migangdelzar/Ford-oci-deployment-action/.github/actions/oci-blue-green@d391f130a0d820819ee4f38c66d5a2d12d823cad
         with:
           target: ford-service
-          image: ${{ steps.image.outputs.image }}
-          operation: ${{ steps.source.outputs.operation }}
-          source-sha: ${{ steps.source.outputs.source_sha }}
-          host: ${{ secrets.OCI_DEPLOY_HOST }}
-          user: ${{ secrets.OCI_DEPLOY_USER }}
+          ui-upstream-url: ${{ vars.FORD_WEB_UI_UPSTREAM_URL }}
+          image: ${{ needs.verify.outputs.operation == 'rollback' && '' || needs.image.outputs.image }}
+          operation: ${{ needs.verify.outputs.operation }}
+          source-sha: ${{ needs.verify.outputs.source_sha }}
+          host: ${{ vars.OCI_DEPLOY_HOST }}
+          user: ${{ vars.OCI_DEPLOY_USER }}
           ssh-private-key: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
           backup-ssh-private-key: ${{ secrets.OCI_DATA_SSH_PRIVATE_KEY }}
           ssh-known-hosts: ${{ secrets.OCI_SSH_KNOWN_HOSTS }}
-          registry-username: ${{ github.actor }}
+          registry-username: ${{ github.repository_owner }}
           registry-token: ${{ secrets.GITHUB_TOKEN }}
-          remote-root: /opt/ford
-          backup-host: ${{ secrets.OCI_DATA_DEPLOY_HOST }}
-          backup-user: ${{ secrets.OCI_DATA_DEPLOY_USER }}
+          remote-root: /opt/ford-uruapan
+          backup-host: ${{ vars.OCI_DATA_DEPLOY_HOST }}
+          backup-user: ${{ vars.OCI_DATA_DEPLOY_USER }}
+          data-private-ip: ${{ vars.OCI_DATA_PRIVATE_IP }}
+          secrets-provider: ${{ vars.FORD_SECRETS_PROVIDER }}
+          grafana-cloud-otlp-endpoint: ${{ vars.GRAFANA_CLOUD_OTLP_ENDPOINT }}
+          grafana-cloud-instance-id: ${{ vars.GRAFANA_CLOUD_INSTANCE_ID }}
+          grafana-cloud-api-token-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_GRAFANA_CLOUD_API_TOKEN }}
+          langfuse-otlp-endpoint: ${{ vars.LANGFUSE_OTLP_ENDPOINT }}
+          langfuse-public-key: ${{ vars.LANGFUSE_PUBLIC_KEY }}
+          langfuse-secret-key-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_LANGFUSE_SECRET_KEY }}
+          operator-username: ${{ vars.FORD_OPERATOR_USERNAME }}
+          service-catalog-tools-enabled: ${{ vars.FORD_CATALOG_TOOLS_ENABLED || 'false' }}
+          service-catalog-jdbc-url: ${{ vars.FORD_CATALOG_JDBC_URL }}
+          service-catalog-username: ${{ vars.FORD_CATALOG_USERNAME }}
+          customer-memory-enabled: ${{ vars.FORD_CUSTOMER_MEMORY_ENABLED || 'false' }}
+          customer-memory-vault-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_CUSTOMER_MEMORY_HMAC_KEY }}
+          customer-memory-key-version: ${{ vars.FORD_CUSTOMER_MEMORY_HMAC_KEY_VERSION || '1' }}
+          meta-delivery-enabled: ${{ vars.FORD_META_DELIVERY_ENABLED }}
+          outbox-enabled: ${{ vars.FORD_OUTBOX_ENABLED }}
+          meta-whatsapp-delivery-endpoint: ${{ vars.FORD_META_WHATSAPP_DELIVERY_ENDPOINT }}
+          meta-phone-number-id: ${{ vars.FORD_META_PHONE_NUMBER_ID }}
+          meta-app-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_APP_SECRET }}
+          meta-verify-token-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_VERIFY_TOKEN }}
+          meta-whatsapp-access-token-secret-ocid: ${{ vars.FORD_VAULT_SECRET_OCID_FORD_META_WHATSAPP_ACCESS_TOKEN }}
+
+  approval:
+    name: Approve direct Ford Service deployment
+    needs: [verify, image, production-readiness]
+    if: >-
+      always() && needs.verify.result == 'success' &&
+      (needs.verify.outputs.operation == 'rollback' || needs.image.result == 'success') &&
+      needs.production-readiness.result == 'success' &&
+      needs.verify.outputs.coordinator_dispatch != 'true'
+    runs-on: ubuntu-24.04
+    environment: manual-release-approval
+    steps:
+      - name: Confirm direct production approval
+        run: echo 'Direct Ford Service deployment approved.'
+
+  release-result:
+    name: Record release artifact and deployment identity
+    needs: [verify, image, production-readiness, deploy]
+    if: >-
+      always() && needs.verify.result == 'success' &&
+      (needs.verify.outputs.operation == 'rollback' || needs.image.result == 'success') &&
+      needs.production-readiness.result == 'success' &&
+      needs.deploy.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Write release result manifest
+        env:
+          OPERATION: ${{ needs.verify.outputs.operation }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          SOURCE_SHA: ${{ needs.verify.outputs.source_sha }}
+          IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
+          DEPLOYMENT_RESULT: ${{ needs.deploy.result }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          deployed = os.environ["DEPLOYMENT_RESULT"] == "success"
+          result = {
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "version": os.environ["VERSION"] or None,
+              "tag": os.environ["VERSION"] or None,
+              "sourceSha": os.environ["SOURCE_SHA"],
+              "imageDigest": os.environ["IMAGE_DIGEST"] or None,
+              "deploymentId": os.environ["GITHUB_RUN_ID"] if deployed else None,
+              "deploymentUrl": "https://ford.emme.business" if deployed else None,
+          }
+          Path(os.environ["RUNNER_TEMP"], "release-result.json").write_text(
+              json.dumps(result, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+      - name: Upload release result artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ford-release-result
+          path: ${{ runner.temp }}/release-result.json
+          if-no-files-found: error
+          retention-days: 90

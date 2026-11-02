@@ -13,7 +13,8 @@ class HumanHandoffPolicyTest {
 
         assertThat(policy.enabled()).isFalse();
         assertThat(policy.shouldCreateHandoff(true)).isFalse();
-        assertThat(policy.fallbackText()).contains("No pude generar");
+        assertThat(policy.fallbackText())
+                .isEqualTo("No pude generar una respuesta en este momento. Intente de nuevo en unos segundos.");
     }
 
     @Test
@@ -22,7 +23,9 @@ class HumanHandoffPolicyTest {
 
         assertThat(policy.enabled()).isTrue();
         assertThat(policy.shouldCreateHandoff(true)).isTrue();
-        assertThat(policy.fallbackText()).contains("No pude generar").doesNotContain("asesor humano");
+        assertThat(policy.fallbackText())
+                .isEqualTo("No pude generar una respuesta en este momento. Intente de nuevo en unos segundos.")
+                .doesNotContain("asesor humano");
     }
 
     @Test

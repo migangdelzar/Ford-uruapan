@@ -1,0 +1,21 @@
+name: ford-catalog-sync
+
+services:
+  sync:
+    image: {{ catalog_sync_image }}
+    pull_policy: never
+    restart: "no"
+    environment:
+      DATABASE_URL: postgres://ford:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be supplied}@postgres:5432/ford_service?application_name=ford-catalog-sync
+      FORD_BASE_URL: https://www.forduruapan.mx
+      EMBEDDING_PROVIDER: ollama
+      EMBEDDING_API_URL: http://ollama:11434/api/embed
+      EMBEDDING_MODEL: qllama/bge-m3:q8_0
+      EMBEDDING_DIMENSIONS: "1024"
+      CRAWL_MAX_PAGES: "1000"
+      LANGFUSE_ENVIRONMENT: production
+    networks: [data_default]
+
+networks:
+  data_default:
+    external: true

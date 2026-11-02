@@ -1,26 +1,36 @@
 package com.ford.service.handoff.adapter.out;
 
+import com.ford.service.conversations.api.BdcHandoffPacket;
 import com.ford.service.handoff.api.OperatorPrincipal;
 import com.ford.service.handoff.application.port.out.HandoffRepository;
 import com.ford.service.handoff.domain.HandoffStatus;
 import com.ford.service.handoff.domain.HandoffPriority;
 import com.ford.service.handoff.domain.HandoffTicket;
+import com.ford.service.handoffcontact.api.AlternateContactValue;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 @Repository
 public class JdbcHandoffRepository implements HandoffRepository {
 
-    private final JdbcClient jdbc;
+    private static final TypeReference<Map<String, String>> PACKET_TYPE = new TypeReference<>() { };
 
-    public JdbcHandoffRepository(JdbcClient jdbc) {
+    private final JdbcClient jdbc;
+    private final ObjectMapper objectMapper;
+
+    public JdbcHandoffRepository(JdbcClient jdbc, ObjectMapper objectMapper) {
         this.jdbc = jdbc;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -28,16 +38,22 @@ public class JdbcHandoffRepository implements HandoffRepository {
         jdbc.sql("""
                 insert into handoff_ticket
                     (id, tenant_id, conversation_id, lead_id, status, priority, assigned_operator_id,
-                     reason, idempotency_key, version, created_at, claimed_at, closed_at)
+                     reason, idempotency_key, version, created_at, claimed_at, closed_at,
+                     packet, packet_partial, packet_completeness, internal_note)
                 values (:id, :tenantId, :conversationId, :leadId, :status, :priority, :operatorId,
-                        :reason, :idempotencyKey, :version, :createdAt, :claimedAt, :closedAt)
+                        :reason, :idempotencyKey, :version, :createdAt, :claimedAt, :closedAt,
+                        cast(:packet as jsonb), :packetPartial, :packetCompleteness, cast(:internalNote as jsonb))
                 on conflict (id) do update set
                     status = excluded.status,
                     priority = excluded.priority,
                     assigned_operator_id = excluded.assigned_operator_id,
                     version = excluded.version,
                     claimed_at = excluded.claimed_at,
-                    closed_at = excluded.closed_at
+                    closed_at = excluded.closed_at,
+                    packet = excluded.packet,
+                    packet_partial = excluded.packet_partial,
+                    packet_completeness = excluded.packet_completeness,
+                    internal_note = excluded.internal_note
                 """)
                 .param("id", ticket.id())
                 .param("tenantId", ticket.tenantId())
@@ -52,6 +68,10 @@ public class JdbcHandoffRepository implements HandoffRepository {
                 .param("createdAt", timestamp(ticket.createdAt()))
                 .param("claimedAt", timestamp(ticket.claimedAt()))
                 .param("closedAt", timestamp(ticket.closedAt()))
+                .param("packet", packetJson(ticket.packet()))
+                .param("packetPartial", ticket.packet().partial())
+                .param("packetCompleteness", ticket.packet().completeness())
+                .param("internalNote", internalNoteJson(ticket.internalNote()))
                 .update();
         return ticket;
     }
@@ -85,6 +105,17 @@ public class JdbcHandoffRepository implements HandoffRepository {
         return jdbc.sql("select * from handoff_ticket where tenant_id = :tenantId order by " +
                         "case priority when 'HIGH' then 3 when 'NORMAL' then 2 else 1 end desc, created_at asc")
                 .param("tenantId", tenantId)
+                .query(this::map)
+                .list();
+    }
+
+    @Override
+    public List<HandoffTicket> listCreatedBetween(UUID tenantId, Instant startInclusive, Instant endExclusive) {
+        return jdbc.sql("select * from handoff_ticket where tenant_id = :tenantId " +
+                        "and created_at >= :startInclusive and created_at < :endExclusive order by created_at asc")
+                .param("tenantId", tenantId)
+                .param("startInclusive", timestamp(startInclusive))
+                .param("endExclusive", timestamp(endExclusive))
                 .query(this::map)
                 .list();
     }
@@ -221,7 +252,68 @@ public class JdbcHandoffRepository implements HandoffRepository {
                 rs.getLong("version"),
                 rs.getTimestamp("created_at").toInstant(),
                 instant(rs, "claimed_at"),
-                instant(rs, "closed_at"));
+                instant(rs, "closed_at"),
+                packet(rs.getString("packet")), internalNote(rs.getString("internal_note")));
+    }
+
+    private String packetJson(BdcHandoffPacket packet) {
+        try {
+            return objectMapper.writeValueAsString(packet.arguments());
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to serialize BDC handoff packet", exception);
+        }
+    }
+
+    private BdcHandoffPacket packet(String json) {
+        if (json == null || json.isBlank()) {
+            return BdcHandoffPacket.empty();
+        }
+        try {
+            return BdcHandoffPacket.fromArguments(objectMapper.readValue(json, PACKET_TYPE));
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to read BDC handoff packet", exception);
+        }
+    }
+
+    @Override
+    public Optional<AlternateContactValue> findAlternateContact(java.util.Set<UUID> tenantIds, UUID ticketId) {
+        if (tenantIds == null || tenantIds.isEmpty() || ticketId == null) return Optional.empty();
+        return jdbc.sql("select packet from handoff_ticket where id=:ticketId and tenant_id in (:tenantIds)")
+                .param("ticketId", ticketId).param("tenantIds", tenantIds)
+                .query((rs, rowNum) -> packet(rs.getString("packet")).alternateContact().orElse(null))
+                .optional().map(Optional::ofNullable).orElse(Optional.empty());
+    }
+
+    @Override
+    public void recordAlternateContactReveal(UUID ticketId, OperatorPrincipal principal, Instant occurredAt) {
+        jdbc.sql("""
+                insert into audit_event
+                    (id, tenant_id, actor_type, actor_id, event_type, aggregate_type, aggregate_id, metadata, occurred_at)
+                select :id, tenant_id, 'OPERATOR', :actorId, 'HANDOFF_CONTACT_REVEALED',
+                       'handoff_ticket', id, '{}'::jsonb, :occurredAt
+                from handoff_ticket where id=:ticketId and tenant_id in (:tenantIds)
+                """)
+                .param("id", UUID.randomUUID()).param("actorId", principal.operatorId().toString())
+                .param("occurredAt", java.sql.Timestamp.from(occurredAt))
+                .param("ticketId", ticketId).param("tenantIds", principal.tenantIds()).update();
+    }
+
+    private String internalNoteJson(com.ford.service.conversations.api.InternalHandoffNote note) {
+        if (note == null) return null;
+        try {
+            return objectMapper.writeValueAsString(note);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to serialize internal handoff note", exception);
+        }
+    }
+
+    private com.ford.service.conversations.api.InternalHandoffNote internalNote(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            return objectMapper.readValue(json, com.ford.service.conversations.api.InternalHandoffNote.class);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to read internal handoff note", exception);
+        }
     }
 
     private static Instant instant(java.sql.ResultSet rs, String column) throws java.sql.SQLException {

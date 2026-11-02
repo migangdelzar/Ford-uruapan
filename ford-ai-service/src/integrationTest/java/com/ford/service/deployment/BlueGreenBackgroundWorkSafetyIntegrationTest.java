@@ -3,6 +3,8 @@ package com.ford.service.deployment;
 import com.ford.service.database.FordPostgresContainer;
 import com.ford.service.conversations.application.ConversationProperties;
 import com.ford.service.conversations.application.ConversationPublicationRecovery;
+import com.ford.service.conversations.application.ConversationPublicationRecoveryPolicy;
+import com.ford.service.conversations.application.port.out.ConversationRepository;
 import com.ford.service.ingestion.adapter.in.scheduling.FordSyncJob;
 import com.ford.service.ingestion.adapter.in.scheduling.FordSyncProperties;
 import com.ford.service.ingestion.application.SyncCoordinator;
@@ -162,9 +164,10 @@ class BlueGreenBackgroundWorkSafetyIntegrationTest {
         var oldExecutor = taskExecutor();
         var candidateExecutor = taskExecutor();
         var properties = new ConversationProperties();
-        var oldJob = new ConversationPublicationRecovery(oldPublications, oldExecutor, properties,
+        var policy = new ConversationPublicationRecoveryPolicy(mock(ConversationRepository.class));
+        var oldJob = new ConversationPublicationRecovery(oldPublications, oldExecutor, policy, properties,
                 new PostgresAdvisoryExecutionLock(dataSource));
-        var candidateJob = new ConversationPublicationRecovery(candidatePublications, candidateExecutor, properties,
+        var candidateJob = new ConversationPublicationRecovery(candidatePublications, candidateExecutor, policy, properties,
                 new PostgresAdvisoryExecutionLock(dataSource));
 
         try (var workers = Executors.newSingleThreadExecutor()) {

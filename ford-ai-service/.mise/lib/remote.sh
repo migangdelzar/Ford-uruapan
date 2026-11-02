@@ -48,6 +48,9 @@ load_deploy_config() {
   local preserved_operator_password="${FORD_OPERATOR_PASSWORD:-}"
   local preserved_meta_app_secret="${FORD_META_APP_SECRET:-}"
   local preserved_meta_verify_token="${FORD_META_VERIFY_TOKEN:-}"
+  local preserved_meta_whatsapp_access_token="${FORD_META_WHATSAPP_ACCESS_TOKEN:-}"
+  local preserved_security_jwk_private_key="${FORD_SECURITY_JWK_PRIVATE_KEY:-}"
+  local preserved_bff_oidc_client_secret="${FORD_BFF_OIDC_CLIENT_SECRET:-}"
   local preserved_ghcr_username="${GHCR_USERNAME:-}"
   local preserved_ghcr_token="${GHCR_TOKEN:-}"
   local preserved_openai_api_key="${OPENAI_API_KEY:-}"
@@ -58,11 +61,7 @@ load_deploy_config() {
   local preserved_openrouter_api_key="${OPENROUTER_API_KEY:-}"
   local preserved_typesafe_api_key="${TYPESAFE_API_KEY:-}"
   local preserved_resend_api_key="${FORD_RESEND_API_KEY:-}"
-  local preserved_ford_mcp_token="${FORD_MCP_TOKEN:-}"
-  local preserved_ford_mcp_api_token="${FORD_MCP_API_TOKEN:-}"
-  local preserved_mcp_token="${MCP_HTTP_BEARER_TOKEN:-}"
   local preserved_ollama_access_secret="${FORD_AI_OLLAMA_ACCESS_CLIENT_SECRET:-}"
-  local preserved_mcp_access_secret="${FORD_MCP_ACCESS_CLIENT_SECRET:-}"
   local preserved_grafana_token="${GRAFANA_CLOUD_API_TOKEN:-}"
   local preserved_langfuse_secret="${LANGFUSE_SECRET_KEY:-}"
   local preserved_oci_namespace="${OCI_OBJECT_STORAGE_NAMESPACE:-}"
@@ -79,6 +78,9 @@ load_deploy_config() {
   if [[ -n "$preserved_operator_password" ]]; then export FORD_OPERATOR_PASSWORD="$preserved_operator_password"; fi
   if [[ -n "$preserved_meta_app_secret" ]]; then export FORD_META_APP_SECRET="$preserved_meta_app_secret"; fi
   if [[ -n "$preserved_meta_verify_token" ]]; then export FORD_META_VERIFY_TOKEN="$preserved_meta_verify_token"; fi
+  if [[ -n "$preserved_meta_whatsapp_access_token" ]]; then export FORD_META_WHATSAPP_ACCESS_TOKEN="$preserved_meta_whatsapp_access_token"; fi
+  if [[ -n "$preserved_security_jwk_private_key" ]]; then export FORD_SECURITY_JWK_PRIVATE_KEY="$preserved_security_jwk_private_key"; fi
+  if [[ -n "$preserved_bff_oidc_client_secret" ]]; then export FORD_BFF_OIDC_CLIENT_SECRET="$preserved_bff_oidc_client_secret"; fi
   if [[ -n "$preserved_ghcr_username" ]]; then export GHCR_USERNAME="$preserved_ghcr_username"; fi
   if [[ -n "$preserved_ghcr_token" ]]; then export GHCR_TOKEN="$preserved_ghcr_token"; fi
   if [[ -n "$preserved_openai_api_key" ]]; then export OPENAI_API_KEY="$preserved_openai_api_key"; fi
@@ -89,11 +91,7 @@ load_deploy_config() {
   if [[ -n "$preserved_openrouter_api_key" ]]; then export OPENROUTER_API_KEY="$preserved_openrouter_api_key"; fi
   if [[ -n "$preserved_typesafe_api_key" ]]; then export TYPESAFE_API_KEY="$preserved_typesafe_api_key"; fi
   if [[ -n "$preserved_resend_api_key" ]]; then export FORD_RESEND_API_KEY="$preserved_resend_api_key"; fi
-  if [[ -n "$preserved_ford_mcp_token" ]]; then export FORD_MCP_TOKEN="$preserved_ford_mcp_token"; fi
-  if [[ -n "$preserved_ford_mcp_api_token" ]]; then export FORD_MCP_API_TOKEN="$preserved_ford_mcp_api_token"; fi
-  if [[ -n "$preserved_mcp_token" ]]; then export MCP_HTTP_BEARER_TOKEN="$preserved_mcp_token"; fi
   if [[ -n "$preserved_ollama_access_secret" ]]; then export FORD_AI_OLLAMA_ACCESS_CLIENT_SECRET="$preserved_ollama_access_secret"; fi
-  if [[ -n "$preserved_mcp_access_secret" ]]; then export FORD_MCP_ACCESS_CLIENT_SECRET="$preserved_mcp_access_secret"; fi
   if [[ -n "$preserved_grafana_token" ]]; then export GRAFANA_CLOUD_API_TOKEN="$preserved_grafana_token"; fi
   if [[ -n "$preserved_langfuse_secret" ]]; then export LANGFUSE_SECRET_KEY="$preserved_langfuse_secret"; fi
   if [[ -n "$preserved_oci_namespace" ]]; then export OCI_OBJECT_STORAGE_NAMESPACE="$preserved_oci_namespace"; fi
@@ -132,13 +130,6 @@ require_deploy_config() {
   if [[ "${FORD_META_DELIVERY_ENABLED:-false}" == "true" ]]; then
     [[ -n "${FORD_META_WHATSAPP_DELIVERY_ENDPOINT:-}" ]] || missing+=("FORD_META_WHATSAPP_DELIVERY_ENDPOINT")
     [[ -n "${FORD_META_WHATSAPP_ACCESS_TOKEN:-}" ]] || missing+=("FORD_META_WHATSAPP_ACCESS_TOKEN")
-  fi
-  if [[ "${FORD_MCP_ENABLED:-false}" == "true" ]]; then
-    [[ -n "${FORD_MCP_URL:-}" ]] || missing+=("FORD_MCP_URL")
-    [[ "${FORD_MCP_URL:-}" != "https://your-stable-mcp-domain.example.com" ]] || missing+=("usable:FORD_MCP_URL")
-    [[ "${FORD_MCP_URL:-}" == https://* ]] || missing+=("https:FORD_MCP_URL")
-    [[ -n "${FORD_MCP_ENDPOINT:-}" ]] || missing+=("FORD_MCP_ENDPOINT")
-    [[ -n "${FORD_MCP_TOKEN:-${FORD_MCP_API_TOKEN:-${MCP_HTTP_BEARER_TOKEN:-}}}" ]] || missing+=("FORD_MCP_TOKEN")
   fi
   if [[ "${FORD_SECURITY_AUTH_ENABLED:-true}" == "true" ]]; then
     for name in FORD_SECURITY_JWK_PRIVATE_KEY FORD_RESEND_API_KEY RESEND_FROM; do
@@ -235,7 +226,7 @@ report_ai_fallback_status() {
       groq) enabled="${FORD_AI_GROQ_ENABLED:-false}"; key_name=GROQ_API_KEY ;;
       gemini) enabled="${FORD_AI_GEMINI_ENABLED:-false}"; key_name=GEMINI_API_KEY ;;
       cloudflare) enabled="${FORD_AI_CLOUDFLARE_ENABLED:-false}"; key_name=CLOUDFLARE_API_TOKEN ;;
-      openrouter) enabled="${FORD_AI_OPENROUTER_ENABLED:-false}"; key_name=OPENROUTER_API_KEY ;;
+      openrouter) enabled="${FORD_AI_OPENROUTER_ENABLED:-true}"; key_name=OPENROUTER_API_KEY ;;
     esac
     if [[ "$enabled" != "true" ]]; then
       printf 'AI fallback %-10s disabled\n' "$provider"
@@ -254,7 +245,7 @@ report_ai_fallback_status() {
       openrouter) [[ "${FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED:-false}" == true && "${FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED:-false}" == true ]] || capability_status=unverified ;;
     esac
     evaluation_status=not-required
-    if [[ "$provider" == openrouter && "${FORD_AI_OPENROUTER_MODEL:-openrouter/free}" == "openrouter/free" ]]; then
+    if [[ "$provider" == openrouter && "${FORD_AI_OPENROUTER_MODEL:-xiaomi/mimo-v2.6-flash}" == "openrouter/free" ]]; then
       evaluation_status=evaluation-only
       [[ "${FORD_AI_EVALUATION_MODE:-false}" == true ]] && evaluation_status=enabled
     fi
@@ -353,8 +344,7 @@ render_deploy_inventory() {
   local ford_ai_openrouter_base_url_yaml
   local cloudflare_account_id_yaml
   local ford_ai_classifier_handoff_enabled_yaml
-  local ford_mcp_enabled_yaml ford_mcp_url_yaml ford_mcp_endpoint_yaml
-  local ford_ai_ollama_access_id_yaml ford_mcp_access_id_yaml
+  local ford_ai_ollama_access_id_yaml
   ansible_user_yaml="$(yaml_quote "$OCI_SSH_USER")"
   ansible_host_1_yaml="$(yaml_quote "$EMME_1_SSH_HOST")"
   ansible_host_2_yaml="$(yaml_quote "$EMME_2_SSH_HOST")"
@@ -377,20 +367,20 @@ render_deploy_inventory() {
   ford_human_handoff_enabled_yaml="$(yaml_quote "${FORD_HUMAN_HANDOFF_ENABLED:-true}")"
   ford_conversation_graph_enabled_yaml="$(yaml_quote "${FORD_CONVERSATION_GRAPH_ENABLED:-true}")"
   ford_outbox_enabled_yaml="$(yaml_quote "${FORD_OUTBOX_ENABLED:-false}")"
-  ford_ai_chat_provider_yaml="$(yaml_quote "${FORD_AI_CHAT_PROVIDER:-ollama}")"
+  ford_ai_chat_provider_yaml="$(yaml_quote "${FORD_AI_CHAT_PROVIDER:-openai}")"
   ford_ai_cloud_provider_yaml="$(yaml_quote "${FORD_AI_CLOUD_PROVIDER:-openai}")"
-  ford_ai_cloud_enabled_yaml="$(yaml_quote "${FORD_AI_CLOUD_ENABLED:-false}")"
+  ford_ai_cloud_enabled_yaml="$(yaml_quote "${FORD_AI_CLOUD_ENABLED:-true}")"
   ford_ai_log_provider_errors_yaml="$(yaml_quote "${FORD_AI_LOG_PROVIDER_ERRORS:-false}")"
   ford_ai_local_enabled_yaml="$(yaml_quote "${FORD_AI_LOCAL_ENABLED:-false}")"
   ford_ai_local_base_url_yaml="$(yaml_quote "${FORD_AI_LOCAL_BASE_URL:-https://ollama.example.invalid}")"
   ford_ai_local_model_version_yaml="$(yaml_quote "${FORD_AI_LOCAL_MODEL_VERSION:-qwen3.5:4b}")"
   ford_ai_local_temperature_yaml="$(yaml_quote "${FORD_AI_LOCAL_TEMPERATURE:-0.1}")"
   ford_ai_cloud_temperature_yaml="$(yaml_quote "${FORD_AI_CLOUD_TEMPERATURE:-0.1}")"
-  ford_ai_cloud_base_url_yaml="$(yaml_quote "${FORD_AI_CLOUD_BASE_URL:-https://api.openai.com/v1}")"
-  ford_ai_cloud_model_version_yaml="$(yaml_quote "${FORD_AI_CLOUD_MODEL_VERSION:-gpt-4o-mini}")"
-  ford_ai_provider_max_attempts_yaml="$(yaml_quote "${FORD_AI_PROVIDER_MAX_ATTEMPTS:-5}")"
+  ford_ai_cloud_base_url_yaml="$(yaml_quote "${FORD_AI_CLOUD_BASE_URL:-https://api.deepseek.com}")"
+  ford_ai_cloud_model_version_yaml="$(yaml_quote "${FORD_AI_CLOUD_MODEL_VERSION:-deepseek-flash}")"
+  ford_ai_provider_max_attempts_yaml="$(yaml_quote "${FORD_AI_PROVIDER_MAX_ATTEMPTS:-2}")"
   ford_ai_provider_max_retry_after_yaml="$(yaml_quote "${FORD_AI_PROVIDER_MAX_RETRY_AFTER:-PT3S}")"
-  ford_ai_fallback_order_yaml="$(yaml_quote "${FORD_AI_FALLBACK_ORDER:-cloudflare,groq,gemini,openrouter}")"
+  ford_ai_fallback_order_yaml="$(yaml_quote "${FORD_AI_FALLBACK_ORDER:-openrouter}")"
   ford_ai_evaluation_mode_yaml="$(yaml_quote "${FORD_AI_EVALUATION_MODE:-false}")"
   ford_ai_groq_enabled_yaml="$(yaml_quote "${FORD_AI_GROQ_ENABLED:-false}")"
   ford_ai_groq_model_yaml="$(yaml_quote "${FORD_AI_GROQ_MODEL:-openai/gpt-oss-20b}")"
@@ -407,8 +397,8 @@ render_deploy_inventory() {
   ford_ai_cloudflare_base_url_yaml="$(yaml_quote "${FORD_AI_CLOUDFLARE_BASE_URL:-https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID:-unconfigured}/ai/v1}")"
   ford_ai_cloudflare_tool_calling_verified_yaml="$(yaml_quote "${FORD_AI_CLOUDFLARE_TOOL_CALLING_VERIFIED:-false}")"
   ford_ai_cloudflare_structured_output_verified_yaml="$(yaml_quote "${FORD_AI_CLOUDFLARE_STRUCTURED_OUTPUT_VERIFIED:-false}")"
-  ford_ai_openrouter_enabled_yaml="$(yaml_quote "${FORD_AI_OPENROUTER_ENABLED:-false}")"
-  ford_ai_openrouter_model_yaml="$(yaml_quote "${FORD_AI_OPENROUTER_MODEL:-openrouter/free}")"
+  ford_ai_openrouter_enabled_yaml="$(yaml_quote "${FORD_AI_OPENROUTER_ENABLED:-true}")"
+  ford_ai_openrouter_model_yaml="$(yaml_quote "${FORD_AI_OPENROUTER_MODEL:-xiaomi/mimo-v2.6-flash}")"
   ford_ai_openrouter_base_url_yaml="$(yaml_quote "${FORD_AI_OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}")"
   ford_ai_openrouter_tool_calling_verified_yaml="$(yaml_quote "${FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED:-false}")"
   ford_ai_openrouter_structured_output_verified_yaml="$(yaml_quote "${FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED:-false}")"
@@ -420,11 +410,7 @@ render_deploy_inventory() {
   grafana_instance_yaml="$(yaml_quote "$GRAFANA_CLOUD_INSTANCE_ID")"
   langfuse_endpoint_yaml="$(yaml_quote "${LANGFUSE_OTLP_ENDPOINT:-${LANGFUSE_BASE_URL:-https://us.cloud.langfuse.com}/api/public/otel}")"
   langfuse_public_yaml="$(yaml_quote "$LANGFUSE_PUBLIC_KEY")"
-  ford_mcp_enabled_yaml="$(yaml_quote "${FORD_MCP_ENABLED:-false}")"
-  ford_mcp_url_yaml="$(yaml_quote "${FORD_MCP_URL:-https://your-stable-mcp-domain.example.com}")"
-  ford_mcp_endpoint_yaml="$(yaml_quote "${FORD_MCP_ENDPOINT:-/mcp}")"
   ford_ai_ollama_access_id_yaml="$(yaml_quote "${FORD_AI_OLLAMA_ACCESS_CLIENT_ID:-}")"
-  ford_mcp_access_id_yaml="$(yaml_quote "${FORD_MCP_ACCESS_CLIENT_ID:-}")"
   backup_bucket_yaml="$(yaml_quote "${OCI_BACKUP_BUCKET:-emme-business}")"
   backup_namespace_yaml="$(yaml_quote "${OCI_OBJECT_STORAGE_NAMESPACE:-}")"
   backup_prefix_yaml="$(yaml_quote "${OCI_BACKUP_PREFIX:-ford/backups}")"
@@ -496,10 +482,6 @@ all:
     grafana_cloud_instance_id: ${grafana_instance_yaml}
     langfuse_otlp_endpoint: ${langfuse_endpoint_yaml}
     langfuse_public_key: ${langfuse_public_yaml}
-    ford_mcp_enabled: ${ford_mcp_enabled_yaml}
-    ford_mcp_url: ${ford_mcp_url_yaml}
-    ford_mcp_endpoint: ${ford_mcp_endpoint_yaml}
-    ford_mcp_access_client_id: ${ford_mcp_access_id_yaml}
     backup_bucket: ${backup_bucket_yaml}
     object_storage_namespace: ${backup_namespace_yaml}
     backup_object_prefix: ${backup_prefix_yaml}

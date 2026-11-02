@@ -92,6 +92,12 @@ public final class RedisCachedConversationMemoryPort implements ConversationMemo
     }
 
     @Override
+    public List<ConversationMessage> loadTranscriptForRebase(ConversationMemoryKey key, Instant contextStartedAt,
+                                                            int keepRecentCount, int maxRebaseMessages) {
+        return durable.loadTranscriptForRebase(key, contextStartedAt, keepRecentCount, maxRebaseMessages);
+    }
+
+    @Override
     public void invalidate(ConversationMemoryKey key) {
         evictSafely(key);
     }

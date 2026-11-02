@@ -1,0 +1,67 @@
+databaseChangeLog:
+  - changeSet:
+      id: 038-message-approval
+      author: ford-service
+      changes:
+        - sql:
+            sql: |
+              alter table channel_message add constraint channel_message_tenant_conversation_id_unique
+                  unique (tenant_id, conversation_id, id);
+              create table message_approval (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  conversation_id uuid not null references conversation(id) on delete cascade,
+                  source_receipt_id uuid not null,
+                  version bigint not null constraint message_approval_version_check check (version >= 0),
+                  conversation_version bigint not null constraint message_approval_conversation_version_check check (conversation_version >= 0),
+                  disposition_route varchar(32) not null,
+                  reason_code varchar(64) not null,
+                  status varchar(24) not null,
+                  draft_text text,
+                  draft_may_be_approved boolean not null,
+                  created_at timestamp with time zone not null,
+                  updated_at timestamp with time zone not null,
+                  reviewed_by uuid,
+                  outbound_message_id uuid,
+                   constraint message_approval_source_receipt_fk foreign key
+                       (tenant_id, conversation_id, source_receipt_id)
+                       references channel_message(tenant_id, conversation_id, id) on delete cascade,
+                  constraint message_approval_draft_length check (draft_text is null or length(draft_text) <= 2000),
+                  constraint message_approval_mandatory_no_draft check (disposition_route <> 'MANDATORY_HANDOFF' or draft_text is null),
+                  constraint message_approval_queued_receipt check
+                      (status <> 'QUEUED' or (reviewed_by is not null and outbound_message_id is not null and draft_text is not null)),
+                  constraint message_approval_outbound_status check (status = 'QUEUED' or outbound_message_id is null)
+              );
+              create index message_approval_conversation_idx
+                  on message_approval(tenant_id, conversation_id, created_at desc);
+
+              create table message_approval_hold (
+                  tenant_id uuid not null,
+                  conversation_id uuid not null references conversation(id) on delete cascade,
+                  approval_id uuid not null unique references message_approval(id) on delete cascade,
+                  created_at timestamp with time zone not null,
+                  primary key (tenant_id, conversation_id)
+              );
+
+              create table message_approval_action_audit (
+                  id uuid primary key,
+                  tenant_id uuid not null,
+                  conversation_id uuid not null,
+                  approval_id uuid not null references message_approval(id) on delete cascade,
+                  actor_id uuid not null,
+                  action varchar(16) not null check (action in ('APPROVE', 'EDIT', 'REJECT', 'TAKEOVER')),
+                  approval_version bigint not null check (approval_version >= 0),
+                  reason_code varchar(64) not null,
+                  source_receipt_id uuid not null,
+                  outbound_message_id uuid,
+                  occurred_at timestamp with time zone not null
+              );
+              create index message_approval_audit_conversation_idx
+                  on message_approval_action_audit(tenant_id, conversation_id, occurred_at desc);
+      rollback:
+        - sql:
+            sql: |
+              drop table if exists message_approval_action_audit;
+              drop table if exists message_approval_hold;
+              drop table if exists message_approval;
+              alter table channel_message drop constraint if exists channel_message_tenant_conversation_id_unique;

@@ -9,6 +9,7 @@ public final class OciVaultSecretPropertyLoader {
     public static final String SECRET_OCID_PREFIX = "FORD_VAULT_SECRET_OCID_";
 
     private static final Pattern PROPERTY_NAME = Pattern.compile("[A-Z][A-Z0-9_]*");
+    private static final String SPRING_PROPERTY_PREFIX = "SPRING_";
 
     private final VaultSecretValueFetcher secretFetcher;
 
@@ -38,6 +39,13 @@ public final class OciVaultSecretPropertyLoader {
         if (secretValue == null || secretValue.isBlank()) {
             throw new IllegalStateException("OCI Vault returned an empty value for " + propertyName);
         }
-        loadedProperties.put(propertyName, secretValue);
+        loadedProperties.put(toPropertyName(propertyName), secretValue);
+    }
+
+    private static String toPropertyName(String environmentName) {
+        if (environmentName.startsWith(SPRING_PROPERTY_PREFIX)) {
+            return environmentName.toLowerCase(java.util.Locale.ROOT).replace('_', '.');
+        }
+        return environmentName;
     }
 }

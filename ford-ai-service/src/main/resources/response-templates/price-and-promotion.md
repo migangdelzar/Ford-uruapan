@@ -1,5 +1,3 @@
-{{price_section}}
-
-──────────
-
 {{promotion_section}}
+
+{{price_section}}

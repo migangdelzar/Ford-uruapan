@@ -1,6 +1,64 @@
 # Production Rollout Readiness
 
-Status: **blocked from production enablement**. Local workflow and deployment implementation may proceed, but no production deploy job may run until every blocking gate below is cleared and rechecked.
+> **Historical snapshot (2026-10-13; superseded for current cutover):** This document captures the earlier MCP-based production topology and must not be used as a current inventory or deployment procedure. The active MÍA/Spring AI cutover checklist is [`tasks/todo.md`](../../tasks/todo.md). Current source removes the MCP runtime; production MCP resources remain until the protected Service + scraper + Ford-web release, both-host verification, and rollback gates pass. Preserve this snapshot as historical evidence only.
+
+Status: **blocked from public production cutover**. The isolated `emme-crm-ui` Pages origin may be deployed and verified independently. Do not release Ford Service to emme-1, change public DNS, or switch customer traffic until every blocking runtime gate below is cleared and rechecked.
+
+## Ford catalog and database cutover readiness — 2026-11-01
+
+**Current decision: no production deployment, migration, snapshot load, or tool enablement.** This section is the active catalog-specific gate sequence; the broader repository, Vault, ingress, host-capacity, and protected-environment gates remain listed below and must also pass.
+
+### Evidence checked locally
+
+- Local feature commit: `0ed1cf5` (`feat: add schema-safe Ford catalog search`). It remains local to the feature branch; this session did not push or merge it. No deployment was attempted.
+- Fresh local verification on 2026-11-02: 663 Gradle unit tests passed, 88 PostgreSQL integration tests passed, and 10 catalog exporter script tests passed. These cover local logic only, not production state.
+- Approved candidate archive exists locally and its SHA-256 matches the approved value: `a1fe738999b3d1148d70d8cb89b4b8e998bfcdc3f7f6304570f06e8c74c1106d`.
+- A fresh isolated restore of the approved archive (SHA-256 still matches `a1fe738999b3d1148d70d8cb89b4b8e998bfcdc3f7f6304570f06e8c74c1106d`) reproduced the exporter refusal. Row counts match, but `ford_capture.retrieval_document_manifest` expected `e9896d550932a028a0ec52e46e08610dbcf2c6b0a2edc0a50e850ad08a3d6070`, actual `7c63aae0a8dddf7700ef7e620761c08fa8256db875b50363d3cebe5f7e37ab48`; `ford_read.catalog_documents_v1` expected `b92fe6dff8c4e7fee81f31f072abc441e964aa6f2792ff8b7e4efbdc03836ad9`, actual `00d06c384effa7b8bb0bb26ce64b8609bcd7db444fba8846ef3646a017d77853`. Exporter refused and wrote no SQL. Preserve archive and expected hashes; source/data owner must resolve this integrity conflict.
+- Default Docker context pointed to stopped Colima profile `emme`. After approval, Testcontainers and the archive restore ran through existing local `testbox`; no existing source container, shared database, or remote host was modified. Do not change archive/hash values to clear the gate.
+- The disposable restore reported relocatable `vector` 0.8.7 and `pg_trgm` 1.6, both owned by `ford_catalog_admin`. Production extension ownership/relocation permission, production Liquibase history, backups, and target object inventory were not checked.
+- The committed defaults keep `FORD_CATALOG_TOOLS_ENABLED=false`. Integration tests prove `ford_metadata`/`ford_catalog` placement, reader-denied metadata access, and a present, empty `public` schema. These tests are not production evidence.
+- Unrelated local edits remain unstaged and uncommitted. Do not include them in release artifacts.
+- `docs/superpowers/plans/2026-11-01-ford-database-cutover-release.md` was aligned on 2026-11-02 to keep built-in `public` present and empty. Its `ford_service` retirement step remains future-only and needs separate approval after successful acceptance; this readiness work does not authorize it.
+
+### Live read-only preflight — 2026-11-02
+
+SSH checks to `emme-1` and `emme-2` and SQL probes on `emme-2` were read-only; SQL ran inside `BEGIN READ ONLY` and ended with `ROLLBACK`. No secrets were printed. These findings are a stop signal, not authorization to reconcile production in place.
+
+- Both hosts are active: `emme-1` runs Ford Service blue/green containers; `emme-2` runs the PostgreSQL/Redis stack and Ford scraping/MCP services. Root disk was 69% used (9.5 GB free) on emme-1 and 85% used (4.7 GB free) on emme-2.
+- Both running Ford Service containers report database name `ford_service`, unset `currentSchema`, and `FORD_CATALOG_TOOLS_ENABLED=false`.
+- On emme-2, database `ford_service` exists; database `ford` does not. Databases also include `ford_catalog_test` and `postgres`.
+- `ford_service` currently has schemas `ford`, `ford_catalog`, `ford_graph`, `ford_read`, and `public`. Preliminary relation counts: `ford` 67 tables/174 indexes/10 sequences; `ford_catalog` 12 tables/4 views/4 indexes; `ford_graph` 3 tables/7 indexes/1 sequence; `ford_read` 19 views; `public` 58 tables/137 indexes/2 sequences. This is not yet the required full object/dependency/ownership inventory.
+- Extensions in `ford_service`: `vector` 0.8.6 and `pg_trgm` 1.6 are relocatable but live in `public`, owned by role `ford`; `pgcrypto` 1.3 also lives in `public`; `plpgsql` is in `pg_catalog`. This differs from the approved design and disposable restore (which had `vector` 0.8.7 and extension owner `ford_catalog_admin`).
+- `ford_service` has Liquibase ledgers in both `ford` (21 changesets) and `public` (33 changesets). Neither ledger contains changeset IDs `025-ford-metadata-schema` or `026-ford-extension-schemas`. The running database therefore does not match the assumed single-ledger migration baseline. Do not run 025/026 until the ledger provenance/checksums and app-version compatibility are reconciled on a restored clone.
+- Confirmed migration incompatibility: changeset 025 explicitly rejects any listed relation found outside `public`, `ford_metadata`, or system schemas. Live DB has `ford.ai_execution` and `public.ai_execution` (and many other app-table duplicates across `ford`/`public`), so 025 will raise `Relation ai_execution exists in an unreviewed schema` before it can complete. Candidate startup with Liquibase enabled will fail against this baseline; do not bypass the guard or change the live search path to hide it.
+- Second extension incompatibility: live `pgcrypto` 1.3 is relocatable but remains in `public`; changeset 026 relocates only `vector` and `pg_trgm`, then requires `public` to contain zero objects. Even after a separately verified 025 reconciliation, 026 will fail its public-object audit unless an approved migration relocates `pgcrypto` to an approved application schema and validates its dependents.
+- The live `ford` role is superuser, CREATEDB, CREATEROLE, REPLICATION, and BYPASSRLS. This is not an acceptable least-privilege migration/runtime role for the approved deployment design. `ford_catalog_reader` exists and is non-superuser, but its effective grants were not yet audited.
+- `ford_catalog_test` contains `ford_capture`, `ford_read`, and `public`; it has `vector` 0.8.6 and `pg_trgm` 1.6 in `public`, and no Liquibase ledger tables. It is not evidence that the production snapshot is ready.
+- Deploy inventory `.mise/state/deploy/inventory.yml` is absent, so the repository's Ansible deploy entrypoint is not ready from this workspace. The attempted `postgres` role login failed because that role does not exist; no changes followed.
+
+**Live-preflight result: BLOCKED.** Do not deploy, migrate, snapshot-load, enable tools, alter extensions, or clean schemas on either host. Current changeset 025 is proven incompatible with the live `ford` schema and would abort Liquibase; bypassing it risks app outage and split data. Resolve source hash mismatch, reconcile duplicated schema data and both ledgers on a verified restore, establish least-privilege roles, and rehearse corrected changesets before any production change. emme-2 disk headroom is also a release concern; do not delete data to address it without separate review.
+
+### Ordered release plan and gates
+
+1. **Resolve source integrity — BLOCKED.** Source/data owner investigates both mismatched hashes against the approved archive and manifest. Preserve archive bytes and expected hashes. Resume only when a fresh exporter run passes all database identity, relation inventory, row count, and content-hash checks. Never hand-edit hashes to clear this gate.
+2. **Review release scope and source identity.** Review commit `0ed1cf5`, obtain required code review, push/merge only through the existing protected release path, and record the exact source SHA and immutable image digest. Keep unrelated workspace edits out. Existing repo/workflow/environment gates in this document still apply.
+3. **Production read-only preflight — PARTIAL; BLOCKED.** The 2026-11-02 checks above confirmed target DB/schema/extension/ledger discrepancies on emme-2, but did not establish full object dependencies, grants, checksums for all ledger rows, data counts, or migration-role permissions. Complete that audit through an authorized DBA; preserve read-only mode and do not guess which ledger is authoritative.
+4. **Backup and restore proof — NOT RUN.** Take the approved external backup, hash it, and restore it into an isolated production-like PostgreSQL instance. Verify the backup contains the expected application data and migration history. No production writes before restore proof.
+5. **Migration rehearsal — NOT RUN.** Apply the exact committed changesets to the restored copy. Verify 025 preserves/moves reviewed app objects and Liquibase history to `ford_metadata`; 026 relocates `vector` and `pg_trgm` to `ford_catalog`; all catalog relations use the approved schema; reader can select only approved catalog relations and cannot use/read metadata; `public` remains present and contains no application/extension objects. Any unknown object, permission error, checksum conflict, data loss, or need for `CASCADE` stops the release.
+6. **Snapshot generation and load — BLOCKED.** Only after Gate 1 passes, generate the immutable SHA-identified snapshot changeset. Review it, test repeatability/rollback on a disposable copy, and verify exact row counts/content hashes and unchanged `ford_metadata`. Do not load the currently mismatched candidate.
+7. **Production deployment with tools off — BLOCKED.** After all prior gates, backup proof, migration compatibility review, required protected approvals, CI, Vault/runtime-secret, image, health, and rollback checks pass, deploy the approved immutable artifact with `FORD_CATALOG_TOOLS_ENABLED=false`. Apply Liquibase only through the approved migration owner. No DNS, Cloudflare, routing, scraper cadence, or customer-facing scraper changes.
+8. **Post-deploy verification.** Confirm database/schema identity, applied Liquibase checksums, extension locations, empty-but-present `public`, metadata preservation, snapshot counts/hashes, reader grants/denials, health, and synthetic exact-model/trim/offer/citation/no-match behavior. Keep tools off while checking.
+9. **Explicit enablement and observation.** Enable catalog tools only after all gates pass and a release owner approves. Canary and monitor. On any integrity, ACL, health, or behavior failure, disable the feature and use the approved application rollback plus verified external database restore plan; do not automatically reverse Liquibase migrations.
+
+### Stop conditions
+
+- Either approved source hash still differs, or source identity/counts are not independently verified.
+- Production Liquibase history/checksums, 025 status, extension ownership/permissions, or current public-object inventory are unknown or conflict with the rehearsal.
+- Backup cannot be restored; migration breaks active-version compatibility; application data changes unexpectedly; or any step requires `CASCADE` or dropping built-in `public`.
+- `ford_catalog_reader` can access `ford_metadata`, private capture/provenance, or write catalog data.
+- Any protected release, Vault, host-capacity, image, health, or rollback gate below remains open.
+
+**Current restart point:** Gates 1 and 3. Resolve both candidate content-hash mismatches and reconcile the live `ford_service` schema/dual-ledger baseline on a verified restore. Production remains untouched until all gates pass and approvals are recorded.
 
 Checked on 2026-10-13 from the local workspace, authenticated GitHub CLI session, read-only SSH sessions, and read-only Cloudflare Pages API/CLI queries. No secret values were read or recorded.
 
@@ -17,7 +75,7 @@ Checked on 2026-10-13 from the local workspace, authenticated GitHub CLI session
 | Ford-web deployment environments | Only `pages-preview` is configured. The protected `production` environment and its smoke URL are still not configured. |
 | Ford Service private action access | Actions private-repository access level is `none`. Public Ford-scraping cannot call a private action regardless; shared OCI deployment logic needs a reviewed public home before Ford-scraping can use it. |
 | GitHub CLI | Authenticated as `migangdelzar`; repository metadata and the preview/preflight environments are configured. Production environments and protections remain outstanding. |
-| Cloudflare Pages | Project name is `ford-web-ui`; its Pages hostname is `ford-crm-ui.pages.dev`. The active Git integration deploys production from `feat-ford-crm-auth-integration`, while the Actions release workflow targets `main`. A feature-branch Pages preview now deploys and passes UI/API smoke from GitHub Actions. Production ownership still needs to move to one aligned path before release enablement. |
+| Cloudflare Pages | Legacy project `ford-web-ui` remains at `ford-crm-ui.pages.dev`; separate replacement project `emme-crm-ui` was created for `emme-crm-ui.pages.dev` with independent deployment history. Both are retained pending verification through the Spring proxy. |
 
 ## Latest CI status and ordered remaining work
 
@@ -32,7 +90,7 @@ This record is a readiness snapshot, not an authorization to deploy. The release
 | Shared OCI action | Ford Service action access is `none`; Ford-scraping is public and cannot consume a private action. | Review/publish the action in an approved public repository and pin consumers to a full commit SHA. Keep secrets out of the action repository. |
 | Release-all | Coordinator workflow not implemented; no scoped GitHub App dispatch credential configured. | Implement exact-SHA dispatch/status reporting, then configure minimal three-repository permissions and verify in a non-production test. |
 
-The production state remains **not end-to-end release-ready**. Ford-scraping has no `main` branch yet; no repo has a fully protected, ready `production` environment; the shared action cannot yet be consumed by the public caller; and runtime Vault, ingress, headroom, and migration gates below remain open. No deployment has been performed.
+The public production state remains **not end-to-end release-ready**. Runtime Vault consumption, the active ingress switch point, peak blue-green resource headroom, and live schema-migration compatibility remain unverified. The isolated `emme-crm-ui` origin deployment recorded below does not change customer traffic; no Ford Service release or public route switch has been performed.
 
 ## Verified local deployment shape
 
@@ -49,6 +107,8 @@ The production state remains **not end-to-end release-ready**. Ford-scraping has
 - The running Ford Service and MCP app containers report no `FORD_SECRETS_PROVIDER` setting and zero `FORD_VAULT_SECRET_OCID_*` references. The local Spring Vault loader is not proof the deployed app uses Vault. The deployment's data/Collector runtime-secret path is also not verified. Keep production Actions disabled until the runtime consumers are migrated and validated.
 - The current Pages production deployment is associated with `feat-ford-crm-auth-integration`; a production Actions release using `--branch main` will not match until ownership/settings are reconciled. No production Pages deployment was made.
 - Ford-web's Wrangler config now targets project `ford-web-ui`, whose Pages hostname is `ford-crm-ui.pages.dev`; the origin is `https://ford-origin.emme.business`. The `pages-preview` GitHub environment successfully deployed a preview and passed UI plus `/api/v1/health` checks. Production still needs its own environment credentials and `FORD_WEB_SMOKE_URL` variable.
+- **2026-10-14 — Pages origin replacement project:** Cloudflare created `emme-crm-ui` (`emme-crm-ui.pages.dev`) as a new Pages project. Cloudflare Pages does not transfer deployment history between projects. The former project `ford-web-ui` (`ford-crm-ui.pages.dev`) remains available; no DNS or public-domain changes were made. See `cloudflare-pages-origin-cutover.md` for staging, verification, and rollback.
+- **2026-10-14 — emme Pages origin deployed:** Ford Web Actions run [38588412862](https://github.com/migangdelzar/Ford-web/actions/runs/38588412862) deployed verified Ford Web commit `c8ee6d38ced0b5a4ec87471c0564ffb1c673bd2e` to `emme-crm-ui`; deployment `0056b296-f347-42ad-b73e-31fc735925d1` passed checks for `/`, `/login`, `/dashboard`, and a fingerprinted asset. The Spring upstream and public browser origin were not changed by this deployment. Keep `ford-web-ui` and `ford-crm-ui.pages.dev` available until Spring-proxied verification and the rollback window are complete.
 
 ## Gates before enabling production
 

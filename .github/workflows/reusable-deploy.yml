@@ -30,6 +30,6 @@ jobs:
           DEPLOY_IMAGE: ${{ inputs.image }}
         run: |
           set -euo pipefail
-          [[ "$DEPLOY_TARGET" == "ford-service" || "$DEPLOY_TARGET" == "ford-mcp" ]]
+          [[ "$DEPLOY_TARGET" == "ford-service" || "$DEPLOY_TARGET" == "ford-scraper-scheduler" ]]
           [[ "$DEPLOY_IMAGE" =~ ^ghcr\.io/[A-Za-z0-9._/-]+@sha256:[a-f0-9]{64}$ ]]
           echo "Deployment input contract validated; no environment or deployment credentials were used."

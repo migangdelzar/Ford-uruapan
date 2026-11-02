@@ -91,6 +91,8 @@ public class JdbcConversationRepository implements ConversationRepository {
                   and not exists (select 1 from conversation_message
                                   where conversation_id = :conversationId
                                     and provider_message_id = :responseProviderMessageId)
+                  and not exists (select 1 from message_approval_hold
+                                  where tenant_id = :tenantId and conversation_id = :conversationId)
                 """)
                 .param("conversationId", conversationId)
                 .param("tenantId", tenantId)
@@ -136,7 +138,7 @@ public class JdbcConversationRepository implements ConversationRepository {
                 .param("id", UUID.randomUUID())
                 .param("tenantId", delivery.tenantId())
                 .param("aggregateId", conversationId)
-                .param("payload", payload(delivery, conversationId, turn.text()))
+                .param("payload", payload(delivery, conversationId, turn.text(), turn.replyOptions()))
                 .param("idempotencyKey", "conversation-turn:" + responseProviderMessageId)
                 .param("availableAt", Timestamp.from(Instant.now()))
                 .update();
@@ -178,11 +180,24 @@ public class JdbcConversationRepository implements ConversationRepository {
             return false;
         }
 
+        var forgottenAt = jdbc.sql("""
+                select forgotten_at from handoff_contact_forget_fence
+                where tenant_id=:tenantId and conversation_id=:conversationId
+                """)
+                .param("tenantId", tenantId).param("conversationId", conversationId)
+                .query(Timestamp.class).optional().map(Timestamp::toInstant).orElse(null);
+        var hasFreshConsent = forgottenAt != null && decision.packet().alternateContact()
+                .map(contact -> contact.consentedAt().isAfter(forgottenAt)).orElse(false);
+        var packet = forgottenAt != null && !hasFreshConsent
+                ? decision.packet().withAlternateContact(null) : decision.packet();
+
         jdbc.sql("""
                 insert into handoff_ticket
-                    (id, tenant_id, conversation_id, status, priority, reason, idempotency_key, version, created_at)
+                    (id, tenant_id, conversation_id, status, priority, reason, idempotency_key, version,
+                     created_at, packet, packet_partial, packet_completeness, internal_note)
                 values (:id, :tenantId, :conversationId, 'HUMAN_PENDING', :priority, :reason,
-                        :idempotencyKey, 0, :createdAt)
+                        :idempotencyKey, 0, :createdAt, cast(:packet as jsonb), :packetPartial, :packetCompleteness,
+                        cast(:internalNote as jsonb))
                 """)
                 .param("id", UUID.randomUUID())
                 .param("tenantId", tenantId)
@@ -191,6 +206,10 @@ public class JdbcConversationRepository implements ConversationRepository {
                 .param("reason", decision.reason())
                 .param("idempotencyKey", decision.idempotencyKey())
                 .param("createdAt", Timestamp.from(Instant.now()))
+                .param("packet", packetJson(packet))
+                .param("packetPartial", packet.partial())
+                .param("packetCompleteness", packet.completeness())
+                .param("internalNote", internalNoteJson(decision.internalNote()))
                 .update();
         if (confirmation != null && inboundProviderMessageId != null) {
             var responseProviderMessageId = assistantMessageId(tenantId, conversationId, inboundProviderMessageId);
@@ -215,7 +234,8 @@ public class JdbcConversationRepository implements ConversationRepository {
                             cast(:payload as jsonb), 'PENDING', 0, :availableAt, :idempotencyKey)
                     """)
                     .param("id", UUID.randomUUID()).param("tenantId", tenantId)
-                    .param("aggregateId", conversationId).param("payload", payload(target, conversationId, confirmation.text()))
+                    .param("aggregateId", conversationId).param("payload", payload(target, conversationId,
+                            confirmation.text(), confirmation.replyOptions()))
                     .param("availableAt", Timestamp.from(Instant.now()))
                     .param("idempotencyKey", "conversation-turn:" + responseProviderMessageId).update();
         }
@@ -289,13 +309,32 @@ public class JdbcConversationRepository implements ConversationRepository {
         }
     }
 
-    private String payload(DeliveryTarget delivery, UUID conversationId, String text) {
+    private String packetJson(com.ford.service.conversations.api.BdcHandoffPacket packet) {
+        try {
+            return objectMapper.writeValueAsString(packet.arguments());
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Could not serialize BDC handoff packet", exception);
+        }
+    }
+
+    private String internalNoteJson(com.ford.service.conversations.api.InternalHandoffNote note) {
+        if (note == null) return null;
+        try {
+            return objectMapper.writeValueAsString(note);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Could not serialize internal handoff note", exception);
+        }
+    }
+
+    private String payload(DeliveryTarget delivery, UUID conversationId, String text,
+                          java.util.List<com.ford.service.channels.domain.ReplyOption> replyOptions) {
         try {
             return objectMapper.writeValueAsString(java.util.Map.of(
                     "conversationId", conversationId,
                     "channel", delivery.channel(),
                     "recipientId", delivery.recipientId(),
-                    "text", text));
+                    "text", text,
+                    "replyOptions", replyOptions == null ? java.util.List.of() : replyOptions));
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Could not serialize outbound delivery", exception);
         }

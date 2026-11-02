@@ -17,6 +17,8 @@ import java.util.Objects;
 /** Defense-in-depth advisor for callers that reach ChatClient without the application service. */
 public final class FordScopeAdvisor implements CallAdvisor {
 
+    public static final String MEMORY_CONTEXT_PARAMETER = "ford.conversation.memoryContext";
+
     private final AssistantScopePolicy scopePolicy;
 
     public FordScopeAdvisor(AssistantScopePolicy scopePolicy) {
@@ -37,7 +39,9 @@ public final class FordScopeAdvisor implements CallAdvisor {
     public ChatClientResponse adviseCall(ChatClientRequest request, CallAdvisorChain chain) {
         var userMessage = request.prompt().getUserMessage();
         var userText = userMessage == null ? "" : userMessage.getText();
-        if (scopePolicy.allows(userText, null)) {
+        var memoryContext = request.context().get(MEMORY_CONTEXT_PARAMETER);
+        if (scopePolicy.allows(userText, null,
+                memoryContext instanceof String value ? value : null)) {
             return chain.nextCall(request);
         }
         return new ChatClientResponse(

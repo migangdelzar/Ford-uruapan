@@ -1,0 +1,17 @@
+databaseChangeLog:
+  - changeSet:
+      id: 035-alternate-contact-exposure
+      author: ford-service
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              create table if not exists handoff_contact_exposure (
+                  tenant_id uuid not null,
+                  conversation_id uuid not null,
+                  captured_at timestamptz not null,
+                  primary key (tenant_id, conversation_id)
+              );
+              create index if not exists idx_handoff_contact_exposure_retention
+                  on handoff_contact_exposure(captured_at);

@@ -21,7 +21,7 @@ class HumanTakeoverFlowTest {
                 "¿Sigue disponible?", "HUMAN_ACTIVE", false));
 
         assertThat(response.handoffRequired()).isTrue();
-        assertThat(response.content()).contains("asesor humano");
+        assertThat(response.content()).isEqualTo("Un asesor ya está atendiendo su conversación.");
     }
 
     private static com.ford.service.ai.api.AssistantResponse throwIfCalled() {

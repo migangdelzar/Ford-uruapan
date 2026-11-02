@@ -1,4 +1,5 @@
 [env]
 FORD_RUNTIME_ENV = "development"
-COMPOSE_PROJECT_NAME = "ford-service-dev"
+COMPOSE_PROJECT_NAME = "ford-service-local"
+COMPOSE_FILE = "docker-compose.yml:docker-compose.core.yml"
 _.file = { path = ".env", redact = true }

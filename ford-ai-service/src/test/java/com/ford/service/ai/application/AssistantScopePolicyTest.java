@@ -36,6 +36,16 @@ class AssistantScopePolicyTest {
     }
 
     @Test
+    void returnsTypedAllowedAndDeniedScopeOutcomes() {
+        assertThat(policy.evaluate("¿Qué precio tiene la Ford Ranger?", null).status())
+                .isEqualTo(ScopeDecision.Status.ALLOWED);
+        assertThat(policy.evaluate("Escribe un poema sobre volcanes", null).status())
+                .isEqualTo(ScopeDecision.Status.DENIED);
+        assertThat(policy.evaluate("Escribe un poema sobre volcanes", null).reasonCode())
+                .isEqualTo("rules_out_of_scope");
+    }
+
+    @Test
     void rejectsGeneralKnowledgeQuestionsBeforeModelGeneration() {
         assertThat(policy.allows("Explícame la teoría de la relatividad", null)).isFalse();
     }
@@ -127,6 +137,23 @@ class AssistantScopePolicyTest {
     }
 
     @Test
+    void allowsEarlyBuyerGuidanceWithoutNamingFord() {
+        assertThat(policy.allows(
+                "Hola, buenas tardes. ¿Me puedes orientar? Apenas estoy empezando a buscar camioneta.", null))
+                .isTrue();
+    }
+
+    @Test
+    void allowsDiscoveryFollowUpWhenMemoryOnlyNamesAVehicleCategory() {
+        var decision = new ConversationDecision(ConversationIntent.GENERAL,
+                LeadTemperature.UNKNOWN, LeadStage.NEW, HandoffRecommendation.NONE,
+                ToolFamily.NONE, SensitiveDataLevel.NONE, java.util.List.of());
+
+        assertThat(policy.allows("La usaría para ir al trabajo entre semana y salir con mi familia los fines de semana.",
+                decision, "Cliente: apenas estoy empezando a buscar camioneta.")).isTrue();
+    }
+
+    @Test
     void allowsLifestyleVehicleShoppingEvenWithoutNamingAModel() {
         var vehicleSearch = new ConversationDecision(
                 ConversationIntent.INVENTORY, LeadTemperature.UNKNOWN, LeadStage.NEW,
@@ -165,5 +192,26 @@ class AssistantScopePolicyTest {
         assertThat(policy.allows("¿Y cuánto cuesta?", null,
                 "Historial reciente:\n- asistente: Revisemos la Ford Ranger 2026"))
                 .isTrue();
+    }
+
+    @Test
+    void allowsGeneralTurnWhenFordConversationMemoryProvidesContext() {
+        var general = new ConversationDecision(
+                ConversationIntent.GENERAL, LeadTemperature.UNKNOWN, LeadStage.NEW,
+                HandoffRecommendation.NONE, ToolFamily.NONE, SensitiveDataLevel.NONE, java.util.List.of());
+
+        assertThat(policy.reason("ok, y ahora qué?", general,
+                "Historial reciente:\n- asistente: Ford Ranger 2026"))
+                .isEqualTo("allowed");
+    }
+
+    @Test
+    void rejectsClearlyUnrelatedGeneralTurnEvenWithFordConversationMemory() {
+        var general = new ConversationDecision(
+                ConversationIntent.GENERAL, LeadTemperature.UNKNOWN, LeadStage.NEW,
+                HandoffRecommendation.NONE, ToolFamily.NONE, SensitiveDataLevel.NONE, java.util.List.of());
+
+        assertThat(policy.allows("Escribe un poema sobre volcanes", general,
+                "Historial reciente:\n- asistente: Ford Ranger 2026")).isFalse();
     }
 }

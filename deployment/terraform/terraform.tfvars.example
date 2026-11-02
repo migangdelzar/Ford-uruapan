@@ -13,6 +13,8 @@ backup_bucket_name       = "emme-business"
 backup_object_prefix     = "ford/backups"
 backup_compartment_ocid  = ""
 emme_2_instance_ocid     = ""
+emme_1_instance_ocid     = ""
+runtime_vault_ocid       = ""
 backup_dynamic_group_name = "ford-backup-emme2"
 backup_policy_name        = "ford-backup-emme2-policy"
 
@@ -20,3 +22,4 @@ backup_policy_name        = "ford-backup-emme2-policy"
 create_instances     = false
 manage_data_volume   = false
 manage_backup_bucket = false
+manage_runtime_vault_identity = false

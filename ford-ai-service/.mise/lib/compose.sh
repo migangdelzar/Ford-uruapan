@@ -4,6 +4,11 @@ if [[ -f "$runtime_helper" ]]; then
 fi
 
 ford_compose() {
+  if [[ "${FORD_RUNTIME_ENV:-development}" != "development" ]]; then
+    echo "Local Compose tasks require the dev mise environment." >&2
+    return 2
+  fi
+  ensure_local_env
   if declare -F ford_runtime_export >/dev/null 2>&1; then
     ford_runtime_export
   fi
@@ -27,6 +32,11 @@ ford_observability_env() {
 }
 
 ford_compose_config_check() {
+  if [[ "${FORD_RUNTIME_ENV:-development}" != "development" ]]; then
+    echo "Local Compose tasks require the dev mise environment." >&2
+    return 2
+  fi
+  ensure_local_env
   if docker compose version >/dev/null 2>&1; then
     docker compose config --quiet
   elif command -v docker-compose >/dev/null 2>&1; then
@@ -45,6 +55,46 @@ require_command() {
   fi
 }
 
+local_env_value() {
+  local key="$1" env_file="$MISE_PROJECT_ROOT/.env"
+  [[ -f "$env_file" ]] || return 0
+  awk -F= -v key="$key" '
+    $1 == key {
+      value = substr($0, index($0, "=") + 1)
+      gsub(/^[ \t]+|[ \t]+$/, "", value)
+      if (value == "\"\"" || value == sprintf("%c%c", 39, 39)) value = ""
+    }
+    END { printf "%s", value }
+  ' "$env_file"
+}
+
+set_local_env_value() {
+  local key="$1" value="$2" env_file="$MISE_PROJECT_ROOT/.env" temp_file
+  if ! grep -q "^${key}=" "$env_file"; then
+    printf '%s=%s\n' "$key" "$value" >> "$env_file"
+    return
+  fi
+
+  temp_file="$(mktemp "$MISE_PROJECT_ROOT/.env.catalog.XXXXXX")"
+  awk -v key="$key" -v replacement="$value" '
+    BEGIN { replaced = 0 }
+    index($0, key "=") == 1 {
+      value = substr($0, length(key) + 2)
+      trimmed = value
+      gsub(/^[ \t]+|[ \t]+$/, "", trimmed)
+      if (trimmed == "" || trimmed == "\"\"" || trimmed == sprintf("%c%c", 39, 39)) {
+        print key "=" replacement
+        replaced = 1
+        next
+      }
+    }
+    { print }
+    END { if (!replaced) print key "=" replacement }
+  ' "$env_file" > "$temp_file"
+  chmod 600 "$temp_file"
+  mv "$temp_file" "$env_file"
+}
+
 require_service_running() {
   local service_name="$1"
   if ! ford_compose ps --status running --services | grep -Fxq "$service_name"; then
@@ -58,20 +108,27 @@ ensure_local_env() {
   require_command openssl
 
   local env_file="$MISE_PROJECT_ROOT/.env"
-  local grafana_password operator_password
+  local grafana_password operator_password catalog_admin_password catalog_reader_password
 
   if [[ ! -f "$env_file" ]]; then
     grafana_password="$(openssl rand -hex 32)"
     operator_password="$(openssl rand -hex 32)"
+    catalog_admin_password="$(openssl rand -hex 32)"
+    catalog_reader_password="$(openssl rand -hex 32)"
     umask 077
-    printf 'GRAFANA_ADMIN_PASSWORD=%s\nFORD_OPERATOR_USERNAME=operator\nFORD_OPERATOR_PASSWORD=%s\n' \
+    printf 'GRAFANA_ADMIN_PASSWORD=%s\nFORD_OPERATOR_USERNAME=operator@localhost.test\nFORD_OPERATOR_PASSWORD=%s\n' \
       "$grafana_password" "$operator_password" > "$env_file"
-    echo "Created $env_file with generated local Grafana and operator credentials."
+    printf 'FORD_CATALOG_ADMIN_USERNAME=ford_catalog_admin\nFORD_CATALOG_ADMIN_PASSWORD=%s\n' \
+      "$catalog_admin_password" >> "$env_file"
+    printf 'FORD_CATALOG_USERNAME=ford_catalog_reader\nFORD_CATALOG_PASSWORD=%s\n' \
+      "$catalog_reader_password" >> "$env_file"
+    chmod 600 "$env_file"
+    echo "Created $env_file with private local credentials."
     return
   fi
 
   if ! grep -q '^FORD_OPERATOR_USERNAME=' "$env_file"; then
-    printf 'FORD_OPERATOR_USERNAME=operator\n' >> "$env_file"
+    printf 'FORD_OPERATOR_USERNAME=operator@localhost.test\n' >> "$env_file"
   fi
   if ! grep -q '^FORD_OPERATOR_PASSWORD=' "$env_file"; then
     operator_password="$(openssl rand -hex 32)"
@@ -79,6 +136,21 @@ ensure_local_env() {
   else
     echo "Preserving existing $env_file"
   fi
+
+  local variable_name value
+  for variable_name in FORD_CATALOG_ADMIN_USERNAME FORD_CATALOG_ADMIN_PASSWORD \
+      FORD_CATALOG_USERNAME FORD_CATALOG_PASSWORD; do
+    value="$(local_env_value "$variable_name")"
+    [[ -n "$value" ]] && continue
+
+    case "$variable_name" in
+      FORD_CATALOG_ADMIN_USERNAME) value=ford_catalog_admin ;;
+      FORD_CATALOG_USERNAME) value=ford_catalog_reader ;;
+      *) value="$(openssl rand -hex 32)" ;;
+    esac
+    set_local_env_value "$variable_name" "$value"
+  done
+  chmod 600 "$env_file"
 }
 
 require_langfuse_env() {

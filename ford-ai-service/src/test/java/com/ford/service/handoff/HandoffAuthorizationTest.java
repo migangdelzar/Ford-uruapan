@@ -3,6 +3,9 @@ package com.ford.service.handoff;
 import com.ford.service.handoff.api.OperatorPrincipal;
 import com.ford.service.handoff.application.DefaultHandoffService;
 import com.ford.service.handoff.application.HandoffService;
+import com.ford.service.handoff.application.AlternateContactRevealService;
+import com.ford.service.handoffcontact.api.AlternateContactValue;
+import com.ford.service.handoffcontact.api.AlternateContactValue.ContactType;
 import com.ford.service.handoff.application.port.out.HandoffRepository;
 import com.ford.service.handoff.domain.HandoffRequest;
 import com.ford.service.handoff.domain.HandoffStatus;
@@ -16,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
@@ -25,6 +29,52 @@ class HandoffAuthorizationTest {
 
     private static final UUID TENANT_A = UUID.randomUUID();
     private static final UUID TENANT_B = UUID.randomUUID();
+
+    @Test
+    void revealsOnlyForAuthorizedTenantAndAuditsWithoutContactValue() {
+        var repository = new InMemoryHandoffRepository();
+        var ticket = repository.seed(TENANT_A, UUID.randomUUID());
+        var contact = new AlternateContactValue(ContactType.EMAIL, "ana@example.com", Instant.now(),
+                "receipt", "alternate-contact-consent-v1");
+        repository.contacts.put(ticket.id(), contact);
+        var principal = new OperatorPrincipal(UUID.randomUUID(), Set.of(TENANT_A), Set.of("SCOPE_handoff:manage"));
+
+        var revealed = new AlternateContactRevealService(repository).reveal(ticket.id(), principal);
+
+        assertThat(revealed.value()).isEqualTo("ana@example.com");
+        assertThat(repository.auditActions).containsExactly("HANDOFF_CONTACT_REVEALED");
+        assertThat(repository.auditText).doesNotContain("ana@example.com");
+    }
+
+    @Test
+    void operatorRequestCannotInjectUnverifiedAlternateContact() {
+        var repository = new InMemoryHandoffRepository();
+        var conversationId = UUID.randomUUID();
+        repository.conversationTenants.put(conversationId, TENANT_A);
+        var contact = new AlternateContactValue(ContactType.EMAIL, "unauthorized@example.com", Instant.now(),
+                "forged-receipt", "alternate-contact-consent-v1");
+        var packet = com.ford.service.conversations.api.BdcHandoffPacket.empty().withAlternateContact(contact);
+        var service = new DefaultHandoffService(repository, event -> { },
+                (tenant, conversation, operator, handoffId) -> { });
+
+        assertThatThrownBy(() -> service.request(new HandoffRequest(TENANT_A, conversationId, null,
+                "CUSTOMER_REQUEST", packet), principal(UUID.randomUUID(), TENANT_A)))
+                .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    void revealRejectsUnauthorizedAndCrossTenantPrincipals() {
+        var repository = new InMemoryHandoffRepository();
+        var ticket = repository.seed(TENANT_A, UUID.randomUUID());
+        var service = new AlternateContactRevealService(repository);
+
+        assertThatThrownBy(() -> service.reveal(ticket.id(), principal(UUID.randomUUID(), TENANT_A)))
+                .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> service.reveal(ticket.id(), new OperatorPrincipal(UUID.randomUUID(), Set.of(TENANT_B),
+                Set.of("SCOPE_handoff:manage"))))
+                .isInstanceOf(java.util.NoSuchElementException.class);
+        assertThat(repository.auditActions).isEmpty();
+    }
 
     @Test
     void rejectsClaimForTenantOutsideOperatorClaims() {
@@ -94,6 +144,8 @@ class HandoffAuthorizationTest {
         private final Map<UUID, HandoffTicket> tickets = new HashMap<>();
         private final Map<UUID, UUID> conversationTenants = new HashMap<>();
         private final List<String> auditActions = new ArrayList<>();
+        private final List<String> auditText = new ArrayList<>();
+        private final Map<UUID, AlternateContactValue> contacts = new HashMap<>();
 
         HandoffTicket seed(UUID tenantId, UUID conversationId) {
             conversationTenants.put(conversationId, tenantId);
@@ -182,6 +234,20 @@ class HandoffAuthorizationTest {
         @Override
         public void recordAudit(String action, HandoffTicket ticket, OperatorPrincipal principal) {
             auditActions.add(action);
+            auditText.add(action + ticket.id() + principal.operatorId());
+        }
+
+        @Override
+        public Optional<AlternateContactValue> findAlternateContact(Set<UUID> tenantIds, UUID ticketId) {
+            var ticket = tickets.get(ticketId);
+            return ticket == null || !tenantIds.contains(ticket.tenantId())
+                    ? Optional.empty() : Optional.ofNullable(contacts.get(ticketId));
+        }
+
+        @Override
+        public void recordAlternateContactReveal(UUID ticketId, OperatorPrincipal principal, Instant occurredAt) {
+            auditActions.add("HANDOFF_CONTACT_REVEALED");
+            auditText.add("HANDOFF_CONTACT_REVEALED" + ticketId + principal.operatorId() + occurredAt);
         }
     }
 }

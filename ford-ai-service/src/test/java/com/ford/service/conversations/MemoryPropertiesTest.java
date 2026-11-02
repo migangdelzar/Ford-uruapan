@@ -16,6 +16,9 @@ class MemoryPropertiesTest {
         assertThat(properties.enabled()).isTrue();
         assertThat(properties.recentMessageLimit()).isEqualTo(20);
         assertThat(properties.promptRecentMessageLimit()).isEqualTo(20);
+        assertThat(properties.promptTokenBudget()).isEqualTo(3000);
+        assertThat(properties.promptRecentTurnLimit()).isEqualTo(4);
+        assertThat(properties.rebaseMessageLimit()).isEqualTo(100);
         assertThat(properties.summaryMaxChars()).isEqualTo(4000);
         assertThat(properties.factLimit()).isEqualTo(12);
         assertThat(properties.factMaxChars()).isEqualTo(500);
@@ -38,5 +41,20 @@ class MemoryPropertiesTest {
                 () -> properties.setPromptRecentMessageLimit(properties.recentMessageLimit() + 1))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("promptRecentMessageLimit cannot exceed recentMessageLimit");
+    }
+
+    @Test
+    void rejectsNonPositivePromptAndRebaseLimits() {
+        var properties = new MemoryProperties();
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> properties.setPromptTokenBudget(0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("promptTokenBudget must be positive");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> properties.setPromptRecentTurnLimit(-1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("promptRecentTurnLimit must be positive");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> properties.setRebaseMessageLimit(0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("rebaseMessageLimit must be positive");
     }
 }

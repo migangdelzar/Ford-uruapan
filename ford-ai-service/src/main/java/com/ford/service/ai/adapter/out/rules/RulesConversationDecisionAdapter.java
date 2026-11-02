@@ -14,6 +14,8 @@ import com.ford.service.ai.application.LeadNextAction;
 import com.ford.service.ai.application.LeadTemperature;
 import com.ford.service.ai.application.SensitiveDataLevel;
 import com.ford.service.ai.application.ToolFamily;
+import com.ford.service.ai.application.VehicleEntityResolution;
+import com.ford.service.ai.application.VehicleEntityResolver;
 
 import java.util.List;
 import java.util.Locale;
@@ -22,9 +24,11 @@ import java.util.Objects;
 public final class RulesConversationDecisionAdapter implements ConversationDecisionPort {
 
     private final IntentRouter intentRouter;
+    private final VehicleEntityResolver vehicleEntityResolver;
 
     public RulesConversationDecisionAdapter(IntentRouter intentRouter) {
         this.intentRouter = Objects.requireNonNull(intentRouter);
+        this.vehicleEntityResolver = new VehicleEntityResolver();
     }
 
     @Override
@@ -33,6 +37,13 @@ public final class RulesConversationDecisionAdapter implements ConversationDecis
         var message = context.message() == null ? "" : context.message();
         var normalized = message.toLowerCase(Locale.ROOT);
         var legacyIntent = intentRouter.route(message);
+        var entities = vehicleEntityResolver.resolve(message, context.memoryContext());
+        if (entities.status() == VehicleEntityResolution.Status.RESOLVED
+                && entities.modelSource() == VehicleEntityResolution.Source.MEMORY_REFERENCE
+                && (legacyIntent == Intent.GENERAL
+                || legacyIntent == Intent.KNOWLEDGE && isVehicleSpecification(normalized))) {
+            legacyIntent = Intent.CATALOG;
+        }
         var intent = toIntent(legacyIntent);
         var handoff = handoff(normalized, intent);
         var sensitive = sensitive(context, normalized);
@@ -46,7 +57,8 @@ public final class RulesConversationDecisionAdapter implements ConversationDecis
                         evidence(ClassifierType.LEAD, "NEW/UNKNOWN", "rules_lead"),
                         evidence(ClassifierType.HANDOFF, handoff.name(), "rules_handoff"),
                         evidence(ClassifierType.TOOL_FAMILY, toolFamily.name(), "rules_tool_family"),
-                        evidence(ClassifierType.SENSITIVE_DATA, sensitive.name(), "rules_sensitive_data")));
+                        evidence(ClassifierType.SENSITIVE_DATA, sensitive.name(), "rules_sensitive_data")))
+                .withVehicleEntities(entities);
     }
 
     private static LeadNextAction nextAction(ConversationIntent intent, boolean urgency) {
@@ -124,6 +136,12 @@ public final class RulesConversationDecisionAdapter implements ConversationDecis
     private static ClassificationEvidence evidence(ClassifierType classifier, String classification, String reason) {
         return new ClassificationEvidence(classifier, classification, 1.0, reason,
                 "rules", "deterministic", 0, true);
+    }
+
+    private static boolean isVehicleSpecification(String normalized) {
+        return containsAny(normalized, "motor", "rendimiento", "consumo", "potencia", "caballos",
+                "dimensiones", "equipamiento", "seguridad", "tracción", "traccion",
+                "especificación", "especificacion", "versión", "version");
     }
 
     private static boolean containsAny(String value, String... terms) {

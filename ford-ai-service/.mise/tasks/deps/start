@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-#MISE description="Start databases, cache, and observability"
+#MISE description="Start PostgreSQL and Redis for local development"
 
 set -euo pipefail
 
 cd "$MISE_PROJECT_ROOT"
 mise run db:start
 mise run cache:start
-mise run telemetry:start
+mise run catalog:start

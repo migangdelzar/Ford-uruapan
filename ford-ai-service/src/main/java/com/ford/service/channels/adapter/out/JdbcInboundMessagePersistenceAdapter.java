@@ -1,6 +1,7 @@
 package com.ford.service.channels.adapter.out;
 
 import com.ford.service.channels.application.port.out.InboundMessagePersistencePort;
+import com.ford.service.channels.application.port.out.AdvisorHoldInvalidationPort;
 import com.ford.service.channels.domain.InboundMessage;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,10 +17,18 @@ import java.util.UUID;
 public class JdbcInboundMessagePersistenceAdapter implements InboundMessagePersistencePort {
     private final JdbcClient jdbc;
     private final ObjectMapper objectMapper;
+    private final AdvisorHoldInvalidationPort advisorHolds;
 
-    public JdbcInboundMessagePersistenceAdapter(JdbcClient jdbc, ObjectMapper objectMapper) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public JdbcInboundMessagePersistenceAdapter(JdbcClient jdbc, ObjectMapper objectMapper,
+                                               AdvisorHoldInvalidationPort advisorHolds) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
+        this.advisorHolds = advisorHolds;
+    }
+
+    public JdbcInboundMessagePersistenceAdapter(JdbcClient jdbc, ObjectMapper objectMapper) {
+        this(jdbc, objectMapper, (tenantId, conversationId, receivedAt) -> { });
     }
 
     @Override
@@ -89,6 +98,7 @@ public class JdbcInboundMessagePersistenceAdapter implements InboundMessagePersi
                 .param("content", message.text())
                 .param("receivedAt", Timestamp.from(message.receivedAt()))
                 .update();
+        advisorHolds.invalidateForInbound(message.tenantId(), conversationId, now.toInstant());
         return conversationId;
     }
 

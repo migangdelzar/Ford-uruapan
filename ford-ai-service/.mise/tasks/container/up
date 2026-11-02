@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Build and start Ford Service, PostgreSQL, and Redis in containers"
+set -euo pipefail
+if [[ "${FORD_RUNTIME_ENV:-}" != "development" ]]; then
+  echo "container:up is local-only; select the dev mise environment." >&2
+  exit 2
+fi
+cd "$MISE_PROJECT_ROOT"
+source "$MISE_PROJECT_ROOT/.mise/lib/compose.sh"
+ford_compose up --build -d postgres redis ford-service

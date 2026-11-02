@@ -10,6 +10,9 @@ public class MemoryProperties {
     private boolean enabled = true;
     private int recentMessageLimit = 20;
     private int promptRecentMessageLimit = 20;
+    private int promptTokenBudget = 3000;
+    private int promptRecentTurnLimit = 4;
+    private int rebaseMessageLimit = 100;
     private int summaryMaxChars = 4000;
     private int factLimit = 12;
     private int factMaxChars = 500;
@@ -26,6 +29,9 @@ public class MemoryProperties {
     public boolean enabled() { return enabled; }
     public int recentMessageLimit() { return recentMessageLimit; }
     public int promptRecentMessageLimit() { return promptRecentMessageLimit; }
+    public int promptTokenBudget() { return promptTokenBudget; }
+    public int promptRecentTurnLimit() { return promptRecentTurnLimit; }
+    public int rebaseMessageLimit() { return rebaseMessageLimit; }
     public int summaryMaxChars() { return summaryMaxChars; }
     public int factLimit() { return factLimit; }
     public int factMaxChars() { return factMaxChars; }
@@ -50,6 +56,11 @@ public class MemoryProperties {
             throw new IllegalArgumentException("promptRecentMessageLimit cannot exceed recentMessageLimit");
         }
     }
+    public void setPromptTokenBudget(int value) { promptTokenBudget = positive(value, "promptTokenBudget"); }
+    public void setPromptRecentTurnLimit(int value) {
+        promptRecentTurnLimit = positive(value, "promptRecentTurnLimit");
+    }
+    public void setRebaseMessageLimit(int value) { rebaseMessageLimit = positive(value, "rebaseMessageLimit"); }
     public void setSummaryMaxChars(int value) { summaryMaxChars = positive(value, "summaryMaxChars"); }
     public void setFactLimit(int value) { factLimit = positive(value, "factLimit"); }
     public void setFactMaxChars(int value) { factMaxChars = positive(value, "factMaxChars"); }

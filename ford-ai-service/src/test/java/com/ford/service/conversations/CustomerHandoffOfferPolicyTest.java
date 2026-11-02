@@ -37,6 +37,16 @@ class CustomerHandoffOfferPolicyTest {
     }
 
     @Test
+    void offersAdvisorForInventoryQuestionsWithoutImplyingAvailability() {
+        assertThat(policy.shouldOffer("¿Hay una Ranger disponible en inventario?",
+                "No puedo confirmar existencias actuales.")).isTrue();
+        assertThat(policy.shouldOffer("¿Hay una Ranger en inventario?",
+                "No puedo confirmar existencias actuales.")).isTrue();
+        assertThat(policy.shouldOffer("¿Qué colores tiene la Ranger?",
+                "El catálogo muestra las opciones consultadas.")).isFalse();
+    }
+
+    @Test
     void offersSpecialistHelpToHotLeadsWithoutQueueingThem() {
         assertThat(policy.shouldOffer("Me interesa la Ranger", "Aquí tiene información.",
                 LeadTemperature.HOT, ConversationMemoryContext.empty(key()))).isTrue();

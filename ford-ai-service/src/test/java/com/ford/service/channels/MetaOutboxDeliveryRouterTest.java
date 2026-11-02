@@ -6,6 +6,7 @@ import com.ford.service.channels.application.port.out.ChannelDeliveryPort;
 import com.ford.service.channels.application.port.out.CustomerWindowPort;
 import com.ford.service.channels.domain.Channel;
 import com.ford.service.channels.domain.DeliveryResult;
+import com.ford.service.channels.domain.ReplyOption;
 import com.ford.service.outbox.OutboxEvent;
 import org.junit.jupiter.api.Test;
 
@@ -22,6 +23,25 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class MetaOutboxDeliveryRouterTest {
+
+    @Test
+    void carriesTypedReplyOptionsFromOutboxToDeliveryPort() {
+        var port = mock(ChannelDeliveryPort.class);
+        when(port.send(org.mockito.ArgumentMatchers.any())).thenReturn(new DeliveryResult(true, "wamid.options", null));
+        var router = new MetaOutboxDeliveryRouter(new ObjectMapper(), Map.of(Channel.WHATSAPP, port));
+        var option = new ReplyOption("vehicle-0123456789abcdef", "Ranger 2027 XLT");
+        var event = new OutboxEvent(UUID.randomUUID(), UUID.randomUUID(), "conversation", UUID.randomUUID(),
+                "OUTBOUND_DELIVERY_REQUESTED",
+                "{\"conversationId\":\"00000000-0000-0000-0000-000000000001\","
+                        + "\"channel\":\"WHATSAPP\",\"recipientId\":\"recipient-1\","
+                        + "\"text\":\"Elija\",\"replyOptions\":[{\"id\":\"vehicle-0123456789abcdef\","
+                        + "\"title\":\"Ranger 2027 XLT\"}]}",
+                OutboxEvent.Status.PROCESSING, 1, Instant.now(), Instant.now(), Instant.now().plusSeconds(30),
+                "key", null, null);
+
+        assertThat(router.deliver(event).accepted()).isTrue();
+        verify(port).send(argThat(message -> message.replyOptions().equals(java.util.List.of(option))));
+    }
 
     @Test
     void forwardsStableIdempotencyKeyToTheChannelPort() {

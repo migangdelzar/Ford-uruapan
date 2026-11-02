@@ -38,6 +38,9 @@ public class DefaultHandoffService implements HandoffService {
         if (request.conversationId() == null || request.reason() == null || request.reason().isBlank()) {
             throw new IllegalArgumentException("conversation and reason are required");
         }
+        if (request.packet().alternateContact().isPresent()) {
+            throw new SecurityException("alternate contact can only be attached by the consented conversation pipeline");
+        }
         var tenantId = repository.findConversationTenant(request.conversationId());
         requireTenant(principal, tenantId);
         var existing = repository.findOpenByConversation(tenantId, request.conversationId());
@@ -46,7 +49,7 @@ public class DefaultHandoffService implements HandoffService {
                 UUID.randomUUID(), tenantId, request.conversationId(), request.leadId(),
                 HandoffStatus.HUMAN_PENDING, com.ford.service.handoff.domain.HandoffPriority.NORMAL,
                 null, request.reason(), "operator:" + tenantId + ":" + request.conversationId(), 0,
-                Instant.now(), null, null));
+                Instant.now(), null, null, request.packet()));
         if (!repository.transitionConversationToPending(tenantId, request.conversationId())) {
             throw new IllegalStateException("Conversation cannot enter human handoff from its current state");
         }

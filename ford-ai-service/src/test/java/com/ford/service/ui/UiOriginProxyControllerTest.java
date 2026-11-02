@@ -23,7 +23,7 @@ class UiOriginProxyControllerTest {
     void proxiesUiPathAndQueryWithoutForwardingBrowserCookies() throws Exception {
         var builder = RestClient.builder();
         var upstream = MockRestServiceServer.bindTo(builder).build();
-        upstream.expect(requestTo("https://ford-crm-ui.pages.dev/leads/active?tab=hot"))
+        upstream.expect(requestTo("https://emme-crm-ui.pages.dev/leads/active?tab=hot"))
                 .andExpect(header("Accept", "text/html"))
                 .andExpect(request -> assertThat(request.getHeaders().getFirst("Cookie")).isNull())
                 .andRespond(withStatus(HttpStatus.OK)
@@ -51,7 +51,7 @@ class UiOriginProxyControllerTest {
     void fingerprintedAssetsUseImmutableCachingAndKeepConditionalValidation() throws Exception {
         var builder = RestClient.builder();
         var upstream = MockRestServiceServer.bindTo(builder).build();
-        upstream.expect(requestTo("https://ford-crm-ui.pages.dev/assets/index-AbCdEf09.js"))
+        upstream.expect(requestTo("https://emme-crm-ui.pages.dev/assets/index-AbCdEf09.js"))
                 .andExpect(header("If-None-Match", "W/\"asset-v1\""))
                 .andRespond(withStatus(HttpStatus.OK)
                         .header("Cache-Control", "public, max-age=14400")
@@ -75,9 +75,9 @@ class UiOriginProxyControllerTest {
     void rewritesPagesOriginRedirectToPublicOrigin() throws Exception {
         var builder = RestClient.builder();
         var upstream = MockRestServiceServer.bindTo(builder).build();
-        upstream.expect(requestTo("https://ford-crm-ui.pages.dev/login?error"))
+        upstream.expect(requestTo("https://emme-crm-ui.pages.dev/login?error"))
                 .andRespond(withStatus(HttpStatus.FOUND)
-                        .header("Location", "https://ford-crm-ui.pages.dev/login?error"));
+                        .header("Location", "https://emme-crm-ui.pages.dev/login?error"));
         var controller = new UiOriginProxyController(builder.build(), properties());
         var response = new MockHttpServletResponse();
 
@@ -109,7 +109,7 @@ class UiOriginProxyControllerTest {
     void supportsHeadRequestsWithoutWritingResponseBody() throws Exception {
         var builder = RestClient.builder();
         var upstream = MockRestServiceServer.bindTo(builder).build();
-        upstream.expect(requestTo("https://ford-crm-ui.pages.dev/assets/app.js"))
+        upstream.expect(requestTo("https://emme-crm-ui.pages.dev/assets/app.js"))
                 .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers.method(HttpMethod.HEAD))
                 .andRespond(withStatus(HttpStatus.OK).header("Content-Type", "text/javascript"));
         var controller = new UiOriginProxyController(builder.build(), properties());
@@ -126,7 +126,7 @@ class UiOriginProxyControllerTest {
     void returnsBadGatewayWhenPagesIsUnavailable() throws Exception {
         var builder = RestClient.builder();
         var upstream = MockRestServiceServer.bindTo(builder).build();
-        upstream.expect(requestTo("https://ford-crm-ui.pages.dev/"))
+        upstream.expect(requestTo("https://emme-crm-ui.pages.dev/"))
                 .andRespond(request -> { throw new java.io.IOException("upstream unavailable"); });
         var controller = new UiOriginProxyController(builder.build(), properties());
         var response = new MockHttpServletResponse();
@@ -144,7 +144,7 @@ class UiOriginProxyControllerTest {
     }
 
     private static UiProxyProperties properties() {
-        return new UiProxyProperties(URI.create("https://ford-crm-ui.pages.dev"),
+        return new UiProxyProperties(URI.create("https://emme-crm-ui.pages.dev"),
                 URI.create("https://ford.emme.business"));
     }
 }
