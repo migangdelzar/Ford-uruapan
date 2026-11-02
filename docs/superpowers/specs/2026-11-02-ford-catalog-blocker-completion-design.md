@@ -29,6 +29,16 @@ database, security, deployment, and approval gates have passed.
 
 ## Blocker sequence and acceptance evidence
 
+0. **Early isolated diagnostics — Service/QA owner.** Use a disposable local
+   PostgreSQL instance and a test-only Service configuration with catalog tools
+   explicitly enabled. Start with reviewed test fixtures; exercise datasource
+   startup, tool registration, approved-view reads, denied writes/private reads,
+   exact-match/no-match/citation behavior, and unavailable-catalog failure
+   handling. Do not change the normal application fallback or any production
+   setting. The current archive has unresolved content hashes, so it is not a
+   verified production-data baseline; record fixture-based findings as local
+   diagnostics only. Repeat against an isolated full backup only after the
+   DBA/data owner supplies and verifies one.
 1. **Source integrity — source/data owner.** Supply the canonical JSONL hash
    generation procedure and per-relation evidence for the two mismatched
    hashes. Re-run the exporter against the unchanged approved archive. Pass
@@ -101,13 +111,16 @@ database, security, deployment, and approval gates have passed.
 
 - Missing owner evidence, backup, restore, decision, approval, or test result
   remains blocked; it is never inferred as passed.
+- Local fixture-based tool activation is allowed only in a disposable isolated
+  test environment with a dedicated test configuration. It cannot clear
+  production source-integrity, data-authority, permission, or migration gates.
 - Any discrepancy, unreviewed relation, unsupported extension move, unsafe
   grant, failed health/data check, insufficient capacity, or rollback gap stops
   promotion.
-- Keep tools off until activation gate 9. If activation checks fail, set the
-  protected flag explicitly false and follow the approved application rollback
-  and verified external database restore procedure. Do not automatically
-  reverse Liquibase migrations.
+- Keep production tools off until activation gate 9. If production activation
+  checks fail, set the protected flag explicitly false and follow the approved
+  application rollback and verified external database restore procedure. Do
+  not automatically reverse Liquibase migrations.
 
 ## Acceptance criteria
 
@@ -117,6 +130,7 @@ database, security, deployment, and approval gates have passed.
   shared-database write, deployment, snapshot load, Vault/DNS/routing change, or
   tool enablement occurs while documenting the plan.
 - Application fallback remains fail-closed when the tool flag is absent;
-  default-on means explicit protected production configuration only after all
-  prerequisites and approvals pass, with a tested explicit-off switch.
+  early diagnostic enablement is isolated and test-only; production default-on
+  means explicit protected production configuration only after all prerequisites
+  and approvals pass, with a tested explicit-off switch.
 - Open blockers remain visibly blocked until fresh evidence is recorded.
