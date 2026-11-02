@@ -27,6 +27,13 @@ Date: 2026-11-02
 - Reset and rollback wrappers with missing approvals both exited 2 before config loading or host access.
 - `colima-native` had no containers after integrations and was stopped. No playbook execution, host access, backup operation, image pull, or live change occurred.
 
+## Task 7 local verification update
+
+- Node operations/workflow/Mise contracts: **92 passed, 0 failed**.
+- Full `(cd ford-ai-service && DOCKER_HOST="unix://${HOME}/.colima/native/docker.sock" ./gradlew integrationTest --info --console=plain --max-workers=1)`: **BUILD SUCCESSFUL in 7m02s**; 92 XML suites, 428 tests, 0 failures, 0 errors, 24 skipped.
+- `colima-native` reports no remaining containers after Testcontainers cleanup. Testcontainers only; not a full deployment rehearsal.
+- Task 7 restore/bootstrap/rollback rehearsal remains blocked pending reviewed immutable artifacts, the signed DB role contract, and separate authorization for an isolated backup clone.
+
 ## Safety boundary
 
 - Local code and disposable PostgreSQL checks pass. The reset/rollback playbooks were syntax-checked only; they were not run against real or simulated data directories.
