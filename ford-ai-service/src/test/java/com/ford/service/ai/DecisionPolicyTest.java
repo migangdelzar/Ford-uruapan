@@ -83,6 +83,19 @@ class DecisionPolicyTest {
     }
 
     @Test
+    void exposesOnlyFordCatalogToolsForMatchingVehicleAndOfferFamilies() {
+        assertThat(policy.allowedToolNames(decision(ToolFamily.VEHICLE_SEARCH), Set.of(
+                "ford_catalog_search", "ford_catalog_hybrid_search", "ford_catalog_offers")))
+                .containsExactlyInAnyOrder("ford_catalog_search", "ford_catalog_hybrid_search");
+        assertThat(policy.allowedToolNames(decision(ToolFamily.OFFERS), Set.of(
+                "ford_catalog_search", "ford_catalog_offers")))
+                .containsExactly("ford_catalog_offers");
+        assertThat(policy.allowedToolNames(decision(ToolFamily.KNOWLEDGE_SEARCH), Set.of(
+                "ford_catalog_search", "ford_catalog_hybrid_search", "ford_catalog_offers")))
+                .containsExactlyInAnyOrder("ford_catalog_search", "ford_catalog_hybrid_search");
+    }
+
+    @Test
     void exposesOnlyMcpOfferToolsForOfferInformation() {
         var decision = decision(ToolFamily.OFFERS);
 

@@ -1,0 +1,31 @@
+databaseChangeLog:
+  - changeSet:
+      id: 002-ford-catalog-roles
+      author: ford-service
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              do $$
+              begin
+                  if not exists (select 1 from pg_roles where rolname = 'ford_catalog_reader') then
+                      raise exception 'Required pre-provisioned role ford_catalog_reader is missing';
+                  end if;
+              end;
+              $$;
+
+              revoke all privileges on schema ford_catalog from public;
+              revoke all privileges on schema ford_metadata from public, ford_catalog_reader;
+              revoke all privileges on all tables in schema ford_catalog from public, ford_catalog_reader;
+              grant usage on schema ford_catalog to ford_catalog_reader;
+              grant select on ford_catalog.vehicle_search_v1,
+                              ford_catalog.vehicle_variants_v2,
+                              ford_catalog.vehicle_facts_v2,
+                              ford_catalog.comparison_facts_v2,
+                              ford_catalog.offers_v2,
+                              ford_catalog.catalog_documents_v1,
+                              ford_catalog.catalog_pages_v1,
+                              ford_catalog.catalog_status_v1,
+                              ford_catalog.promotions_v3
+                  to ford_catalog_reader;

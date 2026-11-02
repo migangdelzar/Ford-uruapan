@@ -49,7 +49,7 @@ class PgVectorConversationMemoryRecallAdapterTest {
                 .contains("participant_id = :participantId")
                 .contains("active = true")
                 .contains("occurred_at < :before")
-                .contains("embedding <=> cast(:embedding as vector)")
+                .contains("embedding OPERATOR(ford_catalog.<=>) cast(:embedding as ford_catalog.vector)")
                 .contains("limit :limit");
         verify(statement).param("limit", 3);
     }
@@ -74,6 +74,6 @@ class PgVectorConversationMemoryRecallAdapterTest {
         var sql = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(jdbc).sql(sql.capture());
         assertThat(sql.getValue()).contains("on conflict (conversation_id, source_message_id, embedding_model)")
-                .contains("cast(:embedding as vector)");
+                .contains("cast(:embedding as ford_catalog.vector)");
     }
 }

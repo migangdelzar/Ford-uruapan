@@ -51,3 +51,9 @@ databaseChangeLog:
       file: db/changelog/changes/004-modulith-events.yaml
   - include:
       file: db/changelog/changes/005-ai-system-prompt.yaml
+  - include:
+      file: db/changelog/changes/025-ford-metadata-schema.yaml
+  - include:
+      file: db/changelog/changes/026-ford-extension-schemas.yaml
+  - include:
+      file: db/changelog/catalog/db.changelog-catalog.yaml

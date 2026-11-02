@@ -18,7 +18,7 @@ public final class PgVectorKnowledgeStore extends VectorStoreKnowledgeStore {
     private static final int RESULT_LIMIT = 8;
     private static final String KEYWORD_SEARCH_SQL = """
             SELECT id::text AS id, content, metadata::text AS metadata
-            FROM public.vector_store
+            FROM ford_metadata.vector_store
             WHERE metadata->>'tenantId' = :tenantId
               AND (metadata->>'approved' IS NULL OR metadata->>'approved' = 'true')
               AND to_tsvector('simple', coalesce(content, ''))

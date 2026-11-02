@@ -44,7 +44,8 @@ class PgVectorKnowledgeIntegrationTest {
 
         EmbeddingModel embeddingModel = new FixedEmbeddingModel();
         var vectorStore = PgVectorStore.builder(new JdbcTemplate(dataSource), embeddingModel)
-                .dimensions(2)
+                .schemaName("ford_metadata")
+                .dimensions(1536)
                 .initializeSchema(true)
                 .build();
         vectorStore.afterPropertiesSet();
@@ -70,31 +71,35 @@ class PgVectorKnowledgeIntegrationTest {
         @Override
         public EmbeddingResponse call(EmbeddingRequest request) {
             var embeddings = request.getInstructions().stream()
-                    .map(text -> new Embedding(text.contains("uniquephrase")
-                            ? new float[]{0.0f, 1.0f} : new float[]{1.0f, 0.0f}, 0))
+                    .map(text -> new Embedding(vector(text.contains("uniquephrase")), 0))
                     .toList();
             return new EmbeddingResponse(embeddings);
         }
 
         @Override
         public float[] embed(String text) {
-            return new float[]{1.0f, 0.0f};
+            return vector(false);
         }
 
         @Override
         public float[] embed(Document document) {
-            return document.getText().contains("uniquephrase")
-                    ? new float[]{0.0f, 1.0f} : new float[]{1.0f, 0.0f};
+            return vector(document.getText().contains("uniquephrase"));
         }
 
         @Override
         public List<float[]> embed(List<String> texts) {
-            return texts.stream().map(text -> new float[]{1.0f, 0.0f}).toList();
+            return texts.stream().map(text -> vector(false)).toList();
         }
 
         @Override
         public int dimensions() {
-            return 2;
+            return 1536;
+        }
+
+        private static float[] vector(boolean uniquephrase) {
+            var vector = new float[1536];
+            vector[uniquephrase ? 1 : 0] = 1.0f;
+            return vector;
         }
     }
 
@@ -124,7 +129,7 @@ class PgVectorKnowledgeIntegrationTest {
         var dataSource = new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         var vectorStore = PgVectorStore.builder(new JdbcTemplate(dataSource), new FixedEmbeddingModel())
-                .dimensions(2).initializeSchema(true).build();
+                .schemaName("ford_metadata").dimensions(1536).initializeSchema(true).build();
         vectorStore.afterPropertiesSet();
         vectorStore.add(documents);
         vectorStore.add(List.of(keywordMatch));

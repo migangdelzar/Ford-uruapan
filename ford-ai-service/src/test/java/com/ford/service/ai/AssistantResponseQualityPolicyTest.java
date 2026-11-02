@@ -45,6 +45,15 @@ class AssistantResponseQualityPolicyTest {
     }
 
     @Test
+    void rejectsNewFordCatalogToolNamesInCustomerFacingAnswers() {
+        var verdict = policy.evaluate("¿Qué camioneta sirve para familia?", null,
+                "Usé ford_catalog_hybrid_search para encontrar opciones.");
+
+        assertThat(verdict.accepted()).isFalse();
+        assertThat(verdict.reason()).isEqualTo("internal_payload");
+    }
+
+    @Test
     void rejectsARepeatedAssistantAnswerFromMemory() {
         var memory = "Historial reciente:\n- asistente: La Ranger está disponible para revisión.\n"
                 + "- usuario: ¿Y la Lobo?";

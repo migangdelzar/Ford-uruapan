@@ -23,7 +23,7 @@ class ConversationGraphCheckpointCleanupTest {
 
         new ConversationGraphCheckpointCleanup(jdbc, Duration.ofDays(90)).removeExpiredCheckpoints();
 
-        verify(jdbc).sql("delete from ford_graph.lg4jcheckpoint where saved_at < :cutoff");
+        verify(jdbc).sql("delete from ford_metadata.lg4jcheckpoint where saved_at < :cutoff");
         verify(statement).param(eq("cutoff"), any());
         verify(statement).update();
     }

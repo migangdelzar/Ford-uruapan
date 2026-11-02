@@ -44,7 +44,7 @@ public final class PgVectorConversationMemoryRecallAdapter implements Conversati
         var boundedLimit = Math.min(validatePositive(limit, "limit"), MAX_LIMIT);
         return jdbc.sql("""
                 select source_message_id, direction, content_redacted, occurred_at,
-                       1 - (embedding <=> cast(:embedding as vector)) as similarity
+                       1 - (embedding OPERATOR(ford_catalog.<=>) cast(:embedding as ford_catalog.vector)) as similarity
                 from conversation_memory_embedding
                 where tenant_id = :tenantId
                   and conversation_id = :conversationId
@@ -53,8 +53,8 @@ public final class PgVectorConversationMemoryRecallAdapter implements Conversati
                   and participant_id = :participantId
                   and active = true
                   and occurred_at < :before
-                  and (1 - (embedding <=> cast(:embedding as vector))) >= :minimumSimilarity
-                order by embedding <=> cast(:embedding as vector)
+                  and (1 - (embedding OPERATOR(ford_catalog.<=>) cast(:embedding as ford_catalog.vector))) >= :minimumSimilarity
+                order by embedding OPERATOR(ford_catalog.<=>) cast(:embedding as ford_catalog.vector)
                 limit :limit
                 """)
                 .param("tenantId", key.tenantId())
@@ -97,7 +97,7 @@ public final class PgVectorConversationMemoryRecallAdapter implements Conversati
                      embedding_model, embedding, occurred_at, active, created_at, updated_at)
                 values (:id, :tenantId, :conversationId, :channel, :providerAccountId,
                         :participantId, :sourceMessageId, :direction, :contentRedacted,
-                        :embeddingModel, cast(:embedding as vector), :occurredAt, true,
+                        :embeddingModel, cast(:embedding as ford_catalog.vector), :occurredAt, true,
                         :createdAt, :updatedAt)
                 on conflict (conversation_id, source_message_id, embedding_model)
                 do update set content_redacted = excluded.content_redacted,

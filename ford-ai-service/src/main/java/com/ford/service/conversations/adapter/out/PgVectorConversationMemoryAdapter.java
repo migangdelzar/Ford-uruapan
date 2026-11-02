@@ -35,7 +35,7 @@ public final class PgVectorConversationMemoryAdapter implements ConversationMemo
                   and tenant_id = :tenantId
                   and channel = :channel
                   and active = true
-                order by embedding <=> cast(:embedding as vector)
+                order by embedding OPERATOR(ford_catalog.<=>) cast(:embedding as ford_catalog.vector)
                 limit :limit
                 """)
                 .param("conversationId", key.conversationId())
@@ -59,7 +59,7 @@ public final class PgVectorConversationMemoryAdapter implements ConversationMemo
                     (id, conversation_id, tenant_id, channel, kind, content,
                      embedding, source_message_id, active, created_at, updated_at)
                 values (:id, :conversationId, :tenantId, :channel, :kind, :content,
-                        cast(:embedding as vector), :sourceMessageId, true, :createdAt, :updatedAt)
+                        cast(:embedding as ford_catalog.vector), :sourceMessageId, true, :createdAt, :updatedAt)
                 on conflict (conversation_id, kind, content)
                 do update set embedding = excluded.embedding,
                               source_message_id = excluded.source_message_id,

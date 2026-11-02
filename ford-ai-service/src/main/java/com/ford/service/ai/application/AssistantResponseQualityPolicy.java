@@ -21,6 +21,7 @@ public final class AssistantResponseQualityPolicy {
     private static final List<String> INTERNAL_MARKERS = List.of(
             "search_vehicles", "get_vehicle", "compare_vehicles", "search_offers", "list_promotions",
             "get_vehicle_provenance", "get_catalog_status", "vehicle_snapshot_search", "approved_knowledge_search",
+            "ford_catalog_search", "ford_catalog_hybrid_search", "ford_catalog_offers",
             "tool_call", "function_call", "openrouter", "ollama", "typesafe", "spring ai");
     private static final List<String> STRUCTURED_MARKERS = List.of(
             "\"query\"", "\"modelyear\"", "\"arguments\"", "\"tool\"", "\"function\"", "```json");

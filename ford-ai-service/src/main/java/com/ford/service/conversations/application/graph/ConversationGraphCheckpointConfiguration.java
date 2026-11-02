@@ -17,7 +17,7 @@ import java.time.Duration;
 @Configuration(proxyBeanMethods = false)
 class ConversationGraphCheckpointConfiguration {
 
-    private static final String CHECKPOINT_SCHEMA = "ford_graph";
+    private static final String CHECKPOINT_SCHEMA = "ford_metadata";
 
     @Bean(name = "dataSource", destroyMethod = "close")
     @Primary

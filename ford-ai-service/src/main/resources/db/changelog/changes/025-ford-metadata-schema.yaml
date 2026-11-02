@@ -1,0 +1,125 @@
+databaseChangeLog:
+  - changeSet:
+      id: 025-ford-metadata-schema
+      author: ford-service
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              do $$
+              declare
+                  relation_name text;
+                  relation_kind "char";
+                  unexpected_count integer;
+              begin
+                  create schema if not exists ford_metadata;
+
+                  foreach relation_name in array array[
+                      'ai_execution', 'ai_system_prompt', 'ai_test_message', 'ai_test_session',
+                      'audit_event', 'channel_binding', 'channel_delivery', 'channel_message',
+                      'conversation', 'conversation_decision', 'conversation_memory',
+                      'conversation_memory_embedding', 'conversation_memory_item', 'conversation_message',
+                      'conversation_turn_lease', 'event_publication', 'finance_product', 'finance_term',
+                      'handoff_ticket', 'knowledge_chunk', 'knowledge_document', 'lead', 'lead_follow_up',
+                      'lead_journey', 'lead_score', 'oauth2_authorization', 'oauth2_authorization_consent',
+                      'oauth2_registered_client', 'one_time_tokens', 'operator_idempotency',
+                      'operator_identity', 'operator_identity_role', 'operator_identity_scope',
+                      'operator_identity_tenant', 'operator_invitation', 'operator_invitation_role',
+                      'operator_invitation_scope', 'operator_invitation_tenant', 'outbox_event',
+                      'sync_run', 'tenant_runtime_configuration', 'user_credentials', 'user_entities',
+                      'vehicle_color', 'vehicle_model', 'vehicle_price', 'vehicle_unit', 'vehicle_variant',
+                      'offer', 'vector_store'
+                  ] loop
+                      select count(*) into unexpected_count
+                      from pg_class c join pg_namespace n on n.oid = c.relnamespace
+                      where c.relname = relation_name
+                        and n.nspname not in ('public', 'ford_metadata', 'pg_catalog', 'information_schema')
+                        and left(n.nspname, 3) <> 'pg_';
+                      if unexpected_count > 0 then
+                          raise exception 'Relation % exists in an unreviewed schema', relation_name;
+                      end if;
+
+                      if to_regclass(format('public.%I', relation_name)) is not null then
+                          if to_regclass(format('ford_metadata.%I', relation_name)) is not null then
+                              raise exception 'Both public.% and ford_metadata.% exist; refusing to merge',
+                                  relation_name, relation_name;
+                          end if;
+                          select c.relkind into relation_kind
+                          from pg_class c join pg_namespace n on n.oid = c.relnamespace
+                          where n.nspname = 'public' and c.relname = relation_name;
+                          if relation_kind not in ('r', 'p') then
+                              raise exception 'public.% is not an ordinary or partitioned table', relation_name;
+                          end if;
+                          execute format('alter table public.%I set schema ford_metadata', relation_name);
+                      elsif to_regclass(format('ford_metadata.%I', relation_name)) is not null then
+                          select c.relkind into relation_kind
+                          from pg_class c join pg_namespace n on n.oid = c.relnamespace
+                          where n.nspname = 'ford_metadata' and c.relname = relation_name;
+                          if relation_kind not in ('r', 'p') then
+                              raise exception 'ford_metadata.% is not an ordinary or partitioned table', relation_name;
+                          end if;
+                      end if;
+                  end loop;
+
+                  foreach relation_name in array array['lg4jthread', 'lg4jthreadtag', 'lg4jcheckpoint'] loop
+                      select count(*) into unexpected_count
+                      from pg_class c join pg_namespace n on n.oid = c.relnamespace
+                      where c.relname = relation_name
+                        and n.nspname not in ('public', 'ford_metadata', 'ford_graph', 'pg_catalog', 'information_schema')
+                        and left(n.nspname, 3) <> 'pg_';
+                      if unexpected_count > 0 then
+                          raise exception 'Relation % exists in an unreviewed schema', relation_name;
+                      end if;
+
+                      if to_regclass(format('ford_graph.%I', relation_name)) is not null then
+                          if to_regclass(format('ford_metadata.%I', relation_name)) is not null then
+                              raise exception 'Both ford_graph.% and ford_metadata.% exist; refusing to merge',
+                                  relation_name, relation_name;
+                          end if;
+                          select c.relkind into relation_kind
+                          from pg_class c join pg_namespace n on n.oid = c.relnamespace
+                          where n.nspname = 'ford_graph' and c.relname = relation_name;
+                          if relation_kind not in ('r', 'p') then
+                              raise exception 'ford_graph.% is not an ordinary or partitioned table', relation_name;
+                          end if;
+                          execute format('alter table ford_graph.%I set schema ford_metadata', relation_name);
+                      end if;
+                  end loop;
+
+                  if exists (select 1 from pg_namespace where nspname = 'ford_graph') then
+                      drop schema ford_graph;
+                  end if;
+              end;
+              $$;
+
+              do $$
+              declare
+                  extension_schema text;
+                  extension_relocatable boolean;
+              begin
+                  select n.nspname, e.extrelocatable
+                    into extension_schema, extension_relocatable
+                  from pg_extension e join pg_namespace n on n.oid = e.extnamespace
+                  where e.extname = 'vector';
+                  if not found then
+                      raise exception 'Required pgvector extension is missing';
+                  end if;
+                  if extension_schema <> 'public' then
+                      if not extension_relocatable then
+                          raise exception 'pgvector extension cannot be safely moved to public';
+                      end if;
+                      alter extension vector set schema public;
+                  end if;
+              end;
+              $$;
+
+              create table if not exists ford_metadata.vector_store (
+                  id uuid primary key,
+                  content text,
+                  metadata json,
+                  embedding public.vector(1536)
+              );
+
+              create index if not exists spring_ai_vector_index
+                  on ford_metadata.vector_store using hnsw (embedding public.vector_cosine_ops);

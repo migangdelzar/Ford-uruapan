@@ -3,6 +3,7 @@ package com.ford.service.ai.configuration;
 import com.ford.service.ai.adapter.in.tool.FinanceEstimateTool;
 import com.ford.service.ai.adapter.in.tool.KnowledgeTools;
 import com.ford.service.ai.adapter.in.tool.VehicleTools;
+import com.ford.service.ai.adapter.in.tool.FordCatalogTools;
 import com.ford.service.ai.adapter.out.springai.SpringAiChatCompletionAdapter;
 import com.ford.service.ai.adapter.out.rules.RulesConversationDecisionAdapter;
 import com.ford.service.ai.adapter.out.typesafe.TypeSafeConversationDecisionAdapter;
@@ -187,7 +188,8 @@ public class SpringAiConfiguration {
     ToolAuthorizationPolicy toolAuthorizationPolicy(ObjectProvider<VehicleCatalog> catalog,
                                                     ObjectProvider<FinanceOperations> finance,
                                                     ObjectProvider<FinanceTermsRepository> terms,
-                                                    ObjectProvider<KnowledgeRetrieval> knowledge,
+                                                     ObjectProvider<KnowledgeRetrieval> knowledge,
+                                                     ObjectProvider<FordCatalogTools> catalogTools,
                                                     ObjectProvider<SyncMcpToolCallbackProvider> mcpProviders,
                                                     McpProperties mcpProperties,
                                                     ObjectProvider<MeterRegistry> meterRegistries) {
@@ -204,6 +206,10 @@ public class SpringAiConfiguration {
         var knowledgeRetrieval = knowledge.getIfAvailable();
         if (knowledgeRetrieval != null) {
             toolObjects.add(new KnowledgeTools(knowledgeRetrieval));
+        }
+        var localCatalogTools = catalogTools.getIfAvailable();
+        if (localCatalogTools != null) {
+            toolObjects.add(localCatalogTools);
         }
         var callbacks = new ArrayList<ToolCallback>();
         if (!toolObjects.isEmpty()) {

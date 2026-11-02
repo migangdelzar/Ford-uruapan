@@ -14,7 +14,8 @@ public final class ToolResultTracker {
     private static final Set<String> FACT_TOOLS = Set.of(
             "get_vehicle", "search_vehicles", "list_promotions", "search_offers",
             "compare_vehicles", "compare_trims", "compare_model_years", "get_variant_comparisons",
-            "get_page_links", "get_vehicle_provenance");
+            "get_page_links", "get_vehicle_provenance", "ford_catalog_search", "ford_catalog_hybrid_search",
+            "ford_catalog_offers");
     private static final int MAX_CAPTURED_PAYLOAD_CHARS = 64_000;
 
     public void attempted(String toolName) {

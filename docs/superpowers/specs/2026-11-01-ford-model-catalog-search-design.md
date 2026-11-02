@@ -163,13 +163,14 @@ for a single hybrid request, not force every tool operation into one query.
 - Use `ford_metadata` for app-owned data and Liquibase history; use
   `ford_catalog` for catalog relations plus pgvector and pg_trgm extension
   objects.
-- Add extension-schema setup before the first metadata vector changeset so
-  clean installs create `ford_catalog.vector` and its operator classes before
-  use. For an existing install, verify pgvector is relocatable and owned by the
-  migration principal before moving the extension with
-  `ALTER EXTENSION ... SET SCHEMA`; likewise install/relocate pg_trgm into
-  `ford_catalog`. Do not uninstall/reinstall or cascade. Keep pg_trgm out of
-  query ranking until a separate retrieval design validates its benefit.
+- Keep existing Liquibase changesets immutable unless their deployment history
+  proves they are unapplied. The forward-only extension-schema changeset runs
+  after the metadata cutover and before catalog DDL; it installs or relocates
+  both extensions into `ford_catalog`. For existing installs, PostgreSQL must
+  verify extension relocatability and migration-principal ownership through
+  `ALTER EXTENSION ... SET SCHEMA`; fail closed on permission or object-audit
+  errors. Do not uninstall/reinstall or cascade. Keep pg_trgm out of query
+  ranking until a separate retrieval design validates its benefit.
 - Qualify vector columns, casts, operators, and operator classes. Configure JDBC
   search paths with only the required `ford_metadata` and/or `ford_catalog`
   schemas; do not append `public` as a fallback.

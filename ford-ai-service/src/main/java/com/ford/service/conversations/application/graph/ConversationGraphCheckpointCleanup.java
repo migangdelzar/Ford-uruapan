@@ -20,7 +20,7 @@ class ConversationGraphCheckpointCleanup {
 
     @Scheduled(fixedDelayString = "${ford.conversations.workflow.checkpoint-cleanup-delay-ms:3600000}")
     void removeExpiredCheckpoints() {
-        jdbc.sql("delete from ford_graph.lg4jcheckpoint where saved_at < :cutoff")
+        jdbc.sql("delete from ford_metadata.lg4jcheckpoint where saved_at < :cutoff")
                 .param("cutoff", Timestamp.from(Instant.now().minus(retention)))
                 .update();
     }

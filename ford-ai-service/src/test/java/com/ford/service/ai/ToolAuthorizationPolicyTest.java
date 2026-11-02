@@ -77,6 +77,19 @@ class ToolAuthorizationPolicyTest {
     }
 
     @Test
+    void capturesFordCatalogFactsAndHybridEvidence() {
+        var tracker = new ToolResultTracker();
+        var policy = new ToolAuthorizationPolicy(List.of(
+                callbackReturning("ford_catalog_search", "[{\"price\":1000000}]") ));
+        var tool = policy.readOnlyTools(new AiExecutionContext(UUID.randomUUID(), false),
+                Set.of("ford_catalog_search"), tracker).getFirst();
+
+        tool.call("{}");
+
+        assertThat(tracker.returnedPayloads()).containsKey("ford_catalog_search");
+    }
+
+    @Test
     void capturesComparisonAndPageLinkEvidenceButNotUnrelatedToolPayloads() {
         var tracker = new ToolResultTracker();
         var policy = new ToolAuthorizationPolicy(List.of(

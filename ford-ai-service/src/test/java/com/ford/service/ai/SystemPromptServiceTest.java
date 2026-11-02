@@ -78,6 +78,19 @@ class SystemPromptServiceTest {
                 .contains("Nunca prometa llamada, seguimiento, cita o contacto a primera hora");
     }
 
+    @Test
+    void directsExactFactsToSqlHybridUseCasesToSearchAndAvailabilityToAdvisor() throws IOException {
+        var resource = new ClassPathResource("prompts/ford-uruapan-system.md");
+        var prompt = new String(resource.getInputStream().readAllBytes(), StandardCharsets.UTF_8)
+                .replaceAll("\\s+", " ");
+
+        assertThat(prompt)
+                .contains("ford_catalog_search", "ford_catalog_hybrid_search", "ford_catalog_offers")
+                .contains("precio y color", "familia o trabajo")
+                .contains("No existe una fuente confiable de inventario", "ofrezca canalizar la consulta con")
+                .contains("autorización explícita que exige el flujo de la aplicación");
+    }
+
     private static final class InMemoryPromptRepository implements SystemPromptRepository {
         private SystemPromptSnapshot value;
 

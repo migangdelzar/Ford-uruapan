@@ -1,0 +1,262 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-ford-catalog-schema
+      author: ford-service
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              create schema if not exists ford_catalog;
+
+              create table ford_catalog.price_import_journal (
+                  variant_id uuid primary key,
+                  plan_hash text not null,
+                  before_row jsonb not null,
+                  after_row jsonb,
+                  evidence jsonb not null,
+                  applied_at timestamptz not null default now()
+              );
+
+              create table ford_catalog.retrieval_document_manifest (
+                  document_id uuid primary key,
+                  document_key text not null unique,
+                  content_hash text not null,
+                  source_kind text not null,
+                  evidence jsonb not null,
+                  embedding_meta jsonb not null,
+                  installed_at timestamptz not null default now()
+              );
+
+              create table ford_catalog.reviewed_fact_manifest (
+                  fact_key text primary key,
+                  fact jsonb not null,
+                  source jsonb not null,
+                  installed_at timestamptz not null default now()
+              );
+
+              create table ford_catalog.catalog_documents_v1 (
+                  document_id uuid,
+                  document_type text,
+                  document_key text,
+                  title text,
+                  semantic_content text,
+                  model_id uuid,
+                  model_year_id uuid,
+                  variant_id uuid,
+                  offer_id uuid,
+                  source_url text,
+                  observed_at timestamptz,
+                  embedding_model text,
+                  embedding_status text,
+                  embedding ford_catalog.vector(1024),
+                  search_vector tsvector generated always as (
+                      to_tsvector('spanish'::regconfig,
+                          (coalesce(title, '') || ' ' || coalesce(semantic_content, '')))
+                  ) stored
+              );
+
+              create table ford_catalog.offers_v2 (
+                  promotion_id uuid,
+                  model text,
+                  year integer,
+                  title text,
+                  description text,
+                  discount_amount numeric,
+                  discount_percent numeric,
+                  cash_price numeric,
+                  currency text,
+                  valid_from date,
+                  valid_until date,
+                  conditions text,
+                  offer_type text,
+                  provider text,
+                  down_payment_amount numeric,
+                  down_payment_percent numeric,
+                  monthly_payment numeric,
+                  term_months integer,
+                  months_without_interest integer,
+                  annual_interest_rate numeric,
+                  cat_percent numeric,
+                  requires_credit_approval boolean,
+                  source_url text,
+                  observed_at timestamptz,
+                  model_page_url text,
+                  benefits jsonb,
+                  term_conflict jsonb,
+                  tax_rate_percent numeric,
+                  opening_commission_rate_percent numeric,
+                  maximum_down_payment_percent numeric,
+                  life_insurance_price numeric
+              );
+
+              create table ford_catalog.vehicle_search_v1 (
+                  model_year_id uuid,
+                  model text,
+                  normalized_name text,
+                  year integer,
+                  price numeric,
+                  currency text,
+                  category text,
+                  body_type text,
+                  fuel_type text,
+                  model_page_url text,
+                  price_source_url text,
+                  observed_at timestamptz
+              );
+
+              create table ford_catalog.vehicle_variants_v2 (
+                  variant_id uuid,
+                  model_year_id uuid,
+                  model text,
+                  normalized_model text,
+                  year integer,
+                  trim text,
+                  normalized_trim text,
+                  price numeric,
+                  currency text,
+                  model_page_url text,
+                  price_source_url text,
+                  observed_at timestamptz,
+                  comparison_url text
+              );
+
+              create table ford_catalog.comparison_facts_v2 (
+                  model text,
+                  year integer,
+                  trim text,
+                  competitor_make text,
+                  competitor_model text,
+                  competitor_year integer,
+                  competitor_variant text,
+                  category text,
+                  fact_name text,
+                  fact_value text,
+                  fact_unit text,
+                  source_url text,
+                  observed_at timestamptz,
+                  comparison_url text
+              );
+
+              create table ford_catalog.vehicle_facts_v2 (
+                  variant_id uuid,
+                  model_year_id uuid,
+                  model text,
+                  year integer,
+                  trim text,
+                  category text,
+                  fact_type text,
+                  fact_name text,
+                  fact_name_normalized text,
+                  fact_value text,
+                  value_numeric numeric,
+                  fact_unit text,
+                  source_url text,
+                  observed_at timestamptz,
+                  model_page_url text
+              );
+
+              create table ford_catalog.page_links_v1 (
+                  source_page_url text,
+                  source_page_type text,
+                  href text,
+                  target_url text,
+                  anchor_text text,
+                  rel text,
+                  is_internal boolean,
+                  link_type text,
+                  observed_at timestamptz
+              );
+
+              create table ford_catalog.vehicle_facts_v1 (
+                  model text,
+                  year integer,
+                  trim text,
+                  fact_type text,
+                  source_url text,
+                  observed_at timestamptz
+              );
+
+              create table ford_catalog.vehicle_images_v1 (
+                  model text,
+                  year integer,
+                  trim text,
+                  image_url text,
+                  alt_text text,
+                  image_type text,
+                  width integer,
+                  height integer,
+                  source_url text,
+                  observed_at timestamptz
+              );
+
+              create view ford_catalog.catalog_pages_v1 as
+              with page_sources as (
+                  select model_page_url as source_url,
+                         concat_ws(' ', model, year::text) as title
+                  from ford_catalog.vehicle_search_v1
+                  union all
+                  select model_page_url,
+                         concat_ws(' ', model, year::text, trim)
+                  from ford_catalog.vehicle_variants_v2
+                  union all
+                  select model_page_url,
+                         concat_ws(' ', model, year::text, title)
+                  from ford_catalog.offers_v2
+                  union all
+                  select source_url,
+                         concat_ws(' ', model, year::text, title)
+                  from ford_catalog.offers_v2
+              )
+              select source_url, max(title) as title
+              from page_sources
+              where source_url is not null and btrim(source_url) <> ''
+              group by source_url;
+
+              create view ford_catalog.catalog_status_v1 as
+              with observations as (
+                  select observed_at from ford_catalog.vehicle_search_v1
+                  union all select observed_at from ford_catalog.vehicle_variants_v2
+                  union all select observed_at from ford_catalog.vehicle_facts_v2
+                  union all select observed_at from ford_catalog.comparison_facts_v2
+                  union all select observed_at from ford_catalog.offers_v2
+                  union all select observed_at from ford_catalog.catalog_documents_v1
+              )
+              select
+                  (select count(distinct normalized_name) from ford_catalog.vehicle_search_v1) as model_count,
+                  (select count(distinct row(normalized_name, year)) from ford_catalog.vehicle_search_v1) as active_model_year_count,
+                  (select count(*) from ford_catalog.vehicle_variants_v2) as variant_count,
+                  (select count(*) from ford_catalog.catalog_pages_v1) as page_count,
+                  (select count(*) from ford_catalog.catalog_documents_v1) as document_count,
+                  (select count(*) from ford_catalog.catalog_documents_v1 where embedding_status = 'ready') as embedded_document_count,
+                  (select count(*) from ford_catalog.catalog_documents_v1 where embedding_status <> 'ready') as pending_embedding_count,
+                  (select max(observed_at) from observations) as latest_page_crawl_at,
+                  'LOCAL_SNAPSHOT'::text as latest_sync_status,
+                  null::timestamptz as latest_sync_started_at,
+                  null::timestamptz as latest_sync_finished_at;
+
+              create view ford_catalog.document_provenance_v1 as
+              select d.document_id,
+                     null::text as content_hash,
+                     null::text as page_content_hash,
+                     d.title,
+                     d.document_type,
+                     d.source_url,
+                     v.model_page_url,
+                     d.observed_at,
+                     v.model,
+                     v.year,
+                     v.trim
+              from ford_catalog.catalog_documents_v1 d
+              left join ford_catalog.vehicle_variants_v2 v on v.variant_id = d.variant_id;
+
+              create view ford_catalog.promotions_v3 as
+              select promotion_id, model, year, title, description, discount_amount,
+                     discount_percent, cash_price, currency, valid_from, valid_until,
+                     conditions, offer_type, provider, down_payment_amount, down_payment_percent,
+                     monthly_payment, term_months, months_without_interest, annual_interest_rate,
+                     cat_percent, requires_credit_approval, source_url, observed_at, model_page_url,
+                     benefits, term_conflict, tax_rate_percent, opening_commission_rate_percent,
+                     maximum_down_payment_percent, life_insurance_price
+              from ford_catalog.offers_v2
+              where offer_type = any(array['promotion', 'discount', 'cashback', 'trade_in']::text[]);

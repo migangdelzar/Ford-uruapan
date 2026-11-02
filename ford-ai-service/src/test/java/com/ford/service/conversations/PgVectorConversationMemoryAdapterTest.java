@@ -36,6 +36,6 @@ class PgVectorConversationMemoryAdapterTest {
         var sql = org.mockito.ArgumentCaptor.forClass(String.class);
         org.mockito.Mockito.verify(jdbc).sql(sql.capture());
         assertThat(sql.getValue()).contains("conversation_memory_item");
-        assertThat(sql.getValue()).contains("cast(:embedding as vector)");
+        assertThat(sql.getValue()).contains("cast(:embedding as ford_catalog.vector)");
     }
 }

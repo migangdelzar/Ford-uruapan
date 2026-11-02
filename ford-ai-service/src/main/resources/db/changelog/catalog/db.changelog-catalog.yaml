@@ -1,0 +1,5 @@
+databaseChangeLog:
+  - include:
+      file: db/changelog/catalog/changes/001-ford-catalog-schema.yaml
+  - include:
+      file: db/changelog/catalog/changes/002-ford-catalog-roles.yaml

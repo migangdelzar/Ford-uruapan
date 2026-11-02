@@ -36,6 +36,12 @@ class AiTestSessionStoreIntegrationTest {
     }
 
     @Test
+    void testDatabaseSearchPathResolvesMetadataSchemaByDefault() {
+        assertThat(jdbc.sql("select to_regclass('ai_test_session') is not null")
+                .query(Boolean.class).single()).isTrue();
+    }
+
+    @Test
     void keepsRecentTurnsAfterAStoreIsRecreated() {
         var tenant = UUID.randomUUID();
         var conversation = UUID.randomUUID();

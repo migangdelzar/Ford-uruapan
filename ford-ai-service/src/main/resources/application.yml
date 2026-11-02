@@ -22,7 +22,7 @@ spring:
       externalization:
         enabled: false
   datasource:
-    url: ${FORD_DATABASE_URL:jdbc:postgresql://localhost:5432/ford_service?ApplicationName=ford-service}
+    url: ${FORD_DATABASE_URL:jdbc:postgresql://localhost:5432/ford?currentSchema=ford_metadata,ford_catalog&ApplicationName=ford-service}
     username: ${FORD_DATABASE_USERNAME:ford}
     password: ${FORD_DATABASE_PASSWORD:ford}
   data:
@@ -34,7 +34,18 @@ spring:
   liquibase:
     enabled: true
     change-log: classpath:/db/changelog/db.changelog-master.yaml
+    liquibase-schema: ${FORD_DATABASE_SCHEMA:ford_metadata}
+    default-schema: ${FORD_DATABASE_SCHEMA:ford_metadata}
   ai:
+    vectorstore:
+      pgvector:
+        schema-name: ${FORD_DATABASE_SCHEMA:ford_metadata}
+        table-name: vector_store
+        dimensions: 1536
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
+        initialize-schema: false
+        schema-validation: true
     retry:
       max-attempts: ${FORD_AI_RETRY_MAX_ATTEMPTS:1}
     chat:
@@ -118,6 +129,15 @@ logging:
     correlation: "[conversationId=%X{conversationId:-}] [receiptId=%X{receiptId:-}] [providerMessageId=%X{providerMessageId:-}] [stage=%X{workflowStage:-}] [trace_id=%X{traceId:-}] [span_id=%X{spanId:-}] "
 
 ford:
+  catalog:
+    datasource:
+      tools-enabled: ${FORD_CATALOG_TOOLS_ENABLED:false}
+      host: ${FORD_DATA_HOST:localhost}
+      port: ${FORD_DATA_PORT:5432}
+      username: ${FORD_CATALOG_DATABASE_USERNAME:ford_catalog_reader}
+      password: ${FORD_CATALOG_DATABASE_PASSWORD:}
+      secret-ocid: ${FORD_VAULT_SECRET_OCID_FORD_CATALOG_DATABASE_PASSWORD:}
+      embedding-model: ${FORD_CATALOG_EMBEDDING_MODEL:bge-m3:latest}
   web:
     ui:
       upstream-url: ${FORD_WEB_UI_UPSTREAM_URL:https://ford-crm-ui.pages.dev}
