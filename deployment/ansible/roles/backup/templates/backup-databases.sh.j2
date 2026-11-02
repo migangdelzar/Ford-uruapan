@@ -8,6 +8,8 @@ env_file="{{ remote_root }}/data/.env"
 bucket="{{ backup_bucket }}"
 namespace="{{ object_storage_namespace }}"
 object_prefix="{{ backup_object_prefix | default('ford/backups') }}"
+database="${BACKUP_DATABASE:-ford_service}"
+[[ "$database" == "ford_service" || "$database" == "ford" ]] || { echo "Unsupported backup database: $database" >&2; exit 2; }
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 run_dir="$staging_root/$timestamp"
 
@@ -17,12 +19,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-postgres_archive="$run_dir/ford_service_${timestamp}.dump.gz"
+postgres_archive="$run_dir/${database}_${timestamp}.dump.gz"
 redis_archive="$run_dir/redis_${timestamp}.rdb.gz"
 manifest="$run_dir/manifest_${timestamp}.json"
 
 docker compose --env-file "$env_file" -f "$compose_file" exec -T postgres \
-  pg_dump -U ford -d ford_service --format=custom --no-owner | gzip -9 > "$postgres_archive"
+  pg_dump -U ford -d "$database" --format=custom --no-owner | gzip -9 > "$postgres_archive"
 
 docker compose --env-file "$env_file" -f "$compose_file" exec -T redis sh -c \
   'set -e; redis-cli --no-auth-warning -a "$REDIS_PASSWORD" --rdb /tmp/ford-backup.rdb >/dev/null; cat /tmp/ford-backup.rdb; rm -f /tmp/ford-backup.rdb' \
@@ -31,7 +33,7 @@ docker compose --env-file "$env_file" -f "$compose_file" exec -T redis sh -c \
 sha256_postgres="$(sha256sum "$postgres_archive" | awk '{print $1}')"
 sha256_redis="$(sha256sum "$redis_archive" | awk '{print $1}')"
 cat > "$manifest" <<EOF
-{"created_at":"$timestamp","postgres":"$(basename "$postgres_archive")","postgres_sha256":"$sha256_postgres","redis":"$(basename "$redis_archive")","redis_sha256":"$sha256_redis"}
+{"created_at":"$timestamp","database":"$database","postgres":"$(basename "$postgres_archive")","postgres_sha256":"$sha256_postgres","redis":"$(basename "$redis_archive")","redis_sha256":"$sha256_redis"}
 EOF
 
 oci_put_args=(--auth instance_principal --region "{{ oci_region | default('us-ashburn-1') }}" --namespace-name "$namespace" --bucket-name "$bucket" --force)

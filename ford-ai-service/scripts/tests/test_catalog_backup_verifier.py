@@ -31,6 +31,7 @@ class CatalogBackupVerifierTest(unittest.TestCase):
     def write_manifest(self, **overrides):
         manifest = {
             "created_at": self.created_at,
+            "database": "ford_service",
             "postgres": "postgres.dump.gz",
             "postgres_sha256": hashlib.sha256(self.postgres).hexdigest(),
             "redis": "redis.rdb.gz",

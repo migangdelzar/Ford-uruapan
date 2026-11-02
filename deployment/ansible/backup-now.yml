@@ -7,6 +7,8 @@
     - name: Create a verified PostgreSQL and Redis backup before release changes
       ansible.builtin.command:
         cmd: "{{ remote_root }}/backup/backup-databases.sh"
+      environment:
+        BACKUP_DATABASE: "{{ backup_database | default('ford_service') }}"
       register: release_backup
       async: 1800
       poll: 10

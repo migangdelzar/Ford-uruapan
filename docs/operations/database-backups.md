@@ -64,7 +64,8 @@ performs these steps:
 1. Dump PostgreSQL and snapshot Redis using the existing Docker Compose data
    services.
 2. Compress each archive and create a JSON manifest with UTC creation time,
-   archive names, and SHA-256 checksums.
+   source database name (`ford_service` by default, or explicitly selected
+   `ford`), archive names, and SHA-256 checksums for both archives.
 3. Upload the PostgreSQL archive, Redis archive, and manifest to OCI Object
    Storage using the VM's instance principal.
 4. Check each uploaded object with OCI Object Storage `head`.
@@ -74,8 +75,10 @@ performs these steps:
 
 The bucket lifecycle policy controls remote retention. The local seven-day
 cleanup and remote bucket retention are separate controls. A successful upload
-is not a restore test; restore only into a separate database when testing
-recovery.
+is not a restore test. The rehearsal restore utility requires explicit isolated
+container and database names, rejects both production database names, and uses
+`docker exec` rather than the production Compose service. Production rollback is
+separate and release-gated; do not use rehearsal tooling for production rollback.
 
 ## GitHub Actions controls
 

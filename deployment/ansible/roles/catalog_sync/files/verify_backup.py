@@ -18,7 +18,11 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def verify_backup(archive: Path, utc_day: str) -> dict[str, str]:
+def verify_backup(
+    archive: Path, utc_day: str, expected_database: str = "ford_service"
+) -> dict[str, str]:
+    if expected_database not in {"ford_service", "ford"}:
+        raise ValueError("expected database must be ford_service or ford")
     if not re.fullmatch(r"[0-9]{8}", utc_day):
         raise ValueError("expected UTC date must be YYYYMMDD")
     manifests = sorted(archive.glob(f"manifest_{utc_day}T*.json"))
@@ -27,6 +31,13 @@ def verify_backup(archive: Path, utc_day: str) -> dict[str, str]:
 
     manifest_path = manifests[-1]
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise ValueError("backup manifest is malformed")
+    database = manifest.get("database")
+    if database not in {"ford_service", "ford"}:
+        raise ValueError("backup manifest database is missing or invalid")
+    if database != expected_database:
+        raise ValueError(f"backup manifest database {database!r} does not match expected database")
     created_at = manifest.get("created_at")
     if not isinstance(created_at, str) or not re.fullmatch(
         rf"{utc_day}T[0-9]{{6}}Z", created_at
