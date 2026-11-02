@@ -48,6 +48,7 @@ class FordEmptyDatabaseBootstrapIntegrationTest {
             assertThat(schemaExists(connection, "public")).isTrue();
             assertThat(extensionSchema(connection, "vector")).isEqualTo("ford_catalog");
             assertThat(extensionSchema(connection, "pg_trgm")).isEqualTo("ford_catalog");
+            assertThat(extensionsOutsideApprovedSchemas(connection)).isEmpty();
             assertThat(publicObjectCount(connection)).isZero();
             assertThat(liquibaseTrackingRelations(connection)).containsExactly(
                     "ford_metadata.databasechangelog", "ford_metadata.databasechangeloglock");
@@ -120,6 +121,20 @@ class FordEmptyDatabaseBootstrapIntegrationTest {
             try (var result = statement.executeQuery()) {
                 return result.next() ? result.getString(1) : null;
             }
+        }
+    }
+
+    private static List<String> extensionsOutsideApprovedSchemas(Connection connection) throws SQLException {
+        try (var statement = connection.createStatement(); var result = statement.executeQuery("""
+                select e.extname || ' in ' || n.nspname
+                from pg_extension e
+                join pg_namespace n on n.oid = e.extnamespace
+                where n.nspname not in ('ford_catalog', 'pg_catalog')
+                order by e.extname
+                """)) {
+            var extensions = new ArrayList<String>();
+            while (result.next()) extensions.add(result.getString(1));
+            return extensions;
         }
     }
 
