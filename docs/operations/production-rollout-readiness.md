@@ -76,7 +76,7 @@ These results are local-only fixture evidence for gate 0. They do not validate p
   ```text
   6cc721cf9715 ford-service-local-catalog-postgres-1 pgvector/pgvector:pg16 Up 10 hours
   b8fe0eb3043e ford-service-local-redis-1 redis:7-alpine Exited (255) 3 days ago
-  70043e2a1e27 ford-service-local-postgres-1 pgvector/pg16 Exited (255) 3 days ago
+  70043e2a1e27 ford-service-local-postgres-1 pgvector/pgvector:pg16 Exited (255) 3 days ago
   ```
 
   The two exited Compose containers predated the test. Disposable Testcontainers PostgreSQL and Ryuk were absent; the existing source container stayed running. This is local-only, ephemeral fixture evidence, not durable or production-gate evidence.
