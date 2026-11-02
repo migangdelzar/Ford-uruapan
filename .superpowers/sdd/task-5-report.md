@@ -51,3 +51,26 @@
 ### Commit
 
 - Fresh reviewer-fix implementation commit SHA: `3294b2e8d3894ba8caae7c5a08441b9c64673405` (`Fix Task 5 backup restore reviewer findings`). The report's final verification update is committed separately.
+
+## Final Task 5 safety correction — 2026-11-02
+
+### Changes
+
+- `ford-ai-service/.mise/tasks/backup/restore` now fails closed with a clear message; it no longer loads deploy configuration or invokes Ansible/SSH.
+- `deployment/ansible/roles/backup/templates/restore-database.sh.j2` is inert and exits nonzero. It contains no `pg_restore` or Compose operation.
+- Production rollback documentation now directs operators only to the separately approved, guarded exact-directory rollback playbook from Task 6/9; in-place restore is explicitly not an approved rollback path.
+- Contract tests assert the production wrapper and remote helper cannot restore, exercise their fail-closed behavior, and ensure the local rehearsal route contains no production Compose, SSH, or Ansible path.
+
+### Verification
+
+- TDD RED — ran the new production restore contract test before implementation. It failed as expected because the remote helper still contained the production Compose `pg_restore --clean` pipeline; the rehearsal-route restriction test passed.
+- PASS — `python3 -m unittest discover deployment/ansible/roles/backup/tests -v`: **10 tests passed**.
+- PASS — `python3 -m unittest discover ford-ai-service/scripts/tests -p 'test_catalog_backup_verifier.py' -v`: **5 tests passed**.
+- PASS — `bash -n deployment/ansible/roles/backup/templates/backup-databases.sh.j2 deployment/ansible/roles/backup/templates/restore-database.sh.j2 ford-ai-service/.mise/tasks/backup/restore ford-ai-service/.mise/tasks/backup/restore-isolated scripts/backup/restore-rehearsal.sh`.
+- PASS — `git diff --check`.
+- PASS — synthetic disposable restore used only `colima-native` and a temporary `postgres:16-alpine` container named `rehearsal-task5-review-20261102`, labeled `ford.rehearsal=isolated`. Restored synthetic `ford_service` dump into `rehearsal_task5`; both source and target schema/data MD5 were `032cce92612fc989e994628a5953e16c`; query returned `rehearsal_task5:1`. Removed the exact test container and temporary archive directory; verified no native containers remained; stopped `colima-native`.
+- No testbox, emme/remote, SSH, Ansible invocation, OCI access, production Compose, or real archive used. Existing unrelated running `testbox` was not touched.
+
+### Commit
+
+- Final Task 5 safety implementation commit: `9ace015` (`Disable in-place production database restore`). Report evidence is committed separately.
