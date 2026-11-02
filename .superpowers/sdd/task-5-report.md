@@ -50,4 +50,4 @@
 
 ### Commit
 
-- Fresh reviewer-fix commit SHA: `a74fde67a7017f1c3832ea7347e43c9fc01e3e8a` (`Fix Task 5 backup restore reviewer findings`).
+- Fresh reviewer-fix implementation commit SHA: `3294b2e8d3894ba8caae7c5a08441b9c64673405` (`Fix Task 5 backup restore reviewer findings`). The report's final verification update is committed separately.
