@@ -57,14 +57,13 @@ rg -n -i 'drop( the)? `?public|public (is )?absent|public must be removed|remove
 
 Expected: inspect each match; positive instructions to remove/drop `public` or expect it absent are eliminated. Negated safety rules such as "never drop `public`" are valid matches.
 
-- [ ] Commit only the four documentation files listed in this task:
+- [ ] Do not commit the four documentation files in this task as whole files: they already contain prior uncommitted design/readiness work. Leave them uncommitted unless exact task-only hunks can be staged and `git diff --cached` proves no prior changes are included. Never commit unrelated pre-existing work to satisfy this plan.
 
 ```bash
-git add docs/superpowers/specs/2026-11-01-ford-single-database-liquibase-catalog-design.md \
+git diff -- docs/superpowers/specs/2026-11-01-ford-single-database-liquibase-catalog-design.md \
   docs/superpowers/plans/2026-11-01-ford-database-cutover-release.md \
   docs/superpowers/plans/2026-11-01-ford-liquibase-schema-and-data.md \
   docs/operations/production-rollout-readiness.md
-git commit -m "docs: align Ford catalog cutover readiness"
 ```
 
 ### Task 2: Characterize dual Liquibase history refusal
