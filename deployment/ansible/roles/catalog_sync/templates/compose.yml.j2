@@ -6,7 +6,7 @@ services:
     pull_policy: never
     restart: "no"
     environment:
-      DATABASE_URL: postgres://ford:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be supplied}@postgres:5432/ford_service?application_name=ford-catalog-sync
+      DATABASE_URL: postgres://ford:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be supplied}@postgres:5432/ford?application_name=ford-catalog-sync
       FORD_BASE_URL: https://www.forduruapan.mx
       EMBEDDING_PROVIDER: ollama
       EMBEDDING_API_URL: http://ollama:11434/api/embed

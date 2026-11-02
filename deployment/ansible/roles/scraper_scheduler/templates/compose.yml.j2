@@ -12,7 +12,7 @@ services:
         max-size: 20m
         max-file: "3"
     environment:
-      DATABASE_URL: postgres://ford:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be supplied}@postgres:5432/ford_service?application_name=ford-scraping-scheduler
+      DATABASE_URL: postgres://ford:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be supplied}@postgres:5432/ford?application_name=ford-scraping-scheduler
       FORD_BASE_URL: https://www.forduruapan.mx
       EMBEDDING_PROVIDER: ollama
       EMBEDDING_API_URL: http://ollama:11434/api/embed

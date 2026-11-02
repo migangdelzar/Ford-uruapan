@@ -75,7 +75,7 @@
       docker compose --env-file "{{ remote_root }}/data/.env"
       -f "{{ remote_root }}/data/compose.yml"
       exec -T -u postgres postgres
-      psql -v ON_ERROR_STOP=1 -U ford -d ford_service
+       psql -v ON_ERROR_STOP=1 -U ford -d ford
       -c "ALTER ROLE ford PASSWORD '{{ lookup('ansible.builtin.env', 'POSTGRES_PASSWORD') }}';"
   no_log: true
   changed_when: false

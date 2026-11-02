@@ -563,4 +563,10 @@ test("production scheduler runs privately on the data network", async () => {
   assert.doesNotMatch(scheduler, /ports:/);
   assert.match(source, /SYNC_SCHEDULE: "0 12 1 \* \*"/);
   assert.match(source, /SYNC_TIMEZONE: America\/Mexico_City/);
+  assert.match(source, /DATABASE_URL: postgres:\/\/ford:[^\n]*@postgres:5432\/ford\?/);
+});
+
+test("catalog sync connects to the ford database", async () => {
+  const source = await read("deployment/ansible/roles/catalog_sync/templates/compose.yml.j2");
+  assert.match(source, /DATABASE_URL: postgres:\/\/ford:[^\n]*@postgres:5432\/ford\?/);
 });

@@ -120,6 +120,24 @@ test("application environment preserves the configured operator username with a 
   assert.match(appEnv, /FORD_OPERATOR_USERNAME=\{\{ ford_operator_username \| default\('operator'\) \}\}/);
 });
 
+test("new data and Service deployments target the ford database without bootstrap credentials", async () => {
+  const dataCompose = await read("deployment/ansible/roles/data/templates/compose.yml.j2");
+  const dataTasks = await read("deployment/ansible/roles/data/tasks/main.yml");
+  const appEnv = await read("deployment/ansible/roles/app/templates/app.env.j2");
+  const application = await read("ford-ai-service/src/main/resources/application.yml");
+
+  assert.match(dataCompose, /^      POSTGRES_DB: ford$/m);
+  assert.match(dataCompose, /pg_isready -U ford -d ford/);
+  assert.match(dataTasks, /psql -v ON_ERROR_STOP=1 -U ford -d ford/);
+  assert.match(appEnv, /^FORD_DATABASE_URL=.*:5432\/ford\?ApplicationName=ford-service$/m);
+  assert.match(appEnv, /^FORD_DATABASE_USERNAME=\{\{ lookup\('ansible\.builtin\.env', 'FORD_DATABASE_USERNAME'\) \}\}$/m);
+  assert.match(appEnv, /^FORD_DATABASE_PASSWORD=\{\{ lookup\('ansible\.builtin\.env', 'FORD_DATABASE_PASSWORD'\) \}\}$/m);
+  assert.doesNotMatch(appEnv, /^FORD_DATABASE_USERNAME=ford$/m);
+  assert.doesNotMatch(appEnv, /FORD_DATABASE_PASSWORD=.*POSTGRES_PASSWORD/);
+  assert.match(application, /tools-enabled: \$\{FORD_CATALOG_TOOLS_ENABLED:false\}/);
+  assert.match(application, /enabled: \$\{FORD_LEGACY_CATALOG_TOOLS_ENABLED:false\}/);
+});
+
 test("OCI backup identity is declarative and reproducible", async () => {
   const storage = await read("deployment/terraform/storage.tf");
   const variables = await read("deployment/terraform/variables.tf");
@@ -293,7 +311,7 @@ test("live provider preflight can exercise the configured primary Spring AI prov
   const source = await read("ford-ai-service/src/providerPreflight/java/com/ford/service/ai/configuration/LiveProviderPreflightTest.java");
 
   assert.match(source, /PROVIDER_IDS = List\.of\("openai"/);
-  assert.match(source, /case "openai" -> env\("OPENAI_API_KEY"\)/);
+  assert.match(source, /case "openai" -> env\("DEEPSEEK_API_KEY"\)/);
   assert.match(source, /FORD_AI_CLOUD_ENABLED/);
   assert.match(source, /FORD_AI_CLOUD_BASE_URL/);
   assert.match(source, /FORD_AI_CLOUD_MODEL_VERSION/);
