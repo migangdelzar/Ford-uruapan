@@ -23,4 +23,4 @@
 
 ## Commit
 
-- Implementation commit: recorded after commit.
+- Implementation commit: `54d39b4` (`Harden backup manifest identity and isolated restore`).
