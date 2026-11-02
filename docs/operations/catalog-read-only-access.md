@@ -6,14 +6,14 @@ Ford-scraping owns the `ford` schema, migrations, crawler, and all catalog write
 
 Configure these only when preparing an approved catalog-tool rollout:
 
-- `FORD_CATALOG_TOOLS_ENABLED=false` by default. Local development may opt in with a separately configured read-only datasource. Keep production false until the Service-owned tool configuration and datasource permissions are reviewed.
+- `FORD_CATALOG_TOOLS_ENABLED=false` by default and when unset (fail-closed). Local fixture diagnostics may opt in only with a separately configured test-only read-only datasource in a disposable environment. Keep production explicitly false through migration and verification; protected production configuration may explicitly set true only after cutover gates 1–8 and approvals pass. Explicit false remains the emergency disable switch.
 - `FORD_CATALOG_JDBC_URL=jdbc:postgresql://<catalog-host>:5432/<catalog-db>?connectTimeout=5&socketTimeout=30&tcpKeepAlive=true`
 - `FORD_CATALOG_USERNAME=<read-only-role>`
-- The catalog datasource reuses the existing `FORD_DATABASE_PASSWORD` value already loaded from OCI Vault; no catalog-specific password setting or secret is used.
+- The catalog datasource uses `FORD_CATALOG_DATABASE_PASSWORD`, mapped in `ford-ai-service/src/main/resources/application.yml` from `FORD_VAULT_SECRET_OCID_FORD_CATALOG_DATABASE_PASSWORD`. This is distinct from `FORD_DATABASE_PASSWORD`; review the catalog-specific secret identity, Vault access, and least-privilege reader role without printing secret values.
 - `FORD_CATALOG_DRIVER=org.postgresql.Driver` (default)
 - `FORD_CATALOG_READ_ONLY_TOOL_NAMES` optionally narrows the built-in read-only tool allowlist.
 
-When enabled, startup fails if URL, username, or the existing database password is missing. The catalog adapter uses a separate JDBC datasource and the `ford_catalog_reader` login; its password is the same existing database password. It does not use the primary `ford` login or create a catalog-specific password setting. No new Vault secret is required. JDBC URL timeouts bound connection and query waits.
+When enabled, startup fails if URL, username, or `FORD_CATALOG_DATABASE_PASSWORD` is missing. The catalog adapter uses a separate JDBC datasource and the `ford_catalog_reader` login; its catalog-specific password is resolved through the mapping above. It does not use the primary `ford` login. Review secret ownership and access before rollout. JDBC URL timeouts bound connection and query waits.
 
 ## Customer replies and recovery
 
@@ -45,7 +45,7 @@ For exact vehicle details, `technicalSheetUrl` is selected from the exact source
 
 Disable catalog callbacks with `FORD_CATALOG_TOOLS_ENABLED=false` and restart Ford Service. This does not stop Ford-scraping or change catalog data. During transition, retain the prior deployment and tunnel/secret resources until the approved rollout verifies Service behavior. No resource cleanup is part of this repository change.
 
-Before enabling: run the Service-owned catalog tool and adapter tests, verify the reader role can query required views and cannot write, run Service unit tests and `bootJar`, and perform a read-only smoke test. Node/MCP output parity is not a prerequisite. Production cutover requires protected release approval and a deployment record.
+Before any production enablement: clear the ordered cutover gates in `docs/superpowers/plans/2026-11-01-ford-database-cutover-release.md`, run the Service-owned catalog tool and adapter tests, verify the reader role can query required views and cannot write/private-read, run Service unit tests and `bootJar`, and perform approved synthetic checks. Production remains explicitly false through migration and verification; only the final protected activation gate may set it true. Do not interpret local fixture diagnostics as production evidence. Node/MCP output parity is not a prerequisite.
 
 Optional historical adapter verification can be reproduced with the disposable snapshot harness. It restores a Ford-scraping dump into a throwaway container, applies the `ford_read` view migrations, runs `CatalogSnapshotParityIntegrationTest` against real rows, then removes the container. This is useful datasource/adapter coverage, not a Node/MCP parity gate:
 

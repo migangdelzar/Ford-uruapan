@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **Readiness gate:** This plan is subordinate to `docs/operations/production-rollout-readiness.md`. Do not perform a production write until the full backup/restore, source-integrity, migration-rehearsal, and protected-release gates pass.
+> **Readiness gate:** This plan is subordinate to `docs/operations/production-rollout-readiness.md`. Do not perform a production write until all gates 0–8, target-specific backup/restore proof, and protected approvals pass. Production tools remain off through migration and verification; gate 9 is the only production activation point.
 
 **Goal:** Move every environment to one `ford` application database with `ford_metadata` and `ford_catalog`, verify it, then release Service and Web through existing protected gates.
 
@@ -17,7 +17,8 @@
 - No `ford_service` database remains after acceptance. Keep a verified external backup and restore proof, not a second post-cutover DB.
 - Production receives the approved candidate snapshot with known gaps; do not call it production-validated.
 - Liquibase is the only DDL owner; Service/current database user runs it and gains catalog write access; reader remains SELECT-only.
-- Keep catalog tools disabled until all checks pass. Use existing release gates and approvals; do not create `emme-test`, bypass a gate, alter DNS/Cloudflare/routing, or deploy scraper customer actions.
+- `FORD_CATALOG_TOOLS_ENABLED` remains fail-closed (`false`) when unset. Local fixture diagnostics may explicitly enable tools only in a disposable test configuration. Production configuration explicitly sets it `false` through migration and verification; only protected gate 9 may explicitly set it `true`. Keep explicit `false` as the emergency disable switch.
+- Use existing release gates and approvals; do not create `emme-test`, bypass a gate, alter DNS/Cloudflare/routing, or deploy scraper customer actions.
 - Preserve existing local modifications and unrelated files.
 
 ## File Map
@@ -29,52 +30,79 @@
 - Update after each approved cutover: `docs/operations/credential-storage.md`, `docs/operations/production-rollout-readiness.md`, and catalog read-only operations docs with sanitized run IDs/hashes only.
 - External backup and catalog snapshot artifacts remain outside Git and contain no passwords.
 
-## Task 1: Add fail-closed database identity preflight
+## Ordered cutover gates (0–9)
 
-- [ ] Add contract tests asserting database name is exactly `ford`, required schemas are `ford_metadata`/`ford_catalog`, no application relations remain in `public`, and feature flag is false.
-- [ ] Run focused workflow/preflight tests; expected: fail on current `ford_service` checks.
-- [ ] Update runtime examples and preflight checks to validate the one-database contract without printing credential values. Keep all production approvals and release conditions unchanged.
-- [ ] Run Python contract tests and shell tests; expected: all target-identity tests pass.
+Complete gates in order. Missing evidence is blocked, never inferred as passed. Gate 0 is optional local diagnostic work and cannot clear any production-data gate.
 
-**Verification:** Wrong DB/schema, reader identity, or flag fails before any migration/deploy command.
+### Gate 0 — Disposable fixture diagnostics (Service/QA owner; optional early work)
 
-## Task 2: Prepare each environment from verified backup
+- [ ] Use a disposable local PostgreSQL instance, reviewed test fixtures, and test-only Service configuration with `FORD_CATALOG_TOOLS_ENABLED=true` explicitly set. Exercise datasource startup, tool registration, approved-view reads, denied writes/private reads, exact/no-match/citation behavior, and unavailable-catalog handling.
+- [ ] Record results as **local fixture diagnostics only**. Do not treat the mismatched archive as a verified baseline or touch production/shared databases. Repeat only after a full backup is independently supplied and verified.
 
-- [ ] Inspect database identity, schemas, table owners, extension versions, schema migrations, roles/grants, `search_path`, active sessions, and disk space using read-only queries.
-- [ ] Create a fresh external database backup and manifest. Verify SHA-256 and restore it into a disposable isolated PostgreSQL instance. Never print connection secrets.
-- [ ] Stop if `public` has unexpected objects, extension relocation is unsupported, data mapping is ambiguous, or backup restore proof fails.
-- [ ] Verify that the new catalog SQL artifact SHA and source manifest are approved and match the immutable Liquibase changeset name.
+**Pass evidence:** Repeatable local fixture results; no production gate is cleared. Stop on any private-read/write access or unexpected behavior.
 
-**Verification:** Backups restore; exact pre-cutover row counts and rollback commands are recorded; no target write yet.
+### Gate 1 — Source integrity (source/data owner)
 
-## Task 3: Migrate one test environment first
+- [ ] Supply the canonical JSONL hash-generation procedure and per-relation evidence for both known mismatches. Re-run exporter against the unchanged approved archive.
+- [ ] Pass only when identity, relation inventory, counts, every approved content hash, and immutable reviewed snapshot identity match. Preserve archive bytes and expected hashes.
 
-- [ ] Migrate into database `ford` from the verified backup without destructive overwrite. If only `ford_service` exists, rename it to `ford` only after backup/restore proof and a no-session/target-name preflight; if both `ford_service` and `ford` exist, stop for an explicit merge plan. Apply Liquibase changesets and verify chat/lead/requirement rows in `ford_metadata` and canonical catalog rows in `ford_catalog`; preserve old conflicting catalog values as history while the approved snapshot supplies current values.
-- [ ] Relocate supported extensions and validate dependencies. Keep `public` present and empty; if any object cannot be safely relocated or removed without `CASCADE`, stop and inspect rather than force it.
-- [ ] Verify only the two application schemas remain, Liquibase history is in `ford_metadata`, scraper writes target `ford_catalog`, and reader SELECT/write-denial probes pass, including denial on the source candidate's `document_provenance_v1` relation.
-- [ ] Configure emme Service and scraper connection URLs to database `ford`, with schema-specific identities. Keep tools false and run health checks.
-- [ ] After acceptance, retire the old `ford_service` database as authorized; keep the external backup only.
+**Stop:** Any mismatch or missing source evidence; do not hand-edit hashes or change exporter contract by guess.
 
-**Verification:** Service data counts match backup; catalog matches manifest; app health is good; no reader write/private access; built-in `public` remains present and empty.
+### Gate 2 — Full backup and isolated restore (DBA/operator)
 
-## Task 4: Release Service and Web through existing approvals
+- [ ] Create an approved, externally retained full `ford_service` backup per target; hash and manifest it, then restore to an isolated production-like PostgreSQL instance.
+- [ ] Independently verify application data, schemas, roles/grants, and both Liquibase histories. The approved catalog-only archive is not this backup.
 
-- [ ] Revalidate latest annotated tags, exact source SHAs, CI, image/artifact digests, attestations, and rollback artifact immediately before deploy.
-- [ ] Deploy Service through existing protected workflow with catalog tools off; verify datasource target, Liquibase status, health, and rollback digest.
-- [ ] Deploy Web only after Service passes; verify root, login, dashboard, fingerprinted asset, and API health. Make no routing change.
-- [ ] Enable catalog tools only after Vault config, reader ACL, health, and synthetic catalog probes pass. If any fails, switch tools off and restore the verified external DB backup and previous image digests.
-- [ ] Record sanitized workflow IDs, artifact hashes, DB backup hash, catalog manifest hash, feature flag, and test outputs.
+**Pass evidence:** Verified full backup/restore proof. No target write before proof. Stop if incomplete or restore fails.
 
-**Verification:** Existing release protections remain intact; both services run verified immutable artifacts; no route or customer-data change occurs.
+### Gate 3 — Duplicate-data authority and ledger provenance (data owner + DBA)
 
-## Task 5: Promote sequentially through remaining environments
+- [ ] On the isolated restore, compare same-named relations row-for-row across `ford`/`public`; inventory owners, counts, constraints, dependencies, and changesets/checksums in both ledgers.
+- [ ] Obtain written data-owner decision and reviewed lossless mapping for any differing data; establish one authoritative migration-history ledger.
 
-- [ ] Repeat Tasks 2–4 for each remaining environment, including production, one environment at a time. Require fresh backup/restore proof and existing protected approval for each.
-- [ ] Before production apply, display and explicitly review the candidate SHA and known coverage/price limitations. Stop if source SHA changed from the reviewed manifest.
-- [ ] Keep catalog tools disabled until production Service health, reader permissions, and synthetic checks pass.
-- [ ] Retire each old `ford_service` database only after that environment's acceptance; retain external backup through the approved rollback window.
+**Stop:** Any unresolved discrepancy, unknown owner, checksum conflict, or absent owner decision. Never choose a winner or merge by assumption.
 
-**Verification:** Every environment reports one app DB `ford`, two app schemas, built-in `public` present and empty, correct data counts, reader-only tool access, and a verified rollback backup.
+### Gate 4 — Migration and extension review (DBA + application/migration owner)
+
+- [ ] Reconcile changeset 025 with observed `ford.ai_execution` and other duplicate relations. Reconcile changeset 026 with `pgcrypto` in `public`, extension ownership/version/dependencies, and supported relocation.
+- [ ] Define and review a versioned correction or bootstrap path against the restored baseline and active app version; do not edit already-applied changesets or weaken guards.
+
+**Stop:** Incompatibility, unsupported relocation, unknown object, or any need for `CASCADE`/dropping built-in `public`.
+
+### Gate 5 — Least privilege and schema contract (DBA/security owner)
+
+- [ ] Replace the superuser application role with reviewed migration/runtime identities. Audit effective `ford_catalog_reader` grants and its secret-specific Vault identity/access without printing secret values.
+- [ ] Prove reader can select approved catalog views only, cannot write or access metadata/private capture data, and `public` remains present and empty of application/extension objects.
+
+**Pass evidence:** Reviewed grants and secret path; least-privilege allow/deny probes. Stop on excess permissions or unknown secret consumer.
+
+### Gate 6 — Isolated migration rehearsal (migration owner + QA)
+
+- [ ] Apply exact reviewed changesets and approved snapshot only to the isolated restore. Verify application-data preservation, one authoritative ledger, extension placement, schema inventory, counts/hashes, reader allow/deny probes, and old/candidate app compatibility.
+- [ ] Record repeatable commands and sanitized results.
+
+**Stop:** Unknown object/checksum, data loss, permission error, non-repeatable result, or `CASCADE` requirement.
+
+### Gate 7 — Protected release readiness (release owner + platform/security owners)
+
+- [ ] Verify full read-only target/deployment inventory, host disk/capacity (including emme-2 headroom), runtime Vault identity/secret access, CI, reviewed source SHA, immutable image digest/attestation, protected environments/reviewers, rollback image, and tested backup/restore procedure.
+- [ ] Refresh stale repository/workflow status immediately before release; obtain and record every required protected approval.
+
+**Stop:** Any missing inventory, capacity, Vault, CI, artifact, protection, approval, or rollback evidence.
+
+### Gate 8 — Protected sequential rollout, tools off (authorized release + migration owners)
+
+- [ ] Promote sequentially via approved environment path. Take and verify a fresh backup for each target, obtain its approval, and retain per-target rollback evidence.
+- [ ] Keep `FORD_CATALOG_TOOLS_ENABLED=false` during database and Service migration/verification. Confirm approved artifact, datasource, health, schema/data/ACL checks, and rollback artifacts on both hosts before advancing.
+
+**Stop:** Any failed health/data/ACL check, target drift, missing backup/approval, or unavailable rollback artifact. Do not change DNS, Cloudflare, routing, or scraper customer actions.
+
+### Gate 9 — Explicit protected production default-on (release owner; final gate)
+
+- [ ] Only after gates 1–8 and all approvals pass, explicitly set `FORD_CATALOG_TOOLS_ENABLED=true` in protected production configuration as desired state. Never change the application fallback from false; explicit `false` remains emergency disable.
+- [ ] Run and record synthetic exact-match, no-match, citation, and unavailable-catalog checks and approval/observation. If any activation check fails, set protected flag false and follow approved application rollback plus verified external database restore; do not automatically reverse Liquibase.
+
+**Pass evidence:** Explicit protected configuration, successful recorded synthetic checks, and approval. Until then production remains off.
 
 ## Stop Conditions
 
@@ -83,3 +111,4 @@
 - Any operation needs `CASCADE`, exposes `ford_metadata` to the reader, grants reader writes, or changes Service data.
 - Existing production approvals are missing or someone asks to bypass them.
 - Any DNS, Cloudflare, public route, or port policy change is needed.
+- A gate's required owner evidence or protected approval is absent. Local fixture diagnostics do not override a blocked production gate.
