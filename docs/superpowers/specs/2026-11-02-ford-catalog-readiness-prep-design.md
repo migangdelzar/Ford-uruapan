@@ -48,9 +48,9 @@ unverified gates as passed.
   tested reconciliation design.
 - The approved archive SHA remains
   `a1fe738999b3d1148d70d8cb89b4b8e998bfcdc3f7f6304570f06e8c74c1106d`.
-  Recorded exporter content mismatches remain unresolved. The current local
-  Docker daemon is unavailable, so local restore/export reproduction may be
-  blocked.
+  A fresh isolated restore through the authorized local `testbox` context
+  reproduced the exporter's two content-hash mismatches. No snapshot SQL was
+  generated; preserve the archive and expected hashes for source-owner review.
 - Readiness requires external evidence: verified full-database backup and
   isolated restore, authoritative resolution of any differing row copies,
   source-owner resolution of hash mismatches, DBA role/ledger/permission audit,
