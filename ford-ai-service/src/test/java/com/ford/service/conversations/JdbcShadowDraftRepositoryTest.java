@@ -51,7 +51,7 @@ class JdbcShadowDraftRepositoryTest {
 
     @Test
     void savesAndListsDraftsScopedByTenantAndConversation() {
-        var created = Instant.now().minusSeconds(60);
+        var created = Instant.ofEpochSecond(Instant.now().minusSeconds(60).getEpochSecond(), 123_456_789);
         repository.save(draft(UUID.randomUUID(), created, created.plusSeconds(604800), "PENDING"));
         repository.save(draft(UUID.randomUUID(), created.plusSeconds(30), created.plusSeconds(604830), "PENDING"));
         repository.save(new ShadowDraft(UUID.randomUUID(), tenantId, UUID.randomUUID(), UUID.randomUUID(),
@@ -60,7 +60,8 @@ class JdbcShadowDraftRepositoryTest {
         var drafts = repository.list(tenantId, conversationId, 50);
 
         assertThat(drafts).hasSize(2);
-        assertThat(drafts.get(0).createdAt()).isEqualTo(created.plusSeconds(30).truncatedTo(ChronoUnit.MICROS));
+        assertThat(drafts.get(0).createdAt()).isEqualTo(
+                created.plusSeconds(30).plusNanos(500).truncatedTo(ChronoUnit.MICROS));
         assertThat(drafts).allMatch(draft -> draft.conversationId().equals(conversationId));
     }
 
