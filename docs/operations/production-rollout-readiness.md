@@ -41,6 +41,19 @@ SSH checks to `emme-1` and `emme-2` and SQL probes on `emme-2` were read-only; S
 
 **Live-preflight result: BLOCKED.** Do not deploy, migrate, snapshot-load, enable tools, alter extensions, or clean schemas on either host. Current changeset 025 is proven incompatible with the live `ford` schema and would abort Liquibase; bypassing it risks app outage and split data. Resolve source hash mismatch, reconcile duplicated schema data and both ledgers on a verified restore, establish least-privilege roles, and rehearse corrected changesets before any production change. emme-2 disk headroom is also a release concern; do not delete data to address it without separate review.
 
+### Live read-only recheck — 2026-11-03
+
+The user requested the latest new-schema candidate and confirmed the `emme-1`/`emme-2` SSH aliases. This recheck used SSH only for read-only container inventory and PostgreSQL queries inside `BEGIN READ ONLY` / `ROLLBACK`; no deploy, backup, restore, migration, restart, cleanup, or configuration command ran.
+
+- `ssh emme-1 'hostname; docker ps --format ...'` succeeded. Ford Service proxy, blue/green Service containers, and the OpenTelemetry Collector remain running.
+- `ssh emme-2 'hostname; docker ps --format ...'` succeeded. Scheduler, MCP/cloudflared, Ollama, PostgreSQL, and Redis remain running and healthy where health is reported.
+- Read-only PostgreSQL query connected to `ford_service`. The only matching database returned was `ford_service`; database `ford` is absent. Existing schemas include `ford`, `ford_catalog`, `ford_read`, and `public`; `ford_metadata` is absent.
+- `vector` 0.8.6, `pg_trgm` 1.6, and `pgcrypto` 1.3 all remain in `public`. Role `ford` remains superuser/CREATEDB/CREATEROLE/BYPASSRLS; `ford_catalog_reader` is not superuser and has no such elevated attributes.
+- `ai_execution` exists in both `ford` and `public`; read-only inventory found 48 duplicate relation names across those schemas. This reconfirms changeset 025 cannot safely migrate the live database in place.
+- Local candidate verification only: `./gradlew test --no-daemon` succeeded with Gradle reporting `UP-TO-DATE`; the two schema integration tests were forced to execute via isolated `colima-testbox` and passed (2 test classes, zero failures/errors). The existing `ford-service-local-catalog-postgres-1` container remained running; test containers were removed automatically. These results do not authorize deployment or validate production data.
+
+**Recheck result: BLOCKED.** Keep the running services untouched. The local candidate bootstraps a fresh empty database, but production still has no approved full backup/restore proof, owner/data-retention authorization, signed DBA role/schema contract, reviewed deployment image release, or protected release approvals. New database and schema bootstrap tests pass locally; live migration or data-directory replacement is not authorized until those gates clear.
+
 ### Ordered release plan and gates
 
 Run gates in dependency order, matching the operational checklist in [`2026-11-01-ford-database-cutover-release.md`](../superpowers/plans/2026-11-01-ford-database-cutover-release.md). Local fixture diagnostics are allowed first but are local-only. The committed/application fallback remains `FORD_CATALOG_TOOLS_ENABLED=false`; production explicitly remains false during migration and verification. Only protected gate 9 may explicitly set it true after gates 1–8 and approvals pass. No gate is cleared by inference.
