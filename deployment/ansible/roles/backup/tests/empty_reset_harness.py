@@ -7,6 +7,9 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
+import tempfile
+from pathlib import Path
 
 
 class HarnessError(RuntimeError):
@@ -151,3 +154,45 @@ def run_harness(image, repo_root, fixture_dir, env=None, hostname=None):
         text=True,
         env=safe_env,
     )
+
+
+def main(env=None, stdout=None, stderr=None, hostname=None):
+    source_env = dict(os.environ if env is None else env)
+    stdout = stdout or sys.stdout
+    stderr = stderr or sys.stderr
+    try:
+        image = validate_image_ref(source_env.get("FORD_EMPTY_RESET_HARNESS_IMAGE", ""))
+        repo_root = str(Path(__file__).resolve().parents[5])
+        scratch_parent = Path(repo_root) / ".superpowers/sdd"
+        if (scratch_parent.parent.is_symlink() or scratch_parent.is_symlink()):
+            raise HarnessError("Temporary fixture parent must not be a symlink.")
+        scratch_parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix="ford-empty-reset-harness-", dir=str(scratch_parent)
+        ) as fixture_dir:
+            result = run_harness(
+                image,
+                repo_root,
+                fixture_dir,
+                env=source_env,
+                hostname=hostname,
+            )
+        if result.stdout:
+            stdout.write(result.stdout)
+        if result.stderr:
+            stderr.write(result.stderr)
+        if result.returncode != 0:
+            stderr.write("SYNTHETIC PLAYBOOK SAFETY TEST: FAIL\n")
+            return result.returncode or 1
+        if "SYNTHETIC PLAYBOOK SAFETY TEST: PASS" not in result.stdout:
+            stderr.write("SYNTHETIC PLAYBOOK SAFETY TEST: FAIL (missing runner success marker)\n")
+            return 1
+        return 0
+    except (HarnessError, OSError) as error:
+        stderr.write("SYNTHETIC PLAYBOOK SAFETY TEST: BLOCKED\n")
+        stderr.write(str(error) + "\n")
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

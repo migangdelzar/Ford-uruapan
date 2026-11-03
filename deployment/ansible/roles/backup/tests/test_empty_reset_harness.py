@@ -6,10 +6,14 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+import hashlib
+import importlib.util
+import io
 
 from empty_reset_harness import (
     HarnessError,
     container_argv,
+    main,
     run_harness,
     validate_image_ref,
     validate_local_docker_host,
@@ -156,6 +160,137 @@ class EmptyResetHarnessSafetyTest(unittest.TestCase):
                 call.kwargs["env"]["DOCKER_HOST"],
                 "unix://" + os.path.realpath(str(socket_path)),
             )
+
+    @patch("empty_reset_harness.subprocess.run")
+    def test_cli_refuses_missing_pinned_image_before_docker_access(self, run):
+        output = io.StringIO()
+        errors = io.StringIO()
+        with tempfile.TemporaryDirectory() as home:
+            result = main(
+                env={"HOME": home, "PATH": "/usr/bin:/bin"},
+                stdout=output,
+                stderr=errors,
+                hostname="local-mac",
+            )
+
+        self.assertEqual(result, 2)
+        self.assertIn("FORD_EMPTY_RESET_HARNESS_IMAGE", errors.getvalue())
+        run.assert_not_called()
+
+    @patch("empty_reset_harness.run_harness")
+    def test_cli_fixture_uses_colima_shared_repository_mount(self, run_harness):
+        run_harness.return_value = subprocess.CompletedProcess(
+            args=["docker", "run"],
+            returncode=0,
+            stdout="SYNTHETIC PLAYBOOK SAFETY TEST: PASS\n",
+            stderr="",
+        )
+        image = "example.invalid/ansible-runner@sha256:" + "d" * 64
+        output = io.StringIO()
+        errors = io.StringIO()
+        result = main(
+            env={"FORD_EMPTY_RESET_HARNESS_IMAGE": image},
+            stdout=output,
+            stderr=errors,
+            hostname="local-mac",
+        )
+
+        self.assertEqual(result, 0)
+        fixture_path = Path(run_harness.call_args.args[2])
+        shared_root = Path(__file__).resolve().parents[5] / ".superpowers/sdd"
+        self.assertEqual(fixture_path.parent, shared_root)
+        self.assertTrue(fixture_path.name.startswith("ford-empty-reset-harness-"))
+        self.assertIn("SYNTHETIC PLAYBOOK SAFETY TEST: PASS", output.getvalue())
+        self.assertEqual(errors.getvalue(), "")
+
+    def test_fixture_has_valid_synthetic_backup_and_local_inventory(self):
+        from empty_reset_container_runner import make_fixture
+
+        verifier_path = (
+            Path(__file__).resolve().parents[2]
+            / "catalog_sync/files/verify_backup.py"
+        )
+        spec = importlib.util.spec_from_file_location("verify_backup", verifier_path)
+        verifier = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(verifier)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = make_fixture(Path(temporary), "synthetic-approval-01")
+            self.assertEqual(
+                verifier.verify_backup(
+                    fixture["archive_dir"],
+                    "20261102",
+                    "ford_service",
+                    fixture["postgres_archive"].name,
+                ),
+                {"backupCreatedAt": "20261102T120000Z"},
+            )
+            self.assertEqual(
+                hashlib.sha256(fixture["manifest_path"].read_bytes()).hexdigest(),
+                fixture["manifest_sha256"],
+            )
+            self.assertEqual(fixture["postgres_sentinel"].read_bytes(), b"synthetic-postgres-sentinel\n")
+            self.assertEqual(fixture["redis_sentinel"].read_bytes(), b"synthetic-redis-sentinel\n")
+            inventory = fixture["inventory_path"].read_text(encoding="utf-8")
+            self.assertIn("[data]", inventory)
+            self.assertIn("emme-2 ansible_connection=local", inventory)
+            self.assertNotIn("emme-1", inventory)
+            self.assertNotIn("ssh", inventory.lower())
+
+    def test_fake_docker_is_resolved_from_its_fixture_path_first(self):
+        from empty_reset_container_runner import make_fixture, resolve_fake_docker
+
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = make_fixture(Path(temporary), "synthetic-approval-02")
+            path = str(fixture["docker_stub"].parent) + ":/usr/bin:/bin"
+            self.assertEqual(
+                resolve_fake_docker(path), str(fixture["docker_stub"])
+            )
+
+    def test_container_ansible_config_uses_supported_cfg_extension(self):
+        from empty_reset_container_runner import write_ansible_config
+
+        with tempfile.TemporaryDirectory() as temporary:
+            config = write_ansible_config(Path(temporary))
+            self.assertEqual(config.suffix, ".cfg")
+            self.assertIn("[defaults]", config.read_text(encoding="utf-8"))
+
+    def test_optional_stat_symlink_fields_default_to_false(self):
+        playbook_dir = Path(__file__).resolve().parents[3]
+        for playbook_name in ("ford-empty-reset.yml", "ford-empty-rollback.yml"):
+            with self.subTest(playbook=playbook_name):
+                lines = (playbook_dir / playbook_name).read_text(encoding="utf-8").splitlines()
+                symlink_checks = [line for line in lines if ".stat.islnk" in line]
+                self.assertTrue(symlink_checks)
+                for line in symlink_checks:
+                    self.assertIn("| default(false)", line, line)
+
+    def test_backup_verifier_script_uses_python_interpreter(self):
+        playbook_dir = Path(__file__).resolve().parents[3]
+        playbook = (playbook_dir / "ford-empty-reset.yml").read_text(encoding="utf-8")
+        task = playbook.split("- name: Verify exact manifest and PostgreSQL/Redis checksums", 1)[1]
+        task = task.split("- name:", 1)[0]
+        self.assertIn("executable: python3", task)
+
+    def test_synthetic_refusal_matrix_covers_reset_and_rollback_guards(self):
+        from empty_reset_container_runner import REFUSAL_CASES
+
+        self.assertEqual(
+            set(REFUSAL_CASES),
+            {
+                "missing-reset-approval",
+                "wrong-inventory-alias",
+                "wrong-manifest-digest",
+                "corrupt-backup-artifact",
+                "missing-backup-artifact",
+                "existing-reset-archive",
+                "symlinked-compose-path",
+                "mismatched-rollback-approval",
+                "mismatched-rollback-digest",
+                "symlinked-reset-state",
+                "occupied-rollback-destination",
+            },
+        )
 
 
 if __name__ == "__main__":

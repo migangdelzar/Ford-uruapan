@@ -89,6 +89,41 @@ the replacement is only the separately approved, guarded exact-directory
 rollback playbook documented in Task 6/9, with fresh target-specific release
 authorization. Do not use an in-place database restore as the rollback path.
 
+### Synthetic empty-reset playbook safety harness
+
+The local-only harness exercises `deployment/ansible/ford-empty-reset.yml` and
+`ford-empty-rollback.yml` against synthetic sentinel files inside a disposable
+Linux container. It verifies reset/rollback byte preservation and refusal cases.
+This is synthetic-only safety coverage, **not production acceptance**, a backup
+restore rehearsal, image/grant/health validation, or release-readiness evidence.
+It never targets emme hosts or mounts a Docker socket into the runner container.
+
+Prerequisites: Docker connected to an approved local Unix socket; a preloaded
+Ansible runner image containing Ansible Core 2.21.4 and standard Linux tools;
+and an immutable `registry/image@sha256:<64 lowercase hex>` reference that
+`docker image inspect` reports locally. Do not use mutable tags or pull
+implicitly. The harness rejects remote/SSH Docker endpoints, emme/testbox
+hosts, and SSH sessions. It runs with `--pull=never`, `--network none`, a
+read-only repository mount, and an automatically removed container. Synthetic
+fixtures live temporarily under ignored `.superpowers/sdd/` and are removed on
+exit.
+
+Run from the repository root, supplying the reviewed image digest:
+
+```bash
+python3 -m unittest discover deployment/ansible/roles/backup/tests -p 'test_empty_reset_harness.py' -v
+
+FORD_EMPTY_RESET_HARNESS_IMAGE='registry/image@sha256:<64-lowercase-hex-digest>' \
+DOCKER_HOST="unix://${HOME}/.colima/native/docker.sock" \
+DOCKER_CONTEXT= \
+python3 deployment/ansible/roles/backup/tests/empty_reset_harness.py
+```
+
+Success prints `SYNTHETIC PLAYBOOK SAFETY TEST: PASS`. A missing/unavailable
+digest or unsafe Docker endpoint blocks before the container starts. A passing
+result does not clear any production rollout gate; approved-backup rehearsal,
+release approvals, and fresh target-specific authorization remain separate.
+
 ## GitHub Actions controls
 
 Workflow: [Database Backup Operations](../../.github/workflows/database-backup.yml)

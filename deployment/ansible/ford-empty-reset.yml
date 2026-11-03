@@ -45,11 +45,11 @@
           - data_volume_mount != '/'
           - ford_reset_mount_realpath.stdout == data_volume_mount
           - ford_reset_paths.results[0].stat.isdir
-          - not ford_reset_paths.results[0].stat.islnk
+          - not ford_reset_paths.results[0].stat.islnk | default(false)
           - ford_reset_paths.results[1].stat.isdir
-          - not ford_reset_paths.results[1].stat.islnk
+          - not ford_reset_paths.results[1].stat.islnk | default(false)
           - ford_reset_paths.results[2].stat.isdir
-          - not ford_reset_paths.results[2].stat.islnk
+          - not ford_reset_paths.results[2].stat.islnk | default(false)
           - not (ford_reset_paths.results[1].stat.path | regex_search('/$'))
           - not (ford_reset_paths.results[2].stat.path | regex_search('/$'))
         fail_msg: "Expected real PostgreSQL/Redis bind directories under the configured data mount."
@@ -70,7 +70,7 @@
       ansible.builtin.assert:
         that:
           - (item.item.kind == 'directory' and item.stat.isdir) or (item.item.kind == 'file' and item.stat.isreg)
-          - not item.stat.islnk
+          - not item.stat.islnk | default(false)
         fail_msg: "Reset control, data Compose, or backup archive path is missing or a symlink."
       loop: "{{ ford_reset_control_paths.results }}"
 
@@ -104,7 +104,7 @@
       ansible.builtin.assert:
         that:
           - not ford_reset_state.stat.exists
-          - not ford_reset_state.stat.islnk
+          - not ford_reset_state.stat.islnk | default(false)
         fail_msg: "An empty-reset state already exists; reconcile it before another reset."
 
     - name: Find candidate backup manifests by exact approved digest
@@ -152,6 +152,7 @@
           {{ ford_reset_manifest.created_at[:8] }}
           ford_service
           {{ ford_reset_manifest.postgres }}
+        executable: python3
       changed_when: false
 
     - name: Ensure deterministic archive destinations are unused
@@ -165,7 +166,7 @@
       ansible.builtin.assert:
         that:
           - not item.stat.exists
-          - not item.stat.islnk
+          - not item.stat.islnk | default(false)
         fail_msg: "A reset archive destination already exists; refusing to overwrite data."
       loop: "{{ ford_reset_archive_paths.results }}"
 
@@ -230,7 +231,7 @@
         that:
           - not ford_postgres_rotation.results[0].stat.exists
           - ford_postgres_rotation.results[1].stat.isdir
-          - not ford_postgres_rotation.results[1].stat.islnk
+          - not ford_postgres_rotation.results[1].stat.islnk | default(false)
         fail_msg: "PostgreSQL directory rotation did not complete exactly; stop for manual recovery."
 
     - name: Rotate Redis data directory to the exact approved archive name
@@ -258,7 +259,7 @@
         that:
           - not ford_redis_rotation.results[0].stat.exists
           - ford_redis_rotation.results[1].stat.isdir
-          - not ford_redis_rotation.results[1].stat.islnk
+          - not ford_redis_rotation.results[1].stat.islnk | default(false)
         fail_msg: "Redis directory rotation did not complete exactly; stop for manual recovery."
 
     - name: Create fresh empty PostgreSQL and Redis directories
@@ -278,4 +279,16 @@
         owner: root
         group: root
         mode: "0600"
-        content: "{{ (ford_reset_manifest | combine({'status': 'reset', 'host': inventory_hostname, 'approval_id': ford_empty_reset_approval_id, 'backup_manifest_sha256': ford_empty_reset_backup_manifest_sha256, 'database': ford_empty_expected_database, 'data_mount': data_volume_mount, 'old_postgres_path': data_volume_mount ~ '/postgres-pre-reset-' ~ ford_empty_reset_approval_id, 'old_redis_path': data_volume_mount ~ '/redis-pre-reset-' ~ ford_empty_reset_approval_id, 'active_postgres_path': data_volume_mount ~ '/postgres', 'active_redis_path': data_volume_mount ~ '/redis'}) | to_nice_json }}"
+        content: >-
+          {{ ford_reset_manifest | combine({
+            'status': 'reset',
+            'host': inventory_hostname,
+            'approval_id': ford_empty_reset_approval_id,
+            'backup_manifest_sha256': ford_empty_reset_backup_manifest_sha256,
+            'database': ford_empty_expected_database,
+            'data_mount': data_volume_mount,
+            'old_postgres_path': data_volume_mount ~ '/postgres-pre-reset-' ~ ford_empty_reset_approval_id,
+            'old_redis_path': data_volume_mount ~ '/redis-pre-reset-' ~ ford_empty_reset_approval_id,
+            'active_postgres_path': data_volume_mount ~ '/postgres',
+            'active_redis_path': data_volume_mount ~ '/redis'
+          }) | to_nice_json }}

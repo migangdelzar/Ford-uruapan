@@ -108,6 +108,24 @@ test("database backups run monthly at the start of the month with a matching Act
   assert.match(docs, /day 1, 04:30 UTC/);
 });
 
+test("synthetic reset harness remains local, immutable, and non-acceptance evidence", async () => {
+  const docs = await read("docs/operations/database-backups.md");
+  const runner = await read("deployment/ansible/roles/backup/tests/empty_reset_harness.py");
+  const containerRunner = await read("deployment/ansible/roles/backup/tests/empty_reset_container_runner.py");
+
+  assert.match(docs, /test_empty_reset_harness\.py/);
+  assert.match(docs, /FORD_EMPTY_RESET_HARNESS_IMAGE/);
+  assert.match(docs, /DOCKER_HOST/);
+  assert.match(docs, /synthetic-only/i);
+  assert.match(docs, /not production acceptance/i);
+  assert.match(runner, /--pull=never/);
+  assert.match(runner, /"none"/);
+  assert.match(runner, /dst=\/workspace,readonly/);
+  assert.match(runner, /@sha256:\[a-f0-9\]\{64\}/);
+  assert.doesNotMatch(runner, /docker\.sock.*--mount|--mount.*docker\.sock/);
+  assert.match(containerRunner, /SYNTHETIC PLAYBOOK SAFETY TEST: PASS/);
+});
+
 test("service README links the operational contracts", async () => {
   const readme = await read("ford-ai-service/README.md");
   assert.match(readme, /docs\/ci-cd\.md/);

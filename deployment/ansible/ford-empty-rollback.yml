@@ -28,7 +28,7 @@
         that:
           - ford_rollback_state_stat.stat.exists
           - ford_rollback_state_stat.stat.isreg
-          - not ford_rollback_state_stat.stat.islnk
+          - not ford_rollback_state_stat.stat.islnk | default(false)
           - ford_rollback_state_stat.stat.mode == '0600'
         fail_msg: "Missing or unsafe reset state record; refusing rollback."
 
@@ -86,7 +86,7 @@
       ansible.builtin.assert:
         that:
           - (item.item.kind == 'directory' and item.stat.isdir) or (item.item.kind == 'file' and item.stat.isreg)
-          - not item.stat.islnk
+          - not item.stat.islnk | default(false)
         fail_msg: "Rollback control or Compose path is missing or a symlink."
       loop: "{{ ford_rollback_control_paths.results }}"
 
@@ -131,9 +131,9 @@
       ansible.builtin.assert:
         that:
           - ford_rollback_old_paths.results[0].stat.isdir or (ford_rollback_state.status == 'resetting' and ford_rollback_active_paths.results[0].stat.isdir)
-          - not ford_rollback_old_paths.results[0].stat.islnk
+          - not ford_rollback_old_paths.results[0].stat.islnk | default(false)
           - ford_rollback_old_paths.results[1].stat.isdir or (ford_rollback_state.status == 'resetting' and ford_rollback_active_paths.results[1].stat.isdir)
-          - not ford_rollback_old_paths.results[1].stat.islnk
+          - not ford_rollback_old_paths.results[1].stat.islnk | default(false)
           - not ford_rollback_active_paths.results[0].stat.islnk | default(false)
           - not ford_rollback_active_paths.results[1].stat.islnk | default(false)
           - not ford_rollback_active_paths.results[0].stat.exists or ford_rollback_active_paths.results[0].stat.isdir
@@ -151,7 +151,7 @@
       ansible.builtin.assert:
         that:
           - not item.stat.exists
-          - not item.stat.islnk
+          - not item.stat.islnk | default(false)
         fail_msg: "An empty-directory archive destination already exists; refusing rollback."
       loop: "{{ ford_rollback_empty_destinations.results }}"
 
@@ -259,9 +259,9 @@
       ansible.builtin.assert:
         that:
           - ford_rollback_restored_paths.results[0].stat.isdir
-          - not ford_rollback_restored_paths.results[0].stat.islnk
+          - not ford_rollback_restored_paths.results[0].stat.islnk | default(false)
           - ford_rollback_restored_paths.results[1].stat.isdir
-          - not ford_rollback_restored_paths.results[1].stat.islnk
+          - not ford_rollback_restored_paths.results[1].stat.islnk | default(false)
         fail_msg: "Original data directories did not return to their exact active paths."
 
     - name: Mark state rolled back without deleting the audit record
