@@ -8,6 +8,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -59,7 +60,7 @@ class JdbcShadowDraftRepositoryTest {
         var drafts = repository.list(tenantId, conversationId, 50);
 
         assertThat(drafts).hasSize(2);
-        assertThat(drafts.get(0).createdAt()).isEqualTo(created.plusSeconds(30));
+        assertThat(drafts.get(0).createdAt()).isEqualTo(created.plusSeconds(30).truncatedTo(ChronoUnit.MICROS));
         assertThat(drafts).allMatch(draft -> draft.conversationId().equals(conversationId));
     }
 

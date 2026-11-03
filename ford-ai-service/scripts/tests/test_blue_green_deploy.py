@@ -48,9 +48,10 @@ class BlueGreenComposeContractTest(unittest.TestCase):
         self.assertIn("src: app.env.j2", source)
         self.assertIn('dest: "{{ remote_root }}/app/.env"', source)
 
-    def test_service_environment_keeps_deepseek_primary_with_bounded_openrouter_fallback(self):
+    def test_service_environment_keeps_deepseek_primary_and_fail_closed_fallback(self):
         template = (APP_TEMPLATES / "app.env.j2").read_text()
         production = (REPO_ROOT.parent / "ford-ai-service/src/main/resources/application-prod.yml").read_text()
+        application = (REPO_ROOT.parent / "ford-ai-service/src/main/resources/application.yml").read_text()
         example = (REPO_ROOT.parent / "deployment/config/oci.env.example").read_text()
 
         self.assertIn("FORD_AI_CHAT_PROVIDER={{ ford_ai_chat_provider | default('openai') }}", template)
@@ -63,7 +64,8 @@ class BlueGreenComposeContractTest(unittest.TestCase):
         self.assertIn("FORD_AI_OPENROUTER_MODEL={{ ford_ai_openrouter_model | default('xiaomi/mimo-v2.6-flash') }}", template)
         self.assertIn("model: ${FORD_AI_OPENROUTER_MODEL:xiaomi/mimo-v2.6-flash}", production)
         self.assertIn("FORD_AI_OPENROUTER_MODEL=xiaomi/mimo-v2.6-flash", example)
-        self.assertIn("fallback-order: ${FORD_AI_FALLBACK_ORDER:openrouter}", production)
+        self.assertIn("fallback-order: []", production)
+        self.assertIn("fallback-order: ${FORD_AI_FALLBACK_ORDER:cloudflare,groq,gemini,openrouter}", application)
         self.assertIn("FORD_AI_OPENROUTER_ENABLED={{ (ford_ai_openrouter_enabled | default(true))", template)
         self.assertIn("FORD_AI_OPENROUTER_TOOL_CALLING_VERIFIED={{ (ford_ai_openrouter_tool_calling_verified | default(false))", template)
         self.assertIn("FORD_AI_OPENROUTER_STRUCTURED_OUTPUT_VERIFIED={{ (ford_ai_openrouter_structured_output_verified | default(false))", template)
@@ -83,11 +85,13 @@ class BlueGreenComposeContractTest(unittest.TestCase):
         self.assertIn("proxy_set_header X-Forwarded-Port 443;", rendered)
         self.assertNotIn("proxy_set_header X-Forwarded-Proto $scheme;", rendered)
 
-    def test_retired_mcp_runtime_has_no_deployment_playbooks_or_templates(self):
+    def test_mcp_rollback_assets_are_retained_but_excluded_from_replacement_site(self):
         deployment = REPO_ROOT.parent / "deployment/ansible"
+        site = (deployment / "site.yml").read_text()
         self.assertFalse((deployment / "mcp.yml").exists())
-        self.assertFalse((deployment / "mcp-blue-green.yml").exists())
-        self.assertFalse((deployment / "roles/mcp").exists())
+        self.assertTrue((deployment / "mcp-blue-green.yml").exists())
+        self.assertTrue((deployment / "roles/mcp").exists())
+        self.assertNotIn("mcp", site.lower())
         self.assertTrue((deployment / "catalog-sync.yml").exists())
 
     def test_app_deploy_checks_candidate_switches_and_restores_prior_route(self):
